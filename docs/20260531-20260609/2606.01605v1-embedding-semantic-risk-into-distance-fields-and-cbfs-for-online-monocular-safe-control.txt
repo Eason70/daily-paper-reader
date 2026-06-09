@@ -1,0 +1,431 @@
+Title: Embedding Semantic Risk into Distance Fields and CBFs for Online Monocular Safe Control
+
+URL Source: https://arxiv.org/pdf/2606.01605v1
+
+Published Time: Tue, 02 Jun 2026 01:58:02 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Embedding Semantic Risk into Distance Fields and CBFs for Online Monocular Safe Control 
+
+Dawei Zhang ∗1, Nuo Chen ∗3, Shuo Liu 2, Roberto Tron 1 and Zhiwen Fan 3
+
+Abstract —We propose an online monocular perception-to-control framework that embeds semantic risk into the distance field used by Control Barrier Function (CBF)-based safe naviga-tion and teleoperation. Many perception-based safety filters assign the same distance-based safety margin to all mapped obstacles or use semantics only as a downstream controller adjustment, rather than encoding semantic risk in the spatial representation. Our framework instead reasons online about obstacle geometry and class-dependent risk by embedding semantic information directly into the Euclidean Signed Distance Field (ESDF). This design encodes semantic risk before control optimization, so high-risk objects exert a larger spatial influence in the safety field while retaining efficient ESDF queries at runtime. Specifically, a foundation-model-based SLAM front end reconstructs dense 3-D geometry from monocular RGB video, while per-frame semantic segmentation provides pixel-level class labels that are fused into the reconstructed geometry. The resulting geometric-semantic representation is then converted into an ESDF, where semantic labels identify safety-relevant regions and impose class-dependent inflation before field computation. The semantic-aware ESDF provides the local distance values and spatial derivatives required by the CBF controller, while class-dependent gains further regulate the controller response. Extensive simulation and hardware experiments demonstrate online operation at 10–20 Hz and semantic-aware safe behavior in both teleoperation and autonomous navigation. 
+
+I. INTRODUCTION Robotic navigation and teleoperation depend on a tight perception-to-control loop that can operate online in cluttered environments. With carefully designed sensing hardware, known camera models, or depth input, dense geometric maps can be constructed and used for safety filtering. However, for a lightweight monocular setup, building a dense and control-compatible safety representation from RGB video remains difficult. Safe behavior also depends not only on where obstacles are, but on what they are. A person, a pet, and a cardboard box may occupy spaces with similar geometry while calling for different safety behaviors. Control Barrier Functions (CBFs) provide a principled framework for enforcing safety in robotic systems [1]–[4], but their effectiveness depends on how scene observations are converted into a representation that can be queried by the controller. 
+
+> ∗
+
+Denotes equal contribution. 
+
+> 1
+
+Dawei Zhang and Roberto Tron are with the Division of Systems Engineer-ing, Boston University, United States (dwzhang, tron)@bu.edu  
+
+> 2
+
+Shuo Liu is with the Department of Mechanical Engineering, Boston University, United States (liushuo)@bu.edu  
+
+> 3
+
+Nuo Chen and Zhiwen Fan are with the Department of Electrical and Computer Engineering at Texas A&M University, United States (nuochen, zhiwenfan)@tamu.edu 
+
+This work has been submitted to the IEEE for possible publication. Copyright may be transferred without notice, after which this version may no longer be accessible. Start       
+
+> Goal
+> High -risk Dog Low -risk Ball
+> Ignored Paper
+> Reference Trajectory
+> based on RGB -only SLAM
+> Safe Trajectory
+> filtered by CBF
+> Semantic -aware
+> ESDF
+> Robot with RGB input
+> (running at 10+ Hz )
+
+Figure 1: Online semantic-aware safe navigation based on monocular dense SLAM, semantic mapping, and CBFs. 
+
+Early CBF-based safe control methods typically assume that the environment is known or can be represented by simple geo-metric obstacles, such as circles, spheres, or other analytical sets [1], [2], [5]. These formulations provide clean safety constraints, but their reliance on manually specified obstacle geometry limits their applicability in online robotic deployment. More recent work extends CBF-based safe control to environments whose geometry is estimated online from perception. In these methods, obstacle representations derived from point clouds, radiance fields, occupancy maps, Gaussian splatting maps, or other sensor observations are used to construct distance-based CBF constraints [5]–[9]. These studies show that perception can be coupled with CBF-based safety enforcement, but the resulting constraints remain largely geometry-driven. Once an obstacle is mapped, the controller mainly reacts to distance, so high-risk entities and benign clutter are often treated with the same level of conservativeness. One way to address this geometry-only limitation is to use semantics when defining the safety filter. Existing semantic CBF methods use labels or scene context to adjust safety margins or controller conservativeness [10]–[12]. However, in most cases, semantics are added after the geometric map has already been built, typically through risk scores or controller parameters. The distance field queried by the CBF therefore remains mostly geometry-defined, and obstacle identity does not directly change the spatial support from which safety constraints are computed. Many of these systems also rely on additional depth measurements or dense mapping front ends with stronger sensing assumptions, which makes them less suitable for monocular deployment. Recent advances in foundation model (FM)-based visual reconstruction, such as DUSt3R, MASt3R, and VGGT, provide a new way to recover dense geometry from monocular visual observations [13]–[17]. These models use learned 3-D recon-struction priors to recover dense geometry from images, and FM-based SLAM extends this capability to online monocular 
+
+> arXiv:2606.01605v1 [cs.RO] 1 Jun 2026
+
+Table I: Capability comparison of mapping approaches for online CBF-based safety control.                      
+
+> Approach Online Mapping Dense Geometry Monocular Input Calibration Free Semantic Safety Sparse SLAM ✓✗✓✗✗
+> Dense SLAM ✗✓✗✗✗
+> FM-based SLAM ✓✓✓✓✗
+> Ours ✓✓✓✓✓
+
+video, including settings without a fixed or parametric camera model for visual reconstruction. Table I summarizes the trade-offs among existing SLAM representations. FM-based monocular SLAM offers a suitable front end for CBF-based control by providing dense geometry at an online rate, allowing safety constraints to be built from distance values and spatial derivatives queried at control time. However, this geometry alone does not define semantic safety: the map does not specify which scene regions are safety-relevant or how obstacle identity should shape the field queried by the controller. Motivated by this gap, we propose a semantic-aware safety filtering framework that integrates FM-based monocular dense SLAM with CBFs for online navigation and teleoperation, as illustrated in Fig. 1. The reconstructed geometry is fused with per-frame semantic labels and converted into a semantic-aware ESDF, where labels determine obstacle selection and class-dependent inflation before field computation. The resulting ESDF is used to construct CBF constraints, while class-dependent CBF gains regulate the dynamic response of the safety filter. This unified pipeline gives higher-risk objects a larger spatial influence and more conservative CBF response. The main contributions of this work are summarized as follows:  
+
+> •
+
+An online monocular perception-to-control framework that turns FM-based dense SLAM from RGB video into a control-ready safety field, enabling CBF-based navigation and teleoperation under a lightweight visual sensing setup.  
+
+> •
+
+A semantic-aware ESDF formulation that embeds obstacle identity into both field construction and CBF design. Semantic labels select safety-relevant geometry and set class-dependent inflation before distance-field computa-tion, while class-dependent CBF gains adjust the safety filter response at control time.  
+
+> •
+
+Extensive validation in simulation and hardware experi-ments, showing that the proposed framework preserves online efficiency, runs at 10–20 Hz, and produces semantic-aware safety behavior in both teleoperation and au-tonomous navigation. 
+
+A. Related Work 
+
+Vision-based foundation models. Recent progress in vision foundation models has substantially improved RGB-only 3-D perception. CroCo learns geometry-aware visual representations through cross-view pretraining, providing strong priors for downstream 3-D understanding tasks [18]. Building on this direction, DUSt3R reformulates dense 3-D reconstruction as pointmap prediction from image pairs, enabling calibration-free geometric estimation directly from visual observations [13]. MASt3R further improves geometric matching and reconstruc-tion robustness under challenging viewpoint changes [14]. More recently, MASt3R-SLAM extends these learned geometric priors to online monocular dense SLAM, enabling joint pose estimation and dense scene reconstruction from RGB input [16]. These methods provide the dense RGB-based geometric foundation needed for our setting. Our work builds on this capability by fusing such geometry with semantics and converting it into a control-compatible safety representation for online CBF-based control. 
+
+Perception-based CBFs. A growing body of work integrates perception-derived geometry with CBFs for safe navigation. Early neural radiance fields methods reconstruct scene geometry offline for CBF constraint construction, but their reliance on photometric optimization makes online map updates diffi-cult [6]. Point-cloud-based methods construct distance-based CBF constraints directly from local observations, e.g., by fitting surface models to raw point sets to obtain analytical barriers [7]. They support reactive safety filtering without global mapping, but the resulting constraints remain local, frame-dependent, and sensitive to instantaneous depth quality. Gaussian Splatting (GS) can provide an online scene representation from which obstacle approximations are derived for CBF constraints [9]. Semantic cues have also been fused with geometric reconstruction, such as TSDF maps, in MPC-CBF frameworks for navigation in semi-static environments [10]. In teleoperation, visual-inertial SLAM has been combined with CBF-based safety filtering in complex environments [8]. These works demonstrate the practical value of coupling online perception, mapping, and safety control, but the safety representations remain primarily geometry-driven, with limited integration of semantic information into the geometric field used for CBF evaluation. Complementary efforts use semantics or high-level context to improve safety-aware behavior. Vision-language models have been used to adjust the conservativeness of CBF-based controllers through risk-aware parameter modulation [11], [12]. In contrast, our framework integrates semantics directly into the safety pipeline: semantic labels are used both to select safety-relevant obstacles and to shape the ESDF through class-dependent margins, while the resulting semantic-aware ESDF is used to construct the CBF constraints. II. P RELIMINARIES 
+
+A. MASt3R-SLAM 
+
+We build our system upon the foundation-model-based MASt3R-SLAM framework [16], which performs dense 3-D reconstruction and pose estimation from monocular RGB images by exploiting learned geometric priors. Its capability to generate consistent, metric-scale geometry from vision-only inputs makes it particularly suitable for our setting, as it allows us to construct a local SDF that can be further enriched with semantic information and directly embedded into CBF constraints. Given an incoming RGB frame It and a keyframe Ik, the MASt3R backbone predicts dense two-view geometry in the Encoder Decoder        
+
+> dense geometry camera pose frame correspondence
+> MASt3R -SLAM Geometry Backbone
+> Raw Semantic Predictions
+> Input RGB frames
+> Monocular RGB Perception Temporal Semantic Fusion and Field Construction
+> Temporal Semantic Fusion
+> Raw Semantic Temporal Stabilized
+> correspondence -
+> guided fusion
+> TSDF ESDF
+> Semantic -aware Field Construction
+> semantic
+> filtering
+> class -dependent
+> inflation
+> TSDF obstacle -aware occupancy ESDF
+> CBF -QP Safe Control
+> Reference Control
+> Teleoperation: user input
+> Navigation: CLF
+> Safe Navigation Trajectory
+> Reference
+> Control
+> CBF -QP Safety Filter
+> Safe
+> Control
+> CBF -QP
+
+Figure 2: Overview of the proposed online semantic-aware safe control framework. Monocular RGB frames are processed by semantic segmentation and MASt3R-SLAM-based dense geometry estimation. Semantic labels are temporally fused with reconstructed 3-D geometry, which is integrated into a local TSDF and converted into obstacle-aware occupancy before ESDF construction. Obstacle filtering and class-dependent inflation encode risk directly into the distance field. The resulting distance and gradient are used by a CBF-QP safety filter to minimally adjust the reference control and generate safe navigation or teleoperation commands. 
+
+keyframe coordinate system. Following the notation in [16], we denote this forward pass as 
+
+FM( It, I k) → { Xkt , C kt }, (1) where Xkt ∈ RH×W ×3 is the dense pointmap associated with frame It, and Ckt ∈ RH×W ×1 is the corresponding confidence map. Rather than relying on sparse feature landmarks or externally provided depth, MASt3R-SLAM uses these dense geometric predictions as the intermediate representation for tracking and local map construction. To improve geometric consistency over time, MASt3R-SLAM incrementally fuses the predicted pointmaps into a canonical local map attached to the keyframe. Denoting the fused pointmap by ˜Xkk with confidence ˜Ckk , the local update can be written as 
+
+˜Xkk ← ˜Ckk ˜Xkk + Ckt Xkt
+
+˜Ckk + Ckt
+
+, ˜Ckk ← ˜Ckk + Ckt . (2) This fused dense geometry provides the geometric substrate used in our pipeline. In the following sections, we augment this representation with semantic information and further convert it into a local ESDF for CBF-based safety filtering. 
+
+B. Control Barrier Functions 
+
+Control Barrier Functions (CBFs) provide a systematic tool for enforcing safety constraints in control systems by ensuring forward invariance of a safe set [1], [2]. Consider a control-affine continuous-time system 
+
+˙x = f (x) + g(x)u, (3) where x ∈ X ⊂ Rn is the system state and u ∈ U ⊂ Rm is the control input. Let h : Rn → R be a continuously differentiable function that defines the safe set 
+
+C = {x | h(x) ≥ 0}. (4) The function h(x) is called a Control Barrier Function if there exists an extended class-K function α(·) such that for all x ∈ C ,
+
+sup 
+
+> u∈U
+
+[Lf h(x) + Lg h(x)u] ≥ − α h(x), (5) where Lf h(x) = ∇h(x)⊤f (x) and Lg h(x) = ∇h(x)⊤g(x)
+
+denote the Lie derivatives. In practice, a common choice is a linear class-K function 
+
+α(h) = αh with α > 0, leading to the condition 
+
+Lf h(x) + Lg h(x)u ≥ − αh (x), (6) which ensures forward invariance of the safe set C, i.e., if 
+
+x(0) ∈ C , then x(t) ∈ C for all t ≥ 0.III. METHODS 
+
+A. System Overview 
+
+The proposed framework connects monocular perception, semantic-aware field construction, and CBF-based safe control in a unified online pipeline, as illustrated in Fig. 2. Incoming monocular RGB frames are processed by two perception branches. The MASt3R-SLAM branch estimates camera motion and reconstructs dense 3-D geometry, while the semantic segmentation branch predicts per-pixel semantic labels from the same RGB stream. These two outputs are associated through the image-to-map correspondences from the SLAM front end, allowing semantic observations to be fused over time with the reconstructed geometry and forming a temporally stabilized geometric-semantic map. The fused representation is then converted into a semantic-aware distance-field representation for safety evaluation. Specif-ically, reconstructed geometry is first integrated into a local Truncated Signed Distance Field (TSDF), which fuses repeated geometric observations and suppresses frame-level reconstruc-tion noise. The TSDF surface support is converted into an obstacle-aware occupancy map using semantic filtering, and class-dependent inflation margins are applied to this occupancy map before Euclidean Signed Distance Field (ESDF) con-struction. This TSDF-to-occupancy-to-ESDF pipeline separates geometric fusion, semantic obstacle selection, and control-time distance querying, so semantic risk is encoded directly into the geometry of the distance field rather than introduced only as a post-hoc controller parameter. The resulting ESDF provides both the distance value and local gradient required by the safety filter. At each control step, a reference command is generated either from the human operator in teleoperation or from a Control Lyapunov Function (CLF)-based nominal controller in au-tonomous navigation. The CBF-based Quadratic Program (QP) safe controller queries the semantic-aware ESDF, constructs the corresponding CBF constraint, and minimally modifies the reference command to produce a safe control input. 
+
+B. MASt3R-SLAM with Semantics 1) Semantic Integration: Given an incoming frame It and the current keyframe Ik, the MASt3R front-end predicts dense geometry in the keyframe coordinate frame as Fgeo (It, I k) →{Xkt , C kt }, where Xkt ∈ RH×W ×3 is the dense pointmap and Ckt ∈ RH×W ×1 is the associated confidence map. In parallel, we apply EfficientViT [19] as a lightweight semantic segmentation network to predict a per-pixel semantic label map Fsem (It) → Y t, where Yt ∈ { 1, . . . , C }H×W denotes semantic labels over C classes. To associate semantics with the reconstructed geometry, we reuse the pixel correspondences already estimated by the SLAM tracker and fuse current-frame semantic observations into the active keyframe map. Let ℓtξ denote the semantic label stored at keyframe-grid location ξ, and let mt(ξ) be its matched pixel in the current frame. The semantic map is updated through a confidence-weighted temporal fusion rule of the form 
+
+ℓt+1  
+
+> ξ
+
+= Φ  ℓtξ , Yt(mt(ξ)) , q tξ
+
+ , (7) where qtξ is the matching confidence. Internally, Φ( ·) keeps a vote weight wtξ and updates it as 
+
+wt+1  
+
+> ξ
+
+=
+
+(
+
+wtξ + qtξ , if the matched label agrees with ℓtξ ,wtξ − qtξ , otherwise .
+
+(8) The label is replaced only when this weight becomes negative. In this way, semantic information is attached to the dense reconstructed map with minimal additional computation and is then used by the downstream ESDF construction and safety filter. 
+
+C. Semantic Map and ESDF Construction 
+
+The semantic MASt3R-SLAM module produces a dense geometric map of the environment together with semantic labels associated with the reconstructed scene elements. To support safety-aware control, this representation is converted into an ESDF. Compared to raw point cloud representations, the ESDF provides a spatially organized geometric field that enables more stable evaluation of both distance and gradient. In point-cloud-based formulations, the distance function is typically defined with respect to the nearest point, which can lead to frequent switching of the closest point and discontinuities in the gradient. In contrast, the ESDF yields a spatially more consistent representation that is better suited for optimization-based safety filtering. More importantly, it provides a convenient interface for incorporating semantic information directly into the geometric representation used by the controller. Starting from the reconstructed geometry, we first integrate the pointmap observations into a local TSDF T , weighting each observation by its SLAM matching confidence. Each voxel stores a truncated signed distance value updated from the current MASt3R-SLAM geometry and the camera pose, while the associated semantic label is updated using the temporally fused semantic observations. The TSDF is used as an intermediate fusion layer: it aggregates temporally registered pointmap observations into a locally coherent surface representation before the control-oriented ESDF is built. We then extract the surface support of the TSDF into a geometric occupancy set O in the voxelized map. Let S denote the semantic labeling associated with these occupied regions. A semantic-aware occupancy set is constructed as 
+
+Osem = Ψ( O, S), (9) where Ψ( ·) denotes a semantic occupancy shaping operator. This operator retains obstacle-relevant occupied regions and applies semantic-dependent inflation to the selected occupied subset. In this way, the TSDF provides temporally fused geometry, while the occupancy map provides the discrete obstacle support on which semantic filtering and inflation are applied before distance-field evaluation. Specifically, let Lobs denote the set of semantic labels regarded as safety-relevant obstacles. Occupied regions as-sociated with labels outside Lobs can be excluded from the semantic-aware occupancy representation. For occupied regions associated with labels in Lobs , we apply a semantic-dependent safety margin. Denoting this margin by dsafe ,l for label group l,the resulting occupancy set becomes more conservative around semantically important objects while remaining less restrictive around low-risk categories. The ESDF is then computed from the semantic-aware occupancy set: 
+
+d(x) = ESDF( Osem )( x), (10) where d(x) represents the signed distance from query position 
+
+x to the closest occupied region after semantic shaping. This distance field is later used to construct the CBF constraint for safety filtering. We construct a single semantic-aware ESDF rather than one ESDF per semantic class, which keeps the control-time query to a standard grid lookup and helps preserve online computational efficiency. 
+
+D. CBF Formulation with Semantics 
+
+Using the distance field obtained from the ESDF, we construct a CBF that encodes safety constraints with respect to nearby obstacles. Algorithm 1 Semantic-Aware ESDF Construction 
+
+Require: Reconstructed pointmaps with poses and confidences, semantic labels S, obstacle label set Lobs , safety margins 
+
+{dsafe ,l }
+
+Ensure: Distance field d(·) 
+
+> 1:
+
+Integrate reconstructed geometry into a local TSDF T 
+
+> 2:
+
+Extract surface-supported occupancy O from T 
+
+> 3:
+
+Initialize semantic-aware occupancy Osem ← ∅  
+
+> 4:
+
+for each occupied element o ∈ O do  
+
+> 5:
+
+obtain its semantic label l from S 
+
+> 6:
+
+if l ∈ L obs then  
+
+> 7:
+
+inflate o according to dsafe ,l  
+
+> 8:
+
+insert the inflated region into Osem  
+
+> 9:
+
+end if  
+
+> 10:
+
+end for  
+
+> 11:
+
+compute ESDF from Osem  
+
+> 12:
+
+d(x) ← ESDF( Osem )( x) return d(·)
+
+Let d(x) denote the ESDF value at position x, which incorporates class-dependent safety margins through semantic-aware map construction. We define the safety function as h(x) = d(x), which induces the safe set C = {x | d(x) ≥ 0}. To ensure forward invariance of C under continuous-time dynamics, we impose the standard CBF condition 
+
+Lf h(x) + Lg h(x)u ≥ − αlh(x), (11) where αl > 0 is a class-dependent CBF gain selected according to the semantic class of the closest obstacle. In this formulation, semantic information influences the safety filter in two complementary ways. First, semantic labels shape the geometry of the ESDF through class-dependent inflation, which modifies the underlying safety function h(x).Second, semantics modulate the barrier response through αl,allowing different levels of conservativeness depending on obstacle type. 
+
+Remark 1. We assume that the semantic-dependent CBF parameters, including the class-K gains αl and safety margins 
+
+dsafe ,l , are available a priori . These parameters can be obtained through data-driven or learning-based approaches such as BarrierNet [20], reinforcement-learning-based CBF tuning [21], graph neural network methods [22], or vision-language models [12]. Our contribution focuses on how semantic information is incorporated into the geometric repre-sentation and propagated to the resulting CBF constraints at runtime. E. Optimization-Based Safety Filter 
+
+The safety condition defined above is enforced through a QP-based safety filter. At each control step, the controller computes a control input that remains as close as possible to a given reference command while satisfying the CBF constraint. For clarity, we present the formulation for first-order control-affine dynamics, which directly applies to velocity-controlled systems used in our hardware experiments. The formulation naturally extends to higher-order systems, as discussed below. Given the semantic CBF condition in (11) , the safety constraint can be written as an affine constraint in the control input u:
+
+∇h(x)⊤ f (x) + g(x)u ≥ − αlh(x), (12) where ∇h(x) = ∇d(x) is evaluated from the ESDF. For higher-order systems, the same construction is applied to higher-order barrier derivatives, leading to affine constraints in which the control appears through the corresponding Lie-derivative term, while the remaining terms are state-dependent. In our implementation, ESDF gradients and Hessians are computed by finite differences and evaluated at query points using trilinear interpolation, yielding constraints that can be directly incorporated into the QP-based safety filter. At each control step, the safe control input is obtained by solving the following optimization problem, which expands the schematic CBF-QP block in Fig. 2 with the conventional objective scaling and explicit input bounds: 
+
+min  
+
+> u∈U
+> 12
+
+∥u − uref ∥22
+
+s.t. Lf h(x) + Lg h(x)u ≥ − αlh(x). (13) The proposed safety filter operates on a reference control input 
+
+uref that is generated by different sources depending on the task. In teleoperation, the reference input is directly provided by the human operator. In autonomous navigation, a CLF-based controller is used to generate a goal-directed nominal input following [23]. The CBF-QP then modifies this reference only when necessary to ensure safety. 
+
+Remark 2. The ESDF is a sampled distance field and is not globally smooth due to obstacle switching and map discretization. We therefore construct the CBF constraint using the local ESDF value and its numerically evaluated gradient at the current query point. This is consistent with distance-field-based CBF methods, where local distance and gradient queries yield effective safety constraints despite the non-smoothness of the underlying representation [24], [25]. 
+
+IV. V ALIDATION 
+
+This section evaluates the proposed semantic-aware safety framework in both simulation and physical hardware exper-iments. We demonstrate the computational efficiency and risk-allocation advantages of our approach against baselines using a simulated benchmark. Subsequent teleoperation and au-tonomous navigation experiments assess the system’s capacity for online, semantic-driven collision avoidance on real-world hardware. 
+
+A. Simulation 
+
+We conduct simulations to evaluate the computational effi-ciency and the semantic-aware safety behavior of our proposed method. We compare three methods: (i) SaferSplat [9], a recent Gaussian-splatting-based method for safety filtering; (ii) Ours (ESDF), which uses the same ESDF-based safety filter without semantic consideration; and (iii) Ours (Semantic ESDF), which incorporates semantic-dependent obstacle inflation into the ESDF construction. Table II: Equal-time comparison on the benchmark. Matched-progress clearance and collision rate are evaluated only up to the common progress reached by all methods on the same trajectory.                  
+
+> Method Computation Time (s) ↓
+> Progress to Goal ↑
+> Matched Progress Clearance (m) ↑
+> Matched Progress Collision Rate ↓
+> SaferSplat 0.149 0.360 0.101 0.216 Ours (ESDF) 0.002 0.697 0.106 0.218 Ours (Semantic ESDF) 0.002 0.603 0.108 0.200
+
+1) Experimental Setup: We evaluate the proposed framework on a benchmark containing six scenes of ScanNet++ dataset [26] using 486 matched start-goal trajectories generated from an object-centric sampling protocol. All methods are evaluated on identical trajectories within each scene to ensure a fair comparison. To analyze semantic effects, object classes are grouped into high-, mid-, and low-risk categories based on their scene-level geometric scale, while removing structural elements (e.g., walls and floors). This grouping is used in the semantic ablation study to assess how safety behavior varies across different risk levels. The robot is modeled as a double-integrator system with 
+
+˙p = v, ˙v = u, where p, v ∈ R3 denote position and velocity, respectively, and u ∈ R3 is the control input. The corresponding high-order CBF constraint takes the form 
+
+∇d(p)⊤u+v⊤∇2d(p) v+αl, 1∇d(p)⊤v+αl, 2 d(p) ≥ 0, (14) where αl, 1, α l, 2 > 0 are high-order CBF gains. All methods use the same nominal goal-reaching controller and identical CBF gains. To ensure a consistent comparison under online constraints, each method is given the same time budget to incrementally construct its scene representation. SaferSplat builds a continuously optimized 3-D Gaussian Splatting map, while our ESDF baseline constructs a distance field from the same input stream. The semantic ESDF variant further applies class-dependent obstacle inflation, with margins of 0.15 m, 0.05 m, and 0.00 m for high-, mid-, and low-risk objects, respectively. 
+
+2) Metrics: We evaluate performance using four metrics: computation time, progress to goal, matched progress (MP) clearance to mesh, and MP collision rate. Computation time is the average per-step runtime of the safety filter. Progress to goal measures the normalized distance traveled toward the goal. Since different safety filters may reach different portions of the same trajectory, we compute clearance-related metrics over the common progress reached by the compared methods. MP clearance is defined as the smallest signed distance to the ground-truth mesh after subtracting the robot radius within this common-progress segment. MP collision rate is the fraction of trajectories with negative MP clearance. This protocol prevents a conservative method from receiving an artificially favorable clearance score simply because it stops before reaching more difficult parts of the path. Therefore, MP clearance and MP collision rate are interpreted jointly with progress to goal in Tables II and III. 
+
+3) Comparison Results: Table II reports the equal-time comparison on the benchmark. SaferSplat achieves substantially lower progress to goal under the same time budget, indicating more conservative and computationally heavier behavior. After  
+
+> (a) Teleoperation with a ball. (b) Teleoperation with a dog.
+
+Figure 3: Teleoperated robot trajectories under different obstacle semantics. (a) Low-risk obstacle (ball), where the robot allows closer interaction with minimal intervention. (b) High-risk obstacle (dog), where the safety filter activates earlier and maintains a larger clearance. 
+
+matching progress across methods, its clearance advantage from stopping earlier is removed, and the ESDF-based methods achieve comparable or better MP clearance while maintaining substantially higher task progress. Both ESDF-based methods also operate roughly 75 times faster. This efficiency comes from the representation used at control time: after the local map is converted to an ESDF, each safety-filter update requires only grid-based distance and gradient queries followed by a small CBF-QP. SaferSplat, by contrast, relies on a continuously optimized Gaussian-splatting scene representation and an ellipsoid-based safety model, which requires more expensive geometric evaluation when constructing the safety constraint. The lower runtime of the ESDF query also helps the controller preserve goal-directed motion under the same online budget, explaining the higher progress-to-goal values. The semantic ESDF variant has slightly lower progress than the plain ESDF because high- and mid-risk obstacles are intentionally inflated, causing earlier intervention near these objects rather than a loss of computational efficiency. Compared with the plain ESDF controller, the semantic-aware ESDF variant preserves the same runtime and improves MP clearance, demonstrating that semantic shaping enhances safety without sacrificing computational efficiency. Table III further isolates the effect of semantic informa-tion within our framework. The semantic-aware controller selectively increases conservativeness for high- and mid-risk objects, while leaving low-risk behavior largely unchanged. For high-risk targets, the MP clearance increases from 0.128 m to 0.134 m and the MP collision rate decreases from 0.146 to 0.116, while low-risk trajectories remain identical. These results show that the proposed method does not uniformly increase conservativeness, but reallocates safety margins according to semantic risk, which is the intended behavior of the framework. 
+
+B. Hardware Experiment 
+
+We validate the proposed framework in both teleopera-tion and autonomous navigation scenarios to demonstrate its effectiveness for semantic-aware safe control in an online setting. Hardware experiments are conducted on a desktop computer (Ubuntu 20.04) equipped with an RTX 3080 GPU and implemented within the Robot Operating System (ROS). The resulting QP is solved using CVXPY [27]. Under this setup, Table III: Risk-group ablation on the benchmark with 486 matched trajectories. Matched progress metrics evaluate safety only up to the common progress reached by both ESDF variants on the same trajectory. 
+
+Ours (ESDF) Ours (Semantic ESDF) Risk Group Progress to Goal ↑
+
+Matched Progress Clearance (m) ↑
+
+Matched Progress Collision Rate ↓
+
+Progress to Goal ↑
+
+Matched Progress Clearance (m) ↑
+
+Matched Progress Collision Rate ↓
+
+High 0.669 0.128 0.146 0.534 0.134 0.116 Mid 0.777 0.092 0.248 0.631 0.093 0.224 Low 0.647 0.098 0.261 0.647 0.098 0.261                                
+
+> Ball 010 20 30 40
+> time [s]
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> distance [m]
+> Minimum distance dmin
+> dmin = 0
+> 010 20 30 40
+> time [s]
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> linear velocity [m/s]  vref
+> vsafe
+> 010 20 30 40
+> time [s]
+> −0.3
+> −0.2
+> −0.1
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> angular velocity [rad/s]  ωref
+> ωsafe Dog 010 20 30 40 50
+> time [s]
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> distance [m]
+> Minimum distance dmin
+> dmin = 0
+> 010 20 30 40 50
+> time [s]
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> linear velocity [m/s]  vref
+> vsafe
+> 010 20 30 40 50
+> time [s]
+> −0.3
+> −0.2
+> −0.1
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> angular velocity [rad/s]  ωref
+> ωsafe
+
+Figure 4: Teleoperation results with semantic CBF-based safety filtering. Each row shows the obstacle distance (left), linear velocity (middle), and angular velocity (right). The first row corresponds to the low-risk ball, where the robot approaches with smaller clearance and the safety filter intervenes later. The second row corresponds to the high-risk dog, where the safety filter activates earlier and maintains a larger distance. 
+
+the full pipeline runs at 10 Hz and is primarily limited by GPU computation, while separate evaluation of the perception-only module on an RTX 4090 achieves up to 20 Hz. Recorded demonstrations of the teleoperation and navigation hardware experiments are provided in the supplementary video. In the teleoperation task, the human operator uses a Logitech Extreme 3D Pro joystick to steer an AgileX LIMO robot through the environment. We impose the CBF constraint at a look-ahead point located a distance L along the robot heading. Let x = [ px, p y , θ ]⊤ denote the robot pose and u = [ v, ω ]⊤
+
+denote the commanded linear and angular velocities. The look-ahead point dynamics can be expressed as 
+
+˙pL =
+
+cos θ −L sin θ
+
+sin θ L cos θ
+
+  vω
+
+
+
+. (15) At each control step, the safe input is obtained by solving 
+
+min  
+
+> v,ω
+
+λv (v − vref )2 + λω (ω − ωref )2
+
+s.t. ∇d(pL)⊤
+
+cos θ −L sin θ
+
+sin θ L cos θ
+
+  vω
+
+
+
+≥ − αld(pL),
+
+(16) where d(pL) and ∇d(pL) are obtained from the semantic-aware ESDF, αl is the class-dependent CBF gain, and λv , λ ω > 0
+
+penalize deviations from the reference command. 
+
+1) Teleoperation : We first evaluate how semantic informa-tion influences the safety behavior during human-in-the-loop control. In this experiment, a LIMO robot is teleoperated to avoid two types of obstacles: a basketball (low-risk) and a dog (high-risk), as shown in Fig. 3a and 3b. Each task is repeated 12 times to account for variability in human inputs, and average values are reported. We measure the first intervention distance and the minimum clearance distance. The quantitative results show a clear semantic-dependent behavior. For the low-risk obstacle (basketball), the average first intervention distance is 
+
+0.36 m and the minimum clearance is 0.14 m. In contrast, for the high-risk obstacle (dog), the intervention distance increases to 0.56 m and the minimum clearance to 0.41 m. This difference is also reflected in the example plots in Fig. 4. As shown in the results from the first row, the robot approaches the basketball with a smaller safety margin, resulting in a lower minimum distance. In contrast, the robot maintains a consistently larger distance when avoiding the dog, and the safety filter activates earlier. The corresponding control inputs further support this observation. The velocity profiles in Fig. 4 show that the robot undergoes earlier and stronger modifications when approaching the high-risk obstacle, indicating a more conservative response induced by semantic information. (a) Navigation in a loop. (b) Navigation with unknown obstacle. 
+
+Figure 5: Overhead view of the navigation experiment. The robot starts from the lower-left corner. (a) The robot completes a loop using the RGB-only SLAM map. (b) An unseen obstacle is introduced along the path, and the robot updates the local ESDF, deviates to avoid it, and continues the task. 
+
+2) Navigation : We further evaluate the proposed framework in an autonomous navigation task to demonstrate its integration with the RGB-only SLAM pipeline and its ability to perform online collision avoidance, as summarized in Fig. 5. The experiment consists of two phases. In the first phase, a human operator teleoperates the robot along a rectangular loop to build an initial map. The robot then autonomously completes the loop by sequentially reaching the goal waypoint at each corner of the loop, as shown in Fig. 5a. In the second phase, an unseen obstacle (a basketball) is placed on the robot’s path. The robot is required to complete the same loop again while adapting to the newly introduced obstacle. As shown in Fig. 5b, the robot successfully deviates from the nominal trajectory to avoid the unseen obstacle and then returns to the original path to complete the loop. This demonstrates that the proposed framework enables online collision avoidance while maintaining consistent navigation behavior. Notably, the avoidance maneuver is triggered without prior knowledge of the obstacle, highlighting the ability of the framework to incorporate newly perceived obstacles into the CBF constraints in an online manner. V. C ONCLUSION AND FUTURE WORK 
+
+This letter presents a semantic-aware CBF-based frame-work for safe robotic navigation and teleoperation, which integrates RGB-only perception (via foundation-model-based SLAM and semantic segmentation), ESDF construction, and optimization-based safety filtering within a unified pipeline. Semantic information is incorporated into both the distance-field geometry and the CBF constraint, enabling semantic-aware safety behavior. The proposed method is validated in both simulation and hardware experiments. Results show that the framework achieves efficient online performance while adapting safety behavior according to obstacle semantics, and enables online collision avoidance with previously unseen obstacles. Future work will focus on incorporating uncertainty-aware perception into the CBF framework, extending the approach to dynamic environments, and improving the robustness and scalability of the system for real-world deployment. REFERENCES [1] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, “Control barrier function based quadratic programs for safety critical systems,” IEEE Trans. Autom. Control , vol. 62, no. 8, pp. 3861–3876, 2017. [2] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada, “Control barrier functions: Theory and applications,” in Proc. Eur. Control Conf. , 2019, pp. 3420–3431. [3] W. Xiao and C. Belta, “Control barrier functions for systems with high relative degree,” in Proc. IEEE Conf. Decis. Control , 2019, pp. 474–479. [4] S. Liu, W. Xiao, and C. A. Belta, “Auxiliary-variable adaptive control barrier functions for safety critical systems,” in Proc. IEEE Conf. Decis. Control , 2023, pp. 8602–8607. [5] K. Long, C. Qian, J. Cort ´es, and N. Atanasov, “Learning barrier functions with memory for robust safe navigation,” IEEE Robot. Autom. Lett. , vol. 6, no. 3, pp. 4931–4938, 2021. [6] M. Tong, C. Dawson, and C. Fan, “Enforcing safety for vision-based controllers via control barrier functions and neural radiance fields,” in 
+
+Proc. IEEE Int. Conf. Robot. Automat. , 2023, pp. 10 511–10 517. [7] M. De Sa, P. Kotaru, and K. Sreenath, “Point cloud-based control barrier function regression for safe and efficient vision-based control,” in Proc. IEEE Int. Conf. Robot. Automat. , 2024, pp. 366–372. [8] S. Zhou, S. Papatheodorou, S. Leutenegger, and A. P. Schoellig, “Control-barrier-aided teleoperation with visual-inertial SLAM for safe MAV navigation in complex environments,” in Proc. IEEE Int. Conf. Robot. Automat. , 2024, pp. 17 836–17 842. [9] T. Chen, A. Swann, J. Yu, O. Shorinwa, R. Murai, M. Kennedy, and M. Schwager, “A control barrier function for safe navigation with online Gaussian splatting maps,” in Proc. IEEE Int. Conf. Robot. Automat. ,2025, pp. 11 758–11 765. [10] J. Qian, S. Zhou, N. J. Ren, V. Chatrath, and A. P. Schoellig, “Closing the perception-action loop for semantically safe navigation in semi-static environments,” in Proc. IEEE Int. Conf. Robot. Automat. , 2024, pp. 11 641–11 648. [11] S. Sanyal and K. Roy, “ASMA: An adaptive safety margin algorithm for vision-language drone navigation via scene-aware control barrier functions,” IEEE Robot. Autom. Lett. , 2025. [12] J. Chen and R. Chandra, “Dynamic control barrier function regulation with vision-language models for safe, adaptive, and realtime visual navigation,” arXiv:2603.21142 , 2026. [13] S. Wang, V. Leroy, Y. Cabon, B. Chidlovskii, and J. Revaud, “DUSt3R: Geometric 3D vision made easy,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. , 2024, pp. 20 697–20 709. [14] V. Leroy, Y. Cabon, and J. Revaud, “Grounding image matching in 3D with MASt3R,” in Proc. Eur. Conf. Comput. Vis. , 2024, pp. 71–91. [15] J. Wang, M. Chen, N. Karaev, A. Vedaldi, C. Rupprecht, and D. Novotny, “Vggt: Visual geometry grounded transformer,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. , 2025. [16] R. Murai, E. Dexheimer, and A. J. Davison, “MASt3R-SLAM: Real-time dense SLAM with 3D reconstruction priors,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. , 2025, pp. 16 695–16 705. [17] D. Maggio and L. Carlone, “VGGT-SLAM 2.0: Real-time dense feed-forward scene reconstruction,” arXiv preprint arXiv:2601.19887 , 2026. [18] P. Weinzaepfel, V. Leroy, T. Lucas, R. Br ´egier, Y. Cabon, V. Arora, L. Antsfeld, B. Chidlovskii, G. Csurka, and J. Revaud, “CroCo: Self-supervised pre-training for 3D vision tasks by cross-view completion,” in Adv. Neural Inf. Process. Syst. , vol. 35, 2022, pp. 3502–3516. [19] H. Cai, J. Li, M. Hu, C. Gan, and S. Han, “EfficientViT: Lightweight multi-scale attention for high-resolution dense prediction,” in Proc. IEEE/CVF Int. Conf. Comput. Vis. , 2023, pp. 17 302–17 313. [20] W. Xiao, T.-H. Wang, R. Hasani, M. Chahine, A. Amini, X. Li, and D. Rus, “BarrierNet: Differentiable control barrier functions for learning of safe robot control,” IEEE Trans. Robot. , vol. 39, no. 3, pp. 2289–2307, 2023. [21] E. Sabouni, H. Sabbir Ahmad, V. Giammarino, C. G. Cassandras, I. C. Paschalidis, and W. Li, “Reinforcement learning-based receding horizon control using adaptive control barrier functions for safety-critical systems,” in Proc. IEEE Conf. Decis. Control , 2024, pp. 401–406. [22] Z. Gao, G. Yang, and A. Prorok, “Online control barrier functions for decentralized multi-agent navigation,” in Proc. Int. Symp. Multi-Robot Multi-Agent Syst. , 2023, pp. 107–113. [23] M. Coffey, D. Zhang, R. Tron, and A. Pierson, “Reactive and safe co-navigation with haptic guidance,” in Proc. IEEE/RSJ Int. Conf. Intell. Robot. Syst. , 2023, pp. 213–220. [24] M. Zhou, M. Shaikh, V. Chaubey, P. Haggerty, S. Koga, D. Panagou, and N. Atanasov, “Control strategies for pursuit-evasion under occlusion using visibility and safety barrier functions,” in Proc. IEEE Int. Conf. Robot. Automat. , 2025, pp. 12 863–12 869. [25] G. Raja, T. M ¨okk ¨onen, and R. Ghabcheloo, “Safe control using occupancy grid map-based control barrier function (OGM-CBF),” arXiv:2405.10703 ,2024. [26] C. Yeshwanth, Y.-C. Liu, M. Nießner, and A. Dai, “ScanNet++: A high-fidelity dataset of 3D indoor scenes,” in Proc. IEEE/CVF Int. Conf. Comput. Vis. , 2023. [27] S. Diamond and S. Boyd, “CVXPY: A python-embedded modeling language for convex optimization,” J. Mach. Learn. Res. , vol. 17, no. 83, pp. 1–5, 2016.

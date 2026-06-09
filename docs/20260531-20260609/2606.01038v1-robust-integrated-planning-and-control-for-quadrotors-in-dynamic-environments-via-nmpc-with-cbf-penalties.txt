@@ -1,0 +1,533 @@
+Title: Robust Integrated Planning and Control for Quadrotors in Dynamic Environments via NMPC with CBF Penalties
+
+URL Source: https://arxiv.org/pdf/2606.01038v1
+
+Published Time: Tue, 02 Jun 2026 01:14:37 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Robust Integrated Planning and Control for Quadrotors in Dynamic Environments via NMPC with CBF Penalties 
+
+Zeinab Shayan, Mohammadreza Izadi, Reza Faieghi (a) Two static obstacles  (b) Star trajectory  (c) Swing obstacle 
+
+Fig. 1: Hardware experiment setup across different scenarios. The quadrotor follows the white reference path while avoiding: (a) two static obstacles, (b) an obstacle following a circular trajectory, and (c) a fast-moving swinging obstacle. The orange plot represents the quadrotor’s trajectory. 
+
+Abstract — This paper presents a new robust integrated plan-ning and control (IPC) strategy for multirotor uncrewed aerial vehicles. We propose a nonlinear model predictive control (NMPC) formulation that embeds control barrier functions (CBFs) as exponential penalties, improving feasibility while ensuring smooth obstacle avoidance under tight input bounds. The penalty weights provide a practical tuning knob to trade off tracking accuracy against avoidance aggressiveness. We enhance the system robustness by employing a high-gain disturbance observer (HGDO) to estimate and compensate for external disturbances. We also incorporate a Kalman filter (KF) for computationally efficient, real-time prediction of obstacle motion, enabling avoidance of moving obstacles. Comparative studies against both conventional NMPC and NMPC with hard CBF constraints, validated in Gazebo and hardware experiments, demonstrate superior feasibility, safety, and robustness. To the best of our knowledge, this is the first hardware-validated NMPC–CBF IPC framework, offering a practical step toward safe quadrotor deployment in dynamic environments. 
+
+I. I NTRODUCTION 
+
+A. Related Work and Motivation 
+
+Safe navigation of quadrotors in cluttered and dynamic environments requires reactive motion planning algorithms that enable rapid, real-time responses to environmental changes and external disturbances. One reactive planning approach that has received signif-icant attention in recent years is Model Predictive Control                
+
+> *This work was partially supported by the Natural Sciences and Engi-neering Research Council of Canada (NSERC). Z. Shayan and M. Izadi contributed equally to this paper. The authors are with the Autonomous Vehicles Laboratory, Department of Aerospace Engineering, Toronto Metropolitan University, Toronto, Canada.
+
+{zshayan, mizadi, reza.faieghi}@torontomu.ca 
+
+(MPC). It can handle both static and dynamic obstacles by incorporating either hard constraints [1]–[5] or penalty terms into the cost function [6]–[8]. However, as shown in [9], the conventional approach of defining constraints or penalty terms based solely on the relative position of the vehicle and obstacles do not guarantee safety. To address this limitation, an alternative approach is the use of Control Barrier Functions (CBFs) [10]–[12]. By using the Lie derivatives of the CBF along system trajectories, CBFs account for the vehicle-obstacle dynamics, not just their relative position in a given time. Integrating CBFs into MPC thus combines the predictive power of MPC with the safety guarantees of CBFs. A few studies have explored MPC-CBF integration for motion planning of multirotor uncrewed aerial vehicles (MRUAVs) [9], [13]–[15]. These studies have treated plan-ning and control as separate layers. The planner generates collision-free reference trajectories, while the controller ensures tracking. As a result, planning does not consider disturbance rejection, and control does not explicitly account for obstacle avoidance. This limitation becomes critical in agile flight, where deviations from the planned trajectory increase the risk of collision, since obstacles in the updated trajectory are not considered. Additionally, when an obstacle appears suddenly, the control layer alone may not be able to ensure safety. Integrated Planning and Control (IPC) aims to address the above challenge of separating planning and control [16]–[19]. A few existing IPC studies consider a linearized quadrotor model [3], [4], [16]. However, this limits the flight envelope given the high nonlinearity of quadrotor dynamics. A few other existing IPC works use Nonlinear 
+
+> arXiv:2606.01038v1 [cs.RO] 31 May 2026
+
+MPC (NMPC) to enable more agility and robustness [17]– [19], but have not explored obstacle avoidance or their results have been limited to static obstacles. Overall, the existing IPC studies for MRUAVs [16]–[19] exhibit several limitations. First, their obstacle avoidance strategies rely solely on position-based constraints or penalty terms, which provide weaker safety guarantees compared to CBF-based strategies. Second, most do not incorporate obstacle motion predictions into the MPC framework, lim-iting their effectiveness against moving obstacles. Third, several existing IPC approaches do not explicitly account for external disturbances [16]–[18], compromising robustness. 
+
+B. Contributions 
+
+In this paper, we present a new IPC framework that combines NMPC and CBF while effectively handling ex-ternal disturbances and moving obstacles, addressing the aforementioned limitations of prior IPC studies. At its core, our IPC framework leverages the complemen-tary strengths of NMPC and CBF. In addition, we incorpo-rate a high-gain disturbance observer (HGDO) [20] for real-time estimation and compensation of external disturbances, and a Kalman filter (KF) to predict obstacle trajectories, which we embed into the NMPC prediction horizon, giving rise to a prescient NMPC formulation [21]. As detailed in our extensive Gazebo simulations and hardware experiments, our IPC framework enables robust trajectory tracking under wind disturbances while consis-tently ensuring safe avoidance of both static and moving obstacles in confined environments across diverse scenarios. A central contribution of our work lies in the way we integrate CBFs within NMPC. Conventionally, CBFs are imposed as hard constraints in the NMPC formulation. However, prior work [22] has shown that simultaneously enforcing CBFs and actuator limits as hard constraints can drastically reduce the feasible solution set for the optimiza-tion problem, often leading to infeasibility and subsequent instability. A potential mitigation is to apply Adaptive CBFs [22], but this comes at the cost of additional states for each obstacle, extensive parameter tuning, and increased computational overhead, especially for systems with high relative degree such as MRUAVs. However, we adopt a different strategy: we embed the CBF directly in the NMPC stage cost as smooth exponential cost penalties. As it is shown in our experiments, especially Figs. 4–7, this strategy recasts safety constraints into differ-entiable penalties that preserve feasibility, reduce oscillatory behavior compared to using a CBF term as a constraint, and retain the dynamics-aware shaping induced by CBFs. Moreover, the penalty weights provide an effective tun-ing knob to trade tracking accuracy against avoidance ag-gressiveness. While this soft-constraint design relaxes hard safety guarantees, we recover practical safety by sharply increasing the penalty as the system approaches constraint 𝑇 1 
+
+> 𝛺 1
+> 𝑇 2
+> 𝛺 2
+> 𝑇 3
+> 𝛺 3
+> 𝑚𝑔
+> ℱℬ
+> xℬ
+> yℬ
+> 𝑧 ℬ𝑇 4
+> 𝛺 4
+> 𝑙
+> x𝐼
+> ℱ𝐼
+> y𝐼
+> 𝑧 𝐼
+> 𝛼
+> 𝜉
+> Fig. 2: A schematic diagram of quadrotor and Coordinate frames
+
+boundaries and by selecting margins that account for model mismatch and disturbances. II. PRELIMINARIES 
+
+A. Notations 
+
+Throughout this paper, unless stated otherwise, we use the following notation standards. The two coordinate frames used in this paper include the inertial frame FI =
+
+{xI , yI , zI }, configured in an East-North-Up (ENU) orien-tation, and the body frame FB = {xB, yB, zB}, fixed at the quadrotor’s center of mass and aligned in a Forward-Left-Up (FLU) orientation (Fig. 2). We denote the ℓ2-norm of v
+
+as ∥v∥. We represent the dot product between two vectors u
+
+and v as u · v, and their cross product as u × v. We express unit quaternions as q = [ qw,⃗ q⊤]⊤ ∈ S3, where S3 refers to the unit 3-sphere. We denote the multiplication of two unit quaternions p and q by p ⊗ q. For a unit quaternion q, we define an operator Bq : R3 → R3 as 
+
+Bq(u) =  q2 
+
+> w
+
+− ∥ ⃗ q∥2 u + 2( ⃗ q · u)⃗ q + 2 qw(⃗q × u). (1) 
+
+B. Quadrotor dynamics 
+
+Let ξ = [x, y, z ]⊤ denote the vehicle position, q =[qw,⃗ q⊤]⊤ the attitude, υ = [ u, v, w ]⊤ the linear velocity, and ω = [p, q, r ]⊤ the angular velocity. The quadrotor dynamic equations are expressed by: 
+
+
+
+˙ξ = υ,
+
+˙υ = −g + 1 
+
+> m
+
+Bq(fu) + 1 
+
+> m
+
+fd,
+
+˙q = 12 q ⊗ [0 , ω⊤]⊤,
+
+˙ω = J−1 (−ω × Jω + τ u + τ d) .
+
+(2) where m is the mass of the vehicle, J = diag ( Jxx , J yy , J zz )
+
+is the inertia matrix, g = [0 , 0, g ]⊤ is the gravity vector with g set to 9.81 [ m/s 2], fd and τ d are the thrust and moments caused by disturbances, and fu = [0 , 0, f c]⊤ and 
+
+τ u = [ τx, τ y , τ z ]⊤ are the thrust and moments caused by rotors. Each rotor produces a thrust and a torque as 
+
+Ti = ktΩ2 
+
+> i
+
+, τ i = kq Ω2 
+
+> i
+
+, (3) where kt and kq are the rotors’ thrust and torque coefficients, and Ωi is the rotor angular speed. Then the collective thrust magnitude fc and τ u can be expressed as follows 
+
+[fc, τ u]⊤ = H [T1, T 2, T 3, T 4]⊤ , (4) where H is 
+
+H =
+
+
+
+1 1 1 1
+
+−l sin α l sin α −l sin α l sin α
+
+−l cos α l cos α −l cos α l cos α
+
+−kq /k t −kq /k t kq /k t kq /k t
+
+ , (5) and l and α are the parameters defined in Fig. 2. III. T HE PROPOSED IPC ARCHITECTURE 
+
+Figure 3 outlines the proposed robust IPC architecture. We assume access to a dynamically feasible reference tra-jectory xr , which can be generated offline, e.g., a minimum-jerk trajectory passing through waypoints selected manually or computed by a path-finding algorithm such as A ⋆, given a map of the environment. In the absence of obstacles, the NMPC generates thrust and moment commands (fu, τ u) to track xr . In the vicinity of obstacles, the CBF penalty terms (21) dominate the NMPC cost, prompting re-planning and simultaneous up-dates to (fu, τ u) to track the new trajectory. Obstacle detection and their positions ξoi are provided by an external perception module. For moving obstacles, a KF predicts the i-th obstacle’s position ˆξoi and velocity 
+
+ˆυoi over the prediction horizon N , and these predictions are used in computing the CBF penalty (21). To ensure robustness against external disturbances, the NMPC formulation incorporates a HGDO to estimate and compensate for disturbances in real time. 
+
+A. Representing safety margins for obstacles 
+
+We model both the vehicle and all obstacles as axis-aligned bounding ellipsoids. An ellipsoid aligned with the inertial-frame axes is defined by 
+
+E(c, S) = χ ∈ R3 | (χ − c)⊤S−1(χ − c) ≤ 1 , (6) where c denotes the centroid of E, and S = diag (a, b, c )
+
+characterizes its shape, with a, b, and c representing the semi-principal axis lengths of the ellipsoid. To distinguish between the vehicle and obstacles, we use the indices 
+
+q and oi, referring to the bounding ellipsoids and their associated parameters for the quadrotor and the i-th obstacle, respectively. For the quadrotor, we employ two concentric bounding ellipsoids: Sqmin , which denotes the shape matrix of the quadrotor’s tightest bounding ellipsoid, and Ss which introduces a precautionary safety margin. We then define 
+
+Sq = Sqmin + Ss.The ellipsoidal separation condition, which can serve as a safety constraint within the conventional NMPC framework, is expressed as follows 
+
+(ξ − ξoi )⊤Q−1 
+
+> E
+
+(ξ − ξoi ) − 1 ≥ 0, (7) where QE = ( Sq + Soi )2. Constraints similar to (7) have been previously used in NMPC frameworks, but they do not explicitly account for vehicle-obstacle dynamics, and there-fore may fail to guarantee safety in practice, particularly with dynamic obstacles, as shown in our experiments. Offline                          
+
+> Planner
+> predictions
+> Optimizer
+> 1. Cost (Eqs .22 ,24 )
+> 2. Constraints (Eq .23 )
+> 3. Initial Condition (Eq .23 )
+> Desired Rate
+> Generation
+> (Eq. 25)
+> Model (Eq. 2 )
+> External
+> Disturbances
+> Kalman
+> Filter
+> HGDO
+> Perception
+> NMPC
+> 𝝃 𝑜 𝑖
+> ෠𝝃 𝑜 𝑖 𝑗 =1
+> 𝑁 −1,ෝ𝝊 𝑜 𝑖 𝑗 =1
+> 𝑁 −1
+> 𝐱 𝑟
+> 𝐝
+> መ𝐝
+> 𝐟 𝐮
+> 𝛕 𝐮
+> 𝐟 𝐮 ,𝛕 𝐮 𝑇
+> 𝝎 𝑑
+> 𝐱 =𝝃 ,𝝊 ,𝐪 ,𝝎 𝑇
+> 𝝊 ,𝐪 ,𝝎 𝑇
+> PWM
+
+Fig. 3: Block diagram of the proposed robust IPC framework using NMPC and CBF 
+
+We enhance these constraints using CBFs. However, enforcing CBFs as hard constraints within the NMPC opti-mization problem, when planning and control are integrated, can cause infeasibility due to conflicts with actuator limits [22]. In particular, the CBF safety constraint (20) is input-dependent and may require control values that violate the upper/lower bounds imposed in the optimization, leading to constraint conflicts [22]. To address this challenge, we for-mulate CBF as an exponential penalty term, which improves feasibility while accounting for vehicle-obstacle dynamics. 
+
+B. CBF penalty 
+
+Let us first establish the CBF definition [10], [11]. Con-sider a nonlinear system with the state x ∈ Rn, control input 
+
+u ∈ Rm, and output y ∈ Rm as 
+
+˙x = f (x, u), y = g(x), (8) If h(x) : Rn → R is a continuously differentiable scalar function, then the safe set C ∈ Rn, and boundary and interior of C are defined as 
+
+C = {x ∈ Rn | h(x) ≥ 0}, (9) 
+
+∂C = {x ∈ Rn | h(x) = 0 }, (10) Int (C) = {x ∈ Rn | h(x) > 0}. (11) The set C is forward invariant if, for any x(0) = x0 ∈ C , the solution x(t) ∈ C for all t ≥ 0. Forward invariance ensures that the system remains within the safe set indefinitely. Therefore, the constraint h(x) ≥ 0 determines x ∈ C ;however, to establish the forward invariance of C, we explore the evolution of h(x) along the system trajectories, which is described by the Lie derivatives 
+
+Li 
+
+> f
+
+h(x, u) = ∂L i−1  
+
+> fh(x,u)
+> ∂x
+
+f (x, u), (12) where i represents the order of the Lie derivative. h(x) has a relative degree of r > 0 if ∂∂u Li 
+
+> f
+
+h(x, u) = 0 for i =0, . . . , r − 1, and ∂∂u Lr 
+
+> f
+
+h(x, u)̸ = 0.Then, h(x) is called an exponential CBF if there exists 
+
+k = k0 k1 · · · kr−1
+
+ such that for all x ∈ C 
+
+inf  
+
+> u∈U
+
+[Lr 
+
+> f
+
+h(x, u) + kζ(x)] ≥ 0, (13) h(x(t)) ≥ Ce (F−Gk )tζ(x0) ≥ 0 when h(x0) ≥ 0,
+
+(14) where U represents the admissible control input set, C =[1 0 · · · 0] , and 
+
+˙ζ =
+
+
+
+0 1 0 · · · 00 0 1 · · · 0
+
+... ... ... . . . ...
+
+0 0 0 · · · 10 0 0 · · · 0
+
+| {z }
+
+> F
+
+
+
+h(x)
+
+Lf h(x)
+
+L2 
+
+> f
+
+h(x)
+
+...
+
+Lr−1 
+
+> f
+
+h(x)
+
+| {z }
+
+> ζ
+
++
+
+
+
+00
+
+...
+
+01
+
+|{z} 
+
+> G
+
+Lr 
+
+> f
+
+h(x, u).
+
+(15) According to [12], the conditions (13)–(14) are equivalent to the differential inequality ˙ζ ≥ (F − Gk ) ζ. If k is chosen such that F − Gk is Hurwitz, then the last row of ˙ζ ≥
+
+(F − Gk ) ζ yields 
+
+Lr 
+
+> f
+
+h(x) + kr−1Lr−1 
+
+> f
+
+h(x) + · · · + k0h(x) ≥ 0. (16) Consequently, this ensures that the conditions (13) and (14) are satisfied, establishing h(x) is an exponential CBF. These inequalities guarantee that a feasible control input u ∈ U 
+
+directs the system to maintain safety, with the gain vector 
+
+k regulating the rate of exponential convergence of h(x)
+
+toward the safe set boundary or deeper into it. With this in mind, we define the CBF hi(x) with a relative degree of r = 2 and its Lie derivatives with respect to the quadrotor dynamics (2) for the i-th obstacle as follows 
+
+hi(x) = ( ξ − ξoi )⊤Q−1 
+
+> Ei
+
+(ξ − ξoi ) − 1, (17) 
+
+Lf hi(x) = 2∆ ξ⊤ 
+
+> i
+
+Q−1 
+
+> Ei
+
+∆υi, (18) 
+
+L2 
+
+> f
+
+hi(x) = 2 
+
+
+
+∆υ⊤ 
+
+> i
+
+Q−1 
+
+> Ei
+
+∆υi + ∆ ξ⊤ 
+
+> i
+
+Q−1 
+
+> Ei
+
+˙υ
+
+
+
+. (19) where ∆ξi = ξ − ξoi , ∆υi = υ − υoi , and ξoi and 
+
+υoi represent the position and velocity of the i-th obstacle, respectively. As illustrated in Fig. 3, at time t, the perception module measures ξoi (t), and then ξoi (t) and υoi (t) are subsequently predicted over the horizon (t, t + T ] using the KF. We assume that obstacles have zero acceleration and jerk within this horizon. Now, we can ensure that the quadrotor states remain within the safe set defined by hi(x) ≥ 0 by imposing 
+
+Φi(x, u) = L2 
+
+> f
+
+hi(x) + k1Lf hi(x) + k0hi(x) ≥ 0. (20) Since both the quadrotor and obstacle models are nonlin-ear, and planning and control are integrated, the entire IPC framework is fully nonlinear. As a result, if the control input bounds are very tight, defining (20) as a constraint in the NMPC framework may not always yield a feasible solution. Therefore, inspired by [21], we introduce the following exponential penalty term (20) 
+
+J CBF i (x, u) = w1e−w2Φi(x,u), (21) where w1 and w2 are the tuning weights. The above expression (21) introduces a safety term whose value varies exponentially with the proximity to the safe set boundary. As the quadrotor approaches an obstacle, 
+
+Φi(x, u) decreases significantly, causing the exponential term multiplied by w1 to grow rapidly. This gives the safety term a dominant term in the cost function, making safety the highest-priority objective in the optimization. Conversely, when the quadrotor is far from an obstacle, 
+
+Φi(x, u) takes a large positive value, and the exponential term ( e−w2Φi(x,u) → 0) becomes negligible. 
+
+C. Disturbance observer 
+
+We employ a disturbance observer for disturbance estima-tion and compensation. To this end, we adopt the HGDO formulation proposed in [20]. For its integration into the NMPC framework, the system model used by the NMPC replaces the disturbance term d = [ fd, τ d]⊤ in (2) with its estimate ˆd =
+
+hˆfd, ˆτ d
+
+i⊤
+
+. Therefore, the NMPC control actions will account for the estimated disturbance. 
+
+D. NMPC formulation 
+
+Let us begin by defining the state vector x =h
+
+ξ⊤, υ⊤, q⊤, ω⊤
+
+i⊤
+
+. The goal is to design the control signal 
+
+u = [ fu, τ u]⊤ to minimize the tracking error e = x − xr
+
+while avoiding obstacles. To this end, we adopt the NMPC formulation as 
+
+u⋆(t) = min  
+
+> u(·)
+
+M (e(tk + T )) + 
+
+Z tk +Ttk
+
+
+
+L (e(t), u(t)) 
+
+
+
+dt, 
+
+(22) subject to 
+
+˙x = f (x, u + ˆd), x(tk) = xk, (23) 
+
+x(t) ∈ X , u(t) ∈ U , ∀t ∈ [tk, t k + T ], (24) where tk is the current time, T = N T s is the prediction time, and Ts is the sampling time. The function f (x, u, ˆd)
+
+represents the nonlinear dynamics defined in (2) under dis-turbance, while ˆd denotes the disturbance estimates obtained from the HGDO. The sets X and U represent the admissible state and input spaces, respectively. L (e, u) corresponds to the stage cost, and M (e (tk + T )) represents the terminal cost, defined as 
+
+L(e, u) = e⊤Qee + u⊤Quu +
+
+> n
+
+X
+
+> i=1
+
+J CBF i (x, u) , (25) 
+
+M(e(tk + T )) = 0 , (26) where Qe ≥ 0 and Qu > 0 are the weight matrices, n is the number of obstacles, and J CBF i (x, u) is defined by (21). 
+
+J CBF i (x, u) dominates the stage cost in the vicinity of obstacles, prompting the optimization problem to re-plan the desired trajectory to ensure obstacle avoidance and safety. Once the control input u = [ fu, τ u]⊤ is obtained from the NMPC, the desired body rates ωd are computed from 
+
+τ u as ˙ωd = J−1 (τ u − ω × Jω) ,
+
+ωd = ω + Ts ˙ωd. (27) Then, ωd and fu are sent to the autopilot, e.g., PX4. To solve (22)–(24) in real time, we utilize the ACA-DOS toolkit [23] with the partial-condensing-HPIPM solver. To this end, the continuous-time formulation (22)–(24) is discretized using a fourth-order Runge-Kutta integration scheme. T is divided into N (prediction horizon) intervals of equal duration Ts (sampling time), such that T = N T s.
+
+E. Feasibility and stability analysis 
+
+The feasibility and stability properties of the NMPC formulation (22)–(24) align with established results in the soft-constrained NMPC literature [24], [25], and a full analysis is therefore omitted here due to space limitations. We emphasize, however, that the adoption of exponential penalty terms (21), while less conventional, is consistent with prior work demonstrating their effectiveness in preserv-ing feasibility compared to hard constraints [21]. By con-struction, soft penalties relax strict feasibility requirements and generally improve solver robustness, while maintain-ing practical safety by sharply increasing the cost as the system approaches constraint boundaries. This behavior is confirmed in our experiments, where CBF penalties yield feasible results, whereas hard CBF constraints frequently lead to infeasibility. Regarding stability, the NMPC formulation guarantees ultimate boundedness of the closed-loop trajectories [24]. Since the controller operates with disturbance estimates provided by an HGDO, the boundedness results in [20] apply directly, ensuring that the closed-loop error remains uniformly ultimately bounded, with the ultimate bound adjustable via the HGDO tuning gains. Taken together, these arguments mirror the formal analyses in [20], [24], and we omit detailed proofs here. 
+
+F. Obstacle movement predictions 
+
+To predict obstacle motion, we model each obstacle as a double integrator and use a discrete-time KF to estimate its position and velocity. At time tk, the KF takes the centroid position ξoi (tk)
+
+of Eoi , measured by an external perception module, and predicts its future states over the NMPC horizon N
+
+nˆξoi (tk + jT s)
+
+oN −1
+
+> j=1
+
+, {ˆυoi (tk + jT s)}N −1 
+
+> j=1
+
+, (28) where ˆξoi and ˆυoi denote the predicted position and velocity of the i-th obstacle. These predictions are then used to compute (17), (18), and (19) within the horizon. It is worth noting that the KF is chosen for its low computational cost, enabling efficient real-time prediction. While alternative methods exist, identifying the most effec-tive approach is beyond the scope of this paper. IV. R ESULTS AND DISCUSSION 
+
+We compared different IPC frameworks, such as conven-tional NMPC with position-only constraints (7), NMPC with CBF constraints (20), and our proposed method, NMPC with a CBF penalty cost (21), across different scenarios. We first conducted simulations in Gazebo and then hardware experiments using a customized Holybro X500 quadrotor equipped with a Pixhawk flight controller and an onboard companion computer (Intel Core i5-1340P). The NMPC was implemented in Robot Operating System (ROS) on the companion computer, and its commands were sent to PX4 via MAVROS at 100 [Hz]. The experiments were conducted in an indoor environ-ment equipped with an OptiTrack motion capture system, which provided real-time positions of the quadrotor and obstacles. The flight space, with dimensions [−2.4, 2.5] ×
+
+[−2.3, 2.5] ×[0 , 3] [ m3], was incorporated as state constraints in the NMPC formulation (24). The parameters used in the experiments are as fol-lows: α = 45 ◦, l = 0.25 [m], N = 80 , Ts = 0.01 
+
+[s], m = 2.3 [kg], J = diag (0 .03 , 0.03 , 0.06) , Qe =10 3diag (8 , 8, 10 , 6, 6, 4.5, 1, 1, 1, 1, 2, 2, 2) , Qu = 100 I4,
+
+k0 = 5 , k1 = 10 , w1 = 3000 , w2 = 0 .4. The allowable control inputs within NMPC, defined as a constraint, are set to [0,30] for thrust and [-3,3] for moments. We also set 
+
+qr = [1 , 0, 0, 0] ⊤, ωr = [0 , 0, 0] ⊤.We considered three different scenarios, as illustrated in Fig. 1 and described below. 
+
+Scenario 1 – Static Obstacles Scenario: In this sce-nario, the quadrotor is required to follow a lemniscate trajectory, defined as ξr = 1.5 sin   πt 
+
+> 20
+
+ , 1.5 sin   2πt 
+
+> 20
+
+ , 1⊤,while avoiding two identical static obstacles. These ob-stacles are bounded by ellipsoids centered at (1 .5, 0, 1) ⊤
+
+and (−1.5, 0, 1) ⊤, each defined by the shape matrix So =
+
+diag (0 .1, 0.1, 1) .
+
+Scenario 2 – Star trajectory with a circular moving ob-stacle scenario: This scenario involves a dynamic obstacle, defined as a circularly moving ellipsoid with a shape matrix of So = diag (0 .1, 0.1, 0.6) . Mounted on a TurtleBot3, the obstacle follows a circular path of radius 0.5[ m] around the origin. The quadrotor must track a star-shaped trajectory while actively avoiding collisions. 
+
+Scenario 3 – Swinging obstacle scenario: This scenario includes a swinging box as a fast-moving obstacle oscil-lating in a pendulum-like motion. This makes the scenario particularly challenging, as the oscillating motion continu-ously changes the collision zone with changing velocities and accelerations. The quadrotor should follow a straight trajectory from (1 .5, 1.5, 1.3) ⊤ to (−1.5, −1.5, 1.3) ⊤ and back while avoiding the obstacle. 
+
+A. Gazebo Simulation Results 
+
+Figures 4–5 compare the quadrotor’s trajectories under different IPC frameworks in different scenarios. In the case of static obstacles, NMPC produces a smooth, collision-free path. However, in the presence of moving obstacles this results in collisions because it relies only on position constraints. As a result, we omitted the NMPC trajectory from Fig. 5. -2 -1 0 1 2-2 -1.5 -1 -0.5 00.5 11.5 2Fig. 4: 2D view of the quadrotor trajectory under different IPC frameworks in the static obstacles scenario (Gazebo) -2 -1 0 1 2-2 -1.5 -1 -0.5 00.5 11.5 2
+
+Fig. 5: 2D view of the quadrotor trajectory under different IPC frameworks in the star-trajectory scenario (Gazebo) 
+
+With NMPC augmented by CBF constraints, the vehicle initially avoids the first static obstacle in Fig. 4, but then develops growing oscillations that lead to infeasibility and instability mid-mission. The same instability appears in Fig. 5. In contrast, our proposed NMPC with CBF penalty yields significantly smoother, safer, and feasible navigation in both static and dynamic settings. For a more detailed discussion on the static scenario, let us consider Figs. 6 and 7. The NMPC+CBF constraint ex-hibits growing oscillations as the vehicle nears the obstacle. In Fig. 6, around t = 9 [s], the altitude z drops sharply and the vehicle briefly lands to preserve safety. After t = 9 [s] it takes off again but continues oscillating until it clears the obstacle and rejoins the reference path. After t = 29 [s], however, the quadrotor cannot proceed: the solver reports infeasibility at t = 31 .45 [s]. As shown in Fig. 7, the NMPC+CBF constraint drives the control inputs into repeated saturation, producing large fluctuations. This induces oscillatory motion and frequent instability, indicating that the input bounds are too tight to 0 5 10 15 20 25 30 35 40 0120 5 10 15 20 25 30 35 40 00.5 1
+
+Fig. 6: Minimum quadrotor-obstacle distance and altitude z in the static-obstacle scenario (Gazebo). Yellow shading indicates obstacle-encounter episodes. 0 5 10 15 20 25 30 35 40 010 20 30 0 5 10 15 20 25 30 35 40 -2 020 5 10 15 20 25 30 35 40 -2 020 5 10 15 20 25 30 35 40 -2 02
+
+Fig. 7: Control inputs under different IPC frameworks in the static-obstacle scenario (Gazebo). Yellow shading indicates obstacle-encounter episodes. 
+
+satisfy the CBF constraints concurrently. By contrast, the other two IPC frameworks generate smooth, safe trajectories: control inputs, altitude, and min-imum obstacle distance remain well behaved, with the NMPC+CBF penalty formulation achieving a larger safety margin than the baseline NMPC (Tab. I). The feasibility challenge of the NMPC+CBF constraint approach becomes more pronounced when accounting for dynamic obstacles. As shown in Tab. I, in the star scenario, the solver becomes infeasible much earlier in the mission, around t = 12 .42 [s]. TABLE I: Performance comparison of different IPC frameworks across different scenarios in Gazebo                    
+
+> NMPC NMPC+CBF Constraint NMPC+CBF Penalty
+> Static scenario:
+> Outcome Successful Infeasible at t= 31 .45 [s] Successful Min. obstacle clearance 0.7271 [m] 0.8548 [m] 0.8698 [m]
+> Star scenario:
+> Outcome Collision Infeasible at t= 12 .42 [s] Successful Min. obstacle clearance --0.6804 [m]
+
+Despite partial success with the NMPC+CBF constraint formulation in Gazebo, all hardware trials failed. In contrast, NMPC+CBF penalty achieved collision-free flight in all hardware tests, across static and dynamic obstacles and under external disturbances, maintaining a consistent safety margin and eliminating oscillations and infeasibility, as detailed in the next section. 
+
+B. Hardware Experiments 1) Evaluation without external disturbance: Figure 1 presents the experimental setup for all scenarios. The plotted trajectories correspond to the no-disturbance case. The pro-posed NMPC+CBF penalty tracks the reference and avoids obstacles, capabilities that the NMPC+CBF constraint could not realize due to infeasibility. The swinging obstacle is the most challenging case, with fast, nonlinear motion; nevertheless, integrating KF for obstacle motion prediction helps achieve collision-free results. As shown in Fig. 8, the NMPC stage cost rises as the quadrotor approaches an obstacle and then drops sharply as it recedes, demonstrating our method’s ability to achieve trajectory tracking and obstacle avoidance simultaneously. To assess computational load, we measured per-scenario runtimes (Fig. 9), which remained consistently below 0.02 [s]. This fits within the 20 [ms] budget of PX4’s 50 [Hz] position-control loop, satisfying real-time planning and control requirements for many applications. 
+
+2) Evaluation in the presence of disturbance: To assess robustness under external disturbances, we compared the proposed IPC framework with and without HGDO in a static-obstacle scenario using two fans to generate wind. Figures 10 and 11 present the resulting trajectory tracking and control signals. It is evident that, without HGDO, wind disturbances substantially degrade tracking, particu-larly near the points (1 , 1.5) ⊤ and (−1, 1, 0.5) ⊤. With HGDO, however, the vehicle effectively compensates for the disturbance, yielding markedly improved trajectory tracking. These results highlight the value of incorporating HGDO to achieve a robust IPC framework under external disturbances. Figure 12 depicts the real-time disturbance estimates. 0 5 10 15 20 25 30 35 40 00.5 11.5 2 10 4
+
+Fig. 8: Stage cost value for the proposed NMPC+CBF penalty method across different scenarios (hardware experiments) 0 5 10 15 20 25 30 35 40 0.005 0.01 0.015 0.02 
+
+Fig. 9: IPC running time for the proposed NMPC+CBF penalty method across different scenarios (hardware experiments) -2 -1 0 1 2-2 -1.5 -1 -0.5 00.5 11.5 2 FAN FAN 
+
+Fig. 10: 2D view of the quadrotor trajectory in the static-obstacle scenario under disturbance (hardware experiments). 
+
+V. C ONCLUSION 
+
+In this paper, we present an IPC framework for MRUAVs that embeds CBF terms as exponential penalties within NMPC, integrates an HGDO for disturbance compensation, and uses a KF for real-time prediction of moving-obstacle trajectories. Our approach addresses key limitations of prior work: standard NMPC often fails in dynamic settings be-cause obstacle constraints ignore system dynamics, while NMPC with hard CBF constraints, though theoretically sound, can yield oscillatory, impractical motions under tight control bounds. By relaxing CBF constraints into tunable exponential penalties, our method preserves feasibility and improves practical safety by sharply increasing the penalty as the system approaches constraint boundaries. In exten-sive comparisons with NMPC baselines in Gazebo and on hardware, the proposed approach demonstrates superior fea-0 5 10 15 20 25 30 35 40 010 20 30 0 5 10 15 20 25 30 35 40 -2 020 5 10 15 20 25 30 35 40 -2 020 5 10 15 20 25 30 35 40 -2 02Fig. 11: Control signals in the static-obstacle scenario under disturbance (hardware experiments) 0 5 10 15 20 25 30 35 40 -1.5 -1 -0.5 00.5 
+
+Fig. 12: Disturbance estimates for the static-obstacle scenario under disturbance (hardware experiments) 
+
+sibility, safety, and robustness. To the best of our knowledge, this is the first NMPC–CBF penalty IPC framework for MRUAVs validated in real flight, offering a practical IPC methodology for safe operation in confined, uncertain, and dynamic environments. REFERENCES [1] C. E. Luis et al. , “Online trajectory generation with distributed model predictive control for multi-robot motion planning,” IEEE Robotics and Automation Letters , vol. 5, no. 2, pp. 604–611, 2020. [2] M. Castillo-Lopez et al. , “Model predictive control for aerial collision avoidance in dynamic environments,” in 2018 26th Mediterranean Conference on Control and Automation (MED) . IEEE, 2018, pp. 1–6. [3] H. Ahn et al. , “Model predictive control-based multirotor three-dimensional motion planning with point cloud obstacle,” Journal of Aerospace Information Systems , vol. 19, no. 3, pp. 179–193, 2022. [4] C. Toumieh and D. Floreano, “High-speed motion planning for aerial swarms in unknown and cluttered environments,” IEEE Transactions on Robotics , 2024. [5] Z. Shayan et al. , “Nonlinear model predictive control of tiltrotor quadrotors using feasible control allocation,” Journal of Intelligent & Robotic Systems , vol. 111, no. 2, p. 54, 2025. [6] D.-N. Bui et al. , “Model predictive control for optimal motion plan-ning of unmanned aerial vehicles,” arXiv preprint arXiv:2410.09799 ,2024. [7] E. Small et al. , “Aerial navigation in obstructed environments with embedded nonlinear model predictive control,” in 2019 18th Euro-pean Control Conference (ECC) . IEEE, 2019, pp. 3556–3563. [8] M. A. Kamel et al. , “A review on motion control of unmanned ground and aerial vehicles based on model predictive control techniques,” 
+
+Journal of Engineering Science and Military Technologies , vol. 2, no. 1, pp. 10–23, 2018. [9] Z. Shayan et al. , “Exponential control barrier function and model pre-dictive control for jerk-level reactive motion planning of quadrotors,” 
+
+Control Engineering Practice , vol. 164, p. 106489, 2025. [10] A. D. Ames et al. , “Control barrier function based quadratic programs for safety critical systems,” IEEE Transactions on Automatic Control ,vol. 62, no. 8, pp. 3861–3876, 2016. [11] A. D. Ames et al. , “Control barrier function based quadratic programs with application to adaptive cruise control,” in 53rd IEEE conference on decision and control . IEEE, 2014, pp. 6271–6278. [12] Q. Nguyen and K. Sreenath, “Exponential control barrier functions for enforcing high relative-degree safety-critical constraints,” in 2016 American Control Conference (ACC) . IEEE, 2016, pp. 322–328. [13] A. M. Ali et al. , “Mpc based linear equivalence with control bar-rier functions for vtol-uavs,” in 2024 American Control Conference (ACC) . IEEE, 2024, pp. 1–6. [14] S. Wang et al. , “Dual model predictive control of multiple quadrotors with formation maintenance and collision avoidance,” IEEE Transac-tions on Industrial Electronics , 2024. [15] M. Goarin et al. , “Decentralized nonlinear model predictive control for safe collision avoidance in quadrotor teams with limited detection range,” arXiv preprint arXiv:2409.17379 , 2024. [16] W. Liu et al. , “Integrated planning and control for quadrotor navi-gation in presence of suddenly appearing objects and disturbances,” 
+
+IEEE Robotics and Automation Letters , vol. 9, no. 1, pp. 899–906, 2023. [17] A. Romero et al. , “Model predictive contouring control for time-optimal quadrotor flight,” IEEE Transactions on Robotics , vol. 38, no. 6, pp. 3340–3356, 2022. [18] M. Minaˇ rík et al. , “Model predictive path integral control for agile unmanned aerial vehicles,” in 2024 IEEE/RSJ International Confer-ence on Intelligent Robots and Systems (IROS) . IEEE, 2024, pp. 13 144–13 151. [19] Y. Wu et al. , “External forces resilient safe motion planning for quadrotor,” IEEE Robotics and Automation Letters , vol. 6, no. 4, pp. 8506–8513, 2021. [20] M. Izadi and R. Faieghi, “High-gain disturbance observer for robust trajectory tracking of quadrotors,” Control Engineering Practice , vol. 145, p. 105854, 2024. [21] S. Tajeddin et al. , “Ecological adaptive cruise control with optimal lane selection in connected vehicle environments,” IEEE Transactions on Intelligent Transportation Systems , vol. 21, no. 11, pp. 4538–4549, 2019. [22] W. Xiao et al. , “Adaptive control barrier functions,” IEEE Transac-tions on Automatic Control , vol. 67, no. 5, pp. 2267–2281, 2021. [23] R. Verschueren et al. , “acados—a modular open-source framework for fast embedded optimal control,” Mathematical Programming Computation , vol. 14, no. 1, pp. 147–183, 2022. [24] M. N. Zeilinger et al. , “Robust stability properties of soft constrained mpc,” in 49th IEEE Conference on Decision and Control (CDC) .IEEE, 2010, pp. 5276–5282. [25] D. He et al. , “On stability of multiobjective nmpc with objective prioritization,” Automatica , vol. 57, pp. 189–198, 2015.
