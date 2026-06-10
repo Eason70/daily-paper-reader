@@ -1,0 +1,1524 @@
+Title: Extreme Value Policy Optimization for Safe Reinforcement Learning
+
+URL Source: https://openreview.net/pdf?id=3aC94m0wbF
+
+Number of Pages: 22
+
+Markdown Content:
+# Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Shiqing Gao 1 Yihang Zhou 1 Shuai Shao 1 Haoyu Luo 1 Yiheng Bing 1 Jiaxin Ding 1 Luoyi Fu 1
+
+Xinbing Wang 1
+
+# Abstract 
+
+Ensuring safety is a critical challenge in apply-ing Reinforcement Learning (RL) to real-world scenarios. Constrained Reinforcement Learning (CRL) addresses this by maximizing returns under predefined constraints, typically formulated as the expected cumulative cost. However, expectation-based constraints overlook rare but high-impact extreme value events in the tail distribution, such as black swan incidents, which can lead to severe constraint violations. To address this issue, we propose the Extreme Value policy Optimization (EVO) algorithm, leveraging Extreme Value The-ory (EVT) to model and exploit extreme reward and cost samples, reducing constraint violations. EVO introduces an extreme quantile optimization objective to explicitly capture extreme samples in the cost tail distribution. Additionally, we pro-pose an extreme prioritization mechanism dur-ing replay, amplifying the learning signal from rare but high-impact extreme samples. Theoret-ically, we establish upper bounds on expected constraint violations during policy updates, guar-anteeing strict constraint satisfaction at a zero-violation quantile level. Further, we demonstrate that EVO achieves a lower probability of con-straint violations than expectation-based methods and exhibits lower variance than quantile regres-sion methods. Extensive experiments show that EVO significantly reduces constraint violations during training while maintaining competitive pol-icy performance compared to baselines. 
+
+# 1. Introduction 
+
+Reinforcement Learning (RL) has achieved remarkable suc-cess across various fields such as robot control (Haarnoja     
+
+> 1Shanghai Jiao Tong University, Shanghai, China. Correspon-dence to: Jiaxin Ding <jiaxinding@sjtu.edu.cn >.
+> Proceedings of the 42 nd International Conference on Machine Learning , Vancouver, Canada. PMLR 267, 2025. Copyright 2025 by the author(s).
+
+et al., 2018; Xu et al., 2020) and games (Vinyals et al., 2019; Yu et al., 2022a). However, the absence of safety guaran-tees poses a significant barrier to the deployment of RL in real-world scenarios. To overcome this limitation, Con-strained Reinforcement Learning (CRL) (Ding et al., 2020; Stooke et al., 2020; Xu et al., 2021; Yang et al., 2022) aims to optimize policies by maximizing cumulative rewards while satisfying predefined constraints. In safety-critical domains such as autonomous driving and financial trading, safety guarantees are highly susceptible to extreme events, which occur with low probability but can lead to significant consequences (NS et al., 2023). For instance, black swan incidents are especially concerning due to their impact to cause catastrophic outcomes (Masys, 2012). Most CRL methods evaluate constraints based on the ex-pected sum of costs (Achiam et al., 2017; Stooke et al., 2020; Ding et al., 2021), optimizing policies to ensure the expected cost remains below a predefined threshold. However, this expectation-based evaluation only guarantees compliance on average, neglecting the inherent variability of the cost distribution, particularly in extreme samples arising in the tail. Consequently, even when the expected cost satisfies the constraint, frequent constraint violations can occur due to the presence of these extreme events, as shown in Figure 1a. To minimize the probability of constraint violations, prob-abilistic constraint methods (Chow et al., 2018; Hiraoka et al., 2019) optimize policies based on constraint distribu-tions. WCSAC (Yang et al., 2021) employs Distributional RL (Bellemare et al., 2017) with a Gaussian approximation of the cost distribution, computing Conditional Value-at-Risk (CVaR) (Rockafellar & Uryasev, 2002) to guide policy optimization. However, the Gaussian distribution fails to accurately capture the tail behavior, as shown in Figure 1b. QCPO (Jung et al., 2022) introduces quantile-based con-straint objective with Value-at-Risk (VaR), deriving approx-imated policy gradient. However, these methods overlook the critical impact of extreme samples during training. Extreme samples, characterized by their low probability but high impact (NS et al., 2023), play a crucial role in CRL. Specifically, extreme reward samples provide insights into achieving task objectives, while extreme cost samples highlight critical constraints. Unfortunately, these samples 1Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+are naturally scarce, arising infrequently and often requiring risky or expensive exploration to obtain. This scarcity poses challenges in modeling tail distribution, leading to high variance (Urp ´ı et al., 2021). Therefore, accurately modeling tail behavior and effectively exploiting these rare but crucial samples is essential for reducing constraint violations and improving policy performance in CRL.  
+
+> (a) (b)
+
+Figure 1: (a) Probability density function of cumulative cost. Even when the expected constraint satisfies the threshold, there remains a high probability of constraint violations. (b) Fitting cumulative cost distribution with GPD and Gaussian, GPD captures tails more accurately. In this paper, we propose the Extreme Value policy Opti-mization (EVO) algorithm, which leverages Extreme Value Theory (EVT) (Pickands III, 1975) to model and exploit these samples to enhance policy optimization. To miti-gate violations caused by extreme cost samples, we intro-duce an extreme quantile constraint, explicitly incorporating tail extremes modeled using a Generalized Pareto Distri-bution (GPD) based on EVT. Additionally, we propose an extreme prioritization mechanism based on quantile levels derived from the GPDs of reward and cost, prioritizing low-probability but high-information samples during experience replay to exploit the learning signals in extreme samples. To address the high variance of extreme samples, we apply an off-policy importance resampling approach, augmenting extreme samples and enhancing tail distribution modeling. Theoretically, we establish an upper bound on expected constraint violations during policy updates in EVO, ensur-ing strict constraint satisfaction at a zero-violation quantile level. We further prove that EVO achieves lower constraint violation probability compared to expectation-based CRL methods and exhibits lower variance compared to quantile regression methods. Experimental results across multiple environments validate that EVO significantly reduces con-straint violations while maintaining strong policy perfor-mance. The main contributions of this work are as follows: 1. We propose the EVO algorithm, integrating Extreme Value Theory (EVT) into CRL to model and exploit extreme samples, addressing the limitation in handling rare but high-impact events. 2. We propose an extreme quantile constraint based on Generalized Pareto Distributions (GPDs) and an ex-treme prioritization mechanism, enhancing learning from extreme samples. 3. We theoretically and empirically demonstrate that EVO achieves lower expected constraint violations, lower violation probability, and reduced variance compared to baselines. We provide the code for EVO in https: //github.com/ShiqingGao/EVO .
+
+# 2. Related Work 
+
+Expectation Constraint. The optimization methods in CRL with expectation-based constraints can be categorized into primal-dual and primal approaches. Primal-dual meth-ods (Ding et al., 2021; Ying et al., 2024) convert con-strained problems into unconstrained ones using dual vari-ables. NPG-PD (Ding et al., 2020) establishes global conver-gence with sublinear rates. PID Lagrangian (Stooke et al., 2020) introduces proportional and differential control to mitigate cost overshoot and oscillations. In contrast, primal methods directly optimize constrained problems in the pri-mal space (Yang et al., 2020; Yu et al., 2022b; Gao et al., 2024). CPO (Achiam et al., 2017) enforces performance and constraint violation bounds within a trust region. FOCOPS (Zhang et al., 2020) solves the constraint problem in the nonparametric policy space and projects the policy back to the parametric space. CUP (Yang et al., 2022) provides gen-eralized theoretical guarantees for surrogate functions with generalized advantage estimator (Schulman et al., 2015b). However, these expectation-based methods fail to capture variability in the constraint distribution, resulting in fre-quent constraint violations. In this paper, we model the tail extremes of constraints using GPD and propose an op-timization objective based on extreme quantile to reduce constraint violation probability. 
+
+Probability Constraint. Probability-based methods (Chow et al., 2018; Hiraoka et al., 2019; Urp ´ı et al., 2021) optimize the probability distribution of constraints to reduce violations. WCSAC (Yang et al., 2021) uses CVaR (Rockafellar & Uryasev, 2002) as a safety measure, approximating the constraint distribution with a Gaussian model. However, the Gaussian approximation fails to capture the tail decay rate, introducing significant bias for small tail probabilities. QCPO (Jung et al., 2022) transforms outage probability constraints into quantile-based ones and proposes an approximate policy gradient. However, these methods neglect the high variance of extreme samples and fail to fully exploit them. EVAC (NS et al., 2023) employs EVT to reduce variance in extreme returns, improving risk aversion in RL, but does not address constraint satisfaction in CRL. In this paper, we propose an extreme quantile constraint optimization objective, leveraging EVT to model extreme samples and reduce variance. Additionally, we 2Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+introduce an extreme prioritization mechanism to fully exploit these extreme samples. 
+
+# 3. Preliminaries 
+
+3.1. Constrained Reinforcement Learning 
+
+CRL can be modeled as a Constrained Markov Decision Process (CMDP), denoted by a tuple (S, A, R f , C f , P, ρ, γ ),where S is the state space, A is the action space, Rf :
+
+S × A → R is the reward function, P : S × A → [0 , 1] 
+
+is the transition probability function, ρ is the initial state distribution, and γ ∈ (0 , 1) is the discount factor. The cost function Cf : S × A → R maps state-action pairs to costs 
+
+c. d denotes the constraint threshold. Starting from an initial state s0 sampled from the initial state distribution ρ, the agent perceives the state st from the environment at each time step t, selects an action at
+
+according to the policy π : S → A, receives the reward 
+
+rt and cost ct, and transfers to the next state st+1 based on P (st+1 |st, a t). The set of all stationary policies is de-noted as Π. The discounted future state visitation distri-bution is defined as dπ (s) := (1 − γ) P∞ 
+
+> t=0
+
+γtP (st =
+
+s|π). The value function for a policy π is V πR (s) := 
+
+Eτ ∼π [P∞ 
+
+> t=0
+
+γtR(st, a t)|s0 = s], and action-value function is QπR(s, a ) := Eτ ∼π [P∞ 
+
+> t=0
+
+γtR(st, a t)|s0 = s, a 0 = a].The advantage function measures the advantage of action 
+
+a over the mean value: AπR(s, a ) := QπR(s, a ) − V πR (s).The cost value function V πC (s), cost action value function 
+
+QπC (s, a ) and cost advantage function AπC (s, a ) in CMDP can be obtained as in MDP by replacing the reward r with the cost c. The expected discounted return JR(π) := 
+
+Eτ ∼π [P∞ 
+
+> t=0
+
+γtRf (st, a t)] , and the expected cumulative discount cost JC (π) := Eτ ∼π [P∞ 
+
+> t=0
+
+γtCf (st, a t)] , where 
+
+τ = ( s0, a 0, s 1, a 1, · · · ) is the trajectory under π.The CRL aims to find an optimal policy by maximizing the expected discount return over the set of feasible policies 
+
+ΠC := {π ∈ Π : JC (π) ≤ d}:
+
+arg max  
+
+> π∈Π
+
+JR(π)
+
+s.t. JC (π) ≤ d
+
+(1) 
+
+3.2. Extreme Value Theory 
+
+Extreme Value Theory (EVT) is a statistical method for analyzing the distributional properties of extreme events. 
+
+Theorem 3.1. X1, · · · , X n denote a sequence of IID random variables with cumulative distribution function 
+
+F , which approaches the Generalized Pareto distribution (GPD) asymptotically. Denote the conditional excess distri-bution as Ft(x) = P (X − t ≤ x|X > t ), then: 
+
+lim  
+
+> t→∞
+
+Ft(x) → H(x) (2) 
+
+where t is a threshold and H(x) denotes the GPD, follow-ing: 
+
+1 −
+
+
+
+1 + ξx σ
+
+− 1
+
+> ξ
+
+, ξ̸ = 0 (3) Theorem 3.1 describes that the conditional distribution above a threshold t approaches the GPD. We introduce the necessary notation in this paper. Let X
+
+be a random variable with cumulative distribution function 
+
+F (x) = P (X ≤ x). The tail distribution, representing the probability of X exceeding a threshold x: ¯F (x) = P (X > x) = 1 − F (x). Given a quantile level μ, the quantile qμ is defined as the smallest value such that P (X ≤ qμ) ≥ μ i.e. 
+
+P (X > q μ) < 1 − μ.
+
+# 4. Methodology 
+
+Figure 2: Extreme quantile constraint qμ+ν and EVT-based constraint qμ + qHν
+
+> 1−μ
+
+. The peak set Yμ, containing sam-ples exceeding the safety boundary qμ, is used to fit GPDs. The extreme set ZC , containing samples exceeding the risk boundary qμ + qHν
+
+> 1−μ
+
+, is used to compute EVT-based con-straints for reducing violations and to calculate extreme priorities for exploiting extreme samples. In this section, we present the modeling of extreme samples using EVT and derive the constrained optimization objective based on extreme quantile. We then introduce an extreme prioritization mechanism to effectively capture information from extreme samples and enhance extreme value model-ing using off-policy samples to mitigate the high variance. Finally, we provide theoretical guarantees for EVO. 
+
+4.1. Extreme Quantile Constraint 
+
+To quantify the probability of constraint violations, we em-ploy a constrained quantile function that ensures the con-straint is satisfied at a specified quantile level: 
+
+arg max  
+
+> π∈Π
+
+JR(π)
+
+s.t. qμ ≤ d
+
+(4) where the quantile for the distribution of the cumulative cost 
+
+C = P∞ 
+
+> t=0
+
+γtc under policy π is defined as: 
+
+qμ = inf {x|P r [
+
+> ∞
+
+X
+
+> t=0
+
+γtc ≤ x] ≥ μ} ≤ d (5) 3Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+and μ is the quantile level. When the quantile satisfies the constraint threshold qμ ≤ d, the probability P (C ≤ d) ≥ μ
+
+according to the definition of the quantile. Extreme samples in the cost distribution tails are crucial for reducing the probability of constraint violations, as they carry critical signals strongly correlated with task con-straints. To capture extreme samples, we propose an extreme quantile constraint that explicitly incorporates tail behavior: 
+
+qμ+ν ≤ d (6) We denote qμ in qμ+ν as the safety boundary, dividing the distribution into the body and the tail to capture extreme samples. qμ+ν denotes the risk boundary, integrating ex-treme values into the overall distribution. ν denotes the ex-ploitation range in the tail, shown in Figure 2. The proposed quantile-based optimization objective minimizes constraint violations by optimizing the risk boundary, effectively ac-counting for extreme values in the distribution. Extreme samples in the tail distribution are characterized by low probabilities and limited sample scale, posing chal-lenges for accurate modeling. To address this, we leverage Extreme Value Theory to effectively capture extreme sam-ples and reduce variance. As stated in Theorem 3.1, samples exceeding a threshold follow a Generalized Pareto Distribution (GPD). To validate this, we empirically analyze cost samples from the envi-ronment, fitting the cumulative cost distribution to both a GPD and a Gaussian distribution. The results in Figure 1b demonstrate that the tail distribution better aligns with the GPD. By accurately capturing the tail behavior, the GPD enables more effective modeling of extreme samples, which are crucial for reducing constraint violations. Building on this insight, we propose an EVT-based approach for tail distribution modeling. We first establish the relationship between EVT-based tail distribution modeling and the proposed quantile objective 6. Let z = qμ+ν − qμ > 0 denote the excess value beyond the safety boundary qμ, used to explicitly model the tail. The cumulative distribution function (CDF) of C is given by FC (qμ+ν ) = P (C ≤ qμ+ν ) = P (C ≤ qμ + z). We decompose the distribution of C into two parts: the body distribution below qμ and the tail distribution beyond qμ:
+
+FC (qμ+ν ) = P (C ≤ qμ + z)=P (C ≤ qμ) + P (C > q μ)P (C − qμ ≤ z|C > q μ) (7) Let Z = C − qμ represent the excess random variable over 
+
+qμ. We use the GPD to model the tail distribution Z, where 
+
+FH (z) denotes the CDF of the GPD. According to Theorem 3.1, the conditional probability P (C − qμ ≤ z|C > q μ) in Equation 7 asymptotically follows the GPD FH (z). Thus 
+
+P (C ≤ qμ + z) can be expressed as: 
+
+P (C ≤ qμ + z) = μ + ν ⋍ μ + (1 − μ)P (Z ≤ z) (8) Then we derive the quantile level in the GPD from Equation 8: P (Z ≤ z) ⋍ ν 
+
+> 1−μ
+
+. Denote the corresponding quantile in the GPD as qH , then the risk boundary quantile qμ+ν is expressed using the quantile of GPD: 
+
+qμ+ν = qμ + z ⋍ qμ + qHν 
+
+> 1−μ
+
+(9) where the excess value z is asymptotically equal to qHν
+
+> 1−μ
+
+under the GPD. Furthermore, the relationship between the probability density function fC of C and fH of GPD is: 
+
+fC (qμ + z) = (1 − μ)fH (z) (10) Then we propose a EVT-based optimization objective: 
+
+arg max  
+
+> π∈Π
+
+JR(π)
+
+s.t. qμ + qHν 
+
+> 1−μ
+
+≤ d (11) where the constraint term denotes: 
+
+inf {x|P r [C ≤ x] ≥ μ}+inf {z|P r [Z ≤ z|z > 0] ≥ ν
+
+1 − μ } ≤ d (12) In our work, the safety boundary qμ is determined by the expectation of the cumulative cost, reflecting the average behavior of the cost distribution. In the trust region, we give the surrogate optimization objective: 
+
+πk+1 = arg max 
+
+> π∈Πθ
+
+Es∼dπk ,a ∼π [Aπk 
+
+> R
+
+(s, a )] 
+
+JC (πk) + 11 − γ Es∼dπk ,a ∼π [Aπk 
+
+> C
+
+(s, a )] + qHν 
+
+> 1−μ
+
+≤ dD(π∥πk) ≤ δ
+
+(13) where Πθ is the policy set parameterized by θ, D(π∥πk) = 
+
+Es∼dπk [DKL (π∥πk)[ s]] , DKL is the KL divergence and 
+
+δ > 0 is the trust region size. {π ∈ Πθ : D(π∥πk) ≤ δ} de-fines the trust region. We provide the detailed optimization methods to solve the objective 13 in Appendix A. As shown in Figure 2, during training, samples generated by the current policy π are used to compute the safety boundary 
+
+qμ. Samples where C > q μ, called peaks, are collected to form the peak set Yμ. The peaks are then used to fit the GPD, enabling the update of the risk boundary as qμ+ν =
+
+qμ + qHν
+
+> 1−μ
+
+. Samples exceeding the updated risk boundary 
+
+qμ + qHν
+
+> 1−μ
+
+are identified as extreme samples and utilized for further analysis and policy optimization. The parameters of the GPD, ξ (shape) and σ (scale), are estimated using maximum likelihood estimation: 
+
+log L(ξ, σ ) = −Nμ log σ −
+
+
+
+1 + 1
+
+ξ
+
+ Nμ
+
+X
+
+> i=1
+
+log(1 + ξσ Yi)
+
+(14) 4Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+where Yi denotes the sample in the peak set, Nμ is the number of peaks. The risk boundary can be obtained by: 
+
+qμ + qHν 
+
+> 1−μ
+
+= qμ + σξ
+
+
+
+(1 − νn Nμ
+
+)−ξ − 1
+
+
+
+(15) where n is the total number of samples. 
+
+4.2. Extreme Prioritization Resampling 
+
+Extreme samples in CRL are essential for guiding policy optimization. Extreme reward samples provide valuable insights for achieving task goals, while extreme cost sam-ples offer critical information for satisfying task constraints. However, their low occurrence probability results in a rarity of these information-rich samples. To learn an optimal safe policy, it is essential to effectively exploit the scarce extreme samples. We model extreme reward and cost samples based on EVT and propose an extreme prioritization mechanism to enhance exploitation of learning signals within extreme samples during experience replay. As discussed in Section 4.1, extreme cost samples are de-tected using EVT when their cost value exceeds the risk boundary. These samples form the extreme cost set, denoted as ZC : {C > q μ + qHν
+
+> 1−μ
+
+}.Similarly, EVT is applied to detect extreme reward samples in the replay buffer. The quantile qrμ is computed based on the expectation reward value AR. Samples exceeding 
+
+qrμ, termed reward peaks, are collected into the reward peak set: Y rμ = {AR(s, a ) > q rμ}. The reward peak set is then used to fit by GPD, which determines the reward boundary 
+
+qrμ + qH,r 
+
+> ν
+> 1−μ
+
+, following the process outlined in Equation 14 and 15. Samples with reward values exceeding the reward boundary have a high return to achieve the task goal, termed extreme reward samples. Denote the extreme reward set as 
+
+ZR : {AR > q rμ + qH,r 
+
+> ν
+> 1−μ
+
+}.To effectively exploit the learning signals in extreme sam-ples, we assign higher priorities to these samples based on their quantile levels under the GPD. Samples with larger quantile levels typically indicate lower probabilities and higher value, and thus are given higher prioritization. The prioritization score p is composed of two components: re-ward prioritization and cost prioritization. Reward priori-tization is determined by the quantile level ωr of a sample under the reward GPD, while cost prioritization is based on the quantile level ωc under the cost GPD: 
+
+p = ωr + ωc (16) The probability of a sample si being replayed with extreme prioritization is: 
+
+P (si) = p(si)
+
+PNk=1 p(sk) (17) where N is the total number of samples in the buffer. The extreme prioritization mechanism directly correlates a sam-ple’s replay frequency with its quantile levels in the reward and cost GPDs, emphasizing high-information extreme sam-ples during experience replay. 
+
+4.3. Importance Resample for Extreme Samples 
+
+The GPD is fitted using a sparse extreme set in EVT. How-ever, limited samples can lead to high variance, as individual extreme values exert a significant influence. To address this issue, we introduce an off-policy importance resampling approach to augment extreme samples and re-duce the variance of the GPD. By leveraging stored samples generated under previous policies π0, we apply importance sampling to correct for the distributional shifts between sam-ples generated by earlier policies and current policy π. Then the resampled values of previous samples AR and C can be denoted as: 
+
+A′ 
+
+> R
+
+= π(a|s)
+
+π0(a|s) AR, C′ = π(a|s)
+
+π0(a|s) C (18) By augmenting the scale of extreme samples through off-policy importance resampling, the variance of the GPD is effectively reduced, enhancing its stability, as supported by Theorem 4.3. The algorithm process is presented in Algorithm 1. 
+
+4.4. Theoretical Analysis 
+
+We provide an upper bound on the expected constraint vio-lation during policy updates in EVO. 
+
+Theorem 4.1 (Constraint violation upper bound) . Suppose 
+
+πk+1 , πk are related by quantile-based constraint objective 11, the upper bound on constraint of πk+1 is: 
+
+JC (πk+1 ) ≤ d − qHν 
+
+> 1−μ
+
+(πk+1 )+ 11 − γ Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] 
+
+(19) 
+
+where ϵπk+1  
+
+> C
+
+:= max s |Ea∼πk+1 [AπC (s, a )] |, TV-divergence 
+
+DT V (πk+1 || πk)[ s] = (1 /2) P 
+
+> a
+
+|πk+1 (a|s) − πk(a|s)|.The zero-violation exploitation range ν0 in GPD satisfies: 
+
+ν0 = Nμ
+
+n
+
+
+
+1 −
+
+ ξσ(1 − γ)
+
+Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+!
+
+(20) 
+
+which guarantees the expectation of updated policy πk+1 
+
+strictly satisfies the constraints, where Nμ is the number of peaks and n is the total number of samples. 
+
+5Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Algorithm 1 EVO: Extreme Value policy Optimization 
+
+Input: Initialize policy network πθ , value networks V ψR ,
+
+V υC .
+
+Output: The optimal policy parameter θ. 
+
+> 1:
+
+for epoch k = 0 , 1, 2, ... do  
+
+> 2:
+
+Sample trajectories under the current policy πθk . 
+
+> 3:
+
+Process the trajectories to C-returns, and calculate advantage functions with V ψR and V υC . 
+
+> 4:
+
+for K iterations do  
+
+> 5:
+
+Update value networks V ψR and V υC . 
+
+> 6:
+
+end for  
+
+> 7:
+
+Perform importance resampling to adjust off-policy samples using Eq. 18.  
+
+> 8:
+
+Fit the cost GPD with off-policy samples according to Eq. 14.  
+
+> 9:
+
+Compute the risk boundary qμ +qHν
+
+> 1−μ
+
+using the fitted cost GPD (Eq. 11).  
+
+> 10:
+
+Fit the reward GPD with off-policy samples accord-ing to Eq. 14.  
+
+> 11:
+
+Compute the extreme prioritization (Eq. 17) from the reward and cost GPDs.  
+
+> 12:
+
+Update policy by optimizing the new objective (Eq. 11) using on-policy samples.  
+
+> 13:
+
+end for  
+
+> 14:
+
+Return: Policy parameters θ = θk+1 .A proof is provided in Appendix B.1. Theorem 4.1 demonstrates that EVO has a tighter constraint violation upper bound compared to the expectation optimiza-tion objective in CPO (Achiam et al., 2017). Theoretically, with the zero-violation exploitation range ν0, EVO guaran-tees that the expectation of the updated policy πk+1 strictly satisfies the constraints. Additionally, we analyze the probability of constraint viola-tions under the quantile-based objective in EVO. 
+
+Theorem 4.2 (Constraint violation probability) . When the safety boundary qμ is determined by the expectation of cu-mulative cost C, the constraint violation probability of EVO with the zero-violation exploitation range ν0 satisfies: 
+
+P (C > d ) < (J (E + 1)) − 1 
+
+> ξ
+
+(21) 
+
+where: 
+
+J = ξσ
+
+
+
+JC (πk) + 11 − γ Es∼dπk ,a ∼π [Aπk 
+
+> C
+
+(s, a )] 
+
+
+
++ 1 
+
+E = ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] 
+
+(22) 
+
+EVO has a lower constraint violation probability than the expectation-based CRL by a margin of ν0.
+
+A proof is provided in Appendix B.2. Theorem 4.2 indicates that EVO has a smaller constraint violation probability than the expectation-based objective when μ corresponds to the quantile level of the constraint expectation. 
+
+Theorem 4.3 (Variance of EVO) . Let qHν
+
+> 1−μ
+
+denote the quan-tile in GPD for random samples of size N from a population with inverse distribution function qHν
+
+> 1−μ
+
+= F −1 
+
+> H
+
+( ν 
+
+> 1−μ
+
+). If the cumulative distribution function FH is continuous and has continuous and positive density fH at qHν
+
+> 1−μ
+
+, then the quantile estimator qHν
+
+> 1−μ
+
+to the true quantile value q∗ ν
+
+> 1−μ
+
+con-verges in distribution to an Gaussian random vector with mean 0 and variance Ω:
+
+√N (qHν 
+
+> 1−μ
+
+− q∗ ν 
+
+> 1−μ
+
+) → N (0 , Ω) (23) 
+
+The variance of EVO to estimate the quantile ν 
+
+> 1−μ
+
+is: 
+
+Ω = ν(1 − μ − ν)
+
+N (1 − μ)2f 2 
+
+> H
+
+(qHν
+
+> 1−μ
+
+) (24) 
+
+where μ denotes the safety boundary quantile, ν denotes the exploitation range, and N denotes the number of samples from the distribution that are used to estimate the quantile values. EVO has a lower variance than that in quantile regression methods: 
+
+Ω2 = (μ + ν)(1 − μ − ν)
+
+N f 2 
+
+> C
+
+(qμ+ν ) (25) 
+
+where fC denotes the probability density function. 
+
+A proof is provided in Appendix B.3. Note that Theorem 4.3 indicates the variance of EVO is negatively correlated with the number of samples used to estimate the quantile, which demonstrates that extending the extreme sample scale through off-policy importance resampling effectively reduces the variance of EVO. 
+
+# 5. Experiment 
+
+We evaluate the performance of EVO through compar-ison with multiple baselines, including the expectation-based constraint method CPO (Achiam et al., 2017), the probability-based constraint method WCSAC (Yang et al., 2021), and state augmentation approaches Saute (Sootla et al., 2022a) and Simmer (Sootla et al., 2022b), which em-phasize zero-constraint violation. Results for additional baselines are provided in Appendix C.1.1. The experi-ments address the following questions: 1) Does EVO reduce constraint violations while maintaining policy performance compared to baselines? 2) Can the modeling and exploita-tion of extreme samples within EVO help mitigate variance and enhance policy learning? 6Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Figure 3: Comparison of EVO to baselines on Safety Gym. The x-axis is the total number of training steps, the y-axis is the average return or constraint. The solid line is the mean and the shaded area is the standard deviation. The dashed line is the constraint threshold which is 25. 
+
+Environment. The environments in our experiments con-sist of Safety Gymnasium and MuJoCo (Ji et al., 2024). The Safety Gymnasium tasks simulate a simplified version of autonomous driving, where the robot is required to reach a goal while avoiding obstacles. The Safety MuJoCo tasks focus on robot motion control, with agents being rewarded for maintaining a straight path while adhering to a speed limit to ensure safety and stability. Details are provided in Appendix C.3. 
+
+Experiment Setting. All experiments followed uniform conditions to ensure fairness and reproducibility, with a total of 10 7 training time steps and a maximum trajectory length of 1000 steps. To reduce randomness, 6 random seeds were used for each method, and the results are presented as mean and variance. The parameter settings are in Appendix C.4. 
+
+Performance and Constraint. In the navigation tasks of Safety Gymnasium, the initial policy is infeasible, pre-senting significant challenges due to multiple obstacles and complex decision boundaries. Figure 3 shows the learning curves of EVO and baselines. The results indicate that EVO rapidly converges to the feasible domain and subsequently maintains zero constraint violations throughout training. This is attributed to its optimization objective, which lever-ages extreme constraints to effectively capture violation signals from extreme cost values, thereby significantly re-ducing the probability of constraint violations, as supported by Theorems 4.1 and 4.2. Furthermore, EVO achieves pol-icy performance comparable to CPO while outperforming other methods such as Saute and WCSAC that emphasize zero constraint violations. It is important to note that CPO violates the constraint threshold in SafetyPointGoal1-v0, so a higher return than EVO does not indicate a better policy. In contrast, EVO achieves the best overall performance while strictly adhering to the constraint threshold. In the Safety MuJoCo tasks, as illustrated in Figure 4, when the initial pol-icy lies within the feasible domain, EVO maintains zero con-straint violations throughout training, providing strong em-pirical validation of the zero-violation guarantee in Theorem 4.1. Despite using a probabilistic constraint optimization objective, WCSAC presents significant constraint violations in SafetyCarCircle1-v0 and SafetyHalfCheetahVelocity-v1, because it fails to account for the substantial impact of extreme samples. We design an evaluation metric to com-prehensively measure policy performance and constraint satisfaction during training, results in Appendix C.2 show that EVO outperforms across multiple environments. 
+
+Ablation Study. Ablation experiments are designed to validate the effectiveness of each component in EVO. (1) Ablating EVT-based Constraint Objective: We replace the EVT-based constraint objective with a constant quantile con-straint objective. The results in Figure 5a and 5b show that the constant quantile objective achieves constraint satisfac-tion by diminishing policy performance. Conversely, the EVT-based constraint objective in EVO, derived from the ex-treme samples in the tail, captures critical information about the task goal. This enables EVO to achieve a more favorable trade-off between policy performance and constraint satis-faction. (2) Ablating Extreme Prioritization: The results in Figure 5a and 5b show a degradation in performance when extreme prioritization during experience replay is removed. This indicates that prioritizing extreme samples enhances the optimization process by fully exploiting the task-related learning signals embedded in these low-probability, high-impact samples. (3) Ablating Off-policy Importance Resam-pling for GPD Fitting: As shown in Figure 6, eliminating 7Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Figure 4: Comparison of EVO to baselines on Safety MuJoCo. The x-axis is the total number of training steps, the y-axis is the average return or constraint. The solid line is the mean and the shaded area is the standard deviation. The dashed line is the constraint threshold which is 25.    
+
+> (a) Return of Ablation (b) Constraint of Ablation (c) Return of Sensitivity (d) Constraint of Sensitivity
+
+Figure 5: (a)(b) Ablation Study, including ablating EVT-based Constraint Objectives and ablating extreme prioritization. (c)(d) Cost Limit Sensitivity. 
+
+Figure 6: Ablating off-policy samples for GPD fitting. off-policy samples leads to an increase in the variance of the GPD, providing empirical validation of Theorem 4.3. This effect is due to the sparsity of extreme samples, particularly cost extremes, which become increasingly rare as training progresses. Without sample augmentation, GPD fitting be-comes overly sensitive to individual extreme values, leading to inaccurate tail modeling. 
+
+Cost Limit Sensitivity. We further evaluate the robustness of EVO across various threshold levels. Figure 5c and 5d indicate that EVO effectively satisfies different cost limits while maintaining policy performance. The ability to learn from extreme values enables EVO to adapt to diverse policy preferences. In security-oriented settings with limit 0, cost extremes in EVO provide learning signals related to task constraints, and in performance-oriented settings with limit 35, reward extremes in EVO offer significant reward signals about the task goals. 
+
+The Fitting Accuracy of GPD. To evaluate the fitting accuracy of GPD in our experiments, we collected train-ing data across multiple environments and fitted both GPD and Gaussian distributions. Furthermore, we employed the Kolmogorov-Smirnov (KS) test to quantify the fit accuracy, where lower values indicate more accurate fits. As shown in Figure 7, the GPD presents robust fitting performance across various data distributions. It provides a more accurate fit for extreme samples than the Gaussian and more effectively 8Extreme Value Policy Optimization for Safe Reinforcement Learning       
+
+> (a) SafetyCarCircle1-v0 (b) SafetyCarGoal1-v0 (c) SafetyPointCircle1-v0 (d) SafetyPointGoal1-v0
+> (e) SafetyAntVelocity-v1 (f) SafetyHalfCheetahVelocity-v1 (g) SafetyHumanoidVelocity-v1 (h) SafetySwimmerVelocity-v1
+
+Figure 7: Distribution curves fitted by GPD and Gaussian on the training data in EVO. The fitting accuracy is quantified using the Kolmogorov-Smirnov test, as shown in the titles, where lower values indicate higher fitting accuracy. GPD presents accurate fitting performance across various data distributions. 
+
+Figure 8: The training curves of EVO with different sample sizes across multiple environments, indicating that EVO remains effective even with small sample sets. capturing the tail behavior of the distribution. However, in special cases where the gap between extreme and normal values is subtle, the GPD may not provide a satisfactory fit due to the requirement in EVT that the threshold t be sufficiently large. To address this issue, one can employ non-linear transformations to amplify the differences between extreme and normal values prior to GPD fitting, thereby enhancing the accuracy of tail modeling. 
+
+Sample Size of GPD Fitting. We conducted experi-ments by varying the sample size used for GPD fitting and evaluated the corresponding policy performance. As shown in Figure 8, increasing the sample size gener-ally lead to improved constraint satisfaction. Notably, in SafetyPointCircle1-v0, EVO maintains strong constraint sat-isfaction and performance even with as few as 10 samples. In SafetyPointGoal1-v0, constraint satisfaction is consis-tently achieved once the sample size exceeds 20 . In our experiments, with the same sample size of 20 , EVO demon-strates superior constraint satisfaction and policy perfor-mance compared to baselines, indicating that it remains effective even with small sample sets. 
+
+# 6. Conclusion 
+
+In this paper, we propose a zero-constraint violation method, Extreme Value policy Optimization (EVO) algorithm. EVO leverages Extreme Value Theory (EVT) to model extreme samples and exploits them to enhance safety policy opti-mization. To address the challenge of high variance in extreme samples, we employ the GPD to explicitly model the tail extremes and augment the extreme samples with off-policy samples. Recognizing the high information of extreme samples, we introduce an extreme prioritization mechanism to exploit them. We provide both theoretical and experimental evidence that EVO achieves zero con-straint violations during training, while maintaining high returns and low variance. 9Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+# Acknowledgment 
+
+This work was supported by NSF China under Grant No. T2421002, 62202299, 62020106005, 62061146002. 
+
+# Impact Statement 
+
+This paper aims to advance the field of Reinforcement Learn-ing by introducing the EVO algorithm, which significantly improves safety of policy during RL training. EVO en-ables safer and more efficient deployment of RL in real-world domains such as large language models, autonomous driving, and robotics, thereby contributing to the broader progress of Machine Learning. There are potential societal consequences of our work, none which we feel must be specifically highlighted here. 
+
+# References 
+
+Achiam, J., Held, D., Tamar, A., and Abbeel, P. Constrained policy optimization. In International conference on ma-chine learning , pp. 22–31, 2017. Bellemare, M. G., Dabney, W., and Munos, R. A distribu-tional perspective on reinforcement learning. In Inter-national conference on machine learning , pp. 449–458. PMLR, 2017. Chow, Y., Ghavamzadeh, M., Janson, L., and Pavone, M. Risk-constrained reinforcement learning with percentile risk criteria. Journal of Machine Learning Research , 18 (167):1–51, 2018. Ding, D., Zhang, K., Basar, T., and Jovanovic, M. Natu-ral policy gradient primal-dual method for constrained markov decision processes. Advances in Neural Informa-tion Processing Systems , 33:8378–8390, 2020. Ding, D., Wei, X., Yang, Z., Wang, Z., and Jovanovic, M. Provably efficient safe exploration via primal-dual policy optimization. In International Conference on Artificial Intelligence and Statistics , pp. 3304–3312, 2021. Gao, S., Ding, J., Fu, L., Wang, X., and Zhou, C. Exterior penalty policy optimization with penalty metric network under constraints. In Proceedings of the Thirty-Third International Joint Conference on Artificial Intelligence ,pp. 4007–4015, 2024. Haarnoja, T., Zhou, A., Abbeel, P., and Levine, S. Soft actor-critic: Off-policy maximum entropy deep reinforce-ment learning with a stochastic actor. In International conference on machine learning , pp. 1861–1870, 2018. Hiraoka, T., Imagawa, T., Mori, T., Onishi, T., and Tsuruoka, Y. Learning robust options by conditional value at risk optimization. Advances in Neural Information Processing Systems , 32, 2019. Ji, J., Zhou, J., Zhang, B., Dai, J., Pan, X., Sun, R., Huang, W., Geng, Y., Liu, M., and Yang, Y. Omnisafe: An infrastructure for accelerating safe reinforcement learning research. Journal of Machine Learning Research , 25 (285):1–6, 2024. Jung, W., Cho, M., Park, J., and Sung, Y. Quantile con-strained reinforcement learning: A reinforcement learn-ing framework constraining outage probability. Ad-vances in Neural Information Processing Systems , 35: 6437–6449, 2022. Koenker, R. and Bassett Jr, G. Regression quantiles. Econo-metrica: journal of the Econometric Society , pp. 33–50, 1978. Masys, A. J. Black swans to grey swans: revealing the uncertainty. Disaster Prevention and Management: An International Journal , 21(3):320–335, 2012. NS, K. S., Wang, Y., Schram, M., Drgona, J., Halappanavar, M., Liu, F., and Li, P. Extreme risk mitigation in rein-forcement learning using extreme value theory. arXiv preprint arXiv:2308.13011 , 2023. Pickands III, J. Statistical inference using extreme order statistics. the Annals of Statistics , pp. 119–131, 1975. Rockafellar, R. T. and Uryasev, S. Conditional value-at-risk for general loss distributions. Journal of banking & finance , 26(7):1443–1471, 2002. Schulman, J., Levine, S., Abbeel, P., Jordan, M., and Moritz, P. Trust region policy optimization. In International conference on machine learning , pp. 1889–1897, 2015a. Schulman, J., Moritz, P., Levine, S., Jordan, M., and Abbeel, P. High-dimensional continuous control using generalized advantage estimation. arXiv preprint arXiv:1506.02438 ,2015b. Sootla, A., Cowen-Rivers, A. I., Jafferjee, T., Wang, Z., Mguni, D. H., Wang, J., and Ammar, H. Saut ´e rl: Almost surely safe reinforcement learning using state augmenta-tion. In International Conference on Machine Learning ,pp. 20423–20443. PMLR, 2022a. Sootla, A., Cowen-Rivers, A. I., Wang, J., and Ammar, H. B. Effects of safety state augmentation on safe exploration. 
+
+arXiv preprint arXiv:2206.02675 , 2022b. Stooke, A., Achiam, J., and Abbeel, P. Responsive safety in reinforcement learning by pid lagrangian methods. In 
+
+International Conference on Machine Learning , pp. 9133– 9143, 2020. Tessler, C., Mankowitz, D. J., and Mannor, S. Re-ward constrained policy optimization. arXiv preprint arXiv:1805.11074 , 2018. 10 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Urp ´ı, N. A., Curi, S., and Krause, A. Risk-averse offline reinforcement learning. In International Conference on Learning Representations , 2021. Vinyals, O., Babuschkin, I., Czarnecki, W. M., Mathieu, M., Dudzik, A., Chung, J., Choi, D. H., Powell, R., Ewalds, T., Georgiev, P., et al. Grandmaster level in starcraft ii using multi-agent reinforcement learning. Nature , 575 (7782):350–354, 2019. Xu, J., Tian, Y., Ma, P., Rus, D., Sueda, S., and Matusik, W. Prediction-guided multi-objective reinforcement learning for continuous robot control. In International conference on machine learning , pp. 10607–10616. PMLR, 2020. Xu, T., Liang, Y., and Lan, G. Crpo: A new approach for safe reinforcement learning with convergence guarantee. In International Conference on Machine Learning , pp. 11480–11491. PMLR, 2021. Yang, L., Ji, J., Dai, J., Zhang, L., Zhou, B., Li, P., Yang, Y., and Pan, G. Constrained update projection approach to safe policy optimization. arXiv preprint arXiv:2209.07089 , 2022. Yang, Q., Sim ˜ao, T. D., Tindemans, S. H., and Spaan, M. T. Wcsac: Worst-case soft actor critic for safety-constrained reinforcement learning. In Proceedings of the AAAI Con-ference on Artificial Intelligence , volume 35, pp. 10639– 10646, 2021. Yang, T.-Y., Rosca, J., Narasimhan, K., and Ramadge, P. J. Projection-based constrained policy optimization. arXiv preprint arXiv:2010.03152 , 2020. Ying, D., Zhang, Y., Ding, Y., Koppel, A., and Lavaei, J. Scalable primal-dual actor-critic method for safe multi-agent rl with general utilities. Advances in Neural Infor-mation Processing Systems , 36, 2024. Yu, C., Velu, A., Vinitsky, E., Gao, J., Wang, Y., Bayen, A., and Wu, Y. The surprising effectiveness of ppo in cooper-ative multi-agent games. Advances in Neural Information Processing Systems , 35:24611–24624, 2022a. Yu, H., Xu, W., and Zhang, H. Towards safe reinforce-ment learning with a safety editor policy. arXiv preprint arXiv:2201.12427 , 2022b. Zhang, Y., Vuong, Q., and Ross, K. First order constrained optimization in policy space. Advances in Neural Infor-mation Processing Systems , 33:15338–15349, 2020. 11 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Notations 
+
+c cost 
+
+C cumulative cost 
+
+d constraint threshold 
+
+AR reward advantage function 
+
+AC cost advantage function 
+
+q quantile 
+
+μ quantile level 
+
+qμ safety boundary 
+
+ν exploitation range in extrem samples 
+
+qμ+ν risk boundary 
+
+z excess value beyond the safety boundary 
+
+Z excess random variable 
+
+F cumulative distribution function 
+
+f probability density function 
+
+qH quantile in GPD 
+
+ξ shape parameter of GPD 
+
+σ scale parameter of GPD 
+
+Yμ peaks set 
+
+ZC extreme cost set 
+
+δ trust region size 
+
+# A. Policy Optimization in EVO 
+
+The CRL aims to find an optimal policy by maximizing the expected discount return over the set of feasible policies 
+
+ΠC := {π ∈ Π : JC (π) ≤ d}:
+
+arg max  
+
+> π∈Π
+
+JR(π)
+
+s.t. JC (π) ≤ d
+
+(26) The following equation briefly gives the performance difference of arbitrary two policies (Schulman et al., 2015a), which represents the expected return of another policy π′ in terms of the advantage function over π:
+
+JR(π′) − JR(π) = 11 − γ Es∼dπ′ ,a ∼π′ [AπR(s, a )] (27) This implies that iterative updates to the policy, π′(s) = arg max a AπR(s, a ), lead to performance improvement until convergence to the optimal solution. According to the performance difference equation (27), CRL is defined as a constrained optimization problem: 12 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+πk+1 = arg max 
+
+> π∈Πθ
+
+Es∼dπ ,a ∼π [Aπk 
+
+> R
+
+(s, a )] 
+
+s.t. JC (πk) + 11 − γ Es∼dπ ,a ∼π [Aπk 
+
+> C
+
+(s, a )] ≤ d
+
+(28) where policy π ∈ Πθ is parameterized with parameters θ, and πk represents the current policy. In this paper, we propose the quantile-based objective, 
+
+arg max  
+
+> π∈Π
+
+JR(π)
+
+s.t. qμ + qHν 
+
+> 1−μ
+
+≤ d (29) where the safety boundary quantile qμ is determined by the expectation JC (π′). Then the objective can be denoted as: 
+
+πk+1 = arg max 
+
+> π∈Πθ
+
+Es∼dπ ,a ∼π [Aπk 
+
+> R
+
+(s, a )] 
+
+s.t. JC (πk) + 11 − γ Es∼dπ ,a ∼π [Aπk 
+
+> C
+
+(s, a )] + qHν 
+
+> 1−μ
+
+≤ d
+
+(30) We propose the optimization method based on CPO, EVO-CPO, to solve the optimization 29. 
+
+A.1. CPO-based EVO 
+
+The complex dependency of state visitation distribution dπ (s) on unknown policy π makes Equation 29 difficult to optimize directly. To address this, this paper uses samples generated by the current policy πk to approximate the original problem locally. We seek to solve the following optimization problem in the trust region: 
+
+πk+1 = arg max 
+
+> π∈Πθ
+
+Es∼dπk ,a ∼π [Aπk 
+
+> R
+
+(s, a )] 
+
+s.t. JC (πk) + 11 − γ Es∼dπk ,a ∼π [AEI C (s, a |πk)] + qHν 
+
+> 1−μ
+
+≤ dD(π∥πk) ≤ δ
+
+(31) where Πθ is the policy set parameterized by parameter θ, D(π∥πk) = Es∼dπk [DKL (π∥πk)[ s]] , DKL is the KL divergence and δ > 0 is the step size. The set {π ∈ Πθ : D(π∥πk) ≤ δ} is the trust region. In the EVO-CPO method, we approximate the reward objective and cost constraints with first-order expansion and approximate the KL-divergence constraint with second-order expansion. The local approximation to Equation 31 is: 
+
+θk+1 = arg max  
+
+> θ
+
+gT (θ − θk)
+
+s.t. c + ( gC )T (θ − θk) ≤ 012 (θ − θk)T H(θ − θk) ≤ δ
+
+(32) where g denotes the gradient of the reward objective in equation 31, gC denotes the gradient of quantile-based constraint in Equation 31, c = JC (πk) − d, H is the Hessian of the KL-divergence. When the constraint is satisfied, the analytical solution can be obtained using the primal-dual method. The solution to the primal problem is: 
+
+θ∗ =θk + 1
+
+λ∗ H−1(g − gC ν∗) (33) where λ and ν are the Lagrangian multipliers of the KL-divergence term and the constraint term in the Lagrangian function, respectively. λ∗, ν∗ are the solutions to the dual problem: 
+
+ν∗ = max {0, λ∗c − uv } (34) 13 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+λ∗ = arg max 
+
+> λ≥0
+
+( 12λ
+
+ u2 
+
+> v
+
+− q
+
+
+
++ λ
+
+> 2
+
+ c2 
+
+> v
+
+− δ
+
+
+
+− uc v , if λc > u 
+
+− 12
+
+  qλ + λδ  , otherwise, (35) where q = gT H−1g, u = gT H−1gC , v = ( gC )T H−1gC .When the constraint is violated, we use the conjugate gradient method to decrease the constraint value: 
+
+θ∗ =θk −
+
+ 2δ
+
+(gC )T H−1gC
+
+ 12
+
+H−1gC (36) 
+
+# B. Theoretical Proof 
+
+B.1. Constraint Violation Upper Bound Lemma B.1. (Achiam et al., 2017) For any policies π′, π, and any cost function C : S → R, with ϵπ′ 
+
+> C
+
+=max s |Ea∼π′ [AπC (s, a )] |. The following bound holds: 
+
+JC (π′) − JC (π) ≤ 11 − γ Es∼dπ ,a ∼π′ [AπC (s, a ) + 2γϵ π′
+
+> C
+
+1 − γ DT V (π′∥π)[ s]] (37) 
+
+where DT V (π′|| π)[ s] = (1 /2) P 
+
+> a
+
+|π′(a|s) − π(a|s)| is the total variational divergence between action distribution at s.
+
+Theorem B.2 (Constraint violation upper bound) . Suppose πk+1 , πk are related by quantile-based constraint objective 11, the upper bound on constraint of πk+1 is: 
+
+JC (πk+1 ) ≤ d − qHν 
+
+> 1−μ
+
+(πk+1 ) + 11 − γ Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] (38) 
+
+where ϵπk+1  
+
+> C
+
+:= max s |Ea∼πk+1 [AπC (s, a )] |, DT V (πk+1 || πk)[ s] = (1 /2) P 
+
+> a
+
+|πk+1 (a|s) − πk(a|s)|. The zero-violation exploitation range ν0 in GPD satisfies: 
+
+ν0 = Nμ
+
+n 1 −
+
+ ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+!
+
+(39) 
+
+which guarantees the expectation of updated policy πk+1 strictly satisfies the constraints, where Nμ is the number of peaks and n is the total number of samples. Proof. According to the Lemma B.1 in CPO (Achiam et al., 2017), for any policies π′ and π, and any cost function, the following bound holds: 
+
+JC (π′) − JC (π) ≤ 11 − γ Es∼dπ ,a ∼π′ [AπC (s, a ) + 2γϵ π′
+
+> C
+
+1 − γ DT V (π′∥π)[ s]] (40) Then the bounds of two neighboring policies πk and πk+1 in the policy update follows: 
+
+JC (πk+1 ) − JC (πk) ≤ 11 − γ Es∼dπk ,a ∼πk+1 [Aπk 
+
+> C
+
+(s, a ) + 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] (41) 
+
+JC (πk+1 ) ≤ JC (πk) + 11 − γ Es∼dπk ,a ∼πk+1 [Aπk 
+
+> C
+
+(s, a ) + 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] (42) Suppose πk and πk+1 are related by the optimization objective in EVO, which is: 
+
+qμ + qHν 
+
+> 1−μ
+
+≤ d (43) 14 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+where we use the expectation JC (π) to denote the quantile value qμ, which is approximated in the trust region as: 
+
+JC (πk) + 11 − γ Es∼dπk ,a ∼π [Aπk 
+
+> C
+
+(s, a )] + qHν 
+
+> 1−μ
+
+≤ d (44) According to Equation 42 and Equation 44, then the upper bound on the constraint expectation of πk+1 is: 
+
+JC (πk+1 ) ≤JC (πk) + 11 − γ Es∼dπk ,a ∼πk+1 [Aπk 
+
+> C
+
+(s, a )] + 11 − γ Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] 
+
+≤d − qHν 
+
+> 1−μ
+
++ 11 − γ Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] 
+
+(45) The risk boundary in GPD qHν
+
+> 1−μ
+
+≥ 0, which indicates that EVO has a tighter constraint violation upper bound compared to the expectation optimization objective in CPO, which is: 
+
+JC (πk+1 ) ≤d + 11 − γ Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] (46) Theoretically, if the value of qHν
+
+> 1−μ
+
+is greater than 11−γ Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1  
+
+> C
+> 1−γ
+
+DT V (πk+1 ∥πk)[ s]] , our method ensures that the expectation of updated policy πk+1 strictly satisfies the constraints. The risk boundary in EVO is obtained by: 
+
+qHν 
+
+> 1−μ
+
+= σξ
+
+
+
+(1 − νn Nμ
+
+)−ξ − 1
+
+
+
+(47) We derive the zero-violation exploitation range ν0 by making: 
+
+qHν 
+
+> 1−μ
+
+= 11 − γ Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] 
+
+σξ
+
+
+
+(1 − νn Nμ
+
+)−ξ − 1
+
+
+
+= 11 − γ Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] 
+
+(48) Then we get the zero-violation exploitation range ν0:
+
+ν0 = Nμ
+
+n 1 −
+
+ ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+!
+
+(49) 
+
+B.2. Constraint Violation Probability Theorem B.3 (Constraint violation probability) . When the safety boundary qμ is determined by the expectation of cumulative cost, the constraint violation probability of EVO with the zero-violation exploitation range ν0 satisfies: 
+
+P (C > d ) < (J (E + 1)) − 1 
+
+> ξ
+
+(50) 
+
+where: 
+
+J = ξσ
+
+
+
+JC (πk) + 11 − γ Es∼dπk ,a ∼π [Aπk 
+
+> C
+
+(s, a )] 
+
+
+
++ 1 
+
+E = ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] 
+
+(51) 15 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+EVO has a lower constraint violation probability than the expectation-based CRL by a margin of ν0.Proof. In this paper, we use the expectation JC (π) of cumulative cost C to determine the safety boundary qμ:
+
+qμ = JC (π) (52) which is used to fit the GPD with: 
+
+1 −
+
+
+
+1 + ξx σ
+
+− 1
+
+> ξ
+
+, ξ̸ = 0 (53) Then we get the safety boundary quantile level μ:
+
+μ = 1 −
+
+
+
+1 + ξJ C (π)
+
+σ
+
+− 1
+
+> ξ
+
+(54) where JC (π) is approximated in the local region as: 
+
+JC (π) = JC (πk) + 11 − γ Es∼dπk ,a ∼π [Aπk 
+
+> C
+
+(s, a )] (55) Then we get the zero-violation exploration range ν0 according to Theorem B.2: 
+
+ν0 = (1 − μ) 1 −
+
+ ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+!
+
+=
+
+
+
+1 + ξJ C (π)
+
+σ
+
+− 1
+
+> ξ
+
+1 −
+
+ ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+! (56) According to the definition fo the quantile in EVO, the constraint violation probability of EVO satisfies: 
+
+P (C > d )
+
+<1 − μ − ν0
+
+=1 − μ − (1 − μ) 1 −
+
+ ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+!
+
+=(1 − μ)
+
+ ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+=
+
+
+
+1 + ξJ C (π)
+
+σ
+
+− 1 
+
+> ξ
+
+ ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+=
+
+ ξσ JC (πk) + ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [Aπk 
+
+> C
+
+(s, a )] + 1 
+
+− 1 
+
+> ξ
+
+ ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] + 1 
+
+− 1
+
+> ξ
+
+(57) To simplify the representation, we denote: 
+
+J = ξσ
+
+
+
+JC (πk) + 11 − γ Es∼dπk ,a ∼π [Aπk 
+
+> C
+
+(s, a )] 
+
+
+
++ 1 
+
+E = ξσ(1 − γ) Es∼dπk ,a ∼πk+1 [ 2γϵ πk+1 
+
+> C
+
+1 − γ DT V (πk+1 ∥πk)[ s]] 
+
+(58) 16 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Then the constraint violation probability under EVO is less: 
+
+P (C > d ) < (J (E + 1)) − 1 
+
+> ξ
+
+(59) The constraint optimization objective in expectation-based CRL is: 
+
+qμ = JC < d (60) Then the constraint violation probability under expectation-based CRL is: 
+
+P (C > d ) <1 − μ (61) EVO has a lower constraint violation probability than the expectation-based CRL by a margin of ν0:
+
+1 − μ − (1 − μ − ν0) = ν0 (62) 
+
+B.3. Comparison of Variance with Quantile Regression Lemma B.4. The asymptotic distribution theory (Koenker & Bassett Jr, 1978). Let {qμ1 , · · · , q μM } with 0 < μ 1 < · · · <μM < 1, denote a sequence of unique sample quantiles from random samples of size N from a population with inverse distribution function qμ = F −1 
+
+> H
+
+(μ). If FH is continuous and has continuous and positive density fH at qμi , i = 1 , · · · , M ,then the quantile regression estimator qμ to the true quantile value q∗ 
+
+> μ
+
+converges in distribution to an Gaussian random vector with mean 0 and variance Ω: √N (qμ − q∗
+
+> μ
+
+) → N (0 , Ω) (63) 
+
+The variance Ω( μ1, · · · , μ M ) with typical element: 
+
+ωij = μi(1 − μj )
+
+f (qμi )f (qμj ) (64) 
+
+Theorem B.5 (Variance of EVO) . Let qHν
+
+> 1−μ
+
+denote the quantile in GPD for random samples of size N from a population with inverse distribution function qHν
+
+> 1−μ
+
+= F −1 
+
+> H
+
+( ν 
+
+> 1−μ
+
+). If the cumulative distribution function FH is continuous and has continuous and positive density fH at qHν
+
+> 1−μ
+
+, then the quantile estimator qHν
+
+> 1−μ
+
+to the true quantile value q∗ ν
+
+> 1−μ
+
+converges in distribution to an Gaussian random vector with mean 0 and variance Ω
+
+√N (qHν 
+
+> 1−μ
+
+− q∗ ν 
+
+> 1−μ
+
+) → N (0 , Ω) (65) 
+
+The variance of EVO to estimate the quantile ν 
+
+> 1−μ
+
+is: 
+
+Ω = ν(1 − μ − ν)
+
+N (1 − μ)2f 2 
+
+> H
+
+(qHν
+
+> 1−μ
+
+) (66) 
+
+where μ denotes the safety boundary quantile, ν denotes the exploitation range, and N denotes the number of samples from the distribution that are used to estimate the quantile values. EVO has a lower variance than that in quantile regression methods: 
+
+Ω2 = (μ + ν)(1 − μ − ν)
+
+N f 2 
+
+> C
+
+(qμ+ν ) (67) 
+
+where fC denotes the probability density function. 
+
+17 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Proof. According to Lemma B.4, the variance of the estimator under the quantile level τ is: 
+
+Ω = τ (1 − τ )
+
+N f 2(θτ ) (68) where N denotes the number of samples from the distribution that are used to estimate the quantile values. The variance Ω1 of EVT to estimate the quantile ν 
+
+> 1−μ
+
+is: 
+
+Ω1 = ( ν 
+
+> 1−μ
+
+)(1 − ν 
+
+> 1−μ
+
+)
+
+N f 2 
+
+> H
+
+(qHν
+
+> 1−μ
+
+)= ν(1 − μ − ν)
+
+N (1 − μ)2f 2 
+
+> H
+
+(qHν
+
+> 1−μ
+
+)
+
+(69) The variance Ω2 of quantile regression to estimate the quantile μ + ν is: 
+
+Ω2 = (μ + ν)(1 − μ − ν)
+
+N f 2 
+
+> C
+
+(qμ+ν ) (70) where fC denotes the density of the overall cost distribution. According to Equation 10, fC is related to fH :
+
+fC (qμ + z) = (1 − μ)fH (z) (71) 
+
+fC (qμ+ν ) = (1 − μ)fH ( ν
+
+1 − μ ) (72) Then we get the variance Ω2 of quantile regression is: 
+
+Ω2 = (μ + ν)(1 − μ − ν)
+
+N f 2 
+
+> C
+
+(qμ+ν )= (μ + ν)(1 − μ − ν)
+
+N (1 − μ)2f 2 
+
+> H
+
+(qHν
+
+> 1−μ
+
+)
+
+(73) Thus the variance of EVO is lower than that of quantile regression: Ω1 < Ω2.
+
+# C. Experiment 
+
+C.1. Additional Experiments 
+
+C.1.1. A DDITIONAL BASELINES 
+
+We conducted additional experiments across multiple tasks, comparing EVO with PPO-Lagrangian and RCPO (Tessler et al., 2018). PPO-Lagrangian is a primal-dual method that transforms constrained problems into unconstrained ones by introducing dual variables, and then optimizes the objective based on the PPO algorithm. RCPO proposes a multi-timescale Lagrangian method, which utilizes penalty signals to guide policy updates toward constraint satisfaction. As shown in Figures 9 and 10, PPO-Lagrangian exhibits significant oscillations during training, and both PPO-Lagrangian and RCPO frequently violate constraints. In contrast, EVO consistently maintains constraint satisfaction across all tasks while achieving superior policy performance. In SafetyCarCircle1-v0, although RCPO achieves slightly higher returns, it exhibits substantial constraint violations, indicating that its policy is unsafe. 18 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Figure 9: Comparison of EVO to PPO-Lagrangian and RCPO on Safety Gym. The x-axis is the total number of training steps, the y-axis is the average return or constraint. The solid line is the mean and the shaded area is the standard deviation. The dashed line is the constraint threshold which is 25. 
+
+Figure 10: Comparison of EVO to PPO-Lagrangian and RCPO on Safety MuJoCo. The x-axis is the total number of training steps, the y-axis is the average return or constraint. C.1.2. T RAINING TIME 
+
+To evaluate the computational overhead of EVO, we conducted experiments across different environments, measuring both total training time and the time spent on GPD fitting. As shown in Table 1, EVO introduces only a limited increase in training time compared to CPO, and GPD fitting process is highly efficient, taking only a few seconds in total. This indicates that EVO introduces minimal computational overhead. 
+
+C.2. Additional Results 
+
+In CRL algorithms, it is not sufficient to compare rewards or constraint violation rates in isolation. To quantitatively compare the overall performance of different algorithms in terms of both policy performance and constraint satisfaction during training, we design the following evaluation metric: 
+
+ratio = AverageReturn ConstraintV iolationRate + ξ (74) where AverageReturn denotes the average return across all episodes during training, and ConstraintV iolationRate 
+
+represents the proportion of episodes in which constraint violations occur. The constant ξ is introduced to ensure numerical 19 Extreme Value Policy Optimization for Safe Reinforcement Learning                
+
+> Environment CPO EVO(10 samples) EVO(20 samples) EVO(50 samples) EVO(100 samples) SafetyPointCircle1 11h 23m 28s 11h 53m 19s (8s) 11h 52m 28s (8s) 11h 53m 31s (8s) 11h 55m 22s (9s) SafetyPointGoal1 11h 29m 42s 11h 58m 51s (8s) 11h 59m 47s (7s) 11h 58m 33s (8s) 11h 59 m 8s (9s)
+
+Table 1: EVO training time with different sample sizes compared to CPO. The time data includes the total training time for EVO, with the GPD fitting time shown in parentheses ”()”. EVO increases limited training time compared to CPO. GPD fitting takes only a few seconds in total. stability. The final ratio is then normalized. The corresponding results of ratio are shown in Table 2. The results show that EVO achieves the best performance across multiple tasks, effectively balancing policy performance and constraint satisfaction.                                              
+
+> Environment EVO (ours) CPO Saute Simmer WCSAC SafetyCarGoal1 0.267 0.169 0.190 0.212 0.163
+> SafetyCarCircle1 0.237 0.147 0.229 0.228 0.156
+> SafetyPointGoal1 0.275 0.175 0.192 0.186 0.172
+> SafetyPointCircle1 0.236 0.186 0.177 0.191 0.211
+> SafetyAntVelocity 0.250 0.132 0.245 0.244 0.129
+> SafetyHalfCheetahVelocity 0.233 0.166 0.231 0.224 0.146
+> SafetyHumanoidVelocity 0.219 0.168 0.213 0.214 0.186
+> SafetySwimmerVelocity 0.213 0.159 0.214 0.212 0.180
+
+Table 2: The mean performance of ratio across mutiple environments, with the bolded data indicating the maximum ratio .
+
+C.3. Environments 
+
+Our experimental environments consist of two types of tasks, navigation in Safety Gymnasium and velocity in Safety MuJoCo.    
+
+> (a) PointGoal1 (b) CarGoal1 (c) PointCircle1 (d) CarCircle1
+
+Figure 11: Environments in Safety Gym. C.3.1. S AFETY GYM 
+
+Figure 11 shows the environments in the Safety Gym. Safety Gym is the standard API for safe reinforcement learning developed by Open AI. The agent perceives the world through the sensors of the robots and interacts with the environment via its actuators in Safety Gym. In this work, we consider two agents, Point and Car, and two tasks, Goal and Circle. 20 Extreme Value Policy Optimization for Safe Reinforcement Learning    
+
+> (a) Ant (b) HalfCheetah (c) Swimmer (d) Humanoid
+
+Figure 12: Environments in Safety MuJoCo. The Point is a simple robot constrained to a two-dimensional plane. It is equipped with two actuators, one for rotation and another for forward/backward movement. It has a small square in front of it, making it easier to visually determine the orientation of the robot. The action space in Point consists of two dimensions ranging from -1 to 1, and the observation space consists of twelve dimensions ranging from negative infinity to positive infinity. The Car is a more complex robot that moves in three-dimensional space and has two independently driven parallel wheels and a freely rotating rear wheel. For this robot, both steering and forward/backward movement require coordination between the two drive wheels. The action space of Car includes two dimensions with a range from -1 to 1, while the observation space consists of 24 dimensions with a range from negative infinity to positive infinity. 
+
+Goal: The agent is required to navigate towards the location of the goal. Upon successfully reaching the goal, the goal location is randomly reset to a new position while maintaining the remaining layout unchanged. The rewards in the task of Goal are composed of two components: reward distance and reward goal. In terms of reward distance, when the agent is closer to the Goal it gets a positive value of reward, and getting farther will cause a negative reward. Regarding the reward goal, each time the agent successfully reaches the Goal, it receives a positive reward value denoting the completion of the goal. In SafetyGoal1, the Agent needs to navigate to the Goal’s location while circumventing Hazards. The environment consists of 8 Hazards positioned throughout the scene randomly. 
+
+Circle: Agent is required to navigate around the center of the circle area while avoiding going outside the boundaries. The optimal path is along the outermost circumference of the circle, where the agent can maximize its speed. The faster the agent travels, the higher the reward it accumulates. The episode automatically ends if the duration exceeds 500 time steps. When out of the boundary, the agent gets an activated cost. C.3.2. S AFETY MUJOCO
+
+The agent in Safety MuJoCo is provided by OpenAI Gym, and it is trained to move along a straight line while constrained with a velocity limit. Figure 12 illustrates the different environments. Velocity tasks are also an important class of tasks that apply RL to reality, requiring an agent to move as quickly as possible while adhering to velocity constraint. These tasks have significant implications in various domains, including robotics, autonomous vehicles, and industrial automation. If velocity of current step exceeds the threshold of velocity, then receive an scalar signal 1, otherwise 0. 
+
+C.4. Hyperparameters 
+
+The exploitation range ν is adaptively adjusted based on the safety and performance of the current policy π. The objective for the adaptive ν is: 
+
+L(ν) = −ν (JC (π) − d) (75) The gradient with respect to ν is: 
+
+∇ν L(ν) = − (JC (π) − d) (76) 21 Extreme Value Policy Optimization for Safe Reinforcement Learning 
+
+Thus ν is updated as follows: 
+
+ν ← clip (ν − α∇ν L(ν), 0) (77) where α denotes the learning rate, and the clip operation ensures that ν ≥ 0. If JC (π) > d , ν increases, raising the quantile in GPD, which in turn reduces JC and promotes a safer policy. Conversely, if JC (π) < d , ν decreases, lowering the quantile in GPD and encouraging exploration. All experiments are implemented in Pytorch 2.0.0 and CUDA 11.3 and performed on Ubuntu 20.04.2 LTS with a single GPU (GeForce RTX 3090). The hyperparameters are summarized in Table 3. Parameter EVO Saute Simmer CPO WCSAC hidden layers 2 2 2 2 2
+
+hidden sizes 64 64 64 64 64 
+
+activation tanh tanh tanh tanh tanh 
+
+actor learning rate 1e−3 1e−3 1e−3 1e−3 1e−3
+
+critic learning rate 1e−3 1e−3 1e−3 1e−3 1e−3
+
+batch size 128 128 128 128 128 
+
+trust region bound 0.01 N/A N/A 0.01 N/A 
+
+discount factor gamma 0.99 0.99 0.99 0.99 0.99 
+
+GAE gamma 0.95 0.95 0.95 0.95 0.95 
+
+normalization coefficient 1e−3 1e−3 1e−3 1e−3 1e−3
+
+clip ratio N/A 0.2 0.2 N/A 0.2
+
+conjugate gradient damping 0.1 N/A N/A 0.1 N/A 
+
+initial lagrangian multiplier N/A 1e−3 1e−3 N/A 1e−3
+
+lambda learning rate N/A 0.035 0.035 N/A 0.035 
+
+Table 3: Hyperparameters 22

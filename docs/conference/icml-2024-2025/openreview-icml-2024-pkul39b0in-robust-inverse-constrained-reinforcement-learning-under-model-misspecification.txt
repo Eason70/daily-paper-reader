@@ -1,0 +1,2526 @@
+Title: Robust Inverse Constrained Reinforcement Learning under Model Misspecification
+
+URL Source: https://openreview.net/pdf?id=pkUl39b0in
+
+Number of Pages: 24
+
+Markdown Content:
+# Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+Sheng Xu 1 Guiliang Liu 1 * 
+
+## Abstract 
+
+To solve safety-critical decision-making prob-lems, Inverse Constrained Reinforcement Learn-ing (ICRL) infers constraints from expert demon-strations and seeks to imitate expert preference by utilizing these constraints. While prior ICRL research commonly overlooks the discrepancy be-tween the training and deploying environments, we demonstrate that such a discrepancy can sig-nificantly compromise the reliability of the in-ferred constraints and thus induce unsafe move-ments. Motivated by this finding, we propose the Robust Constraint Inference (RCI) problem and an Adaptively Robust ICRL (AR-ICRL) al-gorithm to solve RCI efficiently. Specifically, we model the impact of misspecified dynamics with an opponent policy and learn a robust pol-icy to facilitate safe control in a Markov Game. Subsequently, we adjust our constraint model to align the learned policies to expert demonstra-tions, accommodating both soft and hard opti-mality in our behavioral models. Empirical re-sults demonstrate the significance of robust con-straints and the effectiveness of the proposed AR-ICRL algorithm under continuous and dis-crete domains. The code is available at https: //github.com/Jasonxu1225/AR-ICRL .
+
+## 1. Introduction 
+
+When deploying a Reinforcement Learning (RL) algorithm to practical applications, an important requirement is that the agent’s behaviors should adhere to the constraints of given tasks (Garc ´ıa & Fern ´andez, 2015; Liu et al., 2021; Brunke et al., 2022). However, due to the complexity of real-world environments (e.g., auto-diagnosis, robot control, and        
+
+> *Corresponding Author 1School of Data Science, The Chi-nese University of Hong Kong, Shenzhen, Guangdong, 518172, P.R. China . Correspondence to: Guiliang Liu <liuguil-iang@cuhk.edu.cn >.
+> Proceedings of the 41 st International Conference on Machine Learning , Vienna, Austria. PMLR 235, 2024. Copyright 2024 by the author(s).
+
+autonomous driving), the underlying constraints are often time-dependent, context-sensitive, and relevant to human experience. How to accurately specify these constraints and facilitate safe control remains a critical challenge. To address this challenge, Inverse Constrained Reinforce-ment Learning (ICRL) (Scobee & Sastry, 2020; Malik et al., 2021) aims to recover the constraints respected by expert agents from their demonstrations and learn the correspond-ing policies. Compared to directly imitating the expert behaviors, modeling constraints offer better interpretability of experts’ preferences, and these constraints can potentially support downstream applications within similar domains. To study the validity of a learned constraint, a common ap-proach is to examine whether an RL policy can replicate expert demonstrations under this constraint. Existing ICRL methods (Liu & Zhu, 2022; 2023; 2024; Liu et al., 2023; Gaurav et al., 2023; Qiao et al., 2023) typically train and test their constraints within an identical environment. This configuration, nevertheless, contradicts the real-world set-tings, where a discrepancy often arises between the training dynamics and those encountered during deployment. Our study illustrates such a discrepancy is not trivial in safe con-trol. As the discrepancy scales, the efficacy of a learned constraint is substantially undermined during deployment, thereby causing the agent to perform dangerous movements. In this work, we investigate how the mismatched environ-mental dynamics influence the efficacy of constraints in terms of ensuring safe control. Motivated by our findings, we introduce the problem of Robust Constraint Inference (RCI). This problem requires the constraints learned in the training environment to generalize reliably to the testing environments under an uncertainty set. To effectively enable RCI, we propose the Adaptively Ro-bust Inverse Constrained Reinforcement Learning (AR-ICRL) algorithm. AR-ICRL alternatively solves: 
+
+1) Safety-Robust Policy Optimization that learns a control policy that consistently executes safe actions while main-taining robustness against the uncertainty of environmental dynamics. By leveraging the game-theoretic framework, we model the influence of uncertainty with adversarial at-tacks from an opponent policy, and the robust policy can be 1Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+effectively learned by solving a two-player Markov game. 
+
+2) Adaptive Constraint Inference from a Mixture Policy that aims at aligning the inferred constraint with expert prefer-ence. To achieve this goal, we propose an objective that enables the cost function to maximize the likelihood of gen-erating the expert demonstration under the maximum causal entropy (Ziebart et al., 2010) framework, considering the interplay between the robust policy and its adversarial coun-terpart. Our objective can be customized to accommodate both soft and hard optimality in behavioral models, which play critical roles in inverse control (Skalse & Abate, 2023). Upon successfully replicating expert demonstrations with the mixture policy, the robust constraint can be extracted from imitating behaviors with standard ICRL techniques. In our experiment, we compare our AR-ICRL algorithm against other baselines across different scales and types of disturbances between the training and deploying dynamics. The results demonstrate that AR-ICRL can learn a safe control policy and the corresponding robust constraint. 
+
+Contribution. Our main contributions are: 1) We study the impact of discrepancies between the training and de-ployment environmental dynamics on the safety of control policies. Based on our findings, we define the problem of inferring robust constraints. 2) We introduce a novel AR-ICRL algorithm for inferring the safe control policy and the corresponding robust constraint based on the training environment and expert demonstrations. 3) We validate the effectiveness of the inferred constraints in ensuring safe control across a variety of testing environments. 
+
+## 2. Related Works 
+
+Robust Reinforcement Learning. Robust RL studies the approach to guarantee the robustness of control policy under uncertainties, disturbances, or structural changes within the environment (Moos et al., 2022). In this study, we primar-ily study the robustness to model misspecification where an agent is trained in one environment and performs in a different, perturbed version of the environment. In this lit-erature, while previous works (Morimoto & Doya, 2005; Grau-Moya et al., 2016) mainly studied the discrete environ-ments where the problem can be solved by robust dynamic programming, some recent works (Mankowitz et al., 2020b; Wang & Zou, 2021; Roy et al., 2017; Zhang et al., 2023) proposed robust RL algorithms for continuous control by optimizing the worst-case performance over the uncertainty set. Additionally, there is a parallel strand of research ad-dressing the inverse problem in the context of model mis-match (Gangwani & Peng, 2020; Viano et al., 2021; 2022). Unlike previous works that primarily focus on the robustness in reward maximization, recent studies (Russel et al., 2020; Mankowitz et al., 2020a; Wang et al., 2022; Meng et al., 2023; Li et al., 2023) expanded the consideration of robust-ness to safety constraints. However, unlike prior works that study the forward control problem under safety-robustness, our work considers an inverse constraint inference problem. 
+
+Inverse Constrained Reinforcement Learning. Inverse Constrained Reinforcement Learning (ICRL) focuses on recovering the underlying constraint respected by expert agents from their demonstrations. Previous research pre-dominantly concentrated on inferring implicit constraints by identifying the permissibility of actions within certain states. Scobee & Sastry (2020) proposed to infer implicit constraint set under the maximum entropy framework (Ziebart et al., 2008), which was restricted to discrete environments. Sub-sequent works (Malik et al., 2021; Gaurav et al., 2023) extended the approach to continuous environments by uti-lizing neural networks to approximate constraints. Towards uncertainty-aware constraint inference, McPherson et al. (2021); Baert et al. (2023) incorporated maximum causal entropy (Ziebart et al., 2010) principle into ICRL. Liu et al. (2023); Papadimitriou et al. (2023) applied variational in-ference and Bayesian Monte Carlo to infer the posterior distribution of constraints. Xu & Liu (2024) utilized the dis-tributional Bellman operator and a flow-based trajectory gen-erator for handling uncertainties. Notably, these works com-monly focused on applying the inferred constraints within the same environment from which they were learned. In contrast, our work aims to infer robust constraints adaptable to various environments with misspecification, offering a more realistic application of ICRL. 
+
+## 3. Problem Formulation 
+
+Constrained Markov Decision Process. Our environment is based on a Constrained Markov Decision Process (CMDP) 
+
+M T 
+
+> c
+
+:= ( S, A, T, r, c, ϵ, μ 0, γ ), where: 1) S and A denote the space of states and actions. 2) T( s′|s, a ) defines the transition distribution. 3) r(s, a ) and c(s, a ) denote the re-ward and cost function (we assume c ≥ 0). 4) ϵ defines the threshold of the constraint, where ϵ = 0 refers to a hard con-straint, enforcing absolute satisfaction, while ϵ > 0 denotes a soft constraint, permitting a certain degree of constraint violation. 5) μ0 denotes the initial state distribution. 6) 
+
+γ ∈ [0 , 1) is the discount factor. In our empirical study, we mainly study an episodic setting where the game ends at some terminating state or time horizon. 
+
+Constrained Reinforcement Learning (CRL). Under a CMDP M T 
+
+> c
+
+with cost function c and transition function T,the goal of CRL is to find an optimal policy π(·| s) such that: 
+
+arg max  
+
+> π
+
+Eμ0,T,π 
+
+h HX
+
+> t=0
+
+γt
+
+r(st, a t) + βH[π(·| st)] 
+
+i 
+
+s.t. Eμ0,T,π 
+
+h HX
+
+> t=0
+
+γtc(st, a t)
+
+i
+
+≤ ϵ (1) 2Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+where H and H[π(·| st)] denote the planning horizon and the causal entropy (Ziebart et al., 2010). 
+
+Definition 3.1. (Mismatched MDPs) We define a CMDP 
+
+M T 
+
+> c
+
+:= ( S, A, T, r, c, ϵ, μ 0, γ ), to be mismatched with an-other CMDP M T′ 
+
+> c
+
+:= ( S, A, T′, r, c, ϵ, μ 0, γ ) if they differ only in transition functions (i.e., T̸ = T ′). We define a set of mismatched CMDPs as Mm = {M T 
+
+> c
+
+, M T′ 
+
+> c
+
+, . . . }, where their transition functions differ from each other. Under this setting, we define the robustness of a policy: 
+
+Definition 3.2. (Absolute Policy Robustness) We claim a policy π∀ to have absolute robustness if it consistently satis-fies the constraints across all possibly mismatched CMDPs: 
+
+Eμ0,T,π ∀
+
+h HX
+
+> t=0
+
+γtc(st, a t)
+
+i
+
+≤ ϵ, ∀M T 
+
+> c
+
+∈ M m (2) However, identifying such absolutely robust policy presents a significant challenge and may not be feasible in many environments, which we show as follows: 
+
+Proposition 3.3. Let {M T 
+
+> c
+
+, M T′ 
+
+> c
+
+} define two mismatched CMDPs in Mm. Let Π define the space of policy π :
+
+S → ∆( A) and T define the transition space. Let 
+
+Qc,π M T
+
+> c
+
+(s, a ) = ET,π [PHt=0 c(st, a t) | s0 = s, a 0 = a] and 
+
+V c,π M T
+
+> c
+
+(s) = Ea∼π [Qc,π M T
+
+> c
+
+(s, a )] define the value functions for discounted cumulative costs under policy π. Let dπM T
+
+> c
+
+define the normalized occupancy measure by following policy π in the CMDP M T 
+
+> c
+
+. It holds that: (a) ∃π ∈ Π and ∃(T , T′) ∈ T s.t. Eμ0,π [Qc,π M T
+
+> c
+
+(s, a )] ≤ ϵ,but Eμ0,π [Qc,π M T′
+
+> c
+
+(s, a )] > ϵ .(b) ∀π ∈ Π, If dπM T
+
+> c
+
+(T ′ − T) V c,π M T′
+
+> c
+
+> ϵ(1 −γ) 
+
+> γ
+
+, then 
+
+Eμ0,π [Qc,π M T′
+
+> c
+
+(s, a )] > ϵ .
+
+The proof is shown in Appendix B.1. Specifically, Propo-sition 3.3 (a) shows that there always exists a policy that satisfies constraints in one environment but violates the con-straint in another. Proposition 3.3 (b) shows that all the policies in one environment may violate the constraint in an-other environment as long as their divergence is big enough. Accordingly, deriving a policy solely from the learning en-vironment and expecting it to consistently ensure safety across various deployment environments poses substantial challenges. A more realistic approach would be to assume that the discrepancy between the learning and testing envi-ronments is bounded under an uncertainty set. 
+
+Definition 3.4. (Relative Policy Robustness) We define a policy, denoted as π¯∀, to have relative robustness if it consis-tently satisfies the constraints across all mismatched CMDPs which have transition dynamics being in the uncertainty set 
+
+T Lα = {αTL + (1 − α) ¯T, ∀ ¯T ∈ T } , where 0 ≤ α ≤ 1.Here TL signifies the transition of a reference CMDP M TL 
+
+> c
+
+.Such a relatively robust policy should satisfy: 
+
+Eμ0,T,π ¯∀
+
+h HX
+
+> t=0
+
+γtc(st, a t)
+
+i
+
+≤ ϵ, ∀M T 
+
+> c
+
+∈ M T Lα 
+
+> c
+
+(3) where MT Lα 
+
+> c
+
+denotes the set of CMDPs having their transi-tions being in the uncertainty set T Lα .In our problem setting, TL denotes the learning environ-ment, which serves as the centroid of the uncertainty set, and α measures the size of the uncertainty set. Note that the set T Lα is equivalent to the (s; a)-rectangular uncertainty set (Iyengar, 2005) centered around TL. From now on, we focus on the relative robustness unless specifically stated. 
+
+Inverse Constrained Reinforcement Learning (ICRL). 
+
+In the ICRL problem, the cost signals c(s, a ) are not readily observable. Instead, the learner has access to expert demon-strations De which is distributed according to the optimal expert policy π∗ 
+
+> MTec∗
+
+that implicitly respects the underlying ground-truth constraints Eμ0,Te,π ∗ [PHt=0 γtc∗(st, a t)] ≤ ϵ.Under this setting, the goal of ICRL is to recover this con-straint from expert demonstrations De. For brevity, we define the constraint C, parameterised by c, ϵ and T, as a mapping from a policy π to binary variables (feasibility of 
+
+π). In alignment with previous works (Malik et al., 2021), we study hard constraints such that ϵ = 0 , and T can be estimated by interacting with the environment under the online RL setting. Consequently, inferring the constraints can be simplified to learn the cost function c.Building upon the insights from Proposition 3.3, we con-tend that it is significant for ICRL algorithms to consider the potential discrepancies in transition dynamics between the training and applied environments. As Figure 1 shows, even if we recover the true constraints c∗ from expert demonstra-tions De, there is no guarantee that the corresponding opti-mal policy π∗ 
+
+> MT
+> c∗
+
+can remain safe in a different mismatched CMDP. This limitation poses a substantial challenge to the effective deployment of ICRL in practical applications. To handle the challenge and learn an optimal globally ro-bust policy, we propose the following Robust Constraint Inference problem: 
+
+Definition 3.5. (Robust Constraint Inference (RCI)) Sup-pose that there exists a class of transitions T Lα centered around the learning transition TL. Given a demonstration dataset De that respects c∗ (unknown). The goal of the RCI is to infer a robust constraint c∀ such that the optimal policy trained under the corresponding CMDP M TL 
+
+> c∀
+
+is safe across all environments within MT Lα 
+
+> c∗
+
+(i.e., satisfying Eq. (3)). Note that we do not require explicit knowledge of the expert policy and environment. The core requirement is that these 3Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+Figure 1. An example of the robust constraint under windy Grid-world environments (check Section 5.1 for details). The training environment (left) has no wind, while the testing environments (middle and right) have stochastic upward winds. The left figure shows the expert trajectory and ground-truth constraint in the train-ing environment. The middle figure shows although the inferred constraint matches the ground-truth constraint, the learned policy still violates constraints during testing. The right figure shows the robust constraint prevents violating the ground-truth constraint. 
+
+demonstrations respect the ground-truth constraints. For simplicity, we assume the expert environment is identical to the learning environment in this work. 
+
+## 4. Learning Robust Constraint via Inverse Reinforcement Learning 
+
+To infer robust constraints that can be generalized to the environment with mismatched dynamics, we propose the Adaptively-Robust Inverse Constrained Reinforcement Learning (AR-ICRL) algorithm. Specifically, AR-ICRL solves the RCI problem by alternatively solving: 1) a forward control problem to perform policy update under the mismatched dynamics and the inferred constraint (Sec-tion 4.1); 2) a backward behaviors alignment problem that minimizes the discrepancy between the policy model and expert demonstrations by updating constraints (Section 4.2). AR-ICRL converges when the disturbed policy matches the expert policy. The robust constraint can be extracted from the learned robust policy (Section 4.3). 
+
+4.1. Safety-Robust Policy Optimization 
+
+In this section, we derive a game-theoretic method to learn the robust policy that can consistently satisfy the inferred constraint across all mismatched CMDP M ∈ M T Lα 
+
+> c
+
+.Following Malik et al. (2021), the permissibility indicator 
+
+ϕ(s, a ) denotes the probability that performing an action 
+
+a under the state s is feasible, and the cost is defined as 
+
+c(s, a ) = − log ϕ(s, a ). Under this definition, adhering to constraints can be interpreted as ensuring feasibility. The CRL problem (Obj. (1)) can then be formalized as follows: 
+
+max  
+
+> π∈Π
+
+E
+
+h HX
+
+> t=0
+
+γt
+
+r(st, a t) + βH[π(·| st)] 
+
+
+
+| π, M Li
+
+s.t. E
+
+h HX
+
+> t=0
+
+γt log ϕ(st, a t) | π, M Li
+
+≥ ϵe(ϕ) (4) where ϵe(ϕ) = EDe
+
+h PHt=0 γt log ϕ(set , a et )
+
+i
+
+, and M L de-notes the learning CMDP with transition TL. The Lagrange dual problem is given by: 
+
+g(λ) = max  
+
+> π∈Π
+
+E
+
+h HX
+
+> t=0
+
+γt
+
+r(st, a t) + βH[π(·| st)] 
+
+
+
++
+
+λ log ϕ(st, a t) | π, M Li
+
+− λϵ e(ϕ) (5) where λ ≥ 0 denotes the Lagrange multiplier. Since our objective is to find the safety-robust policy that can respect the constraint across all mismatched CMDPs MT Lα (the subscript c is omitted for brevity), we optimize the policy to ensure constraint satisfaction under the worst-case transition among T Lα as follows: 
+
+max  
+
+> π∈Π
+
+min   
+
+> ¯M∈M TLα
+
+E
+
+h HX
+
+> t=0
+
+γtλ log ϕ(st, a t) | π, ¯M
+
+i
+
++ (6) 
+
+E
+
+h HX
+
+> t=0
+
+γt
+
+r(st, a t) + βH[π(·| st)] 
+
+
+
+| π, M Li
+
+− λϵ e(ϕ)
+
+To solve the problem, inspired by Viano et al. (2021), the minimization over the environmental classes can be inter-preted as the minimization over the opponent policies πop 
+
+that take over the agent and perform the worst actions: 
+
+Proposition 4.1. For the mismatched CMDPs MT Lα with the transitions bounded in the uncertainty set T Lα = {αTL +(1 − α) ¯T, ∀ ¯T ∈ T } , we have 
+
+min   
+
+> ¯M∈M TLα
+
+E
+
+h HX
+
+> t=0
+
+γt log ϕ(st, a t) | π, ¯M
+
+i
+
+(7) 
+
+≤ min  
+
+> πop ∈Π
+
+E
+
+h HX
+
+> t=0
+
+γt log ϕ(st, a t) | απ + (1 − α)πop , M Li
+
+The proof can be found in Appendix B.2. For clarity, we use πpl to represent the original task policy, which con-siders both rewards and costs (safety), and πop to denote the opponent policy that specifically targets safety. Since minimizing the objective can be effectively achieved by minimizing its upper bound, the proposition enables us to formulate the Lagrangian problem into a two-player Markov game as follows: (8) 
+
+min  
+
+> λ
+
+max 
+
+> πpl ∈Π
+
+min 
+
+> πop ∈Π
+
+E
+
+h
+
+λ
+
+> H
+
+X
+
+> t=0
+
+γt log ϕ(st, a t) | απ pl + (1 − α)πop , M Li
+
++
+
+E
+
+h HX
+
+> t=0
+
+γt(r(st, a t) + βH[πpl (·| st)]) | πpl , M Li
+
+− λϵ e(ϕ)
+
+where apl is the action of the player policy πpl and aop is chosen by the opponent policy πop as the adversarial attack. 4Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+4.2. Adaptive Constraint Inference from Mixture Policy 
+
+This section focuses on inferring the underlying constraint c
+
+under the framework of a two-player Markov game. Specif-ically, given the expert demonstration dataset De, we need to infer the underlying constraint that the expert adheres to in the presence of the opponent policy πop .Following previous ICRL works (Scobee & Sastry, 2020; Malik et al., 2021), we update the feasibility function ϕω
+
+(parameterized with ω) by maximizing the likelihood of gen-erating expert demonstrations. Inspired by Gleave & Toyer (2022), we define the discounted likelihood as follows: 
+
+Definition 4.2. For a trajectory τ = ( s0, a 0, s 1, . . . , s H+1 ),its discounted likelihood with policy π and transition T is: 
+
+pπM T (τ ) = μ0(s0)
+
+> H
+
+Y
+
+> t=0
+
+T( st+1 |st, a t)π(at|st)γt
+
+(9) Intuitively, when γ = 1 , the discounted likelihood is equiva-lent to the traditional likelihood of τ under the policy π. For 
+
+γ ≤ 1, the probabilities of performing later actions in the trajectory are regularized towards 1 by raising them to γt.We can then derive the gradient of the log-likelihood of generating expert demonstrations, which accommodates both hard and soft behaviors from the opponent. We’ll start with the scenario involving the hard optimal opponent. 
+
+Assumption 4.3. On a state ˜s, if ˜a = arg max Qc, ∗ 
+
+> MT
+> c
+
+(˜ s, a )
+
+where Qc, ∗ 
+
+> MT
+> c
+
+(s, a ) = Eπc
+
+> max ,T
+
+[PHt=0 γtc(st, a t) | s0 =
+
+s, a 0 = a] and πc 
+
+> max
+
+defines the cost maximization policy, then the expert agent will not select ˜a, i.e., πe(˜ a|˜s) = 0 .Intuitively, we assume the expert preference πe will not over-lap with that of the deterministic cost maximizing policy 
+
+πc
+
+> max
+
+. This assumption is reasonable since cost maximiza-tion action is not safe and thus sub-optimal for the expert agent. Based on this assumption, we can show that: 
+
+Proposition 4.4. (Log-likelihood gradient with hard opti-mal opponent) Let πmix = απ pl +(1 −α)πop define the mix-ture policy. Let EDe
+
+h
+
+log pπmix  
+
+> MT
+> c
+
+(τ )
+
+i
+
+define its likelihood of generating the expert demonstration in the training environ-ment M L with estimated costs function c(·) = − log ϕω (·).Let πop denote a deterministic cost maximization policy, and the player policy πpl follows the soft optimal representation: 
+
+πpl (at|st) = ϕω (st, a t)λ· (10) 
+
+exp 
+
+
+
+γEst+1 [V sof t,pl M T
+
+> c
+
+(st+1 )] + r(st, a t) − V sof t,pl M T
+
+> c
+
+(st)
+
+
+
+where the value function for player policy is defined as: 
+
+V sof t,pl M T
+
+> c
+
+(s) = E
+
+h HX
+
+> t=0
+
+γt[r(st, a t) + λ log ϕω (st, a t)+ 
+
+βH(πpl (·| st))] | s0 = s
+
+i
+
+(11) 
+
+The gradient of our log-likelihood ∇ω EDe
+
+h
+
+log pπmix  
+
+> MT
+> c
+
+(τ )
+
+i
+
+can be represented by: 
+
+(12) 
+
+EDe
+
+h HX
+
+> t=0
+
+γtλ∇ω log ϕω (·)
+
+i
+
+− Eπpl 
+
+h HX
+
+> t=0
+
+γtλ∇ω log ϕω (·)
+
+i
+
+The proof is in Appendix B.3. Note that even though the opponent’s representation is left out in the gradient due to Assumption 4.3, πop implicitly influences the results because of mixture sampling ( πmix = απ pl +(1 −α)πop ). Under this setting, the opponent policy πop serves as a worst-case safety attacker, aiming to maximize cumulative costs. Conversely, the player policy πpl incorporates causal entropy into its decision-making process, leading to the adoption of a softmax representation (Ziebart et al., 2010), which aligns well with our forward problem (Obj. (8)). In our implementation, we mainly follow this setting in a discrete environment where examining the value of each action is computationally tractable (see Appendix A.1). Additionally, in Equation (10), ϕ(st, a t) ∈ [0 , 1] determines whether performing action at under the state st is feasible, and λ effectively controls its strength of behavior regular-ization (larger λ indicates stronger constraint). Notably, we have πpl (at|st) = 0 when ϕ(·) = 0 , which is consistent with the enforcement of hard constraints. To drive comprehensive results, we derive an additional objective to update ϕω when the opponent policy πop is also soft-optimal. This approach is independent of Assump-tion 4.3, broadening the applicability of our methods. 
+
+Proposition 4.5. (Log-likelihood gradient with soft optimal opponent) Let πmix = απ pl +(1 −α)πop define the mixture policy. Let the player policy πpl follow the soft optimal representation (Equation (10)), and the opponent policy πop 
+
+follow the soft optimal representation as follows: 
+
+πop (at|st) = (13) 
+
+exp 
+
+
+
+γEst+1 [V sof t,op M T
+
+> c
+
+(st+1 )] − log ϕω,t − V sof t,op M T
+
+> c
+
+(st)
+
+
+
+V sof t,op M T
+
+> c
+
+(s) = E
+
+" HX
+
+> t=0
+
+γt[− log ϕω,t +βH(πop (·| st))] | s0 = s
+
+#
+
+where for brevity, we denote ϕω,t = ϕω (st, a t). We can derive a lower bound for EDe [log pπmix  
+
+> MT
+> c
+
+(τ )] :
+
+EDe
+
+h
+
+log pπmix   
+
+> MT
+> c
+
+(τ )
+
+i
+
+≥ L (De, M T 
+
+> c
+
+, α ) = (14) 
+
+EDe
+
+" HX
+
+> t=0
+
+γtα
+
+
+
+Qsof t,pl M T
+
+> c
+
+(st, a t) − V sof t,pl M T
+
+> c
+
+(st)
+
+#
+
++
+
+EDe
+
+" HX
+
+> t=0
+
+γt(1 − α)
+
+
+
+Qsof t,op M T
+
+> c
+
+(st, a t) + V sof t,op M T
+
+> c
+
+(st)
+
+#
+
++ C
+
+5Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+where C indicates a constant. The gradient of our log-likelihood ∇ω L(De, M T 
+
+> c
+
+, α ) can be represented by: 
+
+EDe [
+
+> H
+
+X
+
+> t=0
+
+γt(αλ + α − 1) ∇ω log ϕω,t ]− (15) 
+
+αλ Eπpl [
+
+> H
+
+X
+
+> t=0
+
+γt∇ω log ϕω,t ]+(1 −α)Eπop [
+
+> H
+
+X
+
+> t=0
+
+γt∇ω log ϕω,t ]
+
+The proof is shown in Appendix B.4. When α = 1 , it sim-plifies to the traditional ICRL objective. In this framework, we can update ϕω (·) by maximizing the lower bound of log-likelihood EDe [log pπmix  
+
+> MT
+> c
+
+(τ )] . In our implementation, we follow this setting in the continuous state-action space (Ap-pendix A.2) where softmax policy representation performs better than hardmax ones (Haarnoja et al., 2018). 
+
+4.3. Extract Robust Constraint Robust Constraint Distillation. In the proposed AR-ICRL algorithm, we infer a robust policy by alternatively updat-ing the policy models ( πpl and πop (see Section 4.1) and the permitsibility function ϕω (representing constraint, see Section 4.2) until the mixture policy πmix can reproduce expert demonstration (Line 8 in Algorithm 1). After this process, the player’s policy πpl is a robust policy that fol-lows expert movements under the influence of adversarial attack from πop . However, our goal is to infer a constraint that enables safe control without modeling the opponent, to achieve it, we consider distilling the robustness from policy to constraint. Specifically, we use πpl as the expert policy and run regular ICRL algorithms to recover the robust cost function c∀ = − log ϕ∀ in the learning environment M L.To accelerate learning, we can initialize ϕ∀ with the esti-mated ϕω , and adapt the scale of constraints (represented by ϕ∀) until a regular imitating policy ˆπ can reproduce the robust behaviors πpl .
+
+Proposition 4.6. (Constraint Robustness) Let πme  
+
+> ˜c
+
+define the optimal policy under the learning CMDP M TL 
+
+> ˜c
+
+with the cost function ˜c inferred by MEICRL. Let πro  
+
+> ˆc
+
+define the optimal policy under M TL 
+
+> ˆc
+
+under the robust cost function 
+
+ˆc inferred by Algorithm 1. Let V c,π M T′
+
+> c∗
+
+(s) define the value function of the true cost under the CMDP M T′ 
+
+> c∗
+
+and policy 
+
+π. Assume that ˜c = c∗, and Eμ0 [V c,π e 
+
+> MTec∗
+
+(s)] = ϵ. The following inequality must hold: (a) ∃T′ ∈ { T : max s,a |T − TL| ≤ 2(1 − α)} such that 
+
+Eμ0 [V c,π me  
+
+> ˜c
+> MT′
+> c∗
+
+(s)] ≥ ϵ.(b) ∀T′ ∈ { T : max s,a |T − TL| ≤ 2(1 − α)} such that 
+
+Eμ0 [V c,π ro  
+
+> ˆc
+> MT′
+> c∗
+
+(s)] ≤ ϵ.
+
+The proof is in Appendix B.5. This demonstrates that the standard MEICRL algorithm faces challenges in deducing the robust constraint when confronted with perturbed en-vironments. In contrast, the proposed algorithm is able to ensure the constraint robustness in the face of such environ-mental mismatches. Leveraging the aforementioned ideas for robust constraint inference, Algorithm 1 shows the procedure of AR-ICRL. 
+
+Algorithm 1 Adaptively Robust Inverse Constrained Rein-forcement Learning (AR-ICRL)  
+
+> 1:
+
+Input: Expert trajectories De, opponent strength 1 − α,learning environment M L and stopping criteria ξ. 
+
+> 2:
+
+Initialize player and opponent policies ( πpl and πop ).  
+
+> 3:
+
+Set ∀(s, a ), ϕ ω (s, a ) = 1 (e.g., cω (·) = 0 ).  
+
+> 4:
+
+repeat  
+
+> 5:
+
+Update πpl and πop with objective (8).  
+
+> 6:
+
+Collect nominal trajectories ˆD by rollout with 
+
+πmix = απ pl + (1 − α)πop in the M L. 
+
+> 7:
+
+Update cω by ascending the gradient (12) or (15).  
+
+> 8:
+
+until |ρ ˆD − ρDe | ≤ ξ (ρ is the occupancy measure).  
+
+> 9:
+
+Set πpl as the expert policy, and extract the robust cost 
+
+c∀ in M L with classical ICRL algorithms.  
+
+> 10:
+
+Output: Robust policy πpl , robust constraint c∀.
+
+## 5. Empirical Evaluation 
+
+In this section, we empirically evaluate the efficacy of the proposed AR-ICRL algorithm in both discrete and continu-ous environments under transition dynamics mismatch. Fur-thermore, we furnish a series of visualization outcomes to offer a more in-depth insight into AR-ICRL’s effectiveness. 
+
+Experimental Settings. Our experiment results are mainly based on a public ICRL benchmark (Liu et al., 2023). How-ever, in contrast to previous ICRL works that use the same environment for training and testing, our study evaluates our model in testing environments where their dynamics differ from those used for training. This discrepancy allows us the study whether the robust constraint can facilitate safe control. Throughout our experiment, we mainly use the following metrics: 1) Constraint Violation Rate measures the probability that a policy violates the constraint in a tra-jectory, which is the top concern in this work. 2) Episode Costs accumulates the total costs in the whole episode. 3) 
+
+Feasible Rewards calculates the total rewards obtained by the agent before violating any constraints. 
+
+Comparison Methods. We utilize the following base-lines besides the proposed AR-ICRL: 1) Maximum Entropy Inverse Constrained Reinforcement Learning 
+
+(MEICRL ) (Malik et al., 2021) follows the maximum en-tropy (Ziebart et al., 2008) framework with PPO-Lagrange method for constrained policy optimization. 2) Binary Clas-sifier Constraint Learning (BC2L) simply utilizes a binary classifier as the constraint model. 3) Variational ICRL (VI-CRL) (Liu et al., 2023) captures the epistemic uncertainty 6Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+in constraint inference using a Beta distribution. 4) In-verse Reachable Constrained Optimization (IRCO ) extends the Reachable Constrained Optimization (RCO) (Yu et al., 2022) with the maximum entropy inverse constraint infer-ence, which utilizes reachability analysis and feasible sets for constrained policy optimization. 
+
+5.1. Model Performance in Discrete Environments 
+
+In this experiment, we develop three distinct Gridworld en-vironments, each characterized by unique constraints. As depicted in the top row of Figure 2, the primary task for the agent in these environments is to navigate from an initial lo-cation (red) to a designated target (blue), while avoiding the unobservable constraints (black). Given the expert demon-stration, we train the agents under the transition dynamics 
+
+without disturbances and evaluate these agents under up-ward winds (disturbances) . Specifically, the scale of t wind is controlled by a predetermined probability (denoted as pw). A stronger wind (with larger pw) exerts an upward force on the agent’s selected action with a higher probability. Based on this discrete environment, we compare our method ex-clusively with the well-known MEICRL method to examine the significance of robustness in ICRL.  
+
+> Figure 2. Three Gridworld settings and the testing performance of different methods under different levels of upwind.
+
+Figure 2 shows the constraint violation rate in three stochas-tic windy Gridwords with different levels of wind strength 
+
+pw during testing. The corresponding reward curve is shown in Figure 6 in Appendix D.1. The results show that as the wind strength pw increases, all the methods exhibit a greater probability of violating constraints across the environments. However, by incorporating the safety attacks into the train-ing process, AR-ICRL shows a notably lower incidence of constraint violations compared to MEICRL. It also benefits the accumulation of higher feasible rewards by achieving the goal while avoiding the constraint. Moreover, larger oppo-nent strength (lower α) can enhance the policy’s safety under the mismatch between training and testing environments. This indicates the significance of modeling the adversarial attacks from the introduced opponent. 
+
+5.2. Model Performance in Continuous Environments 
+
+Based on the ICRL benchmark (Liu et al., 2023), we conduct experiments on three continuous robot control tasks with predefined constraints, including Blocked Half-Cheetah, Blocked Ant, and Crippled Walker. For Blocked Half-Cheetah and Blocked Ant tasks, we implement a constraint that confines the X-coordinate position of the agents to ≥ 3,and for the Crippled Walker task, we impose a constraint on the thigh angle θ of the agent, limiting it to |θ| ≤ 0.6.Each experiment is repeated with four random seeds, over which the mean ± standard deviation (std) results are re-ported. Additionally, for fairness and simplicity, we keep 
+
+α = 0 .95 in the AR-ICRL across the environments. Please check Appendix C.1 for more environmental details. To assess the model’s performance under misspecified en-vironments, we train the agents in a noise-free environ-ment. Subsequently, we test their performance by in-troducing three different types of noises to simulate the discrepancies that might be encountered in practice: 1) 
+
+Fully random noise : We integrate the Gaussian noise into the transition function, formulated as pT (st+1 |st, a t) = 
+
+T (st, a t) + N (μ, σ ). This method introduces randomness across the entire spectrum of state transitions, introducing variability in the agents’ responses. 2) Partially random noise : This type of noise differs from the fully random vari-ant by being more targeted. Instead of affecting the entire agent, it is applied only to the specific constrained feature in the state space (e.g., the position of the Blocked Half-cheetah). 3) Attack noise: This type of noise encourages the agent to violate safety constraints (e.g., the noise in the Blocked Half-Cheetah environment is applied to push the agents backward). For each type of noise, we define three scales - large, medium, and small - to represent vary-ing degrees of mismatch between the training and testing environments. Note that the fully random noise remains consistent across the environments whereas partially ran-dom noise and attack noise are customized for each specific task (refer to Appendix C.2). Under such designs, we evalu-ate the model’s adaptability and robustness under different scales of environmental discrepancy. Table 1 shows the evaluation results with large-scale noises. Check Table 3, Table 4, and Table 5 in Appendix D.2 for the results without noise, and with medium and small scales of noises. The bolding value means the best result (the high-est reward, lowest cost, and lowest violation rate) in each setting. We can find that almost all the methods encounter challenges in maintaining consistent safety when tested in a disparate environment, which highlights the significance of considering the potential mismatch during the training process. Moreover, larger randomness tends to result in a more pronounced decrease in model performance. How-7Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+Table 1. Evaluation results in three environments with large-scale random noises. Each value is reported as the mean ± standard deviation for 50 episodes and 4 seeds.                                                                                                                                         
+
+> Env Method Large Scale Fully Random Noise Large Scale Partially Random Noise Large Scale Attack Noise Feasible Reward Episode Cost Constraint Violation Rate Feasible Reward Episode Cost Constraint Violation Rate Feasible Reward Episode Cost Constraint Violation Rate Blocked Half-Cheetah MEICRL 464.3±140.1 144.0±89.2 40%±18% 2431.2±2032.8 11.3±25.2 48%±12% 1223.6±1137.0 308.2±216.8 76%±23% BC2L 591.8±117.6 261.1±83.8 60%±6% 708.6±812.0 95.2±193.0 65%±10% 22.5±7.5 973.1±12.7 100%±0% VICRL 426.0±236.1 266.4±163.7 52%±25% 1668.4±1583.5 37.9±105.5 50%±8% 803.9±712.1 411.6±211.2 80%±13% IRCO 540.4±56.9 133.2±49.4 43%±13% 2682.3±2185.1 8.4±21.4 43%±8% 1476.2±428.5 78.8±16.2 72%±13% AR-ICRL 727.8±87.3 90.6±10.1 31%±10% 2968.9±1842.7 10.1±27.6 34%±2% 1691.0±398.4 47.6±16.2 63%±8%
+> Blocked Ant MEICRL 1950.1±551.8 130.7±13.7 59%±5% 3472.8±399.0 96.5±26.6 70%±5% 1420.2±1223.1 154.0±103.4 56%±30% BC2L 1418.9±227.6 114.9±22.2 58%±9% 6218.7±1089.1 88.7±45.1 65%±8% 5487.8±2880.4 146.1±123.5 55%±42% VICRL 1388.3±82.4 130.5±15.8 68%±4% 5650.6±2227.9 91.1±57.6 69%±12% 5698.3±4870.1 191.3±169.5 54%±45% IRCO 1702.0±288.4 118.1±41.1 60%±10% 3508.4±546.5 91.8±38.1 67%±7% 1780.5±1123.9 178.6±110.9 58%±20% AR-ICRL 2326.2±56.8 109.3±26.6 53%±4% 4382.9±366.3 75.4±17.6 59%±6% 2498.1±1075.7 113.8±98.0 44%±16%
+> Crippled Walker MEICRL 45.6±8.8 4.45±2.86 38%±18% 223.0±69.7 11.5±8.1 74%±24% 93.1±34.7 16.7±11.0 75%±39% BC2L 46.6±6.6 4.73±1.77 39%±17% 211.4±107.7 11.8±6.1 77%±17% 36.5±16.0 14.8±9.7 71%±39% VICRL 50.8±5.9 3.54±1.54 40%±8% 259.8±39.7 9.4±4.1 74%±5% 24.7±9.0 42.4±47.7 74%±22% IRCO 44.2±2.5 3.43±2.67 34%±16% 171.1±21.8 11.4±9.2 69%±24% 63.4±85.2 30.5±20.1 68%±14% AR-ICRL 52.4±11.3 3.79±1.10 31%±9% 272.6±65.1 6.8±2.3 65%±12% 143.6±19.2 10.8±8.9 53%±37%
+
+ever, compared to other methods, AR-ICRL consistently exhibits fewer constraint violations across the environments regardless of the extent of the noise scales and types. This underscores the safety robustness of AR-ICRL and the ef-fectiveness of utilizing the robust constraint for addressing the transition dynamics mismatch. Interestingly, we find BC2L and VICRL demonstrate relatively higher rewards in the Blocked Ant environment. This is due to their unique approach to predicting step-wise costs, which differs from the primarily MEICRL-based mechanisms employed by the other two methods. Nevertheless, despite their ability to attain higher rewards, it is essential to note that they can not guarantee safety, which is our primary concern. 
+
+5.3. Results Visualization 
+
+To better understand the effectiveness of AR-ICRL, we visualize the learned constraints and trajectories. 
+
+Figure 3. The trajectories generated by MEICRL and AR-ICRL in three Gridworld settings under the UpWind pw = 0 .1.
+
+Trajectories in Gridworlds. We visualize the trajectories generated by MEICRL and AR-ICRL in three windy Grid-worlds in Figure 3. Check Figure 7 in Appendix D.1 for trajectories without wind. We can find that by training with the safety opponent, AR-ICRL tends to consistently maintain a larger distance from the constrained locations. This strategy effectively reduces the likelihood of violating constraints when deployed to a perturbed environment. 
+
+Robust Constraint Visualization. Figure 4 illustrates the robust constraints in three Gridworlds recovered by AR-ICRL. We can find that compared to the original constraints (Figure 2), the recovered constraints offer greater robustness against underlying perturbations. 
+
+Figure 4. The robust constraints recovered by AR-ICRL under three Gridworld environments. 
+
+In terms of the continuous environments, we visualize the constraints inferred by MEICRL and AR-ICRL by sampling from the state-action spaces. Figure 5 shows the results in the Blocked Ant environment, where red curves are gener-ated by synthetic sampling data and blue points denote the agent’s recorded position with the corresponding predicted cost during testing. We find that the constraint recovered by AR-ICRL is generally more conservative than MEICRL, leading to safer policy strategies. 
+
+## 6. Limitation 
+
+Requirement for environment interaction . AR-ICRL oper-ates in an online learning framework, where direct interac-tion with the environment is necessary for policy improve-ment and constraint inference. This approach may not be feasible in situations where interactions are costly or haz-ardous. Extending our model to offline settings could offer a safer and more practical alternative. 8Robust Inverse Constrained Reinforcement Learning under Model Misspecification Cost   
+
+> Cost
+> x_p osit ion x_position
+> Figure 5. The recovered constraint in the Blocked Ant environ-ment by MEICRL and AR-ICRL. Check Figure 8, 9, and 10 in Appendix D.2 for complete results.
+
+Assumption of the uncertainty set . Our approach assumes that the discrepancy between training and deployment envi-ronments is bounded. This assumption may not always hold in real-world scenarios where environmental dynamics can be highly unpredictable and not easily represented within a predefined uncertainty set. 
+
+## 7. Conclusion 
+
+In this study, we highlight the critical importance of Inverse Constrained Reinforcement Learning (ICRL) algorithms in acknowledging and addressing the potential discrepan-cies between training and deployment environments. We introduce the Adaptively Robust Inverse Constrained Re-inforcement Learning (AR-ICRL) approach as a pioneer-ing solution to the Robust Constraint Inference problem, facilitating safe control. By alternatively solving the safety-robust policy optimization and adaptive constraint inference problem, AR-ICRL effectively learns a robust policy that adheres to inferred constraints and further deduces a ro-bust constraint. Future efforts will focus on enhancing the algorithm’s generalization capabilities, computational effi-ciency, and adaptability to real-world applications, aiming for broader applicability and improved safety. 
+
+## Acknowledgements 
+
+This work is supported in part by the Shenzhen Funda-mental Research Program (General Program) under grant JCYJ20230807114202005, Guangdong-Shenzhen Joint Re-search Fund under grant 2023A1515110617, GuangDong Basic and Applied Basic Research Foundation under grant 2024A1515012103, National Key R&D Program of China under grant No.2022ZD0116004, Shenzhen Science and Technology Program ZDSYS20211021111415025, and Guangdong Provincial Key Laboratory of Mathematical Foundations for Artificial Intelligence (2023B1212010001). 
+
+## Impact Statement 
+
+This paper presents work whose goal is to advance the field of Machine Learning. There are many potential societal consequences of our work, none of which we feel must be specifically highlighted here. 
+
+## References 
+
+Agarwal, A., Jiang, N., Kakade, S. M., and Sun, W. Rein-forcement learning: Theory and algorithms. CS Dept., UW Seattle, Seattle, WA, USA, Tech. Rep , 32, 2019. Baert, M., Mazzaglia, P., Leroux, S., and Simoens, P. Max-imum causal entropy inverse constrained reinforcement learning. arXiv preprint arXiv:2305.02857 , 2023. Brunke, L., Greeff, M., Hall, A. W., Yuan, Z., Zhou, S., Panerati, J., and Schoellig, A. P. Safe learning in robotics: From learning-based control to safe reinforce-ment learning. Annual Review of Control, Robotics, and Autonomous Systems , 5:411–444, 2022. Gangwani, T. and Peng, J. State-only imitation with transi-tion dynamics mismatch. In International Conference on Learning Representations (ICLR) , 2020. Garc ´ıa, J. and Fern ´andez, F. A comprehensive survey on safe reinforcement learning. Jounral of Machine Learning Research , 16:1437–1480, 2015. Gaurav, A., Rezaee, K., Liu, G., and Poupart, P. Learning soft constraints from constrained expert demonstrations. In International Conference on Learning Representations (ICLR) , 2023. Gleave, A. and Toyer, S. A primer on maximum causal entropy inverse reinforcement learning. arXiv preprint arXiv:2203.11409 , 2022. Grau-Moya, J., Leibfried, F., Genewein, T., and Braun, D. A. Planning with information-processing constraints and model uncertainty in markov decision processes. In 
+
+European Conference on Machine Learning and Princi-ples and Practice of Knowledge Discovery in Databases (ECML-PKDD) , pp. 475–491, 2016. Haarnoja, T., Tang, H., Abbeel, P., and Levine, S. Rein-forcement learning with deep energy-based policies. In 
+
+International Conference on Machine Learning (ICML) ,pp. 1352–1361, 2017. Haarnoja, T., Zhou, A., Abbeel, P., and Levine, S. Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor. In International Con-ference on Machine Learning (ICML) , pp. 1856–1865, 2018. Iyengar, G. N. Robust dynamic programming. Mathematics of Operations Research , 30:257–280, 2005. 9Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+Li, Z., Hu, C., Wang, Y., Yang, Y., and Li, S. E. Safe rein-forcement learning with dual robustness. arXiv preprint arXiv:2309.06835 , 2023. Liu, G., Luo, Y., Gaurav, A., Rezaee, K., and Poupart, P. Benchmarking constraint inference in inverse reinforce-ment learning. In International Conference on Learning Representations (ICLR) , 2023. Liu, S. and Zhu, M. Distributed inverse constrained rein-forcement learning for multi-agent systems. In Neural Information Processing Systems (NeurIPS) , pp. 33444– 33456, 2022. Liu, S. and Zhu, M. Learning multi-agent behaviors from distributed and streaming demonstrations. In Neural In-formation Processing Systems (NeurIPS) , 2023. Liu, S. and Zhu, M. Meta inverse constrained reinforce-ment learning: Convergence guarantee and generaliza-tion analysis. In International Conference on Learning Representations (ICLR) , 2024. Liu, Y., Halev, A., and Liu, X. Policy learning with con-straints in model-free reinforcement learning: A survey. In International Joint Conference on Artificial Intelli-gence (IJCAI) , pp. 4508–4515, 2021. Malik, S., Anwar, U., Aghasi, A., and Ahmed, A. Inverse constrained reinforcement learning. In International Con-ference on Machine Learning (ICML) , pp. 7390–7399, 2021. Mankowitz, D. J., Calian, D. A., Jeong, R., Paduraru, C., Heess, N., Dathathri, S., Riedmiller, M., and Mann, T. Robust constrained reinforcement learning for continu-ous control with model misspecification. arXiv preprint arXiv:2010.10644 , 2020a. Mankowitz, D. J., Levine, N., Jeong, R., Abdolmaleki, A., Springenberg, J. T., Shi, Y., Kay, J., Hester, T., Mann, T. A., and Riedmiller, M. A. Robust reinforcement learn-ing for continuous control with model misspecification. In International Conference on Learning Representations (ICLR) , 2020b. McPherson, D. L., Stocking, K. C., and Sastry, S. S. Max-imum likelihood constraint inference from stochastic demonstrations. In IEEE Conference on Control Technol-ogy and Applications (CCTA) , pp. 1208–1213, 2021. Meng, J., Zhu, F., Ge, Y., and Zhao, P. Integrating safety constraints into adversarial training for robust deep rein-forcement learning. Information Sciences , 619:310–323, 2023. Moos, J., Hansel, K., Abdulsamad, H., Stark, S., Clever, D., and Peters, J. Robust reinforcement learning: A review of foundations and recent advances. Machine Learning and Knowledge Extraction , pp. 276–315, 2022. Morimoto, J. and Doya, K. Robust reinforcement learning. 
+
+Neural Computation , 17(2):335–359, 2005. Narasimhan, H., Cotter, A., Zhou, Y., Wang, S., and Guo, W. Approximate heavily-constrained learning with lagrange multiplier models. In Neural Information Processing Systems (NeurIPS) , pp. 8693–8703, 2020. Papadimitriou, D., Anwar, U., and Brown, D. S. Bayesian methods for constraint inference in reinforcement learn-ing. Transactions on Machine Learning Research , 2023. Perolat, J., Scherrer, B., Piot, B., and Pietquin, O. Approx-imate dynamic programming for two-player zero-sum markov games. In International Conference on Machine Learning (ICML) , pp. 1321–1329, 2015. Qiao, G., Liu, G., Poupart, P., and zhiqiang xu. Multi-modal inverse constrained reinforcement learning from a mix-ture of demonstrations. In Neural Information Processing Systems (NeurIPS) , 2023. Roy, A., Xu, H., and Pokutta, S. Reinforcement learning under model mismatch. In Neural Information Processing Systems (NeurIPS) , pp. 3043–3052, 2017. Russel, R. H., Benosman, M., and Van Baar, J. Ro-bust constrained-mdps: Soft-constrained robust policy optimization under model uncertainty. arXiv preprint arXiv:2010.04870 , 2020. Schulman, J., Moritz, P., Levine, S., Jordan, M. I., and Abbeel, P. High-dimensional continuous control using generalized advantage estimation. In International Con-ference on Learning Representations (ICLR) , 2016. Schulman, J., Wolski, F., Dhariwal, P., Radford, A., and Klimov, O. Proximal policy optimization algorithms. 
+
+arXiv preprint arXiv:1707.06347 , 2017. Scobee, D. R. R. and Sastry, S. S. Maximum likelihood constraint inference for inverse reinforcement learning. In International Conference on Learning Representations, (ICLR) , 2020. Skalse, J. and Abate, A. Misspecification in inverse rein-forcement learning. In AAAI Conference on Artificial Intelligence , pp. 15136–15143, 2023. Tessler, C., Mankowitz, D. J., and Mannor, S. Reward con-strained policy optimization. In International Conference on Learning Representations (ICLR) , 2019. Viano, L., Huang, Y., Kamalaruban, P., Weller, A., and Cevher, V. Robust inverse reinforcement learning under transition dynamics mismatch. In Neural Information Processing Systems (NeurIPS) , pp. 25917–25931, 2021. 10 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+Viano, L., Huang, Y., Kamalaruban, P., Innes, C., Ra-mamoorthy, S., and Weller, A. Robust learning from observation with model misspecification. In International Conference on Autonomous Agents and Multiagent Sys-tems , pp. 1337–1345, 2022. Wang, Y. and Zou, S. Online robust reinforcement learning with model uncertainty. In Neural Information Processing Systems (NeurIPS) , pp. 7193–7206, 2021. Wang, Y., Miao, F., and Zou, S. Robust constrained rein-forcement learning. arXiv preprint arXiv:2209.06866 ,2022. Xu, S. and Liu, G. Uncertainty-aware constraint inference in inverse constrained reinforcement learning. In Interna-tional Conference on Learning Representations (ICLR) ,2024. Yu, D., Ma, H., Li, S., and Chen, J. Reachability constrained reinforcement learning. In International Conference on Machine Learning (ICML) , pp. 25636–25655, 2022. Zhang, J., Zheng, Y., Zhang, C., Zhao, L., Song, L., Zhou, Y., and Bian, J. Robust situational reinforcement learning in face of context disturbances. In International Confer-ence on Machine Learning (ICML) , pp. 41973–41989, 2023. Ziebart, B. D., Maas, A. L., Bagnell, J. A., and Dey, A. K. Maximum entropy inverse reinforcement learning. In 
+
+AAAI Conference on Artificial Intelligence , pp. 1433– 1438, 2008. Ziebart, B. D., Bagnell, J. A., and Dey, A. K. Modeling in-teraction via the principle of maximum causal entropy. In 
+
+International Conference on Machine Learning (ICML) ,pp. 1255–1262, 2010. 11 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+## A. Practical Implementation 
+
+In this section, we introduce the practical implementation of our AR-ICRL algorithm. 
+
+A.1. Solving Markov Game in Discrete Environment 
+
+In the forward pass of our AR-ICRL algorithm (Section 4.1), optimizing the objective (8) involves updating the player and opponent policies together. This process can be viewed as solving a two-player Markov game in a CMDP. To solve this game in the discrete environment, by following Viano et al. (2021), we model the impact of movements from both players based on the joint cost Q function: 
+
+Qtwo  
+
+> c
+
+(s, a pl , a op ) = Eπpl ,π op ,Ttwo ,α 
+
+h
+
+−
+
+> H
+
+X
+
+> t=0
+
+γt log ϕω,α (·) | s0 = s, a pl  
+
+> 0
+
+= apl , a op  
+
+> 0
+
+= aop i
+
+(16) where 1) ϕω,α (st, a pl t , a op t ) = αϕ ω (st, a pl t ) + (1 − α)ϕω (st, a op t ) is the cost at time step t (we use ϕω,α,t (·) for shorthand), 2) apl and aop are the actions of the player and opponent, and 3) Ttwo ,α  s′ | s, a pl , a op  = αT  s′ | s, a pl  + (1 −
+
+α)T ( s′ | s, a op ) denotes the transition dynamics of two players. We further define the worst-case Q function as: 
+
+Qpl c (s, a pl , a op ) = max  
+
+> πop
+
+Qtwo  
+
+> c
+
+(s, a pl , a op ) (17) Note that Qpl c indicates the ability of the player πpl to minimize the cost (ensure safety) under the worst-case safety attacker in the long term starting from (s, a pl , a op ), which can be estimated by the following Bellman equation (Perolat et al., 2015): 
+
+Qpl c (st, a pl t , a op t ) = X
+
+> st+1
+
+Ttwo ,α (st+1 | st, a pl t , a op t ) ·
+
+h
+
+− log ϕω,α,t (·) + γV pl c (st+1 )
+
+i
+
+(18) where V pl c (st) = P
+
+> apl t
+
+πpl (apl t |st) max aop t Qpl c (st, a pl t , a op t ).To better capture the player policy πpl that is robust under attacks, we define the following robust sets (Li et al., 2023): 
+
+Definition A.1. (Robust state set) The robust state set for the player policy πpl under the worst-case safety attacks is defined as: 
+
+Sπpl  
+
+> ∀
+
+=
+
+n
+
+s ∈ S | min 
+
+> apl
+
+max  
+
+> aop
+
+Qpl c (s, a pl , a op ) ≤ ϵ
+
+o
+
+(19) Note that for s ∈ Sπpl  
+
+> ∀
+
+, the player policy πpl can be safe in states regardless of any opponent’s attacks. For s / ∈ Sπpl  
+
+> ∀
+
+, there exists some corresponding opponent policy πop that will drive the agent to violate the constraint. 
+
+Definition A.2. (Robust action set) The robust action set Aπpl  
+
+> ∀
+
+for the player policy πpl specified by the robust state set 
+
+Sπpl  
+
+> ∀
+
+is defined as: 
+
+Aπpl  
+
+> ∀
+
+=
+
+n
+
+apl | ∀ s ∈ Sπpl  
+
+> ∀
+
+, max  
+
+> aop
+
+Qpl c (s, a pl , a op ) ≤ ϵ
+
+o
+
+(20) 
+
+Proposition A.3. Given a state s ∈ Sπpl  
+
+> ∀
+
+, if the player always adopts the action in the robust action set (i.e., apl ∈ A πpl  
+
+> ∀
+
+), the system will consistently stay in Sπpl  
+
+> ∀
+
+no matter what opponent policy πop is adopted. 
+
+The proof is shown in Appendix B.6. Based on this proposition, we divide s ∈ S into two sets: 1) if s ∈ Sπpl  
+
+> ∀
+
+, we optimize the player πpl to maximize rewards within the robust action set Aπpl  
+
+> ∀
+
+:
+
+πpl (apl |s) = 
+
+1apl ∈A πpl 
+
+> ∀
+
+exp Qpl r (s, a pl )
+
+P 
+
+> a′
+
+exp Qpl r (s, a ′) (21) where the reward Q function is defined by: 
+
+Qpl r (s, a pl ) = Eπpl ,T
+
+h HX
+
+> t=0
+
+γtr(st, a t) + βH[πpl (·| st)] |s0 = s, a 0 = apl i
+
+(22) 12 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+which can be updated by the soft Bellman equation: 
+
+Qpl r (st, a pl t ) = X
+
+> st+1 ,r t
+
+T( st+1 | st, a pl t )
+
+h
+
+rt + γV pl r (st+1 )
+
+i
+
+(23) where V pl r (st) = P
+
+> apl t
+
+πpl (apl t |st)
+
+h
+
+Qpl r (st, a pl t ) + βH[πpl (·| st)] 
+
+i
+
+.2) if s / ∈ Sπpl  
+
+> ∀
+
+, which means that the constraint will be violated sooner or later under the worst-case safety opponent, the player should be updated to execute the safest action to drive the agent back to Sπpl  
+
+> ∀
+
+as soon as possible (minimize costs). Since we do not have a robust set from the beginning, following Li et al. (2023), we train a safety robust player policy πpl c
+
+in advance by using the cost Q function and then fix it, which aims to minimize the cost values. On the other hand, the target policy πpl is designed to maximize rewards within the robust state set Sπpl c 
+
+> ∀
+
+determined by the fixed safety policy πpl c ,and strive for the minimize cost value if outside of the set. Under such designs, our algorithm can solve the constrained optimization problem without the Lagrange multiplier, which can better ensure safety without violations. The procedure of the proposed safety-robust policy iteration algorithm is shown in Algorithm 2. 
+
+Algorithm 2 Safety-Robust Policy Iteration 
+
+Input: Target player πpl , safety player πpl c and opponent πop c , reward Q-function Qpl r (s, a ), cost Q-function Qpl c (s, a, o ),cost function cω , opponent strength 1 − α.
+
+while not converged do while not converged do 
+
+Solve the cost Q function by Equation (18). 
+
+for s ∈ S do 
+
+πpl c (a|s) = arg min a{max o Qpl c (s, a, o )}.
+
+πop c (o|s) = arg max o{min a Qpl c (s, a, o )}.
+
+end for end while 
+
+Solve the reward Q function by Equation (23). 
+
+for s ∈ Sπpl c 
+
+> ∀
+
+do 
+
+πpl (apl |s) =      
+
+> 1apl ∈A πpl
+> ∀
+> exp Qpl r(s,a pl )
+> P
+> a′exp Qpl r(s,a ′)
+
+end for for s / ∈ Sπpl c 
+
+> ∀
+
+do 
+
+πpl (s) = πpl c (s).
+
+end for end while A.2. Two Players’ Game in Continuous Environment 
+
+In this section, we solve the above Markov Game to the continuous state-action space under a CMDP. Instead of applying the value-based policy representation (e.g., arg max Q-function), we parameters both player’s and opponent’s policies (e.g., construct πpl θ and πop ψ ). We further define the joint value function for costs as Vc(s) = Eπpl θ ,π op ψ
+
+[Qc(s, a pl , a op )] and similarity for the joint value function for rewards Vr .During learning, given a state st, the agent executes the mixture policy πmix θ,ψ (a|s) = απ pl θ (a|s) + (1 − α)πop ψ (a|s), , transits to the next state st+1 , and received the reward rt and the cost ct accordingly. Based on these observations, we extend Proximal Policy Optimization (PPO) (Schulman et al., 2017) to optimize both the player policy πpl θ and the opponent policy 
+
+πop ψ with the following objectives: 
+
+min  
+
+> ζ
+
+max  
+
+> θ
+
+Eπmix θ,ψ ,T,μ 0
+
+Lclip r (s, a ) − λζ (s)Lclip c (s, a ) (24) 
+
+max  
+
+> ψ
+
+Eπmix θ,ψ ,T,μ 0 [Lclip c (s, a )] (25) 13 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+where 1) λζ (s) ≥ 0 denotes the Lagrange multiplier network parameterized with ζ (Narasimhan et al., 2020), and 2) 
+
+Lclip r (s, a ) = min 
+
+h πmix θ,θ ′ (a|s)  
+
+> πmix old (a|s)
+
+Ar (s, a ), clip( πmix θ,θ ′ (a|s)  
+
+> πmix old (a|s)
+
+, 1 − ω, 1 + ω)Ar (s, a )
+
+i
+
+, where the reward advantage is computed with an entropy term (Baert et al., 2023). Its cost counterpart Lclip c (s, a ) is based on cost advantages Ac computed with the Generative Advantage Estimation (GAE) (Schulman et al., 2016). Under this formulation, intuitively, if s / ∈ Sπpl  
+
+> ∀
+
+(i.e., the robust policy set), the safety can not be ensured, and we have its cost advantage Ac(s, a ) > 0. Therefore, the Lagrange multiplier λζ (s) will be significantly amplified until the cost penalty (i.e., λζ (s)Lclip c ) dominates objective and forces the agent to adopt the safest action and move back to the robust state set. Practically, we set an upper bound λmax to avoid hazardous situations. The proposed Safety-Robust Proximal Policy Optimization algorithm is summarized in Algorithm 3. We also implement a conventional PPO-Lagrangian-based (check Algorithm 1 in (Liu et al., 2023)) version of the proposed robust policy optimization, where the Lagrange multiplier 
+
+λ is updated by dual ascent instead of objective (24). 
+
+Algorithm 3 Safety-Robust Proximal Policy Optimization 
+
+Input: Player policy πpl θ and opponent policy πop θ′ , joint reward value critic V r , joint cost value critic V c, cost function 
+
+cω , opponent strength 1 − α, Lagrange multiplier λ, rollout rounds B, update rounds K.Initialize state s0 from CMDP and the roll-out buffer D.
+
+for b = 1 , 2, . . . , B do 
+
+Perform policies πpl θ and πop θ′ , and collect trajectories τb = [ s0, a pl  
+
+> 0
+
+, a op  
+
+> 0
+
+, r 0, c 0, . . . , s H , a pl H , a op H , r H , c H ].Calculate reward advantages Art , reward returns Rt, cost advantages Act , and cost returns Ct via GAE (Schulman et al., 2016) from the trajectory. Add transition samples to the buffer D = D ∪ { st, a pl t , a op t , r t, A rt , R t, c t, A ct , C t}Ht=0 .
+
+end for for k = 1 , 2, . . . , K do 
+
+Sample a batch of transition data from D.Update the reward and cost value functions by minimizing the mean-square loss with returns. Update opponent policy parameters θ′ by (25). Update player policy parameters θ by (24). Update Lagrange multiplier parameters ζ by (24). 
+
+end for 
+
+## B. Proof 
+
+Lemma B.1. If Qsof t (s, a ) = E
+
+hPHt=0 [¯ r(st, a t) + H(π(at|st))] |s0 = s, a 0 = a
+
+i
+
+defines the soft-Q function (Haarnoja et al., 2017). It holds that ED
+
+hPHt=0 γt  Qsof t (st, a t) − V sof t (st)i
+
+= ED
+
+hPHt=0 γt ¯r(st, a t)
+
+i
+
+− V sof t Mc (s0), where D is the demonstration dataset. Proof. 
+
+ED
+
+" HX
+
+> t=0
+
+γt  Qsof t (st, a t) − V sof t (st)#
+
+= ED
+
+h H−1X
+
+> t=0
+
+γt
+
+¯r(st, a t) + γET( ·| st,a t)[V sof t (st+1 )] − V sof t (st)
+
+
+
++ γH ¯r(sH , a H )
+
+i
+
+= ED
+
+" HX
+
+> t=0
+
+γt ¯r(st, a t)
+
+#
+
++ ED
+
+"H−1X
+
+> t=0
+
+γt+1 ET[V sof t Mc (st+1 )] −
+
+> H
+
+X
+
+> t=0
+
+γtV sof t Mc (st)
+
+#
+
+= ED
+
+" HX
+
+> t=0
+
+γt ¯r(st, a t)
+
+#
+
+− V sof t Mc (s0)
+
+Lemma B.2. Let V sof t (s) = E
+
+hPHt=0 [¯ rω (st, a t) + H(π(at|st))] |s0 = s
+
+i
+
+define the soft-value function (Haarnoja 
+
+14 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+et al., 2017). The reward function ¯rω is parametered by ω. The gradient of ∇ω V sof t (st) can be represented as 
+
+Eπ
+
+hPH−tι=0 γι∇ω ¯rω (sι, a ι)|s0 = st
+
+i
+
+where π represents the soft-optimal (soft-max) policy. Proof. 
+
+∇ω V sof t (st) = ∇ω log X
+
+> at∈A
+
+exp Qsof t (st, a t)=
+
+P 
+
+> at∈A
+
+∇ω exp Qsof t (st, a t)
+
+P 
+
+> at∈A
+
+exp Qsof t (st, a t)=
+
+P
+
+> at∈A
+
+
+
+exp Qsof t (st, a t) · ∇ ω Qsof t (st, a t)
+
+
+
+exp V sof t (st)= X
+
+> at∈A
+
+exp 
+
+
+
+Qsof t (st, a t) − V sof t (st)
+
+
+
+· ∇ ω Qsof t (st, a t)= X
+
+> at∈A
+
+π(at|st) · ∇ ω Qsof t (st, a t)=Eπ
+
+h
+
+∇ω ¯rω (st, a t) + γET( ·| st,a t)
+
+∇ω V sof t (st+1 ) i
+
+=Eπ
+
+"H−tX
+
+> ι=0
+
+γι∇ω ¯rω (sι, a ι) | s0 = st
+
+#
+
+B.1. Proof of Proposition 3.3 
+
+Proof. (a) To prove the existence of such π, T and T′, we assume there exists a policy π and a transition T satisfying 
+
+Eμ0,π [Qc,π M T
+
+> c
+
+(s, a )] = ϵ. In this way, we only need to show ∃T′, π s.t. Eμ0,π [Qc,π M T′
+
+> c
+
+(s, a )] − Eμ0,π [Qc,π M T
+
+> c
+
+(s, a )] > 0.Consider the simulation lemma (Agarwal et al., 2019): 
+
+Qc,π M T′
+
+> c
+
+− Qc,π M T
+
+> c
+
+= γ(I − γπ T′)−1(T ′ − T) V c,π M T
+
+> c
+
+We know that ∀(s, a ), (I − γπ T′)−1(s,a ),(s′,a ′) > 01, and V c,π M T
+
+> c
+
+(s) ≥ 0 (since c(s, a ) ≥ 0). Define the safe states set 
+
+Ss = {s ∈ S | V c,π M T
+
+> c
+
+(s) ≤ ϵ} and unsafe states set Su = {s ∈ S | V c,π M T
+
+> c
+
+(s) > ϵ }.Consider such a T′: 1) ∀s′ ∈ S u, T′ 
+
+> (s,a ),(s′)
+
+= T (s,a ),(s′) + α; 2) ∀s′ ∈ S s, T′ 
+
+> (s,a ),(s′)
+
+= T (s,a ),(s′) − β, where 0 ≤
+
+α ≤ 1, 0 ≤ β ≤ 1, and α · |S s| = β · |S u|. This T′ can ensure that ∀(s, a ), [(T ′ − T) V c,π M T
+
+> c
+
+]( s, a ) ≥ 0, and thus 
+
+(Qc,π M T′
+
+> c
+
+− Qc,π M T
+
+> c
+
+)( s, a ) ≥ 0. The equality holds only when ∀s′ ∼ T( ·| s, a ) ∈ S s (i.e., ∀s′ ∈ S u, T( s′|s, a ) = 0 ). In this case, we modify the T′ such that: 1) ∀s′ ∈ S u, T′(s′|s, a ) = 1 
+
+> |S u|
+
+; 2) ∀s′ ∈ S s, T′(s′|s, a ) = 0 , which ensures strict inequality. 
+
+(b) Consider the simulation lemma (Agarwal et al., 2019): 
+
+Eμ0,π ∗ [Qc,π ∗ 
+
+> MT′
+> c
+
+(s, a )] − Eμ0,π ∗ [Qc,π ∗ 
+
+> MT
+> c
+
+(s, a )] = ρπ∗ 
+
+> μ0
+
+γ(I − γπ ∗T) −1(T ′ − T) V c,π ∗ 
+
+> MT′
+> c
+
+= γ
+
+1 − γ dπ∗  
+
+> MT
+> c
+
+(T ′ − T) V c,π ∗ 
+
+> MT′
+> c
+
+> ϵ 
+
+Since Eμ0,π ∗ [Qc,π ∗ 
+
+> MT
+> c
+
+(s, a )] ≥ 0, we have Eμ0,π ∗ [Qc,π ∗ 
+
+> MT′
+> c
+
+(s, a )] > ϵ 
+
+> 1
+
+M(x),(y) indicates the element of xth row and yth column 
+
+15 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+B.2. Proof of Proposition 4.1 
+
+For brevity, we define F = PHt=0 γt log ϕ(st, a t) as the safety (feasibility) objective, we can show that: 
+
+min   
+
+> ¯M∈M TLα
+
+E
+
+h
+
+λF | π, ¯M
+
+i
+
+= min  
+
+> ¯T∈T Lα
+
+E
+
+h
+
+λF | π, μ 0, ¯T
+
+i
+
+> (a)
+
+≤ min   
+
+> ˜T∈eTLα
+
+E
+
+h
+
+λF | π, μ 0, ˜T
+
+i
+
+> (b)
+
+= min  
+
+> πop ∈Π
+
+E
+
+h
+
+λF | απ + (1 − α)πop , μ 0, TLi
+
+(26) where T Lα (s′ | s, a ) = {αTL(s′ | s, a ) + (1 − α) ¯T( s′ | s, a ), ∀ ¯T ∈ T } , and eT Lα (s′ | s, a ) = {αTL(s′ | s, a ) + (1 −
+
+α) P 
+
+> a
+
+π(a|s) ¯T( s′ | s, a ), ∀ ¯T ∈ T , ∀π ∈ Π}. In specific, (a) hold since eT Lα ⊂ T Lα , (b) hold due to Section 3.1 in (Tessler et al., 2019). 
+
+B.3. Proof of Proposition 4.4 
+
+Proof. The log-likelihood of generating the expert demonstration De is defined as: 
+
+EDe
+
+h
+
+log pπmix   
+
+> MT
+> c
+
+(τ )
+
+i
+
+=
+
+" HX
+
+> t=0
+
+γt log πmix M T 
+
+> c
+
+(at|st) + log μ0(s0) + 
+
+> H
+
+X
+
+> t=0
+
+log T( st+1 |st, a t)
+
+#
+
+> (1)
+
+= EDe
+
+" HX
+
+> t=0
+
+γt log[ απ pl M T
+
+> c
+
+(at|st) + (1 − α)πop M T
+
+> c
+
+(at|st)] + log μ0(s0) + 
+
+> H
+
+X
+
+> t=0
+
+log T( st+1 |st, a t)
+
+#
+
+> (2)
+
+= EDe
+
+" HX
+
+> t=0
+
+γt[log α + log πpl M T
+
+> c
+
+(at|st)] + log μ0(s0) + 
+
+> H
+
+X
+
+> t=0
+
+log T( st+1 |st, a t)
+
+#
+
+> (3)
+
+= EDe
+
+" HX
+
+> t=0
+
+γt 
+
+Qsof t,pl M T
+
+> c
+
+(st, a t) − V sof t,pl M T
+
+> c
+
+(st)
+
+#
+
++ C
+
+> (4)
+
+= EDe
+
+" HX
+
+> t=0
+
+γt [r(st, a t) + λ log ϕ(st, a t)] 
+
+#
+
+− V sof t,pl M T
+
+> c
+
+(s0) + C
+
+In this way, we can further define: (1) holds due to the definition of πmix M T
+
+> c
+
+(at|st) = απ pl M T
+
+> c
+
+(at|st) + (1 − α)πop M T
+
+> c
+
+(at|st).(2) holds since the cost maximization policy πop M T
+
+> c
+
+(a|s) = arg max Qc, ∗ 
+
+> MT
+> c
+
+(˜ s, a ) is deterministic, and based on Assump-tion 4.3, we have that ∀(s, a ), if ρπe 
+
+> MT
+> c
+
+(s, a ) > 0, then πop M T
+
+> c
+
+(a|s) = 0 .(3) holds since πpl M T
+
+> c
+
+(at|st) = exp 
+
+
+
+Qsof t,pl M T
+
+> c
+
+(st, a t) − V sof t,pl M T
+
+> c
+
+(st)
+
+
+
+, and the constant C is irrelevant to costs. (4) holds due to Lemma B.1, where ¯r(·) = r(·) + λ log ϕ(·).Our constraint function ϕω (s, a ) is parameters by ω. We infer the constraint function by maximizing the gradient of the log-likelihood of generating the demonstration data: ω = arg max ω EDe
+
+log pM T 
+
+> c
+
+(τ ).
+
+∇ω EDe
+
+log pM T 
+
+> c
+
+(τ ) =EDe
+
+" HX
+
+> t=0
+
+γtλ∇ω log ϕω (st, a t)
+
+#
+
++ ∇ω V sof t,pl Mc (s0)
+
+> (1)
+
+= E(s,a )∼D e
+
+" HX
+
+> t=0
+
+γtλ∇ω log ϕω (st, a t)
+
+#
+
++ E(s,a )∼πpl M T
+
+> c
+
+" HX
+
+> t=0
+
+γt∇ω λ log ϕω (st, a t)
+
+#
+
+(1) holds due to Lemma B.2, where ¯rω (·) = r(·) + λ log ϕω (·).16 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+B.4. Proof of Proposition 4.5 
+
+Proof. The log-likelihood of generating the expert demonstration De is defined as: 
+
+EDe
+
+h
+
+log pπmix   
+
+> MT
+> c
+
+(τ )
+
+i
+
+=
+
+" HX
+
+> t=0
+
+γt log πmix M T 
+
+> c
+
+(at|st) + log μ0(s0) + 
+
+> H
+
+X
+
+> t=0
+
+log T( st+1 |st, a t)
+
+#
+
+> (1)
+
+= EDe
+
+" HX
+
+> t=0
+
+γt log[ απ pl M T
+
+> c
+
+(at|st) + (1 − α)πop M T
+
+> c
+
+(at|st)] + log μ0(s0) + 
+
+> H
+
+X
+
+> t=0
+
+log T( st+1 |st, a t)
+
+#
+
+> (2)
+
+≥ EDe
+
+" HX
+
+> t=0
+
+γt log[( πpl M T
+
+> c
+
+(at|st)) α · (πop M T
+
+> c
+
+(at|st)) 1−α] + log μ0(s0) + 
+
+> H
+
+X
+
+> t=0
+
+log T( st+1 |st, a t)
+
+#
+
+> (3)
+
+= EDe
+
+" HX
+
+> t=0
+
+γtα
+
+
+
+Qsof t,pl M T
+
+> c
+
+(st, a t) − V sof t,pl M T
+
+> c
+
+(st)
+
+#
+
++ EDe
+
+" HX
+
+> t=0
+
+γt(1 − α)
+
+
+
+Qsof t,op M T
+
+> c
+
+(st, a t) − V sof t,op M T
+
+> c
+
+(st)
+
+#
+
++ C
+
+> (4)
+
+= EDe
+
+" HX
+
+> t=0
+
+γtα [r(st, a t) + λ log ϕ(st, a t)] 
+
+#
+
+− αV sof t,pl M T
+
+> c
+
+(s0)−
+
+(1 − α)EDe
+
+" HX
+
+> t=0
+
+γt [log ϕ(st, a t)] 
+
+#
+
+− (1 − α)V sof t,op M T
+
+> c
+
+(s0) + C
+
+=EDe
+
+" HX
+
+> t=0
+
+γt [αr (st, a t) + ( αλ + α − 1) log ϕ(st, a t)] 
+
+#
+
+− αV sof t,pl M T
+
+> c
+
+(s0) − (1 − α)V sof t,op M T
+
+> c
+
+(s0) + C
+
+=L(De, M T 
+
+> c
+
+, α )
+
+(1) holds due to the definition of πmix M T
+
+> c
+
+(at|st) = απ pl M T
+
+> c
+
+(at|st) + (1 − α)πop M T
+
+> c
+
+(at|st).(2) holds due to the Weighted AM-GM Inequality: 
+
+(w1a1 + w2a2 + · · · + wnan) ≥ aw1 
+
+> 1
+
+· aw2 
+
+> 2
+
+· · · awn
+
+> n
+
+if w1 + w2 + · · · + wn = 1 and a1 + a2 + · · · + an are not negative. (3) holds since both πpl M T
+
+> c
+
+and πop M T
+
+> c
+
+are soft-optimal, i.e., πpl M T
+
+> c
+
+(at|st) = exp 
+
+
+
+Qsof t,pl M T
+
+> c
+
+(st, a t) − V sof t,pl M T
+
+> c
+
+(st)
+
+
+
+,
+
+πop M T
+
+> c
+
+(at|st) = exp 
+
+
+
+Qsof t,op M T
+
+> c
+
+(st, a t) − V sof t,op M T
+
+> c
+
+(st)
+
+
+
+, and the constant C is irrelevant to costs. (4) holds due to Lemma B.1. In addition, according to the definition of Qsof t,pl M T
+
+> c
+
+, we have ¯r(·) = r(·) + λ log ϕ(·).According to the definition of Qsof t,op M T
+
+> c
+
+, we have ¯r(·) = − log ϕ(·).Our constraint function ϕω (s, a ) is parameters by ω. We infer the constraint function by maximizing the gradient of the log-likelihood of generating the demonstration data: ω = arg max ω L(De, M T 
+
+> c
+
+, α ).
+
+∇ω L(De, M T 
+
+> c
+
+, α ) = EDe
+
+" HX
+
+> t=0
+
+γt(αλ + α − 1) ∇ω log ϕω (st, a t)
+
+#
+
+− α∇ω αV sof t,pl M T
+
+> c
+
+(s0) − (1 − α)∇ω V sof t,op M T
+
+> c
+
+(s0)
+
+> (1)
+
+= E(s,a )∼D e
+
+" HX
+
+> t=0
+
+γt(αλ + α − 1) ∇ω log ϕω (st, a t)
+
+#
+
+− αλ E(s,a )∼πpl M T
+
+> c
+
+" HX
+
+> t=0
+
+γt∇ω log ϕω (st, a t)
+
+#
+
++(1 − α)E(s,a )∼πop M T
+
+> c
+
+" HX
+
+> t=0
+
+γt∇ω log ϕω (st, a t)
+
+#
+
+17 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+(1) holds due to Lemma B.2. In addition, according to the definition of V sof t,pl M T
+
+> c
+
+, we have ¯rω (·) = r(·) + λ log ϕω (·).According to the definition of V sof t,op M T
+
+> c
+
+, we have ¯rω = − log ϕω (·).
+
+B.5. Proof of Proposition 4.6 
+
+Proof. For brevity, let πL := πme  
+
+> ˜c
+
+, πpl := πro  
+
+> ˆc
+
+.To prove (a) , we show the existence of such a policy πL as follows: 
+
+Eμ0 [V c,π L 
+
+> MT′
+> c∗
+
+(s)] − Eμ0 [V c,π L 
+
+> MTLc∗
+
+(s)] = Eμ0,π L [Qc,π L 
+
+> MT′
+> c∗
+
+(s, a )] − Eμ0,π L [Qc,π L 
+
+> MTLc∗
+
+(s, a )] 
+
+> (1)
+
+= ρπL 
+
+> μ0
+
+γ(I − γπ LTL)−1(T ′ − TL)V c,π L 
+
+> MT′
+> c∗
+> (2)
+
+= γ
+
+1 − γ dπL 
+
+> MTLc∗
+
+(T ′ − TL)V c,π L 
+
+> MT′
+> c∗
+
+≥ 0
+
+(1) applies the simulation lemma (Agarwal et al., 2019). (2) holds due to that dπL 
+
+> MTLc∗
+
+≥ 0 defines the normalized occupancy measure by following policy πL in the CMDP M TL 
+
+> c∗
+
+.We know that there exists a T′ ∈ { T : max s,a |T − TL| ≤ 2(1 − α)} that makes (T ′ − TL) ≥ 0, and V c,π L 
+
+> MT′
+> c∗
+
+≥ 0.Since ˜c = c∗, and there exists a policy πL such that Eμ0 [V c,π L 
+
+> MTLc∗
+
+(s)] = Eμ0 [V c,π e 
+
+> MTec∗
+
+(s)] = ϵ. According to the above inequality, we have that Eμ0 [V c,π L 
+
+> MT′
+> c∗
+
+(s)] ≥ ϵ.To prove (b) , we show that ∀T′ ∈ { T : max s,a |T − TL| ≤ 2(1 − α)}, the following inequality must hold: 
+
+Eμ0 [V c,π pl  
+
+> MT′
+> c∗
+
+(s)] ≤ max  
+
+> T′∈T Lα
+
+Eμ0 [V c,π pl  
+
+> MT′
+> c∗
+
+(s)] 
+
+> (1)
+
+≤ max  
+
+> πop ∈Π
+
+Eμ0 [V c,απ pl +(1 −α)πop  
+
+> MTLc∗
+
+(s)] 
+
+> (2)
+
+= Eμ0 [V c,απ pl +(1 −α)πop  
+
+> MTLc∗
+
+(s)] = Eμ0 [V c,π mix  
+
+> MTLc∗
+
+(s)] = Eμ0 [V c,π e 
+
+> MTec∗
+
+(s)] = ϵ
+
+(1) holds due to Proposition 4.1. (2) holds due to the fact that the trained opponent policy πop is indeed the cost-maximization policy (see objective (8)). 
+
+B.6. Proof of Proposition A.3 
+
+Proof. Given a state st ∈ Sπpl  
+
+> ∀
+
+, if the player policy takes the action apl t ∈ A πpl  
+
+> ∀
+
+, according to the definition of robust action set, we have: 
+
+Qpl c (st, a pl t , a op t ) ≤ ϵ, ∀aop t ∈ A 
+
+18 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+In this work, since we focus on the hard constraint ( ϵ = 0 ) and the cost function Qpl c (st, a pl t , a op t ) ≥ 0, the problem reduces to Qpl c (st, a pl t , a op t ) = 0 . By Equation (18), we have: 
+
+Qpl c (st, a pl t , a op t ) = X
+
+> st+1
+
+Ttwo ,α (st+1 | st, a pl t , a op t ) ·
+
+h
+
+− log ϕω,α,t (·) + γ max 
+
+> aop t+1
+
+Qpl c (st+1 , π pl (apl t+1 | st+1 ), a op t+1 )
+
+i
+
+= 0 
+
+Since the cost c = − log ϕω (·) ≥ 0 and γ ≥ 0, regarding any of the possible state st+1 after the transition, we have 
+
+max 
+
+> aop t+1
+
+Qpl c (st+1 , π pl (apl t+1 | st+1 ), a op t+1 ) = 0 
+
+which means that 
+
+min 
+
+> apl t+1
+
+max 
+
+> aop t+1
+
+Qpl c (st+1 , a pl t+1 , a op t+1 ) = 0 
+
+According to the definition of Sπpl  
+
+> ∀
+
+, we have st+1 ∈ Sπpl  
+
+> ∀
+
+. By recursion, we can prove the proposition completely. 
+
+## C. Experimental Details 
+
+C.1. Environmental Details Gridword. The Gridworld environment is a map with a number of grids to move. We establish three unique scenarios, as depicted in Figure 2. At each moment, the agent has the freedom to move to any of the 8 neighboring grids by taking a single step. Commencing from the initial position, the agent receives a reward of 1 when it successfully reaches the target location while adhering to the imposed constraints, and a reward of 0 for any other circumstances. Furthermore, we introduce adjustments to the environment to mimic a degree of randomness when testing. In particular, we construct a Windy Gridworld with an upward-blowing wind in the environment, where with a predetermined probability the agent will be further pushed northward based on its intended action. 
+
+Blocked Half-Cheetah. Within this setting, the agent commands a bipedal robot with a pair of legs. The agent has 18 observation dimensions and 6 action dimensions. The agent’s reward hinges on the distance the robot covers between successive time intervals and is adjusted by a penalty linked to the magnitude of the input action. The game persists until reaching a maximum time step of 1000. Notably, given the robot’s ease of backward movement compared to forward, we establish a blocked area where the X-coordinate is less than -3. Consequently, the robot’s movement is confined to the region where the X-coordinate is greater than or equal to -3. 
+
+Blocked Ant. Within this particular environment, the agent takes charge of a quadrupedal robot. The agent has 113 observation dimensions and 8 action dimensions. The agent’s rewards are contingent on both the robot’s distance from the origin and the additional benefit gained for maintaining stability. The game concludes upon reaching a maximum time step of 500. Just like the Blocked Half-Cheetah environment, we apply a constraint that restricts movement within the X-coordinate region of less than -3. Consequently, the robot is exclusively allowed to operate within the realm where the X-coordinate is greater than or equal to -3. 
+
+Crippled Walker. In this setting, the agent assumes control of a bipedal robot, tasked with the challenge of teaching it how to walk. The agent has 18 observation dimensions and 6 action dimensions. The game concludes under two distinct conditions: when the robot loses its balance or when it reaches the maximum time step of 500. The agent’s reward is ascertained based on the distance the robot covers between two consecutive time intervals, offset by a penalty proportional to the magnitude of the input action. Different from the above tasks that constrain the locations, we investigate the constraint with angle in this task. Specifically, we impose a constraint on the thigh angle θ of the agent, limiting it to |θ| ≤ 0.6.Consequently, the robot is prevented from running too quickly to keep stable. 
+
+C.2. Noise Designs Fully Random Noise. To simulate the transition dynamics mismatch between the training and testing environment, we directly add the fully random noise into the transition function. Specifically, we incorporate a Gaussian noise η ∼ N (μ, σ )
+
+19 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+into the transition function at each step such that p (st+1 | st, a t) = T (st, a t) + η. Since our approach assumes that the mismatch between training and deployment environments is bounded in the uncertainty set T Lα , where the hyperparameter, 
+
+1 − α, serves as a measure of the extent to which our model can effectively handle potential variations in environmental dynamics to maintain safety. In this experiment, we fix α = 0 .95 across the environments, representing the intended mismatch during the training process. To align with it, we utilize the consistent pair of μ = 0 with σ = 0 .1, 0.05 and 0.01 
+
+to represent the larger, equal, and smaller noise than the assumed one. 
+
+Partially Random Noise. In contrast to the fully random noise introduced into the overall transition function, partially random noise represents an alternative form of randomness with a more specific focus. To clarify, rather than introducing the Gaussian noise to the entire transition function, it is exclusively applied to the particular restricted elements of the agent, which serves as a more specific disturbance. We carefully select a set of appropriate scales of the partially random noise for each task as follows: 1) Blocked Half-Cheetah: σ = 1 , 0.8, 0.5 on the X-coordinate of the agent; 2) Blocked Ant: 
+
+σ = 1 , 0.5, 0.2 on the X-coordinate of the agent; 3) Crippled Walker: σ = 0 .1, 0.05 , 0.01 on the thigh of the agent. 
+
+Attack Noise. Given our primary emphasis on safety, we employ attack noise to replicate scenarios where constraints are more prone to violation during deployment. This assessment tests the model’s resilience under worst-case conditions. We assume that the attack noise possesses knowledge of the ground-truth constraints and uses it to prompt the agent to breach those constraints. Specifically, the attack noise is sampled from a uniform distribution U (0 , b ), where the set of different scales of attack noise for each task is designed as follows: 1) Blocked Half-Cheetah: b = 0 .4, 0.35 , 0.3 on the X-coordinate 
+
+of the agent to push it backward; 2) Blocked Ant: b = 0 .1, 0.05 , 0.02 on the X-coordinate of the agent to push it backward; 3) Crippled Walker: b = 0 .1, 0.05 , 0.01 on the thigh of the agent to push it larger. 
+
+C.3. Hyperparameters 
+
+We summarize the main hyperparameters in this work in Table C.3.                                                         
+
+> Table 2. List of the utilized hyperparameters in this work. To ensure equitable comparisons, we maintain consistency in the parameters of the same neural networks across different models.
+> Parameters Blocked Half-Cheetah Blocked Ant Crippled Walker General Expert Rollouts 10 50 50 Max Length 1000 500 500 Gamma 0.99 0.99 0.99 Forward Timesteps 200000 200000 200000 PPO Steps 2048 2048 2048 Reward-GAE-λ0.95 0.9 0.9 Cost-GAE-λ0.95 0.9 0.9 Policy Network 64, 64 64, 64 64, 64 Reward Network 64, 64 64, 64 64, 64 Cost Network 64, 64 64, 64 64, 64 Policy Learning Rate 3e-4 3e-5 1e-4 Lagrangian Penalty-based Methods Penalty Initial Value 10.1 0.1 Penalty Learning Rate 0.1 0.05 0.1 Network-based Methods Maximum Lambda Network 50 50 50 Lambda Network Learning Rate 1e-5 3e-5 1e-5 Constraint Function Network 20 40, 40 64 Learning Rate 0.005 0.005 0.003 Backward Iterations 10 510
+
+20 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+## D. More Experimental Results 
+
+D.1. More Results in Discrete Environments 
+
+Figure 6 illustrates the feasible rewards obtained by different methods under different levels of upwind in three Gridworld environments.  
+
+> Figure 6. The feasible rewards of different methods under different levels of upwind.
+
+Figure 7 shows the trajectories generated by MEICRL and AR-ICRL in the ideal training environments without wind, serving as a supplementary result of trajectories with wind (Figure 3). We find that larger opponent strength (lower α) could lead to more conservative policies that are more robust against dynamics mismatches.  
+
+> Figure 7. The trajectories generated by MEICRL and AR-ICRL in three Gridworld settings without wind.
+
+D.2. More results in Continuous Environments 
+
+Table 3 shows the evaluation results tested within the identical training environment. Table 4 and Table 5 present the results with medium and small scales of noises in the testing environments, respectively. 21 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+Table 3. Evaluation results in three environments without noise. Each value is reported as the mean ± standard deviation for 50 episodes and 4 seeds. 
+
+Env Method Traning Env without Noise Feasible Reward Episode Cost Constraint Violation Rate Blocked Half-Cheetah MEICRL 3768.2±630.7 0.00±0.00 0%±0% BC2L 2467.4±509.4 8.03±13.90 2%±4% VICRL 3198.2±1158.6 1.43±2.47 1%±2% IRCO 3818.3±340.1 0.00±0.00 0%±0% AR-ICRL 3621.1±384.6 0.00±0.00 0%±0% 
+
+Blocked Ant MEICRL 4546.1±1720.9 0.00±0.00 0%±0% BC2L 11478.1±740.8 0.14±0.24 1%±1% VICRL 9246.2±2388.4 0.00±0.00 0%±0% IRCO 6698.6±761.0 1.15±1.98 2%±3% AR-ICRL 6082.3±1381.9 0.00±0.00 0%±0% 
+
+Crippled Walker MEICRL 2483.2±221.8 0.06±0.10 1%±2% BC2L 1618.5±865.3 3.31±0.65 12%±4% VICRL 2223.8±358.0 0.00±0.00 0%±0% IRCO 2059.5±266.1 0.07±0.07 2%±2% AR-ICRL 2918.8±99.3 0.00±0.00 0%±0% 
+
+Table 4. Evaluation results in three environments with medium scale noises. Each value is reported as the mean ± standard deviation for 50 episodes and 4 seeds. 
+
+Env Method Medium Scale Fully Random Noise Medium Scale Partially Random Noise Medium Scale Attack Noise Feasible Reward Episode Cost Constraint Violation Rate Feasible Reward Episode Cost Constraint Violation Rate Feasible Reward Episode Cost Constraint Violation Rate Blocked Half-Cheetah MEICRL 1092.8±457.1 10.1±15.4 5%±9% 2956.2±689.6 6.9±2.9 32%±6% 1894.2±1260.1 100.2±84.3 57%±29% BC2L 1076.2±278.4 45.5±51.9 17%±12% 957.7±486.9 66.7±60.2 40%±15% 76.6±81.7 941.9±50.1 98%±2% VICRL 1026.3±460.1 17.6±28.8 7%±10% 2235.1±1050.5 18.5±14.8 35%±10% 1588.2±1367.7 397.5±348.1 62%±27% IRCO 1128.6±163.9 12.5±8.9 5%±3% 2528.6±332.7 5.0±0.5 27%±2% 3228.5±611.2 43.9±16.8 25%±12% AR-ICRL 1589.0±324.4 3.6±3.2 1%±1% 3178.0±322.3 4.4±1.3 24%±4% 3679.0±323.1 35.2±10.2 20%±8% 
+
+Blocked Ant MEICRL 1198.8±408.2 25.7±18.5 18%±9% 4701.7±1179.6 35.8±18.6 35%±11% 2770.4±1634.2 73.9±53.7 37%±28% BC2L 955.4±98.1 29.2±10.3 17%±6% 8721.9±1618.5 33.5±27.2 37%±10% 9030.8±2697.9 62.5±58.2 31%±30% VICRL 1032.6±289.1 28.8±6.6 19%±8% 8083.1±3712.2 41.0±20.1 39%±20% 8785.1±4349.5 85.2±82.1 34%±36% IRCO 757.5±207.9 41.5±17.3 18%±7% 4758.5±886.8 35.2±33.2 34%±16% 3978.6±1142.2 81.2±78.4 37%±27% AR-ICRL 1292.4±263.2 18.1±3.7 12%±5% 5782.6±1039.3 13.2±2.8 21%±9% 4986.0±1659.4 34.8±29.9 19%±11% 
+
+Crippled Walker MEICRL 164.6±40.1 3.46±2.97 34%±23% 835.0±438.1 4.46±2.54 41%±27% 409.2±241.1 12.2±9.6 55%±21% BC2L 171.4±55.1 4.09±2.15 38%±14% 694.4±437.5 5.73±4.94 47%±27% 240.8±156.5 3.5±1.8 57%±33% VICRL 197.8±36.1 2.75±0.88 28%±8% 1246.8±185.3 1.22±0.67 27%±8% 355.4±262.7 6.5±4.1 54%±31% IRCO 104.2±21.4 7.88±6.28 30%±18% 910.1±232.7 1.87±0.75 26%±17% 331.1±230.6 3.8±1.1 27%±12% AR-ICRL 237.6±35.7 2.29±0.81 24%±9% 1138.5±152.9 1.19±0.43 22%±12% 451.2±122.8 1.9±0.5 18%±2% 
+
+Table 5. Evaluation results in three environments with small-scale noises. Each value is reported as the mean ± standard deviation for 50 episodes and 4 seeds. 
+
+Env Method Small Scale Fully Random Noise Small Scale Partially Random Noise Small Scale Attack Noise Feasible Reward Episode Cost Constraint Violation Rate Feasible Reward Episode Cost Constraint Violation Rate Feasible Reward Episode Cost Constraint Violation Rate Blocked Half-Cheetah MEICRL 3191.1±393.5 2.51±4.35 1%±1% 3684.2±642.1 2.22±0.89 11%±2% 3180.2±1468.1 30.1±19.5 29%±26% BC2L 1682.4±523.9 14.80±25.71 4%±7% 1273.8±498.4 38.30±35.14 29%±13% 199.8±236.0 848.5±171.2 98%±4% VICRL 2768.6±993.7 1.19±2.06 1%±1% 2798.6±1143.3 14.42±9.95 16%±6% 2479.1±1534.5 268.0±169.8 41%±21% IRCO 3298.0±215.8 2.17±3.07 1%±1% 3718.0±164.7 0.87±0.19 10%±1% 3926.6±368.0 32.1±19.5 12%±4% AR-ICRL 3358.2±343.4 0.00±0.00 0%±0% 4049.5±260.2 0.81±0.19 8%±2% 4369.7±390.5 16.8±14.7 5±3% 
+
+Blocked Ant MEICRL 3831.2±1339.5 2.08±0.61 1%±1% 4890.7±1653.6 8.74±5.58 6%±4% 3890.2±1749.1 11.3±11.8 10%±7% BC2L 9068.0±1573.7 1.25±2.07 2%±3% 11708.1±2213.5 7.74±6.69 6%±6% 10987.5±2195.6 12.5±14.8 9%±10% VICRL 7813.3±1368.1 1.22±1.31 2%±2% 10892.0±3113.8 10.70±6.34 9%±7% 11976.0±3139.4 18.1±28.5 9%±13% IRCO 5258.8±1129.4 0.00±0.00 0%±0% 6579.7±442.9 9.91±17.21 6%±11% 5538.5±656.9 22.1±16.8 14%±12% AR-ICRL 5967.9±744.5 0.00±0.00 0%±0% 6892.2±669.3 0.00±0.00 0%±0% 6056.1±1338.7 0.0±0.0 0%±0% 
+
+Crippled Walker MEICRL 1056.0±268.5 1.24±0.78 19%±10% 2321.7±203.6 0.0±0.0 0%±0% 2294.5±298.2 0.11±0.05 6%±4% BC2L 1178.3±628.7 3.06±4.54 16%±14% 2059.5±121.2 0.0±0.0 0%±0% 1398.7±759.6 2.01±3.08 16%±13% VICRL 1467.2±196.9 1.25±0.14 15%±2% 2210.1±424.7 0.0±0.0 0%±0% 2053.1±386.5 0.02±0.03 1%±1% IRCO 800.4±40.2 2.48±2.42 12%±10% 1893.8±231.6 0.0±0.0 0%±0% 1243.0±190.5 0.00±0.00 0%±0% AR-ICRL 1865.8±184.2 0.00±0.00 0%±0% 2483.0±243.4 0.0±0.0 0%±0% 2439.4±228.6 0.00±0.00 0%±0% 
+
+22 Robust Inverse Constrained Reinforcement Learning under Model Misspecification 
+
+Figure 8, Figure 9, and Figure 10 visualize the learned constraints by MEICRL and AR-ICRL in the Blocked Ant, Blocked Half-cheetah, and Crippled Walker respectively. Specifically, the red curve in the left is the predicted constraint distribution by utilizing synthetic samples, and the blue points are the recorded information (e.g., x-position or thigh angle) of the policy with the predicted costs. The right figure is a histogram that shows the number of states with a specific feature value (e.g., x-position) during testing. By observing the results, we find that compared to MEICRL, AR-ICRL can enable safer control and keep a relative distance from the constraint locations. This can be attributed to the fact that the policy must resist the attacks from the opponent policy when training. x_position x_position  
+
+> x_position x_position
+> Cost Cost
+> Frequency Frequency
+
+Figure 8. Visualization results in Blocked Ant environment with MEICRL and AR-ICRL. 
+
+23 Robust Inverse Constrained Reinforcement Learning under Model Misspecification x_position x_position  
+
+> x_position x_position
+> Cost Cost
+> Frequency Frequency
+
+Figure 9. Visualization results in Blocked Half-Cheetah environment with MEICRL and AR-ICRL. thigh_angle 
+
+> thigh_angle
+> thigh_angle
+> thigh_angle
+> Ccos Ccos
+> Frequency Frequency
+
+Figure 10. Visualization results in Cirppled Walker environment with MEICRL and AR-ICRL. 
+
+24

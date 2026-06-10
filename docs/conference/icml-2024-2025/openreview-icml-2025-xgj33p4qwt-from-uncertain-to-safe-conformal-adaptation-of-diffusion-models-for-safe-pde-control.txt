@@ -1,0 +1,824 @@
+Title: [][c]From Uncertain to Safe: Conformal Adaptation of Diffusion Models  [][c]for Safe PDE Control
+
+URL Source: https://openreview.net/pdf?id=XGJ33p4qwt
+
+Number of Pages: 25
+
+Markdown Content:
+# From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Peiyan Hu * 1 2 Xiaowei Qian * 1 3 Wenhao Deng 3 Rui Wang 1 4 Haodong Feng 3 Ruiqi Feng 3 Tao Zhang 3
+
+Long Wei 3 Yue Wang 5 Zhi-Ming Ma 2 Tailin Wu 3
+
+# Abstract 
+
+The application of deep learning for partial dif-ferential equation (PDE)-constrained control is gaining increasing attention. However, existing methods rarely consider safety requirements cru-cial in real-world applications. To address this limitation, we propose Safe Diff usion Models for PDE Con trol (SafeDiffCon), which introduce the uncertainty quantile as model uncertainty quan-tification to achieve optimal control under safety constraints through both post-training and infer-ence phases. Firstly, our approach post-trains a pre-trained diffusion model to generate control sequences that better satisfy safety constraints while achieving improved control objectives via a reweighted diffusion loss, which incorporates the uncertainty quantile estimated using confor-mal prediction. Secondly, during inference, the diffusion model dynamically adjusts both its gen-eration process and parameters through iterative guidance and fine-tuning, conditioned on control targets while simultaneously integrating the esti-mated uncertainty quantile. We evaluate SafeDiff-Con on three control tasks: 1D Burgers’ equa-tion, 2D incompressible fluid, and controlled nuclear fusion problem. Results demonstrate that SafeDiffCon is the only method that satis-fies all safety constraints, whereas other classical and deep learning baselines fail. Furthermore, while adhering to safety constraints, SafeDiff-Con achieves the best control performance. The code can be found at https://github.com/ AI4Science-WestlakeU/safediffcon .         
+
+> *Equal contribution 1Work done as an intern at Westlake Uni-versity 2Academy of Mathematics and Systems Science, Chinese Academy of Sciences, Beijing, China 3School of Engineering, Westlake University, Hangzhou, China 4Fudan University, Shang-hai, China 5Zhongguancun Academy, Beijing, China. Correspon-dence to: Tailin Wu <wutailin@westlake.edu.cn >.
+> Proceedings of the 42 nd International Conference on Machine Learning , Vancouver, Canada. PMLR 267, 2025. Copyright 2025 by the author(s).
+
+# 1. Introduction 
+
+The control of physical systems described by partial differ-ential equations (PDEs) is crucial in various scientific and engineering domains, including fluid dynamics (Hinze & Kunisch, 2001), controlled nuclear fusion (Schuster & Ari-ola, 2006), and mathematical finance (Soner, 2004). While traditional control algorithms have been extensively studied over the years (Li et al., 2006; Protas, 2008), advancements in neural networks have led to the development of numerous deep learning-based approaches (Farahmand et al., 2017; Holl et al., 2020; Hwang et al., 2022). Among these, diffu-sion models have gained increasing attention to PDE control due to their ability to model high-dimensional and nonlinear data (Vahdat et al., 2022; Li et al., 2024), and have demon-strated impressive performance in various control tasks (Chi et al., 2023; Wei et al., 2024; Hu et al., 2024). However, existing deep learning-based methods for PDE control generally overlook safety – meaning ensuring con-trol sequences satisfy predefined constraints, mitigating risks, and preventing hazards (Dawson et al., 2022; Liu et al., 2023a). In real-world applications, controlling PDE systems particularly requires addressing safety concerns (Barros et al., 1998; Argomedo et al., 2013). For instance, in fluid dynamics, minor errors can cause turbulence or structural damage, while in controlled nuclear fusion, violat-ing safety constraints may lead to catastrophic failures. This lack of safety enforcement remains a major bottleneck in ap-plying deep learning to scientific and engineering problems, posing a critical challenge for high-stakes applications. Despite its importance, safe PDE control remains challeng-ing. First, ensuring safety requires preventing methods without formal guarantees from interacting with the envi-ronment, restricting the approach to an offline setting with pre-collected data. However, such data is often suboptimal and includes unsafe samples, creating a significant gap be-tween the observed distribution and the near-optimal, safe distribution (Xu et al., 2022; Liu et al., 2023a). Second, the method must resolve the inherent conflict between optimiz-ing control performance and satisfying safety constraints (e.g. , aggressive control policies that reduce error may vio-late safety thresholds) (Liu et al., 2023a; Zheng et al., 2024). 1From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+To address these challenges, we propose Safe Diffusion Mod-els for PDE Control (SafeDiffCon), a method that adapts diffusion models to varying safety constraints by quantify-ing their uncertainty. In offline settings, training data are often sub-optimal and unsafe, which causes the distribu-tion learned by diffusion models to deviate significantly from the desired optimal and safe distribution. Inspired by conformal prediction (Vovk et al., 2005; Tibshirani et al., 2019), we propose quantifying diffusion models’ safety uncertainty under distribution shifts and incorporating it through both post-training and inference phases. This un-certainty quantification, termed as uncertainty quantile , al-lows us to compute a conformal interval , within which the safety score of the diffusion model interacting with the real environment is expected to lie. By leveraging this uncer-tainty quantification for predicted safety, diffusion models can be optimized with a clear safety optimization objec-tive, to satisfy various safety constraints by constraining their conformal intervals within safe boundaries. Specifi-cally, we incorporate uncertainty quantification into both the post-training and inference-time fine-tuning processes. Technically, we perform post-training with reweighted loss ,where the weighting accounts for the uncertainty quantile of safety instead of the original predicted safety score. This refinement improves the model’s control performance while enhancing its adherence to safety constraints, leading to the generation of more optimal and safer control sequences. To further ensure the safety of PDE control, we introduce 
+
+inference-time fine-tuning , where the diffusion model is it-eratively adjusted with guidance and fine-tuning based on specific control targets and uncertainty quantile to improve the safety of the final outputs within few iterations. Our main contributions are as follows: (1) We introduce safety constraints into deep learning-based control of PDE systems and propose our method SafeDiffCon. (2) To ad-dress significant distribution shifts, we quantify the safety uncertainty of diffusion models and design a conformal adaptation process, which incorporates post-training with a reweighted loss and inference-time fine-tuning to promote a safer and more optimal output distribution. (3) We design safe control tasks in the contexts of the 1D Burgers’ equa-tion, 2D incompressible fluid, and the controlled nuclear fusion scenario, and evaluate various methods. Extensive experiments on these datasets demonstrate that SafeDiffCon is the only method to successfully meet all safety constraints while achieving superior control objectives. 
+
+# 2. Related Work 
+
+2.1. Control of PDE Systems 
+
+The development of control methods in physical systems is critical across various scientific and engineering areas, including PID (Li et al., 2006), supervised learning (SL) (Holl et al., 2020; Hwang et al., 2022), reinforcement learn-ing (RL) (Farahmand et al., 2017; Pan et al., 2018; Rabault et al., 2019), and physics-informed neural networks (PINNs) (Mowlavi & Nabi, 2023). Among these, PID is one of the earliest and most widely used method (Johnson & Moradi, 2005), known for its simplicity and effectiveness in reg-ulating physical systems; however, it faces challenges in parameter tuning and struggles with highly nonlinear or time-varying systems. Model Predictive Control (MPC) (Garcia et al., 1989; Findeisen & Allg¨ ower, 2002; Schwen-zer et al., 2021) is another well-known control strategy that optimizes a control sequence over a finite time horizon by solving an optimization problem at each time step, using a dynamic model of the system. As it requires solving an optimization problem in real-time at each time step, it may have a high computational cost and struggle to handle high-dimensional, complex systems effectively. Furthermore, the adjoint method (Protas, 2008) and PINNs (Mowlavi & Nabi, 2023) are also incorporated in PDE control, but they require an explicit form of the PDE. Currently, the diffusion model used in physical systems’ control (Wei et al., 2024; Hu et al., 2024) integrates the learning of entire state trajec-tories and control sequences, enabling global optimization that incorporates the physical information learned by the model. However, it does not consider the important cases where safety constraints are required. In the field of reinforcement learning (RL), several safe of-fline RL algorithms have emerged in recent years. CPQ (Xu et al., 2022) is the first practical safe offline RL method that assigns high costs to out-of-distribution (OOD) and unsafe actions and updates the value function as well as the policy only with safe actions. COptiDICE (Lee et al., 2022) is a DICE-based method and corrects the stationary distribu-tion. CDT (Liu et al., 2023b) takes the decision transformer to solve safe offline RL problems as multi-objective opti-mization. More recent methods such as TREBI (Lin et al., 2023) and FISOR (Zheng et al., 2024) address this problem through diffusion model planning, leveraging the capabil-ity of diffusion models to model high-dimensional data. However, none of these algorithms take into account the uncertainty of the predicted safety from the perspective of conformal prediction, nor do they address PDE-constrained scenarios. 
+
+2.2. Conformal Prediction 
+
+Conformal prediction (Vovk et al., 2005) is a statistical framework that constructs prediction intervals guaranteed to contain the true label with a specified probability. Its validity could be compromised, however, by the violation of the core assumption of exchangeability due to distribution shifts in real-world scenarios (Chernozhukov et al., 2018; Hendrycks et al., 2018). Recent studies (Maxime Cauchois & Duchi, 2024) have extended conformal prediction to accommodate 2From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+various distribution shifts. For example, Tibshirani et al. (2019) proposed weighted conformal prediction to handle covariate shift, where training and test data distributions differ. Podkopaev & Ramdas (2021) introduced reweighted conformal prediction and calibration techniques to address label shift using unlabeled target data. Adaptive conformal inference (Gibbs & Candes, 2021) provides valid prediction sets in online settings with unknown, time-varying distri-bution shifts without relying on exchangeability. Inspired by conformal prediction, we measure uncertainty based on the distribution of data generated by diffusion models for control problems. This is also the first time the perspective of conformal prediction has been applied to address safety control problems. 
+
+# 3. Preliminary 
+
+3.1. Problem Setup 
+
+We consider the following safe control problem of PDE-constrained systems: 
+
+w∗ = arg min 
+
+> w
+
+J (u, w) s.t. C(u, w) = 0 , s(u) ≤ s0,
+
+(1) where u(t, x) : [0 , T ] × Ω 7 → Rdu is the system’s state trajectory with dimension du and w(t, x) : [0 , T ] × Ω 7 →
+
+Rdw is the external control signal with dimension dw. They are both defined on the time range [0 , T ] ⊂ R and spatial domain Ω ⊂ RD . J (u, w) is the objective of the control problem, and C(u, w) = 0 is the PDE constraint. As for the safety constraint, s(u) is the safety score and 
+
+s0 is the bound of the safety score. We need to minimize the control objective while satisfying PDE constraints and constraining the safety score to stay below the bound, which requires a careful balance between safety and control per-formance. Furthermore, it is important to note that safety and control performance are not on equal footing, and the pursuit of a better objective should be built upon ensuring safety (Knight, 2002; Cheng et al., 2019). 
+
+3.2. Diffusion Models and Diffusion Control 
+
+Diffusion models (Ho et al., 2020) learn data distribution from data in a generative way. They present impressive performance in a broad range of generation tasks. Diffusion models involve diffusion/denoising processes: the diffu-sion process q(xk+1 |xk) = N (xk+1 ; √αkxk, (1 − αk)I)
+
+corrupts the data distribution p(x0) to a prior distribu-tion N (0, I), and the denoising process pθ (xk−1|xk) = 
+
+N (xk−1; μθ (xk, k ), σ kI) makes sampling in a reverse di-rection. Here k is the diffusion/denoising step, {αk}Kk=1 
+
+and {σk}Kk=1 are the noise and variance schedules. In prac-tice, a denoising network ϵθ is trained to estimate the noise to be removed in each step. During inference, the iterative removal of ϵθ from the prior distribution could generate a new sample that follows the data distribution p(x).Recently, diffusion models (Wei et al., 2024; Hu et al., 2024) are applied to solve the control problem as in Eq. 1 without the safety constraint s(u) ≤ s0. For brevity, we only summarize the light version. These methods trans-form the physical constraint to a parameterized energy-based model (EBM) Eθ (u, w) with the correspondence 
+
+p(u, w) ∝ exp( −Eθ (u, w)) . Then the problem is con-verted to an unconstrained optimization over u and w for all physical time steps simultaneously: 
+
+u∗, w∗ = arg min 
+
+> u,w
+
+[Eθ (u, w) + λ · J (u, w)] , (2) where λ is a hyperparameter. To optimize Eθ , a denoising network ϵθ is trained to approximate ∇u,wEθ (u, w) by the following loss: 
+
+Ldiffusion = Ek∼U (1 ,K ),(u,w)∼p(u,w),ϵ∼N (0,I)
+
+[∥ϵ − ϵθ (√¯αk[u, w] + √1 − ¯αkϵ, k )∥22], (3) where ¯αk := Qki=1 αi. After ϵθ is trained, Eq. 2 can be optimized by sampling from an initial sample (uK , wK ) ∼N (0, I), and iteratively running the following process 1
+
+(uk−1, wk−1) = ( uk, wk) − ηk · ϵθ ([ uk, wk], k )+λk∇u,wG(ˆ uk, ˆwk) + ξ, ξ ∼ N  0, σ 2
+
+> k
+
+I (4) under the guidance of G = J for k = K, K − 1, ..., 1.Here [ˆ uk, ˆwk] is the noise-free estimation of [u0, w0], [·, ·]
+
+denotes vector concatenation, and ηk and λk are denoising schedules. The final sampling step yields the solution w0
+
+for the optimization problem in Eq. 2. 
+
+# 4. Method 
+
+Algorithm 1 Algorithm of SafeDiffCon                                  
+
+> 1: Require Training set Dtrain , Calibration set Dcal , control tar-gets 2: θ←Pre-train with Ldiffusion on Dtrain
+> 3: θ←Post-train with Lpost-train on Dtrain and Dcal (Sec 4.2, Alg 2) 4: θ, w←Fine-tune during guided inference with Gand Lfine-tune
+> on control targets and Dcal (Sec 4.3, Alg 3) 5: return model parameters θand control sequences w
+
+In this section, we introduce our proposed method SafeDif-fCon, with its overall framework outlined in Figure 1 and Algorithm 1. Firstly, in Section 4.1, we propose the un-certainty quantile, which is the quantification of uncertain-ties. As shown in the middle of the figure, it is embedded       
+
+> 1In this paper, we use uto represent state trajectory across time, and wto represent control signal sequence across time. uk
+> denotes the full system trajectory across time at denoising step k.
+
+3From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control Diffusion       
+
+> Model
+> Pre-train Inference-time
+> Finetune
+> Diffusion
+> Model
+> Calibration
+> Data
+> Feed Forward Sample Grad. Backward
+> Diffusion
+> Model
+> Post-train
+> Training
+> Data
+> Generated
+> Data
+> Real Data Generated Data
+> �0
+> ��
+> s
+> �(1−�)
+> Safety  Score
+> Control Targets
+> Uncertainty Quantile �
+
+Figure 1: Overview of SafeDiffCon . First, we pre-train a diffusion model pθ on the training data. Then, combined with the uncertainty quantile, we post-train the model to steer its distribution to safer regions with better control objectives. Finally, to improve performance and safety for specific control tasks, we conduct inference-time fine-tuning, again incorporating the uncertainty quantile into the process. throughout the algorithm, originating from the concern that the model’s predictive uncertainty may cause a gap between the actual and predicted safety scores, potentially leading to unsafe events not anticipated by the model. Secondly, in Section 4.2 and 4.3, we introduce the post-training and inference-time fine-tuning based on the un-certainty quantile, respectively. In the post-training phase following pre-training, we employ a reweighted loss func-tion to guide the model’s output distribution to favor regions with more optimal objectives and greater safety in general, after which the post-trained model can subsequently be used for specific control tasks. As for inference-time fine-tuning, we aim to make task-specific adjustments based on the post-trained model, enabling better control performance and safety guarantee for the specific control tasks with few iterations. 
+
+4.1. Uncertainty Quantification of Diffusion Models 
+
+In offline safe control problems (Xu et al., 2022; Gu et al., 2022), the gap between pre-collected data and the target distribution exacerbates models’ prediction errors, which can be critical in ensuring safety. To address this issue, we employ the conformal prediction technique to obtain uncertainty quantification for predicted safety, without re-quiring additional assumptions about the model and the data distribution. The intuition behind the original conformal prediction (Vovk et al., 2005) is to use the trained model on the calibration set to obtain a score set. The score set is then used to endow the model’s prediction with a conformal (confidence) interval .Under the assumption of exchangeability 2, the actual predic-tion during inference will lie within the conformal interval with a guaranteed probability. The details of conformal 
+
+> 2
+
+Exchangeability means that exchanging examples in the cali-bration set and in inference does not alter their joint distribution. 
+
+prediction are provided in Appendix D. However, there is typically a distribution shift between the calibration set and the sequences generated by the diffusion model for control tasks during inference. Therefore, we account for this distribution shift, thereby introducing the 
+
+shifted score set . Based on it, we get the uncertainty quan-tification metric named uncertainty quantile and finally the 
+
+conformal interval . The detailed description of this process is as follows. 
+
+Calibration set and pre-training. To achieve the goal mentioned above, we first set aside a portion of the origi-nal training data as the calibration set Dcal , which will be used later to estimate the model’s prediction errors. The remaining data, which will be applied to operations that can alter the model’s outcomes, is referred to as the training data Dtrain . After pre-training with Dtrain as described in Eq. 3, we get the diffusion model pθ which models the joint distribution of [u, w].
+
+Shifted score set under distribution shift. Score set , ob-tained on the calibration set, is a set of model prediction uncertainties regarding the safety score s, which is defined as 
+
+S := {| s(uθ (wi)) −s(ui)| : ( ui, wi) ∈ Dcal }∪{∞} . (5) Here ui and wi are the system state trajectory and control signal sequence of the ith example, uθ (w) is the system state trajectory conditioned on control wi as predicted by the model, where θ is the model parameter. Furthermore, taking into account the distribution shift be-tween the calibration set Dcal and data generated based on control targets, we apply weighting to the score set S to get the shifted score set as 
+
+˜S := {ωnorm (ui, wi)∆ si : ∆ si ∈ S} . (6) Intuitively, this weighting is because each sample in the calibration set has a different probability of appearing in the 4From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+final data distribution generated by the model. According to conformal prediction under covariate shift (Tibshirani et al., 2019), here the calculation of the weights is as follows: 
+
+ω(ui, wi) := ˜p(ui, wi)
+
+p(ui, wi) (7) where p(u, w) is the probability density function of the calibration set and training set, and ˜p(u, w) is the proba-bility density function of the model-generated data during inference. ωnorm is the normalization of ω defined as 
+
+ωnorm (ui, wi) = ω(ui, wi)
+
+P 
+
+> (ui,wi)∈Dcal
+
+ω(uj , wj ) . (8) The specific calculation of ωnorm regarding SafeDiffCon will be detailed in Section 4.2. 
+
+Uncertainty quantile. Based on the shifted score set ˜S
+
+(Eq. 6), the uncertainty quantile is Quantile ((1 − α)(1 +  
+
+> 1
+> |Dcal |
+
+); ˜S)3, where 1 − α is the coverage probability and 
+
+|Dcal | is the cardinality of Dcal . The quantile represents the threshold below which a specific proportion of ˜S falls. The adjustment term 1 + 1 /|Dcal | accounts for the finite size of the calibration set, ensuring valid coverage even with limited data. Hereafter, it is abbreviated as Q(1 − α; ˜S).We can then obtain the conformal interval as: CI θ (1 − α, D cal ) := [ s(uθ (w)) − Q(1 − α; ˜S),s(uθ (w)) + Q(1 − α; ˜S)] . (9) With at least 1 − α probability, the true s is covered by this interval, which can be demonstrated through the following theorem. 
+
+Theorem 4.1. Assume that samples in the calibration set 
+
+Dcal ∼ p are independent, and the test set (u, w) ∼ ˜p
+
+is also independent with the calibration set. Assume p is absolutely continuous with respect to ˜p, then 
+
+P(s(u) ∈ CI θ (1 − α, D cal )) ≥ 1 − α. (10) 
+
+(See Appendix A for proof.) 
+
+4.2. Post-training with Reweighted Loss 
+
+The aim of post-training is to transform the model’s distribu-tion into p∗(u, w) ∝ p(u, w) · e−W (u,w), where W(u, w)
+
+contains both the control objective J and the safety con-straints involving the model’s uncertainty. Specifically, it is formulated as: 
+
+W(u, w) = max[ s(u) + Q(1 − α; ˜S) − s0, 0] + γJ (u, w),
+
+(11) where γ is the weight of J .      
+
+> 3It means obtaining the element with (1 −α)(1 + 1
+> |Dcal |)’th quantile from the shifted score set ˜S.
+
+So we propose the reweighted post-training loss as 
+
+Lpost-train := Ek∼U (1 ,K ),(u,w)∼p(u,w),ϵ∼N (0,I)
+
+[e−W (u,w)∥ϵ − ϵθ (√¯αk[u, w] + √1 − ¯αkϵ, k )∥22], (12) which steers the generated data distribution towards high 
+
+e−W regions. Compared to the pre-training loss in Eq. 3, the samples are reweighted, assigning higher weights to those with lower W. This loss function enables the model to adjust the generated data distribution to align with our target distribution, as described in the following theorem: 
+
+Theorem 4.2. Trained with Lpost-train in Eq. 12, the diffusion model’s distribution is p∗(u, w) ∝ p(u, w)e−W (u,w).
+
+(See Appendix A for proof.) 
+
+Specifically, in the calculation of the uncertainty quantile Q,
+
+ω(ui, wi) = Cp θ (ui, wi)e−W (ui,wi)/p (ui, wi). In practi-cal implementation, we let 
+
+ω(ui, wi) = Ce −W (ui,wi), (13) and the constant C will be eliminated during normaliza-tion. Through the following theorem, we demonstrate that when the KL divergence between p and pθ is small, this approximation does not affect the results of the uncertainty quantile. 
+
+Theorem 4.3. If DKL (p|| pθ ) ≤ ϵ, then with 1 − C√ϵ prob-ability, Quantile (1 − α; PNi=1 wnorm ,i δvi ) = Quantile (1 −
+
+α; PNi=1 ˜wnorm ,i δvi ), where wnorm ,i and ˜wnorm ,i are the nor-malized wi and ˜wi, wi = pθ (vi)e−G (vi)/p (vi), and ˜wi =
+
+e−G (vi).(See Appendix A for proof.) 
+
+The algorithm of post-training is provided in Algorithm 2 in Appendix E.2. 
+
+4.3. Inference-time Fine-tuning 
+
+During inference, knowing the specific control tasks, we guide the model to further optimize the generation of con-trol sequences tailored to these tasks. We cyclically use the guidance to generate samples and then fine-tune the model parameters with these samples, thereby iteratively improving the model’s safety and performance. In this pro-cess, similar to post-training, we incorporate the uncertainty quantile Q into both the guidance and fine-tuning loss to pre-vent violations of safety constraints caused by the model’s uncertainty. 
+
+Guidance G. Guidance is the first approach we adopt to steer the model’s output toward satisfying both the control objectives and safety constraints. It plays a role during the sampling process of the diffusion model. The specific denoising step of implementing guidance follows Eq. 4, and the form of guidance still follows W in Eq. 11, i.e. 
+
+G(u, w) = W(u, w), (14) 5From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+incorporating the uncertainty quantile Q to account for safety risks arising from uncertainty. 
+
+Fine-tuning. The second approach for adjusting the out-put data distribution of the model is fine-tuning, which achieves the adjustment by optimizing the model param-eters θ. Specifically, retaining the computation graph for all denoising steps with respect to θ would result in an un-manageable memory overhead. Therefore, when we need to keep the computation graph during denoising for gradi-ent calculation, we only retain the computation graph of the final denoising step. To optimize the safety score and objective simultaneously, we form the fine-tune loss as: 
+
+Lfine-tune = X  
+
+> (uθ,wθ)∈Dsampled
+
+W(uθ , wθ ), (15) where uθ and wθ are from Dsampled sampled according to the guidance described above. The entire algorithm of inference-time finetuning is pro-vided in Algorithm 3 in Appendix E.3. 
+
+# 5. Experiment 
+
+We design three safe PDE control scenarios, including the 1D Burgers’ equation, 2D incompressible fluid, and con-trolled nuclear fusion problem. These experiments aim to address the following three questions: (1) Does introducing the uncertainty quantile enable SafeDiffCon to meet safety requirements? (2) Can SafeDiffCon achieve superior control performance under safety constraints? (3) Do all compo-nents of our proposed algorithm contribute effectively to its performance? For comparison, we choose imitation learning method Be-havior Cloning ( BC ) (Pomerleau, 1988), and safe reinforce-ment learning and imitation learning methods involving BC 
+
+with safe data filtering ( BC-Safe ), Constrained Decision Transformer ( CDT ) (Liu et al., 2023b) and diffusion-based method TREBI (Lin et al., 2023). Note that CDT shows the best performance in the offline Safe RL benchmark OSRL (Liu et al., 2023a). In addition, we combine the physical system control method Supervised Learning (Hwang et al., 2022) and Model Predictive Control (Schwenzer et al., 2021) with the Lagrangian approach (Chow et al., 2018) ( SL-Lag, MPC-Lag ) to enforce safety constraints. We also apply the classical control method PID (Li et al., 2006). We provide the code here. 
+
+5.1. 1D Burgers’ Equation Experiment settings. 1D Burgers’ equation is a fundamen-tal equation that governs various physical systems including fluid dynamics and gas dynamics. Here we follow previous works (Hwang et al., 2022; Mowlavi & Nabi, 2023) and consider the Dirichlet boundary condition along with an Table 1: Results of 1D Burgers’ equation. Gray: there are unsafe trajectories. Black: all trajectories are safe. Bold :safe trajectories with lowest J .Methods J ↓ Rsample ↓ Rtime ↓ Rpoint ↓
+
+BC 0.0001 38% 13% 1.2% BC-Safe 0.0002 14% 3% 0.2% PID 0.0968 0% 0% 0.0% SL-Lag 0.0115 0% 0% 0.0% MPC-Lag 0.0092 0% 0% 0.0% CDT 0.0012 16% 3% 0.2% TREBI 0.0074 0% 0% 0.0% 
+
+SafeDiffCon 0.0016 0% 0% 0.0% 
+
+Figure 2: Visualizations of the 1D Burgers’ equation. 
+
+The top row shows the original trajectory corresponding to the control target, and the bottom row is the trajectory controlled by SafeDiffCon. external force w(t, x ).Given a target state ud(x), the control objective J is to minimize the control error between the final state uT and the target state ud.
+
+J := 
+
+Z
+
+> Ω
+
+|u(T, x ) − ud(x)|2dx. (16) The safety score is defined as: 
+
+s(u) := sup  
+
+> (t,x )∈[0 ,T ]×Ω
+
+{u(t, x )2}, (17) with the safety constraint s0. If s(u) > s 0, the state tra-jectory u is unsafe, otherwise, it is safe. We compute three unsafe rates to assess the safety levels of different meth-ods’ control results. Rsample denotes the proportion of un-safe trajectories among total trajectories 4; Rtime denotes the proportion of unsafe timesteps among all timesteps; Rpoint 
+
+denotes the proportion of unsafe spatial lattice points in all spatial lattice points across all time steps. More details can be found in Appendix F.1.   
+
+> 4If any point in the full trajectory is unsafe, this trajectory is unsafe. So Rsample is the most stringent metric.
+
+6From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Results. In Table 1, We report the results of the control objective J and safety metrics of different methods. SafeD-iffCon can meet the safety constraint and achieve the best control objective at the same time. As shown in Figure 2, given the initial condition and the final state (control target), SafeDiffCon can control a state trajectory that satisfies the safety constraint and control target. Other methods either suffer from constraint violations or suboptimal objectives. 
+
+BC and BC-Safe trained from expert trajectories fail to meet the safety constraints, showing that simple behavior cloning is not feasible under the safety constraints. SL-Lag and 
+
+MPC-Lag attempt to use the Lagrangian method to balance the control objective and safety, but this coupled training program makes it difficult to find the right balance, with poor control performance. CDT uses the complex Trans-former architecture, which can achieve low control error, but it can not meet safety constraints. The diffusion-based method TREBI sacrifices too much control performance to satisfy the safety constraints, because its error bound is soft, and the safety constraints can be easily violated. 
+
+5.2. 2D Incompressible Fluid Experiment settings. We then consider the control prob-lems of the 2D incompressible fluid, which follows the Navier-Stokes equation. Following previous works (Holl et al., 2020; Wei et al., 2024; Hu et al., 2024), the control task we consider is to maximize the amount of smoke that passes through the target bucket in the fluid flow with obstacles and openings, while constraining the amount of smoke pass-ing through the dangerous region under the safety bound. Specifically, referring to Figure 3, the control objective J is defined as the negative ratio of smoke passing through the target bucket located at the center top, while the safety score 
+
+s corresponds to the ratio of smoke entering the hazardous red region. It is important to note that there is a trade-off between controlling the flow through the hazardous region and achieving a more optimal control objective, which im-poses higher demands on the algorithm. We set the safety score bound as s0 = 0 .1.Moreover, this control task is particularly challenging due to its specific setup: not only does it require indirect control, which means that control can only be applied to the periph-eral region, but the spatial control parameters also reach as many as 1,792. As for safety, among all the training data, 53.1% of the samples are unsafe, meaning their safety score s exceeds the bound s0 = 0 .1. The average safety score of the dataset is 0.3215. Other details can be found in Appendix G.1. 
+
+Results. We report results of SafeDiffCon and baselines in Table 2. Here SL-Lag and MPC-Lag fail to achieve rea-sonable control results because of the complex dynamics, and we define R as the rate of unsafe samples. Additionally, Table 2: 2D incompressible fluid control results. Gray: there are unsafe trajectories. Black: all trajectories are safe. 
+
+Bold : safe trajectories with lowest J .Methods J ↓ SV M ↓ R ↓ 
+
+BC -0.7104 0.7156 88% BC-Safe -0.2520 0.0330 8% CDT -0.7025 0.2519 30% TREBI -0.7019 0.0808 18% 
+
+SafeDiffCon -0.3548 0.0000 0% we introduce another metric called Safety Violation Mag-nitude SV M = max[ s − s0, 0] . When s does not exceed the bound s0, this metric is 0. If s exceeds s0, the met-ric reflects the amount by which it is surpassed. From the results, it is clear that our method is the only one to success-fully satisfy the safety constraint, even surpassing methods that only consider safety like BC-Safe, which demonstrates the effectiveness of post-training and fine-tuning with the uncertainty quantile. 
+
+5.3. Tokamak Fusion Reactor Experiment settings. A tokamak is a device designed to achieve controlled nuclear fusion by confining high-temperature plasma within a toroidal magnetic field, en-abling conditions suitable for fusion reactions (Federici et al., 2001). The realization of controlled fusion could provide humanity with a clean, safe, and nearly limitless energy source, free from greenhouse gases, nuclear accident risks, and fuel supply imbalances (Schuster & Ariola, 2006). Safety in a tokamak is crucial to prevent plasma instabilities and disruptions (Kates-Harbeck et al., 2019), which can damage the device worth billions of dollars. Controlling the plasma state in a tokamak is critical for maintaining stability and optimizing fusion performance, which often requires precise management of parameters like beta ( βp), safety factor ( q95 ), and internal inductance ( li). Based on the previous works (Seo et al., 2021; 2022), we set the control objective to make βp and li reach specific target values β∗ 
+
+> p
+
+and l∗ 
+
+> i
+
+at each time step, while the safety constraint requires q95 to remain above the defined safety bound at all times. In this case, the objective J and safety score s are formulated as follows: 
+
+J := 
+
+Z 
+
+> Ω×[0 ,T ]
+
+(|βp(t, x ) − β∗ 
+
+> p
+
+(x)|2 (18) 
+
++ |li(t, x ) − l∗ 
+
+> i
+
+(x)|2)d xdt, (19) 
+
+s := − inf  
+
+> (t,x )∈[0 ,T ]×Ω
+
+{q95 (t, x )}. (20) And the safety score bound is s0 = −4.98 . We use the same initial state and tokamak simulation environment as in the previous work (Seo et al., 2022), setting time-varying 7From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control t = 0 t = 7 t = 14 t = 21 t = 28 
+
+Figure 3: Visualization of the 2D incompressible fluid control by our SafeDiffCon. By controlling the fluid on the outside margin, the yellow smoke is successfully maneuvered to the center top exit while avoiding the red unsafe region. random targets within the reasonable ranges proposed in that study. The control sequences for training are collected using the reinforcement learning model trained in the previous work (Seo et al., 2022), where 71.18% of the samples in the training dataset are unsafe. Table 3: Results of the tokamak fusion reactor. Gray: there are unsafe trajectories. Black: all trajectories are safe. 
+
+Bold : safe trajectories with lowest J .Methods J ↓ Rsample ↓ Rtime ↓
+
+BC 0.0610 42% 1.34% BC-Safe 0.0811 4% 0.03% SL-Lag 0.8812 0% 0.00% MPC-Lag 0.8659 0% 0.00% CDT 0.0071 8% 0.54% TREBI 0.0261 0% 0.00% 
+
+SafeDiffCon 0.0121 0% 0.00% 
+
+Results. We provide the results of control and safety metrics in Table 3, where the definition of Rsample and Rtime are the same as Section 5.1. Due to the differences in the input and output dimensions of the controller and the lack of clarity re-garding the device’s specific details, PID cannot be directly applied here. Results show that SafeDiffCon successfully achieves full compliance with safety constraints. More-over, among all algorithms that satisfy safety constraints, our algorithm achieves the lowest J , indicating that it also achieves the best control performance. These results verify our statement that our algorithm is not only safe but also effective. 
+
+5.4. Ablation Study 
+
+To demonstrate the necessity and effectiveness of each com-ponent of our algorithm, we conduct three ablation exper-iments on the 2D incompressible fluid control problem by removing post-training, inference-time fine-tuning, and the uncertainty quantile Q, respectively. It can be observed that post-training and fine-tuning, as two methods that influence the model’s output distribution, are both essential for meeting safety constraints. Remov-ing either one results in the algorithm failing to achieve safety, highlighting the indispensable roles of these two components. Furthermore, when the uncertainty quantile is removed, which means Q is set to 0, the algorithm also fails to meet safety requirements. This demonstrates that without considering the model’s uncertainty, its safety predictions are inaccurate, leading to the occurrence of unsafe events. Table 4: Results of the ablation study. We compare SafeD-iffCon with SafeDiffCon w/o post-training, inference-time fine-tuning and the uncertainty quantile Q.Methods J ↓ SV M ↓ R ↓ 
+
+SafeDiffCon -0.3548 0.0000 0% w/o post-training -0.4911 0.0849 12% w/o fine-tuning -0.4692 0.0247 8% w/o Q -0.6364 0.0623 12% 
+
+# 6. Limitation and Future Work 
+
+Firstly, our method is not constrained by specific scenarios, meaning it can be applied to more real-world tasks, which is our future work. Secondly, we consider extending this method to other generative methods that require constraints, not just the diffusion model. Finally, in the future, we will explore the possibility of developing a stricter coverage of the safety score that sacrifices less accuracy while still ensuring safety. 
+
+# 7. Conclusion 
+
+In this paper, we have introduced Safe Diff usion Models for PDE Con trol (SafeDiffCon), a novel approach that inte-grates safety constraints into deep learning-based control of PDE systems. By quantifying safety uncertainty using con-formal prediction and introducing a reweighted loss during post-training, our method effectively handles distribution shifts and ensures safety while maintaining competitive con-trol performance. Furthermore, inference-time fine-tuning allows dynamic adjustment of the model to meet specific control targets. The results of experiments on diverse control tasks, including 1D Burgers’ equation, 2D incompressible fluid, and controlled nuclear fusion, demonstrate that SafeD-iffCon reliably satisfies safety constraints and outperforms existing methods. This work paves the way for safer de-ployment of machine learning techniques in high-stakes real-world applications. 8From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+# Impact Statement 
+
+This paper presents work whose goal is to advance the field of Machine Learning. Furthermore, our work makes Ma-chine Learning applications safer in real-world scenarios. There are many potential societal consequences of our work, none of which we feel must be specifically highlighted here. 
+
+# Acknowledgements 
+
+We thank Yuchen Yang for the discussions and for providing feedback on our manuscript. We gratefully acknowledge the support of Westlake University Research Center for Industries of the Future and Westlake University Center for High-performance Computing. The content is solely the responsibility of the authors and does not necessarily represent the official views of the funding entities. 
+
+# References 
+
+Argomedo, F. B., Witrant, E., Prieur, C., Bremond, S., Nouailletas, R., and Artaud, J.-F. Lyapunov-based dis-tributed control of the safety-factor profile in a tokamak plasma. Nuclear Fusion , 53(3):033005, 2013. Barros, E., des Santos, and M.V.D. A safe, accurate in-travenous infusion control system. IEEE Micro , 18(5): 12–21, 1998. doi: 10.1109/40.735940. Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., and Mordatch, I. De-cision transformer: Reinforcement learning via sequence modeling. Advances in neural information processing systems , 34:15084–15097, 2021. Cheng, R., Orosz, G., Murray, R. M., and Burdick, J. W. End-to-end safe reinforcement learning through barrier functions for safety-critical continuous control tasks. In 
+
+Proceedings of the AAAI conference on artificial intelli-gence , volume 33, pp. 3387–3395, 2019. Chernozhukov, V., W ¨uthrich, K., and Yinchu, Z. Exact and robust conformal inference methods for predictive machine learning with dependent data. In Conference On learning theory , pp. 732–749. PMLR, 2018. Chi, C., Xu, Z., Feng, S., Cousineau, E., Du, Y., Burchfiel, B., Tedrake, R., and Song, S. Diffusion policy: Visuomo-tor policy learning via action diffusion. The International Journal of Robotics Research , pp. 02783649241273668, 2023. Chow, Y., Ghavamzadeh, M., Janson, L., and Pavone, M. Risk-constrained reinforcement learning with percentile risk criteria. Journal of Machine Learning Research , 18 (167):1–51, 2018. Chung, H., Kim, J., Mccann, M. T., Klasky, M. L., and Ye, J. C. Diffusion posterior sampling for general noisy inverse problems. In The Eleventh International Confer-ence on Learning Representations , 2023. URL https: //openreview.net/forum?id=OnD9zGAGT0k .Dawson, C., Qin, Z., Gao, S., and Fan, C. Safe nonlinear control using robust neural lyapunov-barrier functions. In 
+
+Conference on Robot Learning , pp. 1724–1735. PMLR, 2022. Dhariwal, P. and Nichol, A. Diffusion Models Beat GANs on Image Synthesis, June 2021. URL http://arxiv. org/abs/2105.05233 . arXiv:2105.05233 [cs, stat]. Farahmand, A.-m., Nabi, S., and Nikovski, D. N. Deep reinforcement learning for partial differential equation control. In 2017 American Control Conference (ACC) , pp. 3120–3127, 2017. doi: 10.23919/ACC.2017.7963427. Federici, G., Skinner, C. H., Brooks, J. N., Coad, J. P., Grisolia, C., Haasz, A. A., Hassanein, A., Philipps, V., Pitcher, C. S., Roth, J., et al. Plasma-material interactions in current tokamaks and their implications for next step fusion reactors. Nuclear Fusion , 41(12):1967, 2001. Findeisen, R. and Allg ¨ower, F. An introduction to nonlinear model predictive control. In 21st Benelux meeting on systems and control , volume 11, pp. 119–141. Veldhoven, 2002. Garcia, C. E., Prett, D. M., and Morari, M. Model predictive control: Theory and practice—a survey. Automatica , 25 (3):335–348, 1989. Gibbs, I. and Candes, E. Adaptive conformal inference under distribution shift. Advances in Neural Information Processing Systems , 34:1660–1672, 2021. Gu, S., Yang, L., Du, Y., Chen, G., Walter, F., Wang, J., and Knoll, A. A review of safe reinforcement learn-ing: Methods, theory and applications. arXiv preprint arXiv:2205.10330 , 2022. Hendrycks, D., Mazeika, M., Wilson, D., and Gimpel, K. Using trusted data to train deep networks on labels cor-rupted by severe noise. Advances in neural information processing systems , 31, 2018. Hinze, M. and Kunisch, K. Second order methods for opti-mal control of time-dependent fluid flow. SIAM Journal on Control and Optimization , 40(3):925–946, 2001. Ho, J., Jain, A., and Abbeel, P. Denoising diffusion proba-bilistic models. Advances in neural information process-ing systems , 33:6840–6851, 2020. 9From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Ho, J., Salimans, T., Gritsenko, A., Chan, W., Norouzi, M., and Fleet, D. J. Video diffusion models. 
+
+arXiv:2204.03458 , 2022. Holl, P., Thuerey, N., and Koltun, V. Learning to control pdes with differentiable physics. In International Confer-ence on Learning Representations , 2020. Hu, P., Wang, R., Zheng, X., Zhang, T., Feng, H., Feng, R., Wei, L., Wang, Y., Ma, Z.-M., and Wu, T. Wavelet diffu-sion neural operator. arXiv preprint arXiv:2412.04833 ,2024. Hwang, R., Lee, J. Y., Shin, J. Y., and Hwang, H. J. Solving pde-constrained control problems using operator learn-ing. In Proceedings of the AAAI Conference on Artificial Intelligence , pp. 4504–4512, 2022. Janner, M., Du, Y., Tenenbaum, J., and Levine, S. Plan-ning with diffusion for flexible behavior synthesis. Pro-ceedings of Machine Learning Research , 162:9902–9915, 17–23 Jul 2022. Johnson, M. A. and Moradi, M. H. PID control . Springer, 2005. Kates-Harbeck, J., Svyatkovskiy, A., and Tang, W. Pre-dicting disruptive instabilities in controlled fusion plas-mas through deep learning. Nature , 568(7753):526–531, 2019. Knight, J. C. Safety critical systems: challenges and direc-tions. In Proceedings of the 24th international conference on software engineering , pp. 547–550, 2002. Lee, J., Paduraru, C., Mankowitz, D. J., Heess, N., Pre-cup, D., Kim, K.-E., and Guez, A. COptiDICE: Offline constrained reinforcement learning via stationary distri-bution correction estimation. In International Confer-ence on Learning Representations , 2022. URL https: //openreview.net/forum?id=FLA55mBee6Q .Lei, J., G’Sell, M. G., Rinaldo, A., Tibshirani, R. J., and Wasserman, L. A. Distribution-free predictive inference for regression. Journal of the American Statistical Asso-ciation , 113:1094 – 1111, 2016. URL https://api. semanticscholar.org/CorpusID:13741419 .Li, T., Biferale, L., Bonaccorso, F., Scarpolini, M. A., and Buzzicotti, M. Synthetic lagrangian turbulence by gener-ative diffusion models. Nature Machine Intelligence , pp. 1–11, 2024. Li, Y., Ang, K. H., and Chong, G. Pid control system analysis and design. IEEE Control Systems Magazine , 26 (1):32–41, 2006. doi: 10.1109/MCS.2006.1580152. Lin, Q., Tang, B., Wu, Z., Yu, C., Mao, S., Xie, Q., Wang, X., and Wang, D. Safe offline reinforcement learning with real-time budget constraints. In International Conference on Machine Learning , pp. 21127–21152. PMLR, 2023. Liu, Z., Guo, Z., Lin, H., Yao, Y., Zhu, J., Cen, Z., Hu, H., Yu, W., Zhang, T., Tan, J., et al. Datasets and benchmarks for offline safe reinforcement learning. arXiv preprint arXiv:2306.09303 , 2023a. Liu, Z., Guo, Z., Yao, Y., Cen, Z., Yu, W., Zhang, T., and Zhao, D. Constrained decision transformer for offline safe reinforcement learning. In International Conference on Machine Learning , pp. 21611–21630. PMLR, 2023b. Maxime Cauchois, Suyash Gupta, A. A. and Duchi, J. C. Robust validation: Confident predictions even when distributions shift. Journal of the American Statis-tical Association , 0(0):1–66, 2024. doi: 10.1080/ 01621459.2023.2298037. URL https://doi.org/ 10.1080/01621459.2023.2298037 .Mowlavi, S. and Nabi, S. Optimal control of pdes using physics-informed neural networks. Journal of Computa-tional Physics , 473:111731, 2023. Pan, Y., Farahmand, A.-m., White, M., Nabi, S., Grover, P., and Nikovski, D. Reinforcement learning with function-valued action spaces for partial differential equation con-trol. In Dy, J. and Krause, A. (eds.), Proceedings of the 35th International Conference on Machine Learning ,volume 80, pp. 3986–3995. PMLR, 10–15 Jul 2018. Podkopaev, A. and Ramdas, A. Distribution-free uncer-tainty quantification for classification under label shift. In de Campos, C. and Maathuis, M. H. (eds.), Proceed-ings of the Thirty-Seventh Conference on Uncertainty in Artificial Intelligence , volume 161 of Proceedings of Ma-chine Learning Research , pp. 844–853. PMLR, 27–30 Jul 2021. URL https://proceedings.mlr.press/ v161/podkopaev21a.html .Pomerleau, D. A. Alvinn: An autonomous land vehicle in a neural network. Advances in neural information processing systems , 1, 1988. Protas, B. Adjoint-based optimization of pde systems with alternative gradients. Journal of Computational Physics ,227(13):6490–6510, 2008. Rabault, J., Kuchta, M., Jensen, A., R ´eglade, U., and Cer-ardi, N. Artificial neural networks trained through deep re-inforcement learning discover control strategies for active flow control. Journal of fluid mechanics , 865:281–302, 2019. Schuster, E. and Ariola, M. The role of controls in nuclear fusion. In Proceedings of the 45th IEEE Conference on Decision and Control , pp. 2263–2270. IEEE, 2006. 10 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Schwenzer, M., Ay, M., Bergs, T., and Abel, D. Review on model predictive control: An engineering perspective. 
+
+The International Journal of Advanced Manufacturing Technology , 117(5):1327–1349, 2021. Seo, J., Na, Y.-S., Kim, B., Lee, C., Park, M., Park, S., and Lee, Y. Feedforward beta control in the kstar tokamak by deep reinforcement learning. Nuclear Fusion , 61(10): 106010, 2021. Seo, J., Na, Y.-S., Kim, B., Lee, C., Park, M., Park, S., and Lee, Y. Development of an operation trajectory design algorithm for control of multiple 0d parameters using deep reinforcement learning in kstar. Nuclear Fusion , 62 (8):086049, 2022. Soner, H. M. Stochastic optimal control in finance . Scuola normale superiore, 2004. Song, J., Meng, C., and Ermon, S. Denoising diffusion implicit models. In International Conference on Learning Representations , 2021. URL https://openreview. net/forum?id=St1giarCHLP .Tibshirani, R. J., Barber, R. F., Cand `es, E. J., and Ramdas, A. Conformal prediction under covariate shift. In Neural Information Processing Systems ,2019. URL https://api.semanticscholar. org/CorpusID:115140768 .Vahdat, A., Williams, F., Gojcic, Z., Litany, O., Fidler, S., Kreis, K., et al. Lion: Latent point diffusion models for 3d shape generation. Advances in Neural Information Processing Systems , 35:10021–10039, 2022. Vovk, V., Gammerman, A., and Shafer, G. Algorithmic learning in a random world , volume 29. Springer, 2005. Wei, L., Hu, P., Feng, R., Feng, H., Du, Y., Zhang, T., Wang, R., Wang, Y., Ma, Z.-M., and Wu, T. A generative approach to control complex physical systems. Advances in Neural Information Processing Systems , 2024. Xu, H., Zhan, X., and Zhu, X. Constraints penalized q-learning for safe offline reinforcement learning. In Pro-ceedings of the AAAI Conference on Artificial Intelli-gence , volume 36, pp. 8753–8760, 2022. Zheng, Y., Li, J., Yu, D., Yang, Y., Li, S. E., Zhan, X., and Liu, J. Safe offline reinforcement learning with feasibility-guided diffusion model. arXiv preprint arXiv:2401.10700 , 2024. 11 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+# A. Theory 
+
+In this section, we provide the proof of the theorems mentioned in the main text. 
+
+Theorem A.1. Assume samples in the calibration set Dcal ∼ p are independent, and the test set (u, w) ∼ ˜p is also independent with the calibration set. Assume p is absolutely continuous with respect to ˜p, then 
+
+P(s(u) ∈ CI θ (1 − α, D cal )) ≥ 1 − α. (21) 
+
+Proof. According to Lemma 2 in the previous work (Tibshirani et al., 2019), the calibration set and test set are weighted exchangeable (defined in Definition 1 in the previous work (Tibshirani et al., 2019)), with the weight function ω.According to Lemma 3 in the previous work (Tibshirani et al., 2019), let the (u, w) pairs be the random variables, we can obtain that 
+
+P(s(u) ≤ s(uθ (w)) + Q(1 − α; ˜S)) ≥ 1 − α. (22) Similarly, it can be derived that 
+
+P(s(uθ (w)) − Q(1 − α; ˜S) ≤ s(u)) ≥ 1 − α. (23) Thus 
+
+P(s(u) ∈ CI θ (1 − α, D cal )) ≥ 1 − α. (24) 
+
+Theorem A.2. Trained with Lpost-train 
+
+Lpost-train = Ek∼U (1 ,K ),(u,w)∼p(u,w),ϵ∼N (0,I)[e−W (u,w)∥ϵ − ϵθ (√¯αk[u, w] + √1 − ¯αkϵ, k )∥22], (25) 
+
+the diffusion model’s distribution is p∗(u, w) ∝ p(u, w)e−W (u,w).
+
+Proof. Trained with the diffusion loss 
+
+Ldiffusion = Ek∼U (1 ,K ),(u,w)∼p(u,w),ϵ∼N (0,I)[∥ϵ − ϵθ (√¯αk[u, w] + √1 − ¯αkϵ, k )∥22], (26) the diffusion model’s distribution is p, thus to learn the distribution p∗, the loss should be 
+
+L = Ek∼U (1 ,K ),(u,w)∼p∗(u,w),ϵ∼N (0,I)[∥ϵ − ϵθ (√¯αk[u, w] + √1 − ¯αkϵ, k )∥22] (27) 
+
+= Ek∼U (1 ,K ),ϵ∼N (0,I)[
+
+Z
+
+∥ϵ − ϵθ (√¯αk[u, w] + √1 − ¯αkϵ, k )∥22 · p∗(u, w)dudw] (28) 
+
+∝ Ek∼U (1 ,K ),ϵ∼N (0,I)[
+
+Z
+
+∥ϵ − ϵθ (√¯αk[u, w] + √1 − ¯αkϵ, k )∥22 · p(u, w)e−W (u,w)dudw] (29) 
+
+= Ek∼U (1 ,K ),(u,w)∼p(u,w),ϵ∼N (0,I)[e−W (u,w)∥ϵ − ϵθ (√¯αk[u, w] + √1 − ¯αkϵ, k )∥22]. (30) 
+
+Theorem A.3. If the KL divergence of the real distribution p and the distribution pθ learned by the model is less than ϵ,then with 1 − C√ϵ probability, the quantile Quantile (1 − α; PNi=1 wnorm ,i δvi ) = Quantile (1 − α; PNi=1 ˜wnorm ,i δvi ), where 
+
+wnorm ,i and ˜wnorm ,i are the normalized wi and ˜wi, wi = pθ (vi)e−W (vi) 
+
+> p(vi)
+
+and ˜wi = e−W (vi).
+
+12 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Proof. Since DKL (p|| pθ ) = R p(x) log p(x)  
+
+> pθ(x)
+
+dx ≤ ϵ, we can get 
+
+P(A = {| p(x) − pθ (x)| > δ }) ≤
+
+R 
+
+> A
+
+|p(x) − pθ (x)|dx δ (31) 
+
+≤
+
+R 
+
+> Ω
+
+|p(x) − pθ (x)|dx δ (32) 
+
+= 2T V (p, p θ )
+
+δ (33) 
+
+≤ 2
+
+δ
+
+r 12 DKL (p|| pθ ) (34) 
+
+≤√2ϵδ , (35) where T V (p, p θ ) is the total variation distance between p and pθ . Eq. 34 is obtained using Pinsker’s inequality. This inequality means that with 1 − √2ϵδ probability, |∆p(v)| := |pθ (v) − p(v)| ≤ δ.Let δ be a small quantity and p− = min i=1 ,··· ,N (p(vi)) , since 
+
+X
+
+> j
+
+(1 + |∆p(vj )|
+
+p−
+
+) ≥ X
+
+> j
+
+(1 + ∆p(vj )
+
+pj
+
+) ≥ X
+
+> j
+
+(1 − |∆p(vj )|
+
+p−
+
+), (36) and 
+
+wnorm ,i = wi
+
+PNj=1 wj
+
+= (1 + ∆p(vi) 
+
+> p(vi)
+
+) ˜ wi
+
+PNj=1 (1 + ∆p(vj )  
+
+> p(vj)
+
+) ˜ wj
+
+, (37) thus 
+
+1 + ∆p(vi)
+
+> p(vi)
+
+1 + |∆p(vi)|
+
+> p−
+
+˜wnorm ,i ≤ wnorm ,i ≤ 1 + ∆p(vi)
+
+> p(vi)
+
+1 − |∆p(vi)|
+
+> p−
+
+˜wnorm ,i . (38) By rearranging terms, we obtain 
+
+|wnorm ,i − ˜wnorm ,i | ≤ max {| ∆p(vi)/p (vi) − | ∆p(vi)|/p −
+
+1 + |∆p(vi)|/p −
+
+|, | ∆p(vi)/p (vi) + |∆p(vi)|/p −
+
+1 − | ∆p(vi)|/p −
+
+|} (39) 
+
+≤ | ∆p(vi)| |1/p (vi)| + |1/p −|
+
+1 − δ/p −
+
+(40) 
+
+≤ C|∆p(vi)| (41) 
+
+≤ C|δ|. (42) Because we can merge the vi values that are the same, we can assume v1 < v2 < · · · < vN . Suppose Quantile (α; PNi=1 wnorm ,i δvi ) = vk, which means 
+
+> k
+
+X
+
+> i=i
+
+wnorm ,i ≥ 1 − α, 
+
+> k−1
+
+X
+
+> i=i
+
+wnorm ,i < 1 − α. (43) With Eq. 42, we can get that 
+
+> k
+
+X
+
+> i=i
+
+˜wnorm ,i ≥ 1 − α − Ckδ, 
+
+> k−1
+
+X
+
+> i=i
+
+˜wnorm ,i < 1 − α + Ckδ. (44) We can let δ be small enough to make k satisfy 
+
+> k
+
+X
+
+> i=i
+
+˜wnorm ,i ≥ 1 − α, 
+
+> k−1
+
+X
+
+> i=i
+
+˜wnorm ,i < 1 − α, (45) which means Quantile (α; PNi=1 wnorm ,i δvi ) = Quantile (α; PNi=1 ˜wnorm ,i δvi ).13 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+# B. Additional Experiment Results 
+
+B.1. Inference Time 
+
+We have accelerated the efficiency of inference. On one hand, by introducing post-training, the data distribution is already close to the desired distribution before inference. On the other hand, we have significantly accelerated the diffusion model’s sampling time using DDIM (Song et al., 2021). The Table 5 below presents a comparison of the inference time between our method and the baseline on the Burgers’ equation on A800 with 8 CPUs. It shows that our method achieves a moderate speed and is much faster compared to TREBI, which is also based on the diffusion model. Table 5: Inference time on the Burgers’ equation on A800 with 8 CPUs. 
+
+Methods BC PID SL-Lag MPC-Lag CDT TREBI SafeDiffCon Inference Time (min) 0.1351 0.1091 0.8842 26.2905 0.0890 13.5525 2.3575 
+
+B.2. Ablation Study 
+
+In this subsection, we provide results of ablation studies on the 1D Burgers’ equation and the tokamak fusion reactor. We also compare SafeDiffCon and SafeDiffCon without post-training, inference-time fine-tuning, and the uncertainty quantile 
+
+Q. The results in Table 6 still show that the absence of any module affects the model, causing it to fail to meet the safety constraints. Therefore, each module is effective. Table 6: Results of the ablation study on the tokamak fusion reactor. We compare SafeDiffCon with SafeDiffCon w/o post-training, inference-time fine-tuning and the uncertainty quantile Q.Methods J ↓ Rsample ↓ Rtime ↓
+
+SafeDiffCon 0.0094 0% 0% w/o post-training 0.0153 10% 0.52% w/o fine-tuning 0.0210 50% 7.74% w/o Q 0.0269 28% 0.65% The only exception is the result of SafeDiffCon without post-training in Table 7. Due to the high precision requirements of this control scenario, large-scale post-training may easily disrupt the dynamics originally learned by the model during training. Therefore, directly applying fine-tuning allows the model to adapt to specific control tasks without significant loss of accuracy, enabling both safe and precise control. Table 7: Results of the ablation study on the Burgers’ equation. We compare SafeDiffCon with SafeDiffCon w/o post-training, inference-time fine-tuning and the uncertainty quantile Q.Methods J ↓ Rsample ↓ Rtime ↓ Rpoint ↓
+
+SafeDiffCon 0.0016 0% 0% 0% w/o post-training 0.0016 0% 0% 0% w/o fine-tuning 0.0007 40% 20% 3% w/o Q 0.0006 30% 10% 1% 
+
+B.3. Analysis on Parameters 
+
+We conduct experimental analysis on coverage probability α, the split ratio of training/calibration data, and the weight of objective γ. The Table 8, 9 and 10 show that they do not impact much on performance, indicating that the model is robust. 14 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Table 8: Impact of the coverage probability α on the tokamak fusion reactor. 
+
+Split Ratio J ↓ Rsample ↓ Rtime ↓
+
+0.8 0.01017 0% 0% 0.85 0.0091 0% 0% 0.9 0.0094 0% 0% 0.95 0.0095 0% 0% Table 9: Impact of the split ratio of training/calibration data on the tokamak fusion reactor. 
+
+α J ↓ Rsample ↓ Rtime ↓
+
+0.005 0.0124 4% 0.03% 0.01 0.0093 0% 0% 0.02 0.0094 0% 0% 
+
+# C. Visualization of Experiment Results 
+
+C.1. 1D Burgers’ Equation 
+
+In this section, we provide additional visualizations of the control results for the 1D Burgers’ equation, as shown in Figure 4. In these figures, the top row represents the original trajectories corresponding to the control targets, while the bottom row displays the trajectories controlled by SafeDiffCon. It can be observed that SafeDiffCon successfully controls the trajectories, preventing boundary violations and guiding them to the desired final state. 15 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Table 10: Impact of the split ratio of the weight of objective γ on the 2D incompressible fluid. 
+
+γ J ↓ SV M ↓ R ↓ 
+
+0.01 0.3548 0 0% 0.1 0.4953 0.004 2% 0.3 0.498 0.003 2% 
+
+Figure 4: Visualization of the 1D Burgers’ equation. C.2. 2D Incompressible Fluid 
+
+Here, we provide additional visualizations of the control problems of 2D incompressible fluid. From the figures, we can observe that SafeDiffCon can successfully control the smoke to avoid the red hazardous region and reach the target bucket as well. 16 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control t=0 t=7 t=14 t=21 t=28 
+
+Figure 5: Visualizations of the 2D incompressible fluid control problem. .
+
+# D. Additional Details for Conformal Prediction 
+
+Conformal prediction is a flexible framework that provides prediction intervals with guaranteed coverage probabilities for new, unseen data points, under the assumption that the data are exchangeable. 
+
+Theoretical Foundations The exchangeability assumption is a cornerstone of conformal prediction. It requires that the order of the data points does not affect their joint distribution, meaning that any permutation of the indices yields an identical distribution. In particular, exchangeability holds for independent and identically distributed (i.i.d.) samples, a common assumption in machine learning tasks. Ensuring exchangeability guarantees the validity of the prediction intervals constructed using conformal prediction. 
+
+Implementation Details To implement conformal prediction, the dataset is first split into two subsets: a proper training set (Dtrain ) and a calibration set ( Dcal ). A predictive model μθ is trained on the training set using a specified learning algorithm 17 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+A. Once trained, the model generates predictions for the calibration set. These predictions are used to compute ‘conformity scores’, which measure the model’s accuracy for each calibration point. Specifically, for each instance i in the calibration set, the conformity score Si is defined as: 
+
+Si = |μθ (Xi) − Yi|, i ∈ Dcal .
+
+Additionally, a worst-case score of ∞ is included to account for extreme scenarios. Then 1 − α quantile q1−α(S) of the set of conformity scores is calculated, where α represents the desired significance level (e.g. , α = 0 .05 for 95% confidence interval). Given a new data point Xn+1 , the prediction interval for its corresponding output is calculated as: 
+
+ˆCα(Xn+1 ) = [ μθ (Xn+1 ) − q1−α(S), μ θ (Xn+1 ) + q1−α(S)] .
+
+This interval provides an estimate for the range within which the true value Yn+1 is expected to lie, with a coverage probability of at least 1 − α. Thus, conformal prediction offers a flexible and robust method for constructing prediction intervals that account for both the model’s accuracy and the variability in the data. 
+
+Theoretical Guarantees Conformal prediction provides theoretical guarantees for finite samples (Vovk et al., 2005; Lei et al., 2016). Specifically, for any new data point, the prediction interval satisfies the following probabilistic bound: 
+
+P (Yn+1 ∈ ˆCα(Xn+1 )) ≥ 1 − α. 
+
+This ensures that the true label Yn+1 will fall within the predicted interval at least 1 − α percent of the time. This framework, based on the assumption of exchangeability, provides a robust method for generating reliable prediction intervals, even in settings with limited sample sizes. 
+
+# E. Details of the Method Implementation 
+
+E.1. Conditionally Sample uθ (w)
+
+In our proposed algorithm, we need to sample from the conditional distribution p(u|w) with the model that learns the joint distribution p(u, w). To achieve this, at each denoising step of the sampling process, we replace the noisy w in the input of the denoising network with the actual clean w that serves as the condition (Chung et al., 2023). In fact, this situation represents a special case of the data distribution that the denoising network encounters during training, where the u part is noisy, while the w part remains noise-free. 
+
+E.2. Algorithm of Post-training 
+
+Here we provide the specific algorithm of post-training in Algorithm 2. 
+
+E.3. Algorithm of Inference-time Fine-tuning 
+
+In this subsection, we provide the entire algorithm of inference-time fine-tuning in Algorithm 3. 
+
+Algorithm 2 Post-training of SafeDiffCon                                    
+
+> 1: Require Training set Dtrain , Calibration set Dcal , coverage probability α, number of epochs N, number of updating steps per epoch M
+> 2: for n= 1 , . . . , N do
+> 3: Compute the shifted score set ˜Swith Dcal // Eq. 6 4: Get the uncertainty quantile Q(1 −α; ˜S)
+> 5: for m= 1 , . . . , M do
+> 6: Take gradient descent step on ∇θLpost-train with Dtrain // Eq. 12 7: end for
+> 8: end for
+> 9: return θ
+
+18 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Algorithm 3 Inference of SafeDiffCon                                   
+
+> 1: Require Calibration set Dcal , coverage probability α, number of iterations N
+> 2: for n= 1 , . . . , N do
+> 3: Compute the shifted score set ˜Swith Dcal // Eq. 6 4: Get the uncertainty quantile Q(1 −α; ˜S)
+> 5: Sample the control sequence wwith guidance G// Eq. 14 6: Take gradient descent step on ∇θLfine-tune // Eq. 15 7: end for
+> 8: Sample the control sequence wwith guidance G// Eq. 14 9: return w
+
+# F. Additional Details for 1D Burgers’ Experiment 
+
+F.1. Experiment Setting 
+
+Following the previous works (Holl et al., 2020; Wei et al., 2024), we generate the 1D Burgers’ equation dataset. This equation is formulated as follows: 
+
+ 
+
+> ∂u(t,x )
+> ∂t
+
+= −u(t, x ) · ∂u(t,x ) 
+
+> ∂x
+
++ ν ∂2u(t,x ) 
+
+> ∂x 2
+
++ w(t, x ) in [0 , T ] × Ω
+
+u(t, x ) = 0 on [0 , T ] × ∂Ω
+
+u(0 , x ) = u0(x) in {t = 0 } × Ω,
+
+(46) where ν denotes the viscosity parameter, while u0 signifies the initial condition. We set ν = 0 .01 , T = 1 and Ω = [0 , 1] .During inference, alongside the control sequence w(t, x ), our diffusion model generates states u(t, x ). Our reported evaluation metric J is always computed by feeding the control w(t, x ) into the ground truth numerical solver to get 
+
+ug.t. (t, x ) and computed following Eq. (16). Following Eq. (5.1), we consider the safety constraint and define the safety score as s. In our experiment, the bound of safety score s0 is set to 0.64, 89 .7% of samples are unsafe among the training set, 90% of samples are unsafe among the calibration set and all of the samples in the test set are unsafe. The details of the 1D Burgers’ equation dataset for safe PDE control problem are listed in Table 11. Table 11: Details of 1D Burgers’ equation dataset. 
+
+Training Set Calibration Set Test Set Unsafe Trajectories 34,985 900 50 Safe Trajectories 4,015 100 0
+
+F.2. Model 
+
+The model architecture in this experiment follows the Denoising Diffusion Probabilistic Model (DDPM) (Ho et al., 2020). For control tasks, we condition on u0, uT and apply guidance to generate the full trajectories of u[0 ,T ], f[0 ,T ] and the safety score s. The hyperparameters for the 2D-Unet architecture are recorded in Table 12. 
+
+# G. Additional Details for 2D Fluid Experiment 
+
+G.1. Experiment Setting 
+
+The 2D environment is modeled by the Navier-Stokes equation: 
+
+ 
+
+> ∂v
+> ∂t
+
++ v · ∇ v − ν∇2v + ∇p = f, 
+
+∇ · v = 0 ,
+
+v(0 , x) = v0(x),
+
+(47) where v is the velocity, p is the pressure, f is the external force and ν is the viscosity coefficient. 19 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Table 12: Hyperparameters of 2D-Unet architecture in 1D experiment. 
+
+Hyperparameter Name Value Initial dimension 128 Convolution kernel size 3Dimension multiplier [1,2,4,8] Resnet block groups 1Attention hidden dimension 32 Attention heads 4Number of training steps 200000 DDIM sampling iterations 100 
+
+η of DDIM sampling 1Following works from Holl et al. (2020); Wei et al. (2024); Hu et al. (2024), we use the package PhiFlow to generate the 2D incompressible fluid dataset. The control objective and data generation is the same as before (Wei et al., 2024). The main difference between our data and previous ones is that we consider the safety constraint here. We define the safety score as the percentage of smoke passing through a specific region. This reflects the need to limit the amount of pollutants passing through certain areas in real-world scenarios, such as in a watershed. We simulate the fluid on a 128 ×128 grid. The selected hazardous region is [44 , 36] × [40 , 64] . Since the optimal path for smoke, starting from a left-biased position, is likely to pass through this hazardous region, this poses a greater challenge for the algorithm: how to balance safety and achieving a more optimal objective, making this a more difficult problem. 
+
+G.2. Model 
+
+In this paper, the design of the three-dimensional U-net we use is based on the previous work (Ho et al., 2022). In our experiment, we utilize spatio-temporal 3D convolutions. The U-net consists of three key components: a downsampling encoder, a central module, and an upsampling decoder. The diffusion model conditions on the initial density and uses guidance as previous mentioned to to generate the full trajectories of density, velocity, control, the objective J and the safety score. As J and s are scalers, we repeat them to match other channels. The hyperparameters for the 3D U-net architecture are listed in Table 13. Table 13: Hyperparameters of 3D-Unet architecture in 2D experiments .Hyperparameter Name Value Number of attention heads 4Kernel size of conv3d (3, 3, 3) Padding of conv3d (1,1,1) Stride of conv3d (1,1,1) Kernel size of downsampling (1, 4, 4) Padding of downsampling (1, 2, 2) Stride of downsampling (0, 1, 1) Kernel size of upsampling (1, 4, 4) Padding of upsampling (1, 2, 2) Stride of upsampling (0, 1, 1) Number of training steps 200000 DDIM sampling iterations 100 
+
+η of DDIM Sampling 1Intensity of guidance in control 100 Weight of safety term in guidance 10000 20 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+# H. Additional Details for Tokamak Fusion Reactor 
+
+H.1. Experiment Setting 
+
+Following the previous work (Seo et al., 2022), the environment used in this experiment is a data-driven simulator designed to replicate the plasma behavior in the KSTAR tokamak. It is constructed using long short-term memory (LSTM) neural networks to capture the time-dependent dynamics of plasma, such as transport processes and flux diffusion. The LSTM-based model is trained on five years of experimental data from KSTAR, incorporating various tokamak control variables as inputs, including plasma current, toroidal magnetic field, line-averaged density, neutral beam injection and electron cyclotron heating powers, and boundary shape parameters. The simulator predicts the evolution of key zero-dimensional (0D) plasma parameters ( 1 − αp, li, and q95 ) on a 100 ms timescale in an autoregressive manner, using the current state and control inputs. This enables fast and experimentally relevant predictions of plasma responses. Using this model avoids the high costs and risks associated with real tokamak experiments while ensuring sufficient accuracy and efficiency for training. 
+
+# I. Baselines 
+
+I.1. CDT 
+
+Constraints Decision Transformer (CDT) (Liu et al., 2023b) models control as a multi-task regression problem, extending the Decision Transformer (DT) (Chen et al., 2021). It sequentially predicts returns-to-go, costs-to-go, observations, and actions, making actions dependent on previous returns and costs. The authors propose two techniques to adapt the model for safety-constrained scenarios: 1. Stochastic Policy with Entropy Regularization : This technique aims to reduce the risk of constraint violations due to out-of-distribution actions. In a deterministic policy, the model selects a single action based on its learned policy, which may result in unsafe actions when faced with states not well represented in the training data. By using a stochastic policy, the model samples actions from a distribution, encouraging the exploration of a wider action space. Entropy regularization further enforces diversity in the sampled actions, making the model more robust in uncertain or underrepresented situations. This approach reduces the likelihood of selecting unsafe actions when faced with states outside the distribution of the training set. 2. Pareto-Frontier-Based Data Augmentation : The technique tries to resolve the conflict between maximizing returns and adhering to safety constraints by leveraging a Pareto-frontier of the training data. The Pareto-frontier consists of trajectories that provide the highest possible return under specific safety constraints. Fitting a polynomial to the Pareto-frontier helps identify conflicting high-return and safety constraint pairs, which are then used for augmentation. The augmentation generates synthetic trajectories by relabeling safe trajectories from the Pareto-frontier with higher returns and assigning higher or equal safety constraints. This encourages the model to imitate the most rewarding, safe trajectories when the desired return given the safety constraint is infeasible. In the 2D incompressible fluid experiment, the model fails to extrapolate safe trajectories with higher returns due to the training data covering a broad range of costs, while the desired cost lies in a narrow range . The augmentation treats all safe trajectories on the Pareto-frontier equally, without emphasizing the region of interest. This complexity, however, could potentially be addressed by SafeDiffCon, which is indicated in Table 2. We use the official CDT implementation and follow DT guidelines to sweep desired returns and cost constraints in testing time. In the 1D Burgers experiment, we modify the control objective from the original mean squared error J between the prediction and target, to an exponential form exp ( −J ). This new objective is bounded within [0 , 1] , which better aligns with the reward-maximizing setup in reinforcement learning used by CDT. For the 2D incompressible fluid setup, the state, action, and cost prediction heads each consist of 3-layer MLPs with the transformer’s hidden dimension as the inner size. 
+
+I.2. BC-All 
+
+The Behavior Cloning (BC) algorithm, introduced by (Pomerleau, 1988), is a foundational technique in imitation learning. BC is designed to derive policies directly from expert demonstrations, utilizing supervised learning to associate states with corresponding actions. This method eliminates the necessity for exploratory steps commonly required in reinforcement 21 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Table 14: Hyperparameters of 1D CDT .1D Burgers’ All data Safe filtered State Dimension 256 256 Action Dimension 128 128 Hidden Dimension 1024 1024 Number of Transformer Blocks 2 2Number of Attention Heads 8 8Horizon (Sequence Length) 5 5Learning Rate 1e-4 1e-4 Batch Size 64 64 Weight Decay 1e-5 1e-5 Learning Steps 1,000,000 1,000,000 Learning Rate Warmup Steps 500 500 Pareto-Frontier Fitted Polynomial Degree 0 4Augmentation Data Percentage 0.3 0.3 Max Augment Reward 10.0 10.0 Min Augment Reward 1.0 1.0 Target Entropy -128 -128 Testing Time Sweep Returns 9.0, 9.9 9.0, 9.9 Testing Time Sweep Costs 0.0, 1.0, 2.0, 3.0 0.0, 1.0, 2.0, 3.0 learning by replicating the actions observed in expert demonstrations. One of the significant advantages of BC is that it does not involve interacting with the environment during the training phase, which streamlines the learning process and diminishes the demand for computational resources. In this approach, a policy network is trained using standard supervised learning strategies aimed at reducing the discrepancy between the actions predicted by the model and those performed by the expert in the dataset. The commonly used loss function for this purpose is the mean squared error between the predicted actions and expert actions. The dataset for training comprises state-action pairs harvested from these expert demonstrations. In the work, we employ the implementation as (Liu et al., 2023a). 
+
+I.3. BC-Safe 
+
+Following the baseline in (Liu et al., 2023a), the BC-Safe is fed with only safe trajectories filtered from the training dataset, satisfies most safety requirements, although with conservative performance and lower rewards. Others are same as BC-All, except for the safe trajectories. 
+
+I.4. SL-Lag 
+
+Hwang et al. (2022) introduces a supervised learning (SL) based method to control PDE systems. It first trains a neural surrogate model to capture the PDE dynamics, which includes a VAE to compress PDE states and controls into the latent space and another model to learn the PDE’s time evolution in the latent space. To obtain the optimal control sequence, SL can compute the gradient ∇wJ , where J is the control objective and f is the input control sequence. Then iterative gradient optimization can be executed to improve the control sequence. To ensure that the optimal control is compatible with the hard constraint in our experiments, we follow Chow et al. (2018) to apply the Lagrange optimization method to the constrained optimization. Specifically, we iteratively solve the optimization problem below: 
+
+max  
+
+> λ≥0
+
+min  
+
+> w
+
+J (w) + λ(s(u(w)) − c). (48) We denote the modified SL method SL-Lag. 22 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Table 15: Hyperparameters of 2D CDT .2D incompressible fluid All data Safe filtered State Dimension 3×64 ×64 3×64 ×64 Action Dimension 2×64 ×64 2×64 ×64 Hidden Dimension 512 512 Number of Transformer Blocks 3 3Number of Attention Heads 8 8Horizon (Sequence Length) 10 10 Learning Rate 1e-4 1e-4 Batch Size 8 8Weight Decay 1e-5 1e-5 Learning Steps 1,000,000 1,000,000 Learning Rate Warmup Steps 500 500 Pareto-Frontier Fitted Polynomial Degree 4 4Augmentation Data Percentage 0.3 0.3 Max Augment Reward 32.0 32.0 Min Augment Reward 1.0 1.0 Target Entropy -(2 ×64 ×64) -(2 ×64 ×64) Testing Time Sweep Returns 18.0, 32.0 18.0, 32.0 Testing Time Sweep Costs 0.0, 0.1, 0.2 0.0, 0.1, 0.2 Table 16: Hyperparameters of network architecture and training for SL-Lag in 1D Burgers’ experiment .Hyperparameter name Value Initialization value of w 0.001 Optimizer of w LBFGS Learning rate of w 0.1 Initialization value of the Lagrange multiplier λ 0Optimizer of λ SGD Learning rate of λ 10 Iteration of λ 2Loss function MSE 
+
+I.5. MPC-Lag 
+
+We adopt the MPC with stochastic gradient descent and choose the planning step K = 1 . The simulation model is the same as the one in SL-Lag. Also, the way we combine MPC with the Lagrangian method is also the same as SL-Lag. The hyperparameters are reported in Table 17. 
+
+I.6. TREBI 
+
+In Lin et al. (2023), the diffusion model is adopted for the planning task under safety budgets. It generates trajectory under safety constraints using classifier-guidance Dhariwal & Nichol (2021) by adding a safety loss to the reward guidance following Diffuser Janner et al. (2022). However, the original setting is different from our experiments. In our 1D Burgers’ equation control, our objective is that a certain state equals the target state, which in-painting diffusion condition Janner et al. (2022) is more appropriate for. Furthermore, as in our method and in (Wei et al., 2024), a conditional diffusion model can be learned to tackle the objective more directly. In addition, TREBI follows the setting in Diffuser where the interaction with the environment is allowed which in our experiments becomes an MPC method. Note that the reported results of our method do not involve interaction with the surrogate model (though our method can easily adapted to be an MPC method). Thus, the results of TREBI in Table 1 and 2 have an unfair advantage. 23 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Table 17: Hyperparameters of for MPC-Lag in 1D Burgers’ experiment .Hyperparameter name Value Initialization value of w 0.01 Optimizer of w LBFGS Learning rate of w 0.01 Initialization value of the Lagrange multiplier λ 0Optimizer of λ SGD Learning rate of λ 10 Iteration of λ 2Loss function MSE Therefore, for 1D Burgers’ experiment, we conducted different experiments on TREBI including (1) planning multiple times with interaction with the surrogate model or (2) planning only once, and with target state conditioning or target state guidance. The target state guidance + planning multiple times turned out the best and is reported in Table 1. For 2D smoke control, the target is not a state constraint but a reward, and the planning multiple-step setting is too computationally expensive. To this end, we use reward guidance with planning one single time, which is identical to the ablation study of our method in Table 4. The hyperparameters of the 1D experiment are reported in Table 18, and those of 2D are in Table 19. Table 18: Hyperparameters of network architecture and training for TREBI in 1D Burgers’ experiment .Hyperparameter name Value Reward guidance intensity 50 Safety guidance intensity 1Cost budget 0.64 Number of guidance steps 10 Denoising steps 200 Sampling algorithm DDPM U-Net dimension 64 U-Net dimension mltiplications 1, 2, 4, 8 Planning horizon 8 steps Optimizer Adam Learning rate 0.0002 Batch size 16 Loss function MSE 
+
+I.7. PID 
+
+Proportional Integral Derivative (PID) control (Li et al., 2006) is a versatile and effective method widely employed in numerous control scenarios. For 1D control task, we mainly implement the PID baseline adapted from (Wei et al., 2024). More detailed configurations can be found in Table 20 24 From Uncertain to Safe: Conformal Adaptation of Diffusion Models for Safe PDE Control 
+
+Table 19: Hyperparameters of network architecture and training for TREBI in 2D Incompressible Fluid Control experiment .Hyperparameter name Value Reward guidance intensity 5000 Safety guidance intensity 0.01 Cost budget 0.1 Number of guidance steps 1Denoising steps 20 Sampling algorithm DDPM 3D U-Net dimension 83D U-Net dimension mltiplications 1, 2, 4, 8 Planning horizon 8 steps Optimizer Adam Learning rate 0.0002 Batch size 16 Loss function MSE Table 20: Hyperparameters of network architecture and training for ANN PID .Hyperparameter name Value Kernel size of conv1d 3Padding of conv1d 1Stride of conv1d 1Activation function Softsign Batch size 16 Optimizer Adam Learning rate 0.0001 Loss function MAE 25

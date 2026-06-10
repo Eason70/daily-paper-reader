@@ -1,0 +1,2159 @@
+Title: Embedding Safety into RL: A New Take on Trust Region Methods
+
+URL Source: https://openreview.net/pdf?id=4zRb89SbzG
+
+Number of Pages: 26
+
+Markdown Content:
+# Embedding Safety into RL: A New Take on Trust Region Methods 
+
+Nikola Milosevic 1 2 Johannes M ¨ uller 3 Nico Scherf 1 2 
+
+Abstract 
+
+Reinforcement Learning (RL) agents can solve di-verse tasks but often exhibit unsafe behavior. Con-strained Markov Decision Processes (CMDPs) address this by enforcing safety constraints, yet existing methods either sacrifice reward maxi-mization or allow unsafe training. We introduce Constrained Trust Region Policy Optimization (C-TRPO), which reshapes the policy space geometry to ensure trust regions contain only safe policies, guaranteeing constraint satisfaction throughout training. We analyze its theoretical properties and connections to TRPO, Natural Policy Gradi-ents, and Constrained Policy Optimization. Ex-periments show that C-TRPO reduces constraint violations while maintaining competitive returns. 
+
+1. Introduction 
+
+Reinforcement Learning (RL) has emerged as a highly suc-cessful paradigm in machine learning for solving sequential decision and control problems, with policy gradient (PG) algorithms as a popular approach (Williams, 1992; Sutton et al., 1999; Konda & Tsitsiklis, 1999). Policy gradients are especially appealing for high-dimensional continuous con-trol because they can be easily extended to function approxi-mation. Due to their flexibility and generality, there has been significant progress in enhancing PGs to work robustly with deep neural network-based approaches. PG-based policy optimization methods such as Trust Region Policy Optimiza-tion (TRPO) and Proximal Policy Optimization (PPO) are among the most widely used general-purpose reinforcement learning algorithms (Schulman et al., 2017a;b). While flexibility makes PGs popular among practitioners, it comes at a cost: the policy can explore any behavior during         
+
+> 1Max Planck Institute for Human Cognitive and Brain Sciences, Leipzig 2Center for Scalable Data Analytics and Artificial Intel-ligence (ScaDS.AI), Dresden/Leipzig 3Institut f ¨ur Mathematik, Technische Universit ¨at Berlin, 10623 Berlin, Germany. Correspon-dence to: Nikola Milosevic <nmilosevic@cbs.mpg.de >.
+> Proceedings of the 42 nd International Conference on Machine Learning , Vancouver, Canada. PMLR 267, 2025. Copyright 2025 by the author(s).
+
+training, posing significant risks in real-world applications. Many methods have been proposed to improve the safety of policy gradients, often based on the Constrained Markov Decision Process (CMDP) framework. However, existing methods either struggle to minimize constraint violations during training or severely limit the agent’s performance. This work introduces a simple strategy to enhance constraint satisfaction in trust region-based safe policy optimization methods without compromising performance. We propose a novel family of policy divergences, inspired by barrier func-tion methods in optimization and safe control, that modify the policy geometry to ensure that trust regions consist only of safe policies. Our approach is motivated by the observa-tion that TRPO and related methods base their trust region on the state-average Kullback-Leibler (KL) divergence. It can be derived as the Bregman divergence induced by the negative conditional entropy on the space of state-action occupancies (Neu et al., 2017). The key insight of this work is that safer trust regions can be obtained by modifying this function to account for cost constraints. This leads to a provably safe trust region-based policy optimization algorithm that preserves TRPO’s guar-antees, while simplifying existing methods and reducing constraint violations during training, without sacrificing re-ward performance. 
+
+Related Work Classic solution methods for CMDPs rely on linear programming techniques, see (Altman, 1999). However, they struggle to scale, making them unsuitable for high-dimensional or continuous control problems. While there are numerous scalable approaches to solving CMDPs, we focus on model-free, direct policy optimization methods. Model-based approaches (Berkenkamp et al., 2017; As et al., 2025), are attractive due to their stability and safety guar-antees, but require learning a model, which is not always feasible, or imposes additional assumptions on the model space. 
+
+Lagrangian methods are a widely adopted approach, where the optimization problem is reformulated as a weighted ob-jective that balances rewards and penalties for constraint violations. This is often motivated by Lagrangian dual-ity, where the penalty coefficient is interpreted as the dual variable. Learning the coefficient with stochastic gradient 1Embedding Safety into RL 
+
+descent presents a popular baseline (Achiam et al., 2017; Ray et al., 2019; Chow et al., 2019; Stooke et al., 2020). However, a naively tuned Lagrange multiplier may not work well in practice due to oscillations and overshoot. To address this issue, (Stooke et al., 2020) uses PID control to tune the dual variable during training, which achieves less oscillation around the constraint and faster convergence to a feasible policy. While Lagrangian approaches are becoming increas-ingly popular, it is not entirely clear how to update the dual variables during training, which has attracted significant research interest, see e.g. (Sohrabi et al., 2024). 
+
+Penalty methods such as IPO (Liu et al., 2020) and P3O (Zhang et al., 2022) propose weighted penalty-based policy optimization objectives, where the penalties are weighted against the reward objective using a weighting hyper-parameter instead of a learnable one. This simpli-fies the Lagrangian approach since the penalty coefficients don’t have to be optimized during training, which results in improved stability. More recently, the approach to use (smoothed) log-barriers (Usmanova et al., 2024; Zhang et al., 2024a; Dey et al., 2024) became more popular, which keeps the algorithm simple due to the penalty approach, but can offer certain constraint satisfaction guarantees, see e.g. (Ni & Kamgarpour, 2024). However, working with an explicit penalty produces suboptimal policies w.r.t the original con-strained MDP and thus introduces an additional error, which has to be controlled; see for example (Geist et al., 2019; M ¨uller & Cayci, 2024) for treatments of the regularization error in the unconstrained case, and (Liu et al., 2020) for an example of an optimization gap in safe policy optimiza-tion. In contrast, combining trust region-based updates as in TRPO (Schulman et al., 2017a) with constrained optimiza-tion techniques does not change the objective function and the set of optimizers, and therefore does not introduce an additional error. 
+
+Trust region methods are closely related to our approach, in particular Constrained Policy Optimization (CPO; (Achiam et al., 2017)), which extends TRPO by restricting updates to the intersection of the trust region and the safe policy set, ensuring safety during training. While CPO guarantees constraint satisfaction in the infinite sample limit, in prac-tice it tends to oscillate around the constraint boundary with high overshoot, because it relies on noisy cost advantage estimates, and because the constraint only enters the opti-mization problem when the iterate is close to the boundary of the safe policy set. To address constraint satisfaction, projection-based CPO (PCPO; (Yang et al., 2020)) projects updates into the safe policy space between updates, im-proving stability but further hindering reward maximization. Building on PCPO, (Zhang et al., 2020) and (Yang et al., 2022) also introduce projection-based approaches based on first-order updates. 
+
+Rethinking Safe Trust Region Methods We adopt a trust region approach that constructs trust regions exclusively within the safe policy set, eliminating the need for projec-tions or constrained optimization in the inner loop. Trust region methods retain TRPO’s update guarantees for both reward and constraints but often underperform compared to barrier penalty methods in terms of constraint satisfaction. To address this, we replace the state-average KL-divergence with policy divergences that act as barrier functions, see Fig-ure 1. This modification encourages updates of the resulting trust region method to move more parallel to the constraint surfaces rather than directly toward and thereby improves constraint satisfaction, simplifies optimization, and achieves competitive returns by maintaining policies within the safe set for longer, see also Figures 5 and 7 in the Appendix. π*safe Safe Trust Region 
+
+> Penalty
+> Trust Region
+> π*safe
+> π0
+
+Figure 1: On the left, vanilla trust regions (dotted) and safe trust regions (dashed) are shown; on the right, a schematic visualization of common failure modes in CMDPs is shown based on optimization trajectories; here, vanilla trust re-gions can suffer from oscillations around the constraint, and penalty methods might introduce a bias. Lagrangian meth-ods (not shown) can exhibit both issues. 
+
+Contributions We summarize our contributions: • In Section 3, we introduce a modified policy divergence such that every trust region consists of only safe poli-cies. We introduce an idealized TRPO update based on the modified divergence, a tractable optimization algorithm for deep function approximation (C-TRPO), and a corresponding natural gradient method (C-NPG). • We provide an efficient implementation of the pro-posed approximate C-TRPO method, see Section 3.2, which comes with a minimal overhead compared to TRPO (up to the estimation of the expected cost) and no overhead compared to CPO. We demonstrate exper-imentally that C-TRPO yields competitive returns with smaller constraint violations compared to common safe policy optimization algorithms, see Section 5. • In Section 4, we introduce C-TRPO’s improvement guarantees and contrast to TRPO and CPO. Further, we show that C-NPG is the continuous time limit of C-TRPO and provides global convergence guarantees towards the optimal safe policy; this is in contrast to penalization or barrier methods, which introduce a bias. 2Embedding Safety into RL 
+
+2. Background 
+
+We consider the infinite-horizon discounted constrained Markov decision process (CMDP) and refer the reader to (Altman, 1999) for a general treatment. The CMDP is given by the tuple (S, A, P, r, μ, γ, C), where S and A are the finite state-space and action-space respectively and we refer to Appendix B.3 for a discussion of continuous state and action spaces. Further, P : S × A → ∆S is the transition kernel, r : S × A → R is the reward function, μ ∈ ∆S is the initial state distribution at time t = 0 , and γ ∈ [0 , 1) 
+
+is the discount factor. The space ∆S is the set of categori-cal distributions over S. Further, define the constraint set 
+
+C = {(ci, b i)}mi=1 , where ci : S × A → R are the cost functions and bi ∈ R are the cost thresholds. An agent interacts with the CMDP by selecting a policy π ∈
+
+Π from the set of all Markov policies, i.e. an element from the Cartesian product of |S| probability simplicies on A.Given such a policy π, the value functions V πr , V πci : S → R,action-value functions Qπr , Q πci : S ×A → R, and advantage functions Aπr , A πc : S × A → R associated with the reward 
+
+r and the i-th cost ci are defined as 
+
+V πf (s) := (1 − γ) Eπ
+
+" ∞X
+
+> t=0
+
+γtf (st, a t) s0 = s
+
+#
+
+,
+
+where the function f is either r or ci, and the expectations are taken over trajectories of the Markov process, meaning with respect to the initial distribution s0 ∼ μ, the policy 
+
+at ∼ π(·| st) and the state transition st+1 ∼ P (·| st, a t).Analogously, we set 
+
+Qπf (s, a ) := (1 − γ) Eπ
+
+" ∞X
+
+> t=0
+
+γtf (st, a t) s0 = s, a 0 = a
+
+#
+
+and Aπf (s, a ) := Qπf (s, a ) − V πf (s). Constrained Markov decision processes address the optimization problem maximize π∈Π V πr (μ) subject to V πci (μ) ≤ bi (1) for all i = 1 , . . . , m , where V πf (μ) are the expected values under the initial state distribution V πf (μ) := Es∼μ[V πf (s)] .
+
+We will also write V πf = V πf (μ), and omit the explicit dependence on μ for convenience, and we write Vf (π) when we want to emphasize its dependence on π. We denote the set of safe policies by Πsafe = Tmi=1 {π : Vci (π) ≤ bi} and always assume that it is nontrivial. 
+
+Cost Regret Depending on the task at hand, it is manda-tory to solve the constrained optimization problem Equa-tion 1 in a safe way, meaning with a method that respects the constraints during optimization. This motivates the use of the cost regret 
+
+COST REG +(π, K, C) := 
+
+> m
+
+X
+
+> i=0
+> K−1
+
+X
+
+> k=0
+
+V πk 
+
+> ci
+
+− bi
+
+ 
+
+> +
+
+, (2) where [x]+ = max {0, x }, π = ( π0, π 1, ...π K ), and K is the number of training iterations. The cost regret represents the cumulative sum of the expected constraint violations throughout training. A similar metric has been used in related online optimization settings, see (Efroni et al., 2020; M ¨uller et al., 2024). It is our goal to design a method that produces solutions of (1) of similar quality compared to existing method, while achieving minimal cost regret. 
+
+The Dual Linear Program for CMDPs Any stationary policy π induces a discounted state-action (occupancy) mea-sure dπ ∈ ∆S×A , indicating the relative frequencies of visiting a state-action pair, discounted by how far the event lies in the future. This probability measure is defined as 
+
+dπ (s, a ) := (1 − γ)
+
+> ∞
+
+X
+
+> t=0
+
+γtPπ (st = s)π(a|s), (3) where Pπ (st = s) is the probability of observing the envi-ronment in state s at time t given the agent follows policy 
+
+π. For finite MDPs, it is well-known that maximizing the expected discounted return can be expressed as the linear program 
+
+maximize d r⊤d subject to d ∈ D,
+
+where D is the set of feasible state-action measures, which form a polytope (Kallenberg, 1994). Analogously to an MDP, the discounted cost CMDP can be expressed as the linear program maximize d r⊤d subject to d ∈ Dsafe , (4) where Dsafe = Tmi=1 
+
+d : c⊤ 
+
+> i
+
+d ≤ bi ∩ D is the safe occu-pancy set, see Figure 4 in Appendix A. 
+
+Information Geometry of Policy Optimization Among the most successful policy optimization schemes are natural policy gradient (NPG) methods or variants thereof, such as trust-region and proximal policy optimization (TRPO and PPO, respectively). These methods assume a convex geom-etry and corresponding Bregman divergences in the state-action polytope, see (Neu et al., 2017; M ¨uller & Mont ´ufar, 2023) for more detailed discussions. A general trust region update is defined as 
+
+πk+1 ∈ arg max 
+
+> π∈Π
+
+Aπk 
+
+> r
+
+(π) sbj. to DΦ(dπk || dπ ) ≤ δ, (5) where DΦ : D ×D → R is the Bregman divergence induced by a convex Φ : int( D) → R, and 
+
+Aπk 
+
+> r
+
+(π) = Es,a ∼dπk
+
+ π(a|s)
+
+πk(a|s) Aπk 
+
+> r
+
+(s, a )
+
+
+
+, (6) is called the policy advantage or surrogate advantage . We can interpret A as a surrogate optimization objective for the 3Embedding Safety into RL 
+
+expected return. In particular, for a parameterized policy πθ ,it holds that ∇θ Ar,π θk (πθ )|θ=θk = ∇θ Vr (θk), see (Kakade & Langford, 2002; Schulman et al., 2017a). TRPO and the original NPG assume the same policy ge-ometry (Kakade, 2001; Schulman et al., 2017a), since they employ an identical Bregman divergence 
+
+DK(dπ1 || dπ2 ) := X
+
+> s
+
+dπ1 (s)DKL (π1(·| s)|| π2(·| s)) .
+
+We refer to Appendix A for details on Bregman divergences. We call DK the Kakade divergence and informally write 
+
+DK(π1, π 2) := DK(dπ1 , d π2 ). This divergence can be shown to be the Bregman divergence induced by the nega-tive conditional entropy 
+
+ΦK(dπ ) := X
+
+> s,a
+
+dπ (s, a ) log π(a|s), (7) see (Neu et al., 2017). It is well known that with a parameter-ized policy πθ , a linear approximation of A and a quadratic approximation of the Bregman divergence DK at θk, one obtains the natural policy gradient step given by 
+
+θk+1 = θk + ϵkGK(θk)+∇θ Vr (πθk ), (8) where GK(θ)+ denotes a pseudo-inverse of the generalized Fisher-information matrix of the policy with entries given by GK(θ)ij = ∂θi dθ ∇2ΦK(dθ )∂θj dθ , see (Schulman et al., 2017a; M ¨uller & Mont ´ufar, 2023) and Appendix A for more detailed discussions. 
+
+3. A Safe Geometry for Constrained MDPs 
+
+To prevent the policy iterates from violating the constraints during optimization, we construct policy divergences for which the trust regions are contained in the safe policy set. 
+
+3.1. Safe Trust Regions 
+
+A Bregman divergence is induced by a mirror function that dictates the behavior of the divergence, see Appendix A. Take for example the mirror function for TRPO and NPG in Equation (7). The divergence is defined when both policies are in the interior of D, and as either one of the policies approaches the boundary of the state-action polytope, the di-vergence approaches infinity. Hence, TRPO and NPG don’t allow their policy iterates to become entirely deterministic during optimization. Since the behavior of a Bregman divergences is dictated by the shape of its mirror function, we first construct a family of safe mirror functions , that induce policy divergences that are finite only in the safe occupancy set Dsafe instead of the entire state-action polytope D. Safe policy divergences, in turn, let us derive safe trust region and natural policy gradient methods. To this end, we consider mirror functions of the form 
+
+ΦC(d) := Φ K(d) + 
+
+> m
+
+X
+
+> i=1
+
+βiϕ(bi − c⊤ 
+
+> i
+
+d), (9) where ΦK is the conditional entropy defined in Equation (7), and ϕ : R>0 → R is a convex function with ϕ′(x) → +∞
+
+for x ↘ 0. This ensures that ΦC : int( Dsafe ) → R is strictly convex and has infinite curvature at the cost surface 
+
+bi −c⊤ 
+
+> i
+
+d = 0 , which means ∥∇ ΦC(dk)∥ → +∞, when bi −
+
+c⊤ 
+
+> i
+
+dk ↘ 0. Possible candidates for ϕ are ϕ(x) = − log( x)
+
+and ϕ(x) = x log( x) corresponding to a logarithmic barrier and entropy, respectively. The mirror function ΦC induces the Constrained KL-Divergence given by 
+
+DC(d1|| d2) = DK(d1|| d2) + 
+
+> m
+
+X
+
+> i=1
+
+βiDϕi (d1|| d2), (10) where 
+
+Dϕi (d1|| d2) = ϕ(bi − Vci (π1)) − ϕ(bi − Vci (π2)) + ϕ′(bi − Vci (π2))( Vci (π1) − Vci (π2)) .
+
+(11) The corresponding trust-region scheme is 
+
+πk+1 ∈ arg max 
+
+> π∈Π
+
+Aπk 
+
+> r
+
+(π) sbj. to DC(dπk || dπ ) ≤ δ, 
+
+(12) where Ar is defined in Equation (6). Note the constraint is only satisfied if d1, d 2 ∈ int( Dsafe ) and the divergence approaches +∞ as d2 approaches the boundary of the safe set. Thus, the trust region {d ∈ D : DC(dk|| d) ≤ δ} is contained in the set of safe occupancy measures for any finite δ. Analogously to the case of unconstrained TRPO the corresponding natural policy gradient scheme is 
+
+θk+1 = θk + ϵkGC(θk)+∇Vr (θk), (13) where GC(θ)+ denotes an arbitrary pseudo-inverse and 
+
+GC(θ)ij = ∂θi d⊤ 
+
+> θ
+
+∇2ΦC(dθ )∂θj dθ .
+
+3.2. Constrained Trust Region Policy Optimization 
+
+If we could solve the optimization problem in Equation (12) exactly, we would obtain a provably safe trust region policy optimization method with zero constraint violations, as long as we start with a safe policy. However, the exact trust re-gion update Equation (12) cannot be computed. Firstly, the divergence depends on expected cost values, which we can only estimate. The resulting estimation errors of the diver-gence might cause the policy iterates to leave the safe set, in which case the divergence becomes ill-defined. Further, the 4Embedding Safety into RL 
+
+divergence also depends on the expected cost value of the proposal policy, which is not available during the updates. To address these issues, we propose an update based on a 
+
+surrogate divergence , similar to how surrogate objectives are used in policy optimization. We propose the following update, which we call Constrained TRPO (C-TRPO). 
+
+πk+1 = arg max 
+
+> π∈Π
+
+Aπk 
+
+> r
+
+(π) sbj. to ¯DC(π|| πk) ≤ δ. (14) Here, ¯DC is a surrogate for DC, which we define in Equa-tion 16 and Equation 17. Algorithm 1 shows the imple-mentation of C-TRPO, which performs a constrained trust region update if the current policy is safe or a recovery step that minimizes the cost if the policy is unsafe. For the trust region update, we follow a similar implementation to the original TRPO, estimating the divergence, using a linear approximation of the surrogate objective, and a quadratic approximation of the trust region. 
+
+Surrogate Divergence For the sake of clarity, we first focus on the case with a single constraint, but the results are easily extended to multiple constraints by summation of the individual constraint terms, as discussed in the respective paragraph below. In practice, the exact constrained KL-Divergence DC cannot be evaluated, because it depends on the cost-return of the optimized policy Vc(π). However, we can approximate it locally around the policy of the k-th iteration, πk, using a surrogate divergence. This surrogate can be expressed as a function of the policy cost advantage 
+
+Aπk 
+
+> c
+
+(π) = Edπk
+
+ π(a|s)
+
+πk(a|s) Aπk 
+
+> c
+
+(s, a )
+
+
+
+, (15) which approximates Vc(π) − V πk 
+
+> c
+
+up to first order in the policy parameters (Kakade & Langford, 2002; Schulman et al., 2017a; Achiam et al., 2017). Assume πk ∈ Πsafe and define the constraint margin δb = b−V πk 
+
+> c
+
+, which is positive if πk ∈ ΠSAFE . Further, define the surrogate divergence 
+
+¯DC(π|| πk) = ¯DKL (π|| πk) + β ¯Dϕ(π|| πk), where 
+
+¯DKL (π|| πk) = X
+
+> s∈S
+
+dπk (s)DKL (π|| πk) (16) and 
+
+¯Dϕ(πθ || πθk ) = 
+
+(
+
+Ψ( Aπk 
+
+> c
+
+), if δb − Aπk 
+
+> c
+
+∈ dom( ϕ)+∞ otherwise (17) where 
+
+Ψ( Aπk 
+
+> c
+
+) = ϕ(δb − Aπk 
+
+> c
+
+(π)) − ϕ(δb) + ϕ′(δb)Aπk 
+
+> c
+
+(π). (18) The surrogate ¯Dϕ is closely related to the Bregman di-vergence Dϕ. They are equivalent up to the substitution 
+
+Vc(π) − Vc(πk) → Aπk 
+
+> c
+
+(π), see Appendix B.1. The surro-gate can be estimated from samples of the CMDP, where in the practical implementation, δb and the policy cost ad-vantage are estimated from trajectory samples using GAE-
+
+λ (Schulman et al., 2018). The consequences of the substi-tution in the surrogate will be discussed in Section 4. 
+
+Comparison with CPO This approach is similar to the update in CPO (Achiam et al., 2017), but incorporates the constraint into the design of the trust region, with an in-fluence controlled by the parameter β. This yields more conservative updates within the safe set without introducing bias in the optimal solution. Additionally, it simplifies the inner-loop constrained optimization: C-TRPO approximates a single quadratic constraint, rather than solving for the in-tersection of a quadratic and a linear constraint as in CPO, see also Appendix C.4. 
+
+Multiple Constraints C-TRPO naturally extents to multiple constraints, by introducing the divergence 
+
+¯Dmult  
+
+> C
+
+(π|| πk) = ¯DKL (π|| πk) + P 
+
+> i
+
+βi ¯Dϕi (π|| πk), where each ¯Dϕi is defined according to Eq. 17 but with the re-spective ci. In section 3, we discuss that this divergence approximates a natural policy gradient (C-NPG) on the safe state-action occupancy set, where Theorem 4.5 implies that the optimal feasible solution π⋆ 
+
+> safe
+
+satisfies as few constraints with equality as required to be optimal. 
+
+Recovery with Hysteresis The iterate may still leave the safe policy set Πsafe , either due to approximation errors of the divergence, or because we started outside the safe set. In this case, we perform a recovery step, where we only minimize the cost with TRPO as by (Achiam et al., 2017). In tasks where the policy starts in the unsafe set, C-TRPO can get stuck at the constraint surface. This is easily mitigated by including a hysteresis condition for returning to the safe set. If πk−1 is the previous policy, then πk ∈ ΠHsafe 
+
+with ΠHsafe = {πθ ∈ Πθ and Vc(πθ ) ≤ bH} where bH = b if 
+
+πk−1 ∈ ΠHsafe and a user-specified fraction of b otherwise. 
+
+Computational Complexity The C-TRPO implementa-tion adds no computational overhead compared to CPO, since ¯Dϕ is a function of the cost advantage estimate, and is added to the divergence of TRPO. Compared to TRPO, the cost value function must be approximated. 
+
+3.3. Constrained Natural Policy Gradient 
+
+Practically, the C-TRPO optimization problem in Equa-tion (14) is solved like traditional TRPO: the objective is approximated linearly, and the constraint is approximated quadratically in the policy parameters using automatic dif-ferentiation and the conjugate gradient method. This leads 5Embedding Safety into RL 
+
+Algorithm 1 Constrained TRPO (C-TRPO); differences from TRPO in blue  
+
+> 1:
+
+Input: Initial policy π0 ∈ Πθ , safety parameter β > 0,recovery parameter 0 < b H ≤ b 
+
+> 2:
+
+for k = 0 , 1, 2, . . . do  
+
+> 3:
+
+Sample a set of trajectories following πk = πθk 
+
+> 4:
+
+if πk ∈ ΠH 
+
+> safe
+
+then  
+
+> 5:
+
+A ← Ar ; D ← ¯DC = ¯DKL +β ¯Dϕ {Constrained trust region update } 
+
+> 6:
+
+else  
+
+> 7:
+
+A ← − Ac; D ← ¯DKL {Recovery } 
+
+> 8:
+
+end if  
+
+> 9:
+
+Compute πk+1 using TRPO with A as advantage estimate and with D as policy divergence.  
+
+> 10:
+
+end for 
+
+to the policy parameter update 
+
+θk+1 = θk + αi
+
+s
+
+2δg⊤ 
+
+> k
+
+H−1 
+
+> k
+
+gk
+
+· H−1 
+
+> k
+
+gk, (19) where 
+
+gk = ∇θ Aθk 
+
+> c
+
+(πθ )|θ=θk (20) and 
+
+Hk = ¯HC(θk) = ∇2 
+
+> θ
+
+¯DC (πθ || πθk )|θ=θk (21) are finite sample estimates, and H−1g is approximated us-ing conjugate gradients. The αi ∈ [0 , 1] are the coefficients for backtracking line search, which ensures ¯DC(πθ || πθk ) ≤
+
+δ.We show in Appendix B.2.3 that the Hessian 
+
+¯HC(θk) = GK(θk) + βϕ ′′ (b − V ˆθc (θ)) ∇θ V ˆθc (θ)∇θ V ˆθc (θ)⊤,
+
+is equivalent to the Gramian GC(θk) of the natural gradi-ent update in Equation (13). We call the resulting policy gradient 
+
+θk+1 = θk + ϵk ¯HC(θk)+∇Vr (θk), (22) the Constrained NPG (C-NPG). In particular, this shows that the C-TRPO update can be interpreted as a natural policy gradient step with an adaptive step size, see Appendix A. We emphasize that the idealized safe trust region update in Equation (12) and the C-TRPO update of Equation (14) agree up to second order in the policy parameters. This justifies the surrogate divergence in C-TRPO and motivates the discussion of the C-NPG flow in Section 4.2. We show in Theorem 4.4 that int( Dsafe ) is invariant under the dynamics of the C-NPG. This implies that if the trust region radius δ
+
+is small, and the advantage estimation is accurate enough, the iterates under C-TRPO never leave the safe set. 
+
+4. Analysis 
+
+Here, we provide a theoretical analysis of the updates of C-TRPO and study the convergence properties of the time-continuous version of C-NPG. All proofs are deferred to the Appendix C. 
+
+4.1. Properties of the C-TRPO Update 
+
+The practical C-TRPO algorithm is implemented using the surrogate divergence introduced in Equation (14), which is identical to the theoretical divergence DC introduced in Equation (12) up to a mismatch between the policy advan-tage and the performance difference. The motivation for substituting the policy cost advantage for the performance difference is their equivalence up to first order and that we can estimate the advantage from samples of dπ . Similar to CPO, we can guarantee an almost improvement of the return (Achiam et al., 2017), despite the new divergence. 
+
+Proposition 4.1 (C-TRPO reward update) . Set ϵr =max s |Ea∼πk+1 Aπk 
+
+> r
+
+(s, a )|. The expected reward of a policy updated with C-TRPO is bounded from below by 
+
+Vr (πk+1 ) ≥ Vr (πk) −√2δγϵ r
+
+1 − γ . (23) Constraint violation, however, behaves slightly differently for the two algorithms. To see this, we establish a more concrete relation between C-TRPO and CPO. As β ↘ 0, the solution to Equation (14) approaches the constraint surface in the worst case, and we recover CPO, see Figure 5. 
+
+Proposition 4.2. The approximate C-TRPO update ap-proaches the CPO update in the limit as β ↘ 0.
+
+Intuitively, solving the C-TRPO problem with successively smaller values of β, would be similar to CPO with the interior point method using ¯Dϕ(·|| πk) as the barrier function. However, C-TRPO is more conservative than CPO for any 
+
+β > 0 and as β → +∞ the update is maximally constrained in the cost-increasing direction. 
+
+Proposition 4.3 (C-TRPO worst-case constraint viola-tion) . Let DC(πk+1 || πk) ≤ δ with δ > 0 and set ϵc =max s |Ea∼πk+1 Aπk 
+
+> c
+
+(s, a )|. It holds that 
+
+Vc(πk+1 ) ≤ Vc(πk) + Aπk 
+
+> c
+
+(πk+1 ) + 
+
+p2δ(β)γϵ c
+
+1 − γ , (24) 
+
+where δ(β) = δ − βD ϕ(πk+1 , π k) ≤ δ is decreasing in β > 0, lim β→0 δ(β) = δ, and δ(β) → 0 for β →
+
+δD C(πk+1 || πk)/D ϕ(πk+1 , π k).
+
+This result is analogous to the worst-case constraint viola-tion for CPO (Achiam et al., 2017, Proposition 2), where the term δ(β) is replaced by δ. As δ(β) ≤ δ for all β > 0,the bound for C-TRPO is higher than the corresponding 6Embedding Safety into RL 
+
+guarantee for CPO. For β → 0, the bound converges to the CPO bound, where for β → +∞, the bound becomes 
+
+Vc(πk+1 ) ≤ Vc(πk), see Appendix C.1. 
+
+4.2. Invariance and Convergence of Constrained Natural Policy Gradients 
+
+It is well known that TRPO is equivalent to a natural policy gradient method with an adaptive step size, see also Ap-pendix A. We study the time-continuous limit of C-TRPO and guarantee safety during training and global convergence. In the context of constrained TRPO in Equation (12), we study the natural policy gradient flow 
+
+∂tθt = GC(θt)+∇Vr (θt), (25) where GC(θ)+ denotes a pseudo-inverse of GC(θ)ij =
+
+∂θi d⊤ 
+
+> θ
+
+∇2ΦC(dθ )∂θj dθ and θ 7 → πθ is a differentiable pol-icy parametrization. Moreover, we assume that θ 7 → πθ is regular, that it is surjective and the Jacobian is of maximal rank everywhere. This assumption implies overparametriza-tion but is satisfied for common models like tabular softmax, tabular escort, or expressive log-linear policy parameteriza-tions (Agarwal et al., 2021a; Mei et al., 2020a; M ¨uller & Mont´ ufar, 2023). We denote the set of safe parameters by Θsafe := {θ ∈ Rp :
+
+πθ ∈ Πsafe }, which is non-convex in general and say that 
+
+Θsafe is invariant under Equation (25) if θ0 ∈ Θsafe implies 
+
+θt ∈ Θsafe for all t. Invariance is associated with safe control during optimization and is typically achieved via control barrier function methods (Ames et al., 2017; Cheng et al., 2019). We study the evolution of the state-action distributions dt = dπθt as this allows us to employ the linear programming formulation of CMDPs and we obtain the following convergence guarantees. 
+
+Theorem 4.4 (Safety during training) . Assume that 
+
+ϕ : R>0 → R satisfies ϕ′(x) → +∞ for x ↘ 0 and con-sider a regular policy parameterization. Then the set Θsafe 
+
+is invariant under Equation (25) .
+
+A visualization of policies obtained by C-NPG for different safe initializations and varying choices of β is shown in Figure 2 for a toy MDP. We see that for even small choices of β the trajectories don’t cross the constraint surface and the updates become more conservative for larger choices of 
+
+β.
+
+Theorem 4.5. Assume that ϕ′(x) → +∞ for x ↘ 0, set 
+
+V ⋆r, C := max π∈Πsafe Vr (π) and denote the set of optimal constrained policies by Π⋆ 
+
+> safe
+
+= {π ∈ Πsafe : Vr (π) = 
+
+V ⋆r, C}, consider a regular policy parametrization and let 
+
+(θt)t≥0 solve Equation (25) . It holds that Vr (πθt ) → V ⋆r, C
+
+and 
+
+lim  
+
+> t→+∞
+
+πt = π⋆ 
+
+> safe
+
+= arg min {DC(π⋆, π 0) : π⋆ ∈ Π⋆
+
+> safe
+
+}.
+
+(26) 
+
+C-NPG ( β = 10 −2) C-NPG ( β = 1 )
+
+> π(a1|s1)π(a1|s1)
+> π(a1|s2)
+
+Figure 2: Shown is the policy set Π ∼= [0 , 1] 2 for an MDP with two states and two actions with a heatmap of the ex-pected reward Vr ; the constraint surface is shown in black with the safe policies below; optimization trajectories are shown for 10 safe initialization and for β = 10 −2, 1.In case of multiple optimal policies, Equation (26) identi-fies the optimal policy of the CMDP that the natural policy gradient method converges to as the projection of the ini-tial policy π0 to the set of optimal safe policies Π⋆ 
+
+> safe
+
+with respect to the constrained divergence DC. In particular, this implies that the limiting policy π⋆ 
+
+> safe
+
+satisfies as few constraints with equality as required to be optimal. To see this, note that Π⋆ 
+
+> safe
+
+forms a face of Dsafe and that Bregman projections lie at the interior of faces (M ¨uller et al., 2024, Lemma A.2) and hence satisfy as few linear constraints as required. 
+
+5. Computational Experiments 
+
+Setup and main results We benchmark C-TRPO against 9 common safe policy optimization algorithms (CPO (Achiam et al., 2017), PCPO (Yang et al., 2020), CPPO-PID (Stooke et al., 2020), PPO-Lag and TRPO-Lag (Achiam et al., 2017; Ray et al., 2019), FOCOPS (Zhang et al., 2020), CUP (Yang et al., 2022), IPO (Liu et al., 2020) and P3O (Zhang et al., 2022)) on 8 tasks (4 Navigation and 4 Lo-comotion) from the Safety Gymnasium (Ji et al., 2023) benchmark. 1 The locomotion tasks reward distance traveled, while penalizing high velocities, and the navigation tasks reward goal reaching and penalize certain unsafe states. For the C-TRPO implementation we fix the convex generator 
+
+ϕ(x) = x log( x), motivated by its superior performance in our experiments, see Appendix B.2.1, and bH = 0 .8b and 
+
+β = 1 across all experiments. Each algorithm is evaluated by training for 10 million environment steps with 5 seeds each, and the cost regret is monitored throughout training for every run. To get a better sense of the safety of the algorithms during training, we take an online learning per-spective and include as a metric the cost regret introduced in Equation 2 (Efroni et al., 2020; M ¨uller et al., 2024) For  
+
+> 1Code: https://github.com/milosen/ctrpo
+
+7Embedding Safety into RL probably safe probably unsafe   
+
+> −0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> Normalized IQM
+> Final Cost
+> C-TRPO (ours) TRPO-Lag P3O PCPO CPO CUP FOCOPS CPPO-PID PPO-Lag IPO
+> probably safe probably unsafe
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Reward
+> probably safe probably unsafe
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> Cost Regret
+
+Figure 3: Comparison of safe policy optimization algorithms based on the 25% Inter Quartile Mean (IQM) across 5 seeds and 8 tasks. From left to right, the following metrics are shown measured at 10 million training steps: the final cost , i.e. the mean return of the cost at the last iterate (threshold-normalized and centered at zero), the mean return of the reward 
+
+(normalized with the performance of unconstrained PPO), and the mean cost regret (normalized by CPO’s cost regret). The algorithms are sorted into probably safe and probably unsafe , based on their final constraint violation (negative is probably safe), and by expected reward within each group. Note that cost regret is different from the final cost, since it sums up all constraint violations throughout training. completeness, we also report environment-wise sample effi-ciency curves and the results of Figure 3 in a tabular format in Appendix D.4. 
+
+Discussion In Figure 3 the interquartile mean (IQM) of normalized expected reward, cost, and cost regret, includ-ing their stratified bootstrap confidence intervals (Agarwal et al., 2021b) is shown. It can be observed that C-TRPO is competitive with the leading algorithms of the benchmark in terms of expected return, while being safe on the last iterate as opposed to CPO and CUP, see Figure 3. Furthermore, it achieves notably lower cost regret throughout training than the high-return algorithms. TRPO-Lag., which is also safe at convergence, has notably higher cost regret than the other safe methods, meaning it oscillates more around the threshold during training, see also Figures 13 and 12 in the appendix. In general, methods that, in practice, rely on Lagrangian-inspired optimization routines (TRPO-Lag., FOCOPS, and CUP) perform well in terms of reward, but poorly in terms of cost regret. C-TRPO’s regret performance is comparable to the more conservative PCPO algorithm, but is not as low as that of P3O. The low cost regret achieved by P3O comes at the price of expected reward, which is due to it’s wide margin to the threshold at the last iterate. Our experiments reveal that C-TRPO’s performance is closely tied to the accuracy of divergence estimation, which hinges on the precise estimation of the cost advantage and value functions. C-TRPO’s behavior w.r.t noisy cost func-tion estimates is analyzed in Appendix D.3. The safety parameter β modulates the stringency with which C-TRPO satisfies the constraint, and can do so without limiting the expected return on most environments at least for β ≤ 1, see Figure 8 in the appendix. For higher values, the expected return starts to degrade, partly due to ¯Dϕ being relatively noisy compared to ¯DKL and thus we recommend the choice 
+
+β = 1 .Further, we observe that in most environments constraint vi-olations seem to reduce as the algorithm converges, meaning that the regret flattens over time. This behavior suggests that the divergence estimation becomes increasingly accurate over time, potentially allowing C-TRPO to achieve sublin-ear regret. However, we leave regret analysis of the finite sample regime for future research. We attribute the improved constraint satisfaction compared to CPO to a slowdown and reduction in the frequency of oscillations around the cost threshold, which mitigates over-shoot behaviors that could otherwise violate constraints. The modified gradient preconditioner appears to deflect the parameter trajectory away from the constraint, see Figure 2. This effect may also be partially attributed to the hysteresis-based recovery mechanism, which helps smooth updates by leading the iterate away from the boundary of the safe set. Employing a hysteresis fraction 0 < b H < b might also be beneficial because C-TRPO’s divergence estimates tend to be more reliable for strictly safe policies. The effect of the choice of bH is shown in Figure 9 in the appendix. Finally, we present ablations in Appendix D.2, which support our claims that both components—the modified trust region and hysteresis—are effective in reducing safety violations. 
+
+6. Conclusion and outlook 
+
+We introduced C-TRPO and C-NPG, two novel methods for solving CMDPs. C-TRPO extends Trust Region Policy 8Embedding Safety into RL 
+
+Optimization (TRPO) by embedding constraint handling into the policy space geometry, while C-NPG provides a provably safe natural policy gradient method for CMDPs. Our experiments showed that C-TRPO reduces constraint violations while maintaining competitive returns compared to state-of-the-art constrained RL algorithms. Despite these advances, challenges remain. Estimating the proposed diver-gence is difficult, and we did not analyze its finite-sample properties. Additionally, CMDPs constrain average cost re-turn, making trajectory-wise or state-wise safety constraints harder to model. Future work includes integrating C-TRPO with model-based methods (As et al., 2025), leveraging mirror descent (Tomar et al., 2022), and considering alter-native formalisms for risk-sensitive RL like distributional RL (Dabney et al., 2018) or Saut´ e RL (Sootla et al., 2022). Overall, the proposed algorithms, C-TRPO and C-NPG, present a step forward in general-purpose CMDP algorithms and move us closer to deploying RL in high-stakes, real-world applications. 
+
+Impact Statement 
+
+This paper presents work whose goal is to advance the field of constrained Markov decision processes and safe rein-forcement learning. There are many potential societal con-sequences of our work, none of which we feel must be specifically highlighted here. 
+
+Acknowledgements 
+
+N. M. and N.S. are supported by BMBF (Federal Ministry of Education and Research) through ACONITE (01IS22065) and the Center for Scalable Data Analytics and Artificial In-telligence (ScaDS.AI.) Leipzig and by the European Union and the Free State of Saxony through BIOWIN. N.M. is also supported by the Max Planck IMPRS CoNI Doctoral Program. 
+
+References 
+
+Achiam, J., Held, D., Tamar, A., and Abbeel, P. Constrained Policy Optimization. In Precup, D. and Teh, Y. W. (eds.), 
+
+Proceedings of the 34th International Conference on Ma-chine Learning , volume 70 of Proceedings of Machine Learning Research , pp. 22–31. PMLR, 06–11 Aug 2017. URL https://proceedings.mlr.press/v70/ achiam17a.html .Agarwal, A., Kakade, S. M., Lee, J. D., and Mahajan, G. On the Theory of Policy Gradient Methods: Optimality, Ap-proximation, and Distribution Shift. Journal of Machine Learning Research , 22(98):1–76, 2021a. URL http: //jmlr.org/papers/v22/19-736.html .Agarwal, R., Schwarzer, M., Castro, P. S., Courville, A. C., and Bellemare, M. Deep Reinforcement Learning at the Edge of the Statistical Precipice. Advances in Neural Information Processing Systems , 34, 2021b. Altman, E. Constrained Markov Decision Pro-cesses . CRC Press, Taylor & Francis Group, 1999. URL https://api.semanticscholar. org/CorpusID:14906227 .Alvarez, F., Bolte, J., and Brahic, O. Hessian Riemannian gradient flows in convex programming. SIAM journal on control and optimization , 43(2):477–501, 2004. Amari, S.-i. Information geometry and its applications ,volume 194. Springer, 2016. Ames, A. D., Xu, X., Grizzle, J. W., and Tabuada, P. Control barrier function based quadratic programs for safety critical systems. IEEE Transactions on Automatic Control , 62(8):3861–3876, August 2017. ISSN 1558-2523. doi: 10.1109/tac.2016.2638961. URL http: //dx.doi.org/10.1109/TAC.2016.2638961 .As, Y., Sukhija, B., Treven, L., Sferrazza, C., Coros, S., and Krause, A. ActSafe: Active Exploration with Safety Con-straints for Reinforcement Learning. In The Thirteenth International Conference on Learning Representations ,2025. URL https://openreview.net/forum? id=aKRADWBJ1I .Berkenkamp, F., Turchetta, M., Schoellig, A., and Krause, A. Safe Model-based Reinforcement Learning with Stability Guarantees. In Guyon, I., Luxburg, U. V., Bengio, S., Wallach, H., Fergus, R., Vishwanathan, S., and Garnett, R. (eds.), Advances in Neural Information Processing Systems , volume 30. Curran Associates, Inc., 2017. URL https://proceedings.neurips. cc/paper_files/paper/2017/file/ 766ebcd59621e305170616ba3d3dac32-Paper. pdf .Cheng, R., Orosz, G., Murray, R. M., and Burdick, J. W. End-to-end safe reinforcement learning through barrier functions for safety-critical continuous control tasks. In 
+
+Proceedings of the AAAI conference on artificial intelli-gence , volume 33, pp. 3387–3395, 2019. Chow, Y., Nachum, O., Faust, A., Duenez-Guzman, E., and Ghavamzadeh, M. Lyapunov-based Safe Policy Opti-mization for Continuous Control, 2019. URL https: //arxiv.org/abs/1901.10031 .Dabney, W., Rowland, M., Bellemare, M., and Munos, R. Distributional reinforcement learning with quantile re-gression. In Proceedings of the AAAI conference on artificial intelligence , volume 32, 2018. 9Embedding Safety into RL 
+
+Dey, S., Dasgupta, P., and Dey, S. P2BPO: Permeable Penalty Barrier-Based Policy Optimization for Safe RL. In Proceedings of the AAAI Conference on Artificial In-telligence , volume 38, pp. 21029–21036, 2024. Efroni, Y., Mannor, S., and Pirotta, M. Exploration-Exploitation in Constrained MDPs, 2020. URL https: //arxiv.org/abs/2003.02189 .Feinberg, E. A. and Shwartz, A. Handbook of Markov decision processes: methods and applications , volume 40. Springer Science & Business Media, 2012. Geist, M., Scherrer, B., and Pietquin, O. A Theory of Regu-larized Markov Decision Processes. In International Con-ference on Machine Learning , pp. 2160–2169. PMLR, 2019. Ji, J., Zhang, B., Zhou, J., Pan, X., Huang, W., Sun, R., Geng, Y., Zhong, Y., Dai, J., and Yang, Y. Safety Gym-nasium: A Unified Safe Reinforcement Learning Bench-mark. In Thirty-seventh Conference on Neural Informa-tion Processing Systems Datasets and Benchmarks Track ,2023. URL https://openreview.net/forum? id=WZmlxIuIGR .Kakade, S. and Langford, J. Approximately Optimal Ap-proximate Reinforcement Learning. In Proceedings of the Nineteenth International Conference on Machine Learning , ICML ’02, pp. 267–274, San Francisco, CA, USA, 2002. Morgan Kaufmann Publishers Inc. ISBN 1558608737. Kakade, S. M. A natural policy gradient. In Di-etterich, T., Becker, S., and Ghahramani, Z. (eds.), Advances in Neural Information Pro-cessing Systems , volume 14. MIT Press, 2001. URL https://proceedings.neurips. cc/paper_files/paper/2001/file/ 4b86abe48d358ecf194c56c69108433e-Paper. pdf .Kallenberg, L. C. Survey of linear programming for stan-dard and nonstandard Markovian control problems. Part I: Theory. Zeitschrift f ¨ur Operations Research , 40:1–42, 1994. Konda, V. and Tsitsiklis, J. Actor-Critic Algo-rithms. In Solla, S., Leen, T., and M ¨uller, K. (eds.), Advances in Neural Information Pro-cessing Systems , volume 12. MIT Press, 1999. URL https://proceedings.neurips. cc/paper_files/paper/1999/file/ 6449f44a102fde848669bdd9eb6b76fa-Paper. pdf .Liu, Y., Ding, J., and Liu, X. IPO: Interior-Point Policy Optimization under Constraints. Proceedings of the AAAI Conference on Artificial Intelligence , 34:4940–4947, 04 2020. doi: 10.1609/aaai.v34i04.5932. Mei, J., Xiao, C., Dai, B., Li, L., Szepesv ´ari, C., and Schu-urmans, D. Escaping the Gravitational Pull of Softmax. 
+
+Advances in Neural Information Processing Systems , 33: 21130–21140, 2020a. Mei, J., Xiao, C., Szepesvari, C., and Schuurmans, D. On the Global Convergence Rates of Softmax Policy Gradient Methods. In III, H. D. and Singh, A. (eds.), 
+
+Proceedings of the 37th International Conference on Machine Learning , volume 119 of Proceedings of Ma-chine Learning Research , pp. 6820–6829. PMLR, 13– 18 Jul 2020b. URL https://proceedings.mlr. press/v119/mei20b.html .M ¨uller, A., Alatur, P., Cevher, V., Ramponi, G., and He, N. Truly No-Regret Learning in Constrained MDPs. In Salakhutdinov, R., Kolter, Z., Heller, K., Weller, A., Oliver, N., Scarlett, J., and Berkenkamp, F. (eds.), Pro-ceedings of the 41st International Conference on Ma-chine Learning , volume 235 of Proceedings of Machine Learning Research , pp. 36605–36653. PMLR, 21–27 Jul 2024. URL https://proceedings.mlr.press/ v235/muller24b.html .M ¨uller, J. and Cayci, S. Essentially Sharp Estimates on the Entropy Regularization Error in Discrete Dis-counted Markov Decision Processes. arXiv preprint arXiv:2406.04163 , 2024. doi: https://doi.org/10.48550/ arXiv.2406.04163. M ¨uller, J. and Mont ´ufar, G. Geometry and convergence of natural policy gradient methods. Information Geometry ,pp. 1–39, 2023. M ¨uller, J., C¸ aycı, S., and Mont ´ufar, G. Fisher-Rao Gradient Flows of Linear Programs and State-Action Natural Pol-icy Gradients. arXiv preprint arXiv:2403.19448 , 2024. Neu, G., Jonsson, A., and G ´omez, V. A unified view of entropy-regularized Markov decision processes. arXiv preprint arXiv:1705.07798 , 2017. Ni, T. and Kamgarpour, M. A safe exploration approach to constrained Markov decision processes. In ICML 2024 Workshop: Foundations of Reinforcement Learning and Control–Connections and Perspectives , 2024. Pirotta, M., Restelli, M., Pecorino, A., and Calandriello, D. Safe Policy Iteration. In Dasgupta, S. and McAllester, D. (eds.), Proceedings of the 30th International Conference on Machine Learning , volume 28, pp. 307–315, 2013. 10 Embedding Safety into RL 
+
+Ray, A., Achiam, J., and Amodei, D. Benchmarking Safe Exploration in Deep Reinforcement Learning. arXiv preprint arXiv:1910.01708 , 7(1):2, 2019. Schulman, J., Levine, S., Moritz, P., Jordan, M. I., and Abbeel, P. Trust Region Policy Optimization, 2017a. Schulman, J., Wolski, F., Dhariwal, P., Radford, A., and Klimov, O. Proximal Policy Optimization Algorithms, 2017b. URL https://arxiv.org/abs/1707. 06347 .Schulman, J., Moritz, P., Levine, S., Jordan, M., and Abbeel, P. High-Dimensional Continuous Control Us-ing Generalized Advantage Estimation, 2018. URL 
+
+https://arxiv.org/abs/1506.02438 .Sohrabi, M., Ramirez, J., Zhang, T. H., Lacoste-Julien, S., and Gallego-Posada, J. On PI controllers for updating lagrange multipliers in constrained optimization. In Forty-first International Conference on Machine Learning ,2024. URL https://openreview.net/forum? id=1khG2xf1yt .Sootla, A., Cowen-Rivers, A. I., Jafferjee, T., Wang, Z., Mguni, D. H., Wang, J., and Ammar, H. Saut ´e RL: Almost surely safe reinforcement learning using state augmentation. In International Conference on Machine Learning , pp. 20423–20443. PMLR, 2022. Stooke, A., Achiam, J., and Abbeel, P. Responsive Safety in Reinforcement Learning by PID Lagrangian Methods. In III, H. D. and Singh, A. (eds.), Pro-ceedings of the 37th International Conference on Ma-chine Learning , volume 119 of Proceedings of Machine Learning Research , pp. 9133–9143. PMLR, 13–18 Jul 2020. URL https://proceedings.mlr.press/ v119/stooke20a.html .Sutton, R. S., McAllester, D., Singh, S., and Mansour, Y. Policy Gradient Methods for Reinforcement Learning with Function Approximation. In Solla, S., Leen, T., and M ¨uller, K. (eds.), Advances in Neural Infor-mation Processing Systems , volume 12. MIT Press, 1999. URL https://proceedings.neurips. cc/paper_files/paper/1999/file/ 464d828b85b0bed98e80ade0a5c43b0f-Paper. pdf .Tomar, M., Shani, L., Efroni, Y., and Ghavamzadeh, M. Mir-ror Descent Policy Optimization. In International Confer-ence on Learning Representations , 2022. URL https: //openreview.net/forum?id=aBO5SvgSt1 .Usmanova, I., As, Y., Kamgarpour, M., and Krause, A. Log Barriers for Safe Black-box Optimization with Applica-tion to Safe Reinforcement Learning. Journal of Machine Learning Research , 25(171):1–54, 2024. van Oostrum, J., M ¨uller, J., and Ay, N. Invariance proper-ties of the natural gradient in overparametrised systems. 
+
+Information geometry , 6(1):51–67, 2023. Williams, R. J. Simple statistical gradient-following algo-rithms for connectionist reinforcement learning. Machine learning , 8:229–256, 1992. Yang, L., Ji, J., Dai, J., Zhang, L., Zhou, B., Li, P., Yang, Y., and Pan, G. Constrained Update Projection Approach to Safe Policy Optimization. Advances in Neural Informa-tion Processing Systems , 35:9111–9124, 2022. Yang, T.-Y., Rosca, J., Narasimhan, K., and Ramadge, P. J. Projection-based constrained policy optimization. In 
+
+International Conference on Learning Representations ,2020. URL https://openreview.net/forum? id=rke3TJrtPS .Zhang, B., Zhang, Y., Frison, L., Brox, T., and B ¨odecker, J. Constrained Reinforcement Learning with Smoothed Log Barrier Function. arXiv preprint arXiv:2403.14508 ,2024a. Zhang, L., Shen, L., Yang, L., Chen, S., Wang, X., Yuan, B., and Tao, D. Penalized Proximal Policy Optimization for Safe Reinforcement Learning. In Thirty-First Inter-national Joint Conference on Artificial Intelligence , pp. 3719–3725, 07 2022. doi: 10.24963/ijcai.2022/517. Zhang, Y., Vuong, Q., and Ross, K. First Order Constrained Optimization in Policy Space. Advances in Neural Infor-mation Processing Systems , 33:15338–15349, 2020. Zhang, Y., Pan, J., Li, L. K., Liu, W., Chen, Z., Liu, X., and Wang, J. On the properties of Kullback-Leibler diver-gence between multivariate Gaussian distributions. Ad-vances in Neural Information Processing Systems , 36, 2024b. 11 Embedding Safety into RL 
+
+A. Extended Background 
+
+We consider the infinite-horizon discounted Markov decision process (MDP), given by the tuple (S, A, P, r, μ, γ ). Here, 
+
+S and A are the finite state-space and action-space respectively. Here, we make the restriction to finite MDPs as this simplifies the presentation. For a discussion of continuous state and action spaces, we refer to Appendix B.3. Further, 
+
+P : S × A → ∆S is the transition kernel, r : S × A → R is the reward function, μ ∈ ∆S is the initial state distribution at time t = 0 , and γ ∈ [0 , 1) is the discount factor. The space ∆S is the set of categorical distributions over S.The Reinforcement Learning (RL) protocol is usually described as follows: At time t = 0 , an initial state s0 is drawn from 
+
+μ. At each integer time-step t, the agent chooses an action according to it’s (stochastic) behavior policy at ∼ π(·| st). A reward rt = r(st, a t) is given to the agent, and a new state st+1 ∼ P (·| st, a t) is sampled from the environment. Given a policy π, the value function V πr : S → R, action-value function Qπr : S × A → R, and advantage function Aπr : S × A → R
+
+associated with the reward r are defined as 
+
+V πr (s) := (1 − γ) Eπ
+
+" ∞X
+
+> t=0
+
+γtr(st, a t) s0 = s
+
+#
+
+,Qπr (s, a ) := (1 − γ) Eπ
+
+" ∞X
+
+> t=0
+
+γtr(st, a t) s0 = s, a 0 = a
+
+#
+
+and Aπr (s, a ) := Qπr (s, a ) − V πr (s).
+
+where and the expectations are taken over trajectories of the Markov process resulting from starting at s and following policy 
+
+π. The goal is to maximize π∈Π V πr (μ) (27) where V πr (μ) is the expected value under the initial state distribution V πr (μ) := Es∼μ[V πr (s)] . We will also write V πr =
+
+V πr (μ), and omit the explicit dependence on μ for convenience, and we write Vr (π) when we want to emphasize its dependence on π.
+
+The Dual Linear Program for MDPs Any stationary policy π induces a discounted state-action (occupancy) measure 
+
+dπ ∈ ∆S×A , indicating the relative frequencies of visiting a state-action pair, discounted by how far the visitation lies in the future. It is a probability measure defined as 
+
+dπ (s, a ) := (1 − γ)
+
+> ∞
+
+X
+
+> t=0
+
+γtPπ (st = s)π(a|s), (28) where Pπ (st = s) is the probability of observing the environment in state s at time t given the agent follows policy π. For finite MDPs, it is well-known that maximizing the expected discounted return can be expressed as the linear program 
+
+max  
+
+> d
+
+r⊤d subject to d ∈ D, (29) where D is the set of feasible state-action measures (Feinberg & Shwartz, 2012). This set is also known as the state-action polytope , defined by 
+
+D =
+
+n
+
+d ∈ RS×A ≥0 : ℓs(d) = 0 for all s ∈ S 
+
+o
+
+,
+
+where the linear constraints ℓs(d) are given by the Bellman flow equations 
+
+ℓs(d) = d(s) − γ X
+
+> s′,a ′
+
+d(s′, a ′)P (s|s′, a ′) − (1 − γ)μ(s),
+
+where d(s) = P 
+
+> a
+
+d(s, a ) denotes the state-marginal of d. For any state-action measure d we obtain the associated policy via conditioning, meaning 
+
+π(a|s) := d(s, a )
+
+P 
+
+> a′
+
+d(s, a ′) (30) in case this is well-defined. This provides a one-to-one correspondence between policies and the state-action distributions under the following assumption. 12 Embedding Safety into RL r(s, a)
+
+c(s, a)
+
+𝒟 safe 
+
+d*safe 
+
+Figure 4: The dual linear program for a CMDP of two states and two actions. 
+
+Assumption A.1 (Exploration) . For any policy π ∈ ∆SA we have dπ (s) > 0 for all s ∈ S .This assumption is standard in linear programming approaches and policy gradient methods where it is necessary for global convergence (Kallenberg, 1994; Mei et al., 2020b). Note that d ∈ ∂D if and only if d(s, a ) = 0 for some s, a and hence the boundary of D is given by 
+
+∂D =
+
+n
+
+dπ : π(a|s) = 0 for some s ∈ S , a ∈ A 
+
+o
+
+.
+
+Constrained Markov Decision Processes Where MDPs aim to maximize the return, constrained MDPs (CMDPs) aim to maximize the return subject to a number of costs not exceeding certain thresholds. For a general treatment of CMDPs, we refer the reader to (Altman, 1999). An important application of CMDPs is in safety-critical reinforcement learning where the costs incorporate safety constraints. An infinite-horizon discounted CMDP is defined by the tuple (S, A, P, r, μ, γ, C),consisting of the standard elements of an MDP and an additional constraint set C = {(ci, b i)}mi=1 , where ci : S × A → R
+
+are the cost functions and bi ∈ R are the cost thresholds. In addition to the value functions and the advantage functions of the reward that are defined for the MDP, we define the same quantities Vci , Qci , and Aci w.r.t the ith cost ci, simply by replacing r with ci. The objective is to maximize the discounted return, as before, but we restrict the space of policies to the safe policy set 
+
+Πsafe =
+
+> m
+
+\
+
+> i=1
+
+n
+
+π : Vci (π) ≤ bi
+
+o
+
+, (31) where 
+
+V πci (μ) := Es∼μ[V πci (s)] . (32) is the expected discounted cumulative cost associated with the cost function ci. Like the MDP, the discounted cost CMPD can be expressed as the linear program 
+
+max  
+
+> d
+
+r⊤d sbj. to d ∈ Dsafe , (33) where 
+
+Dsafe =
+
+> m
+
+\
+
+> i=1
+
+d ∈ RS×A : c⊤ 
+
+> i
+
+d ≤ bi ∩ D (34) is the safe occupancy set, see Figure 4. 13 Embedding Safety into RL 
+
+Bregman divergences Here, we give a short introduction to the concept of Bregman divergences, which is required for the formulation of trust region methods. For this, we consider a convex subset of Euclidean space C ⊆ Rd with a non-empty interior int( C) and a strictly convex function ϕ : C → R which we assume to be differentiable on the interior int( C). Then, the Bregman divergence induced by ϕ is given by 
+
+Dϕ(x|| y) := ϕ(x) − ϕ(y) − ∇ ϕ(y)⊤(x − y), (35) which is well defined for x ∈ C, y ∈ int( C). Intuitively, the Bregman divergence measures the difference between ϕ and its linearization at y. The strict convexity of ϕ ensures that Dϕ(x|| y) ≥ 0 and Dϕ(x|| y) = 0 if and only if x = y. Therefore, Bregman divergences are commonly interpreted as a generalized measure for the distance between points, however, it is important to notice that it is not generally symmetric. An important example is the Euclidean distance Dϕ(x|| y) = ∥x − y∥22
+
+which arises from the choice ϕ(x) := ∥x∥22. Another important Bregman divergence is the Kullback-Leibler (KL) divergence 
+
+DKL (p|| q) := 
+
+> d
+
+X
+
+> i=1
+
+pi log pi
+
+qi
+
+−
+
+> d
+
+X
+
+> i=1
+
+pi +
+
+> d
+
+X
+
+> i=1
+
+qi, (36) where we use the common convention 0 log 00 := 0 . Then, the KL divergence is defined for p ∈ Rd 
+
+> ≥0
+
+and q ∈ Rd 
+
+> ≥0
+
+which is absolutely continuous with respect to p, meaning that pi = 0 implies qi = 0 . Note that if both p and q are probability vectors, meaning that P 
+
+> i
+
+pi = P 
+
+> i
+
+qi = 1 , we obtain 
+
+DKL (p|| q) := 
+
+> d
+
+X
+
+> i=1
+
+pi log pi
+
+qi
+
+. (37) 
+
+Information Geometry of Policy Optimization Among the most successful policy optimization schemes are natural policy gradient (NPG) methods or variants thereof like trust-region and proximal policy optimization (TRPO and PPO, respectively). These methods assume a convex geometry and corresponding Bregman divergences in the state-action polytope, where we refer to (Neu et al., 2017; M¨ uller & Mont´ ufar, 2023) for a more detailed discussion. In general, a trust region update is defined as 
+
+πk+1 ∈ arg max 
+
+> π∈Π
+
+Aπk 
+
+> r
+
+(π) sbj. to DΦ(dπk || dπ ) ≤ δ, (38) where DΦ : D × D → R is a Bregman divergence induced by a suitably convex function Φ : int( D) → R. The functional 
+
+Aπk 
+
+> r
+
+(π) = Es∼dπk ,a ∼πθ (·| s)
+
+Aπk 
+
+> r
+
+(s, a ), (39) as introduced in (Kakade & Langford, 2002), is called the policy advantage . As a loss function, it is also known as the surrogate advantage (Schulman et al., 2017a), since we can interpret A as a surrogate optimization objective of the return. In particular, it holds for a parameterized policy πθ , that ∇θ Aπθk 
+
+> r
+
+(πθ )|θ=θk = ∇θ Vr (θk), see (Kakade & Langford, 2002; Schulman et al., 2017a). TRPO and the original NPG assume the same geometry (Kakade, 2001; Schulman et al., 2017a), since they employ an identical Bregman divergence 
+
+DK(dπ1 || dπ2 ) := X
+
+> s,a
+
+dπ1 (s, a ) log π1(a|s)
+
+π2(a|s) = X
+
+> s
+
+dπ1 (s)DKL (π1(·| s)|| π2(·| s)) .
+
+We refer to DK as the Kakade divergence and informally write DK(π1, π 2) := DK(dπ1 , d π2 ). This divergence can be shown to be the Bregman divergence induced by the negative conditional entropy 
+
+ΦK(dπ ) := X
+
+> s,a
+
+dπ (s, a ) log π(a|s), (40) see (Neu et al., 2017). It is well known that with a parameterized policy πθ , a linear approximation of A and a quadratic approximation of the Bregman divergence DK at θ, one obtains the natural policy gradient step given by 
+
+θk+1 = θk + ϵkGK(θk)+∇R(θk), (41) 14 Embedding Safety into RL 
+
+where GK(θ)+ denotes a pseudo-inverse of the Gramian matrix with entries equal to the state-averaged Fisher-information matrix of the policy 
+
+GK(θ)ij := Es∼dπθ
+
+"X
+
+> a
+
+∂θi πθ (a|s)∂θj πθ (a|s)
+
+πθ (a|s)
+
+#
+
+(42) 
+
+= Edπθ [∂θi log πθ (a|s)∂θj log πθ (a|s)] , (43) where we refer to (Schulman et al., 2017a) for a more detailed discussion. Consider a convex potential Φ : D → R or Φ : Dsafe → R and the TRPO update 
+
+θk+1 ∈ arg max Aπθk 
+
+> r
+
+(πθ ) sbj. to DΦ(dθk || dθ ) ≤ ϵ. (44) In practice, one uses a linear approximation of Aπθk 
+
+> r
+
+(πθ ) and a quadratic approximation of DΦ to compute the TRPO update. This gives the following approximation of TRPO 
+
+θk+1 ∈ arg max 
+
+> θ
+
+∇θ Aθk 
+
+> r
+
+(θ)|θ=θk · (θ − θk) sbj. to ∥θ − θk∥2  
+
+> G(θk)
+
+≤ ϵ, (45) where 
+
+G(θ)ij = ∂θi d⊤ 
+
+> θ
+
+∇2Φ( dθ )∂θj dθ . (46) Note that by the policy gradient theorem, it holds that 
+
+∇θ Aθk 
+
+> r
+
+(θ)|θ=θk = ∇Vr (θk). (47) Thus, the approximate TRPO update is equivalent to 
+
+θk+1 = θk + ϵkG(θk)+∇Vr (θ), (48) where 
+
+ϵk =
+
+√ϵ
+
+∥G(θk)+∇Vr (θk)∥G(θk )
+
+. (49) Hence, the approximation TRPO update corresponds to a natural policy gradient update with an adaptively chosen step size. 
+
+B. Details on the Safe Geometry for CMDPs 
+
+B.1. Safe Trust Regions 
+
+The safe mirror function for a single constraint is given by 
+
+ΦC(d) := Φ K(d) + 
+
+> m
+
+X
+
+> i=1
+
+β ϕ (b − c⊤d), (50) and the resulting Bregman divergence 
+
+DC(d1|| d2) = Φ C(d1) − ΦC(d2) − ⟨∇ ΦC(d2), d 1 − d2⟩. (51) is a linear operator in Φ, hence 
+
+DΦ( d)+ βϕ (b−c⊤d)(d1|| d2) = DΦK (d1|| d2) + βD ϕ(d1|| d2), (52) where 
+
+Dϕ(d1|| d2) = ϕ(b − c⊤d1) − ϕ(b − c⊤d2) − ⟨∇ ϕ(b − c⊤d2), d 1 − d2⟩ (53) 
+
+= ϕ(b − c⊤d1) − ϕ(b − c⊤d2) − ϕ′(b − c⊤d2)( c⊤d1 − c⊤d2). (54) 
+
+= ϕ(b − Vc(π1)) − ϕ(b − Vc(π2)) + ϕ′(b − Vc(π2))( Vc(π1) − Vc(π2)) . (55) The last expression can be interpreted as the one-dimensional Bregman divergence Dϕ(b − Vc(π)|| b − Vc(πk)) , which is a (strictly) convex function in Vc(π) for fixed πk if ϕ is (strictly) convex. 15 Embedding Safety into RL Max-Planck-Institut für Kognitions- und Neurowissenschaften xxx        
+
+> TRPO ( Ø= 0) C-TRPO/CPO ( Ø= 10 °4)C-TRPO ( Ø= 1) C-TRPO ( Ø= 2)
+
+# 𝒟 Θ
+
+πθk
+
+θk
+
+a) 
+
+c)               
+
+> TRPO ( Ø= 0) C-TRPO/CPO ( Ø= 10 °4)C-TRPO ( Ø= 1) C-TRPO ( Ø= 2) TRPO ( Ø= 0) C-TRPO/CPO ( Ø= 10 °4)C-TRPO ( Ø= 1) C-TRPO ( Ø= 2)
+
+b) 
+
+CPO TRPO  C-TRPO ( )β = 10 −4 C-TRPO ( )β = 2
+
+Figure 5: Illustration of policy divergences (dashed) close to the constraint (red). a) TRPO (dotted for reference) and CPO. b) C-TRPO’s divergence depends on the hyper-parameter β, which modulates the strength of the barrier towards the constraint surface. For β ↘ 0 we obtain an update equivalent to CPO, and more conservative updates for larger values ( β = 2 ). The plots were generated with the toy MDP in Figure 2. c) Shown are the quadratic approximations of the divergence in parameter space, which is obtained by mapping the policy onto its occupancy measure, where a safe geometry can be defined using standard tools from convex optimization (safe region in white). 
+
+B.2. Details on C-TRPO 
+
+B.2.1. S URROGATE DIVERGENCE 
+
+In practice, the exact constrained KL-Divergence DC cannot be evaluated, because it depends on the cost-return of the optimized policy Vc(π). Therefore, we use the surrogate divergence 
+
+¯Dϕ(πθ || πθk ) = ϕ(b − V πk 
+
+> c
+
+− Aπk 
+
+> c
+
+(π)) − ϕ(b − V πk 
+
+> c
+
+) + ϕ′(b − V πk 
+
+> c
+
+)Aπk 
+
+> c
+
+(π) (56) which is obtained by the substitution Vc(π) − V πk 
+
+> c
+
+→ Aπk 
+
+> c
+
+(π) in Dϕ.When we center this divergence around policy πk and keep this policy fixed, it becomes a function of the policy cost advantage. 
+
+¯Dϕ(πθ || πθk ) = ϕ(b − V πk 
+
+> c
+
+− Aπk 
+
+> c
+
+(π)) − ϕ(b − V πk 
+
+> c
+
+) + ϕ′(b − V πk 
+
+> c
+
+)Aπk 
+
+> c
+
+(π)= ϕ(δb − Aπk 
+
+> c
+
+(π)) − ϕ(δb) + ϕ′(δb)Aπk 
+
+> c
+
+(π)= Ψ( Aπk 
+
+> c
+
+).
+
+Note that ¯Dϕ(πθ || πθk ) = Ψ( Aπk 
+
+> c
+
+(π)) , where Ψ( x) = ϕ(δb − x) − ϕ(δb) − ϕ′(δb) · x is a (strictly) convex function if ϕ
+
+is (strictly) convex, since it is equivalent to the one-dimensional Bregman divergence Dϕ(δb − x|| δb) on the domain of 
+
+ϕ(b − x), see Figure 6. 
+
+Example B.1. The function ϕ(x) = x log( x) induces the divergence 
+
+¯Dϕ(πθ || πθk ) = Aπk 
+
+> c
+
+(πθ ) − (δb − Aπk 
+
+> c
+
+(πθ )) log 
+
+ δb
+
+δb − Aπk 
+
+> c
+
+(πθ )) 
+
+
+
+. (57) 16 Embedding Safety into RL 0 δb      
+
+> Cost Advantage
+> 0
+> 1
+> 2
+> DΦ/β
+> φ=−log( x)
+> φ=xlog( x)
+
+Figure 6: The surrogate Constrained KL-Divergence as a function of the policy cost advantage. B.2.2. E STIMATION 
+
+In the practical implementation, the expected KL-divergence between the policy of the previous iteration, πk, and the proposal policy π is estimated from state samples si by running πk in the environment 
+
+X
+
+> s
+
+dπk (s)DKL (π(·| s)|| πk(·| s)) ≈ 1/N  
+
+> N−1
+
+X
+
+> i=0
+
+DKL (π(·| si)|| πk(·| si)) (58) where DKL can be computed in closed form for Gaussian policies, where N is the batch size. For the constraint term, we estimate δb from trajectory samples, as well as the policy cost advantage 
+
+Aπk 
+
+> c
+
+(π) ≈ ˆA = 1
+
+N 
+
+> N−1
+
+X
+
+> i=0
+
+π(ai|si)
+
+πk(ai|si) ˆAπk 
+
+> i
+
+(59) where ˆAπk 
+
+> i
+
+is the GAE-λ estimate (Schulman et al., 2018) of the advantage function of the cost. For any suitable ϕ, the resulting divergence estimate is 
+
+ˆDϕ = ϕ(δb − ˆA) − ϕ(δb) − ϕ′(δb) ˆA (60) and for the specific choice ϕ(x) = x log( x)ˆDϕ = ˆA − (δb − ˆA) log 
+
+ δb
+
+δb − ˆA
+
+
+
+. (61) B.2.3. D ETAILS ON C-NPG In showing that TRPO with quadratic approximation agrees with a natural gradient step, see Appendix A, we have used that 
+
+∇θ Aθk 
+
+> r
+
+(θ)|θ=θk = ∇Vr (θk), which holds although Ar is only a proxy of Vr . We now provide a similar property for the quadratic approximation of the surrogate divergences ¯DC.
+
+Proposition B.2. For any parameter θ with πθ ∈ Πsafe it holds that 
+
+∇2 
+
+> θ
+
+¯Dϕ(θ|| ˆθ)|θ=ˆθ = ∇2 
+
+> θ
+
+Dϕ(θ|| ˆθ)|θ=ˆθ (62) 
+
+and hence 
+
+∇2 
+
+> θ
+
+¯DKL (θ|| ˆθ)|θ=ˆθ + β∇2 
+
+> θ
+
+¯Dϕ(θ|| ˆθ)|θ=ˆθ = GC(ˆθ) (63) 
+
+where GC(θ) denotes the Gramian matrix of C-NPG with entries 
+
+GC(θ)ij = ∂θi d⊤ 
+
+> θ
+
+∇2ΦC(θ)∂θj dθ . (64) 17 Embedding Safety into RL 
+
+Proof. Let ¯HKL (θ) = ∇2 
+
+> θ
+
+¯DKL (θ|| ˆθ)|θ=ˆθ and ¯Hϕ(θ) = ∇2 
+
+> θ
+
+¯Dϕ(θ|| ˆθ)|θ=ˆθ . One can show that ¯HKL = GK(θ) (Schulman et al., 2017a). Further, we have 
+
+¯Hϕ(θ) = ∇θ Aπk 
+
+> c
+
+(θ)Ψ ′′ (Aπk 
+
+> c
+
+(θ)) ∇θ Aπk 
+
+> c
+
+(θ)⊤ + Ψ ′(Aπk 
+
+> c
+
+(θ)) ∇2 
+
+> θ
+
+Aπk 
+
+> c
+
+(θ)
+
+> a)
+
+= ∇θ Aπk 
+
+> c
+
+(θ)Ψ ′′ (Aπk 
+
+> c
+
+(θ)) ∇θ Aπk 
+
+> c
+
+(θ)⊤
+
+> b)
+
+= ∇θ Aπk 
+
+> c
+
+(θ)ϕ′′ (b − V πk 
+
+> c
+
+(θ)) ∇θ Aπk 
+
+> c
+
+(θ)⊤
+
+= ∇θ V πk 
+
+> c
+
+(θ)ϕ′′ (b − V πk 
+
+> c
+
+(θ)) ∇θ V πk 
+
+> c
+
+(θ)⊤,
+
+where a) follows from Ψ′(Aπk 
+
+> c
+
+(θ)) = 0 since Ψ(0) = 0 , Ψ ≥ 0 and Aˆθc (θ)|θ=ˆθ = 0 . Further, b) follows because 
+
+Ψ′′ (x)|x=0 = ϕ′′ (δb). Thus, ¯Hϕ is equivalent to the Gramian 
+
+GC(θ)ij := ∂θi d⊤ 
+
+> θ
+
+∇2ΦC(θ)∂θj dθ (65) 
+
+= GK(θ)ij + βϕ ′′ (b − c⊤ 
+
+> k
+
+dθ )∂θi d⊤ 
+
+> θ
+
+cc ⊤∂θi dθ (66) 
+
+= ¯HKL + β∇θ Vc(θ)ϕ′′ (b − Vc(θ)) ∇θ Vc(θ)⊤, (67) 
+
+= ¯HKL + β ¯Hϕ. (68) Again, for multiple constraints, the statement follows analogously. In particular, this shows that the C-TRPO update can be interpreted as a natural policy gradient step with an adaptive step size and that the updates with DC and ¯DC are equivalent if we use a quadratic approximation for both, justifying ¯DC as a surrogate for DC.
+
+B.3. Beyond finite MDPs 
+
+For the sake of simplicity and as this is required for our theoretical analysis, we have introduced C-TRPO only for finite MDPs. However, C-TRPO can also be used for problems with continuous state and action spaces as we discuss here. In this case, the state-action and state distributions are defined as 
+
+dπ (S × A) := (1 − γ)
+
+> ∞
+
+X
+
+> t=0
+
+γtPπ (st ∈ S, a t ∈ A) and 
+
+dπ (S) := (1 − γ)
+
+> ∞
+
+X
+
+> t=0
+
+γtPπ (st ∈ S)
+
+for any measurable subsets A ⊆ A and S ⊆ S . Further, the Kakade divergence is then given by 
+
+DK(dπ1 || dπ2 ) := Es∼dπ1
+
+DKL (π1(·| s)|| π2(·| s)) , (69) which is well defined if π1(·| s) is absolutely continuous with respect to π2(·| s) for dπ1 almost all s ∈ S . The Bregman divergence that C-TRPO builds on is – just as in the finite case – given by 
+
+DC(d1|| d2) = DK(d1|| d2) + 
+
+> m
+
+X
+
+> i=1
+
+βiDϕi (d1|| d2), (70) where 
+
+Dϕi (d1|| d2) = ϕ(bi − Vci (π1)) − ϕ(bi − Vci (π2)) + ϕ′(bi − Vci (π2))( Vci (π1) − Vci (π2)) . (71) Like in the finite case, the policy advantage is defined as 
+
+Aπk 
+
+> r
+
+(π) = Es,a ∼dπk
+
+ π(a|s)
+
+πk(a|s) Aπk 
+
+> r
+
+(s, a )
+
+
+
+, (72) 18 Embedding Safety into RL 
+
+where Aπr (s, a ) = Qπ (s, a ) − V π (s) denotes the advantage function, which is defined analoguously to the finite case. Now, the plain trust region update is given by 
+
+θk+1 ∈ arg max 
+
+> θ
+
+Aπk 
+
+> r
+
+(π) sbj. to DC(dπk || dπ ) ≤ δ. (73) Just like in the finite case, we use a surrogate divergence ¯DC and obtain the formulation of C-TRPO 
+
+πk+1 = arg max 
+
+> π∈Π
+
+Aπk 
+
+> r
+
+(π) sbj. to ¯DC(π|| πk) ≤ δ. (74) Here, the differences to DC are that we use samples from the state distribution dπk and use a surrogate for the cost advantage to estimate the divergence Dϕi as described in Section 3.2. Further, we use a parametric policy model πθ and a linear approximation of Aπk as well as quadratic approximation of ¯DC(π|| πk) for our practical implementation. 
+
+Expression for Gaussian policies We test C-TRPO in various control tasks where we use Gaussian policies. More precisely, the state and action space consist of Euclidean spaces S = Rds and A = Rda . Then, we consider a policy network 
+
+μθ : S → A , which predicts the mean action and assume parameterized but state independent diagonal Gaussian noise, meaning that πθ (·| s) = N (μθ (s), Σθ ), where Σθ is diagonal. Consequently, we can use a closed-form expression for the KL divergence as 
+
+DKL (πθ1 (·| s)|| πθ2 (·| s)) = 12
+
+
+
+tr  Σ−1 
+
+> θ2
+
+Σθ1
+
+ − da + ∥μθ1 (s) − μθ2 (s)∥2Σ−1
+
+> θ2
+
++ ln 
+
+ det Σ θ2
+
+det Σ θ1
+
+ 
+
+,
+
+see (Zhang et al., 2024b). 
+
+C. Proofs of Section 4 
+
+C.1. Proofs of Section 4.1 
+
+Our theoretical analysis of C-TRPO is built on the following bounds on the performance difference of two policies. 
+
+Theorem C.1 (Performance Difference, (Achiam et al., 2017)) . For any function f (s, a ), the following bounds hold 
+
+Vf (π1) − Vf (π2) ⋚ Aπ2 
+
+> f
+
+(π1) ± 2γϵ f
+
+(1 − γ)
+
+r 12 Es∼dπ2 DKL (π1(·| s)|| π2(·| s)) (75) 
+
+where ϵf = max s |Ea∼π1 Aπ2 
+
+> f
+
+(s, a )|.
+
+Theorem C.1 can be interpreted as a bound on the error incurred by replacing the difference in returns Vf (π1) − Vf (π) of any state-action function by its policy advantage Aπ2 
+
+> f
+
+(π1).
+
+Proposition 4.1 (C-TRPO reward update) . Set ϵr = max s |Ea∼πk+1 Aπk 
+
+> r
+
+(s, a )|. The expected reward of a policy updated with C-TRPO is bounded from below by 
+
+Vr (πk+1 ) ≥ Vr (πk) −√2δγϵ r
+
+1 − γ . (23) 
+
+Proof. It follows from the lower bound in Theorem C.1 that 
+
+Vr (πk+1 ) − Vr (πk) ≥ Aπk 
+
+> r
+
+(πk+1 ) − γϵ r
+
+(1 − γ)
+
+q
+
+2 ¯DC(πk+1 || πk) (76) where we choose f = r. The bound holds because ¯Dϕ ≥ 0, and thus ¯DC ≥ EDKL . Further, δ ≥ DC and Aπk 
+
+> r
+
+(πk+1 ) ≥ 0
+
+by the update equation, which concludes the proof. See Appendix C.3 for a more detailed discussion. 
+
+Proposition 4.2. The approximate C-TRPO update approaches the CPO update in the limit as β ↘ 0.
+
+19 Embedding Safety into RL 
+
+Proof. Let us fix a strictly safe policy π0 ∈ int(Π safe ). In both cases, we approximate the expected cost of a policy using 
+
+Vc(π) ≈ Vc(π0) + Aπ0 
+
+> c
+
+(π), which is off by the advantage mismatch term in Proposition 4.1. Hence, we maximize the surrogate of the expected value Aπ0 
+
+> r
+
+(π) over the regions 
+
+PCPO := {π ∈ Π : ¯DK(π, π 0) ≤ δ, V c(π0) + Aπ0 
+
+> c
+
+(π) ≤ b}
+
+in the case of CPO, and 
+
+Pβ := {π ∈ Π : ¯DC(π, π 0) ≤ δ},
+
+with C-TRPO for some β > 0. Note that 
+
+¯DC(π, π 0) = ¯DK(π, π 0) + βΨ( Aπ0 
+
+> c
+
+(π)) , (77) and Ψ : ( −∞ , δ b) → (0 , +∞) and Ψ( t) → +∞ for t ↗ δb, where δb = b − Vc(π0). Denote the corresponding updates by 
+
+ˆπCPO and the C-TRPO update by ˆπβ . Note that we have Pβ ⊆ Pβ′ ⊆ PCPO for β ≥ β′. Further, we have 
+
+[
+
+> β> 0
+
+Pβ = {π ∈ P : DK(π, π 0) < δ, V c(π0) + Aπ0 
+
+> c
+
+(π) < b }.
+
+Hence, the trust regions Pβ grow for β ↘ 0 and fill the interior of the trust region PCPO .
+
+Remark C.2 . Intuitively, one could repeatedly solve the C-TRPO problem with successively smaller values of β, which would be similar to solving CPO with the interior point method using Ψ as the barrier function. 
+
+Proposition 4.3 (C-TRPO worst-case constraint violation) . Let DC(πk+1 || πk) ≤ δ with δ > 0 and set ϵc =max s |Ea∼πk+1 Aπk 
+
+> c
+
+(s, a )|. It holds that 
+
+Vc(πk+1 ) ≤ Vc(πk) + Aπk 
+
+> c
+
+(πk+1 ) + 
+
+p2δ(β)γϵ c
+
+1 − γ , (24) 
+
+where δ(β) = δ − βD ϕ(πk+1 , π k) ≤ δ is decreasing in β > 0, lim β→0 δ(β) = δ, and δ(β) → 0 for β →
+
+δD C(πk+1 || πk)/D ϕ(πk+1 , π k).Proof. Setting f = c in the upper bound from Theorem C.1 we obtain 
+
+Vc(πk+1 ) ≤ Vc(πk) + Aπk 
+
+> c
+
+(πk+1 ) ± 2γϵ c
+
+(1 − γ)
+
+r 12 Es∼dπk DKL (πk+1 (·| s)|| πk(·| s)) 
+
+Note now that we have 
+
+Es∼dπk DKL (πk+1 (·| s)|| πk(·| s)) = DC(πk+1 || πk) − βD ϕ(πk+1 , π k) ≤ δ − βD ϕ(πk+1 , π k) = δ(β).
+
+C.2. Details on the results in Section 4.2 
+
+Recall that we study the natural policy gradient flow 
+
+∂tθt = GC(θt)+∇Vr (θt), (78) where GC(θ)+ denotes a pseudo-inverse of GC(θ) with entries 
+
+GC(θ)ij := ∂θi d⊤ 
+
+> θ
+
+∇2ΦC(dθ )∂θj dθ = GK(θ)ij + X
+
+> k
+
+βkϕ′′ (bk − c⊤ 
+
+> k
+
+dθ )∂θi d⊤ 
+
+> θ
+
+ckc⊤ 
+
+> k
+
+∂θi dθ . (79) and θ 7 → πθ is a differentiable policy parametrization. Moreover, we assume that θ 7 → πθ is regular, that it is surjective and the Jacobian is of maximal rank everywhere. This assumption implies overparametrization but is satisfied for common models like tabular softmax, tabular escort, or expressive log-linear policy parameterizations (Agarwal et al., 2021a; Mei et al., 2020a; M¨ uller & Mont´ ufar, 2023). 20 Embedding Safety into RL 
+
+We denote the set of safe parameters by Θsafe := {θ ∈ Rp : πθ ∈ Πsafe }, which is non-convex in general and say that Θsafe 
+
+is invariant under Equation (25) if θ0 ∈ Θsafe implies θt ∈ Θsafe for all t. Invariance is associated with safe control during optimization and is typically achieved via control barrier function methods (Ames et al., 2017; Cheng et al., 2019). We study the evolution of the state-action distributions dt = dπθt as this allows us to employ the linear programming formulation of CMPDs and we obtain the following convergence guarantees. 
+
+Theorem 4.4 (Safety during training) . Assume that ϕ : R>0 → R satisfies ϕ′(x) → +∞ for x ↘ 0 and consider a regular policy parameterization. Then the set Θsafe is invariant under Equation (25) .Proof. Consider a solution (θt)t> 0 of Equation (78). As the mapping π 7 → dπ is a diffeomorphism (M ¨uller & Mont ´ufar, 2023) the parameterization Θsafe → Dsafe , θ 7 → dπθ is surjective and has a Jacobian of maximal rank everywhere. As 
+
+GC(θ)ij = ∂θi dθ ∇ΦC∂θi dθ this implies that the state-action distributions dt = dπθt solve the Hessian gradient flow with Legendre-type function ΦC and the linear objective d 7 → r⊤d, see (Amari, 2016; van Oostrum et al., 2023; M ¨uller & Mont ´ufar, 2023) for a more detailed discussion. It suffices to study the gradient flow in the space of state-action distributions dt. It is easily checked that ΦC is a Legendre-type function for the convex domain DC, meaning that it satisfies 
+
+∥∇ Φ( dn)∥ → +∞ for dn → d ∈ ∂Dsafe . Since the objective is linear, it follows from the general theory of Hessian gradient flows of convex programs that the flow is well posed, see (Alvarez et al., 2004; M¨ uller & Mont´ ufar, 2023). 
+
+Theorem 4.5. Assume that ϕ′(x) → +∞ for x ↘ 0, set V ⋆r, C := max π∈Πsafe Vr (π) and denote the set of optimal constrained policies by Π⋆ 
+
+> safe
+
+= {π ∈ Πsafe : Vr (π) = V ⋆r, C}, consider a regular policy parametrization and let (θt)t≥0
+
+solve Equation (25) . It holds that Vr (πθt ) → V ⋆r, C and 
+
+lim  
+
+> t→+∞
+
+πt = π⋆ 
+
+> safe
+
+= arg min {DC(π⋆, π 0) : π⋆ ∈ Π⋆
+
+> safe
+
+}. (26) 
+
+Proof. Just like in the proof of Theorem 4.4 we see that dt = dπθt solves the Hessian gradient flow with respect to the Legendre type function ΦC. Now the claims regarding convergence and the identification of the limit lim t→+∞ πθt follows from the general theory of Hessian gradient flows, see (Alvarez et al., 2004; M¨ uller et al., 2024). 
+
+C.3. Performance improvement bounds and choice of divergence 
+
+In a series of works (Kakade & Langford, 2002; Pirotta et al., 2013; Schulman et al., 2017a; Achiam et al., 2017), the following bound on policy performance difference between two policies has been established. 
+
+Vf (π′) − Vf (π) ⋚ Aπ′ 
+
+> f
+
+(π) ± 2γϵ f
+
+(1 − γ) Es∼dπ DTV (π′|| π)( s) (80) where DTV is the Total Variation Distance. Furthermore, by Pinsker’s inequality, we have that 
+
+DTV (π′|| π) ≤
+
+r 12 DKL (π′|| π), (81) and by Jensen’s inequality 
+
+Es∼dπ DTV (π′|| π)( s) ≤
+
+r 12 Es∼dπ DKL (π′|| π)( s), (82) It follows that we can not only substitute the KL-divergence into the bound but any divergence 
+
+DΦ(d′ 
+
+> π
+
+|| dπ ) ≥ Es∼dπ DKL (π′|| π)( s) (83) can be substituted, and still retains TRPO’s and CPO’s update guarantees. 
+
+C.4. Comparison with CPO 
+
+In the approximate case of C-TRPO and CPO, where the reward is approximated linearly, and the trust region quadratically, the constraints differ in that C-TRPO’s constraint is 
+
+(θ − θk)( ¯HKL (θ) + β ¯Hϕ(θ))( θ − θk) < δ 
+
+21 Embedding Safety into RL Θ
+
+## θk
+
+# Θ
+
+> CPO
+> C-TRPO
+
+# Θ
+
+## θk
+
+> Pram. Update
+> (Theory)
+
+# Θ
+
+# 𝒟 
+
+## π*
+
+## π0
+
+# 𝒟 
+
+## π*
+
+## π0
+
+> Pram. Update
+> (Approx.)
+> Optimization Path
+
+Figure 7: Pictorial illustration of conceptual and practical differences between CPO and C-TRPO. The local approximation of C-TRPO’s trust region results in a single quadratic constraint, which is compressed in the direction of the closest cost surface, depending on the hyper-parameter β (blue dashed lines on the right). This is in contrast to CPO, where the local approximation of the update results in a quadratic constraint which is not affected by the cost, and a linear constraint which only takes effect upon contact with the cost surface. Intuitively, this results in a smoother optimization path for C-TRPO that remains on the interior of the safe policy space for longer. whereas CPO’s is 
+
+(θ − θk) ¯HKL (θ)( θ − θk) < δ and V θk 
+
+> c
+
++ ( ∇θ Aθk 
+
+> c
+
+(θ)) ⊤(θ − θk) ≤ b. 
+
+Figure 7 illustrates the differences between CPO and C-TRPO. 22 Embedding Safety into RL 
+
+D. Additional Experiments 
+
+D.1. Effect of hyper-parameters 
+
+To better understand the effects of the two hyperparameters β and bH, we observe how they change the training dynamics through the example of the AntVelocity environment. The safety parameter β modulates the stringency with which C-TRPO satisfies the constraint, without limiting the expected return for values up to β = 1 , see Figure 8. For higher values, the expected return starts to degrade, partly due to ¯Dϕ being relatively noisy compared to ¯DKL and thus we recommend the choice β = 1 .0.0 0.2 0.4 0.6 0.8 1.0
+
+Steps ×10 7        
+
+> 0
+> 1000
+> 2000
+> 3000
+> Return
+> C-TRPO ( β= 0 .05) C-TRPO ( β= 0 .2) C-TRPO ( β= 1) cost limit
+> 0.00.20.40.60.81.0
+
+Steps ×10 7     
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Cost
+> 0.00.20.40.60.81.0
+
+Steps ×10 7
+
+> 0
+> 100
+> 200
+> 300
+> 400
+> Cost Regret
+
+Figure 8: Influence of β on C-TRPO’s performance. Finally, employing a hysteresis fraction 0 < b H < b seems beneficial, possibly because it leads the iterate away from the boundary of the safe set, and because divergence estimates tend to be more reliable for strictly safe policies. The effect of the choice of bH is visualized in Figure 9. 0.0 0.2 0.4 0.6 0.8 1.0
+
+Steps ×10 7       
+
+> −2
+> −1
+> 0
+> 1
+> 2
+> Return
+> C-TRPO ( bH= 1) C-TRPO ( bH= 0 .2) cost limit
+> 0.00.20.40.60.81.0
+
+Steps ×10 7     
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Cost
+> 0.00.20.40.60.81.0
+
+Steps ×10 7
+
+> 0
+> 1000
+> 2000
+> 3000
+> Cost Regret
+
+Figure 9: Influence of the hysteresis fraction bH on C-TRPO’s performance. 23 Embedding Safety into RL 
+
+D.2. Ablation Study: CPO vs. C-TRPO 
+
+We conduct an ablation study to rule out that our improvements of C-TRPO over CPO are only due to hysteresis. For this, we run both CPO and C-TRPO with and without hysteresis with the same hysteresis parameter as in our other experiments. We see that the hysteresis improves safety for both algorithm. Further, we find that the hysteresis slightly reduces the return of C-TRPO. Overall, we clearly see that C-TRPO itself is much safer compared to CPO as even C-TRPO without hysteresis achieves lower cost regret compared to CPO with hysteresis. 2 4 6 8 10 Env. Steps (millions) 
+
+0.2
+
+0.4
+
+0.6IQM Normalized Score  Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0.6
+
+0.8
+
+1.0
+
+1.2 Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0.5
+
+1.0
+
+Cost Regret 
+
+> C-TRPO (no hyst.) C-TRPO (hyst.) CPO (hyst.) CPO (no hyst.)
+
+Figure 10: Ablation study on the core components of C-TRPO: Safe trust region (C-TRPO no hyst.) and recovery with hysteresis (CPO hyst.). Evaluation is based on the Inter Quartile Mean (IQM) normalized scores across 5 seeds and 8 tasks. From left to right: episode return of the reward (PPO normalized), episode return of the cost (threshold normalized), and cumulative cost violation (CPO normalized). 
+
+D.3. Noisy Cost Estimates 
+
+To evaluate the sensitivity of C-TRPO to noisy or inaccurate estimates of the cost value function Vc, we train multiple policies with C-TRPO on the AntVelocity task and corrupt each policy’s value estimate by varying levels of noise, i.e. white noise with varying standard deviations σ, see Figure 11. 2 4 6 8 10 Env. Steps (millions) 
+
+2000 
+
+3000 IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+10 
+
+20 
+
+30 
+
+Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+250 
+
+500 
+
+Cost Regret     
+
+> C-TRPO ( σ= 0 .05) C-TRPO ( σ= 0 .5) C-TRPO ( σ= 0 .1) C-TRPO ( σ= 0 .2)
+
+SafetyAntVelocity-v1 
+
+Figure 11: Performance of C-TRPO on the AntVelocity task as a function of cost value noise. The final reward decreases slightly for noise with σ = 0 .5 and the cost regret increases with the amount of noise added to the value estimates. 24 Embedding Safety into RL 
+
+D.4. Performance on individual environments 
+
+Here, we compare C-TRPO to relevant baseline algorithms on all individual environments in terms of their sample efficiency curves. To improve readability of the plots, only the algorithms that are, on average, safe in the last iterate are included. 2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+2000 IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+50 
+
+100 
+
+Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+2000 
+
+Cost Regret 
+
+> C-TRPO (ours) TRPO-Lag P3O PCPO
+
+SafetyAntVelocity-v1 2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+1000 IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+25 
+
+50 
+
+Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+5000 
+
+Cost Regret 
+
+> C-TRPO (ours) TRPO-Lag P3O PCPO
+
+SafetyHopperVelocity-v1 2 4 6 8 10 Env. Steps (millions) 
+
+1000 
+
+2000 
+
+3000 IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+20 
+
+40 
+
+Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+2000 
+
+Cost Regret 
+
+> C-TRPO (ours) TRPO-Lag P3O PCPO
+
+SafetyHalfCheetahVelocity-v1 2 4 6 8 10 Env. Steps (millions) 
+
+2000 
+
+4000 
+
+6000 IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+20 
+
+40 
+
+Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+1000 
+
+Cost Regret 
+
+> C-TRPO (ours) TRPO-Lag P3O PCPO
+
+SafetyHumanoidVelocity-v1 
+
+Figure 12: Benchmark on the locomotion environments. 2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+5IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+50 
+
+100 
+
+Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+10000 
+
+Cost Regret 
+
+> C-TRPO (ours) TRPO-Lag P3O PCPO
+
+SafetyCarButton1-v0 2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+10 
+
+20 IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+20 
+
+40 
+
+Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+2000 
+
+4000 
+
+Cost Regret 
+
+> C-TRPO (ours) TRPO-Lag P3O PCPO
+
+SafetyPointGoal1-v0 2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+5IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+20 
+
+40 
+
+60 Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+2000 
+
+Cost Regret 
+
+> C-TRPO (ours) TRPO-Lag P3O PCPO
+
+SafetyPointPush1-v0 2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+20 IQM Score 
+
+Reward 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+50 
+
+Cost 
+
+2 4 6 8 10 Env. Steps (millions) 
+
+0
+
+2500 
+
+5000 
+
+Cost Regret 
+
+> C-TRPO (ours) TRPO-Lag P3O PCPO
+
+SafetyRacecarCircle1-v0 
+
+Figure 13: Benchmark on the navigation environments. 25 Embedding Safety into RL 
+
+Table 1: Final performance per task for 5 seeds each, where expected reward Vr , expected cost Vc, and cost regret Reg + are shown, including lower and upper confidence intervals. We highlight the best performance with respect to the IQM of the return Vr in bold, and box the lowest cost regret Reg +.
+
+> AntVelocity  HalfCheetahVelocity  HumanoidVelocity  HopperVelocity  CarButton  PointGoal  RacecarCircle  PointPush C-TRPO (OURS)  Vr 3099.0 ± -38.5/46.5  2833.8 ± -123.6/70.9  5513.1 ± -66.5/53.8  1669.2 ± -839.8/55.2  1.0 ± -0.7/0.5  20.9 ± -0.7/0.4  30.3 ± -2.1/1.4  0.9 ± -0.3/0.4
+> Vc 18.8 ± -3.2/6.5  20.0 ± -8.1/5.7  12.2 ± -2.1/0.9  20.4 ± -3.2/2.9  36.8 ± -9.9/9.9  29.6 ± -3.2/15.4  21.7 ± -2.3/4.7  27.1 ± -8.3/8.5 Reg + 244.0 ± -24.6/60.5  105.3 ± -30.6/25.2  185.9 ± -109.0/72.8  1056.4 ± -804.5/1014.9  6299.9 ± -465.5/686.1  2459.6 ± -442.6/230.9  1465.8 ± -265.7/552.4  2626.2 ± -436.0/591.3 TRPO-LAG  Vr 3001.9 ± -86.5/177.8  2879.0 ± -64.6/104.9  5326.9 ± -137.0/173.1  700.8 ± -493.5/868.2  -0.0 ± -0.5/0.6  18.5 ± -8.4/3.8  34.6 ± -3.9/0.6  2.7 ± -2.4/5.0
+> Vc 20.8 ± -10.0/18.4  25.0 ± -9.1/3.9  22.0 ± -7.0/14.3  13.7 ± -4.5/26.5  24.4 ± -7.1/5.7  28.4 ± -13.5/6.8  20.6 ± -5.0/4.4  13.7 ± -3.9/3.2 Reg + 2773.5 ± -738.5/414.3  2546.5 ± -318.1/977.8  1110.4 ± -607.6/719.7  6075.9 ± -1439.3/1447.5  10343.1 ± -734.2/624.4  4094.7 ± -727.7/1029.6  4889.9 ± -202.4/1164.8  2828.3 ± -408.5/653.6 CPPO-PID  Vr 3205.3 ± -186.5/76.7  3036.1 ± -36.7/10.7  5877.3 ± -111.4/84.8  1657.5 ± -65.5/61.0  -1.2 ± -0.5/0.6  6.1 ± -3.0/4.8  8.1 ± -5.5/4.3  1.0 ± -0.6/1.1
+> Vc 26.2 ± -5.3/4.4  26.5 ± -2.7/7.2  20.3 ± -8.6/6.0  18.6 ± -9.0/8.1  23.8 ± -8.4/6.0  21.8 ± -4.4/6.8  33.3 ± -6.5/5.9  22.8 ± -11.1/9.9 Reg + 1416.8 ± -201.6/328.3  2094.1 ± -351.0/417.9  913.9 ± -228.4/304.9  3649.6 ± -1018.2/695.1  3256.0 ± -488.9/211.4  2233.6 ± -274.0/681.0  2573.5 ± -317.7/897.3  1981.3 ± -237.1/293.2 P3O  Vr 3122.5 ± -111.4/24.6  3020.3 ± -44.8/12.8  5492.1 ± -45.0/118.7  1633.5 ± -107.7/49.0  0.2 ± -0.2/0.3  5.7 ± -0.5/0.3  0.9 ± -0.1/0.1  0.7 ± -0.4/0.6
+> Vc 21.2 ± -2.2/2.5  27.0 ± -2.4/1.1  4.2 ± -1.7/2.2  14.6 ± -1.7/1.6  40.9 ± -10.4/18.2  17.1 ± -4.0/6.2  13.1 ± -4.1/4.6  14.1 ± -5.4/9.4 Reg + 11.0 ± -5.0/8.1  228.1 ± -128.5/146.6  0.0 ± 0.0/0.0  13.6 ± -13.5/131.7  12133.6 ± -4026.3/3007.5  1214.8 ± -187.5/452.0  1367.9 ± -159.8/368.4  832.1 ± -388.7/186.9 PCPO  Vr 1709.8 ± -135.8/124.9  1228.3 ± -67.0/67.7  4632.0 ± -331.6/574.4  1285.3 ± -432.2/166.1  0.1 ± -0.3/0.7  18.8 ± -1.5/1.1  6.9 ± -2.7/6.7  1.3 ± -0.9/0.9
+> Vc 17.7 ± -4.1/1.2  17.0 ± -5.2/6.3  9.4 ± -6.1/4.3  27.8 ± -7.7/8.7  41.4 ± -17.2/6.4  28.9 ± -0.8/1.4  15.8 ± -6.6/8.0  20.3 ± -6.6/31.0 Reg + 250.8 ± -16.8/52.9  81.2 ± -20.1/31.1  55.7 ± -34.7/79.4  1423.4 ± -969.9/3396.7  7334.0 ± -1091.2/1176.7  2673.7 ± -343.7/387.2  4059.8 ± -1219.8/690.6  1824.5 ± -449.2/968.5 CPO  Vr 3106.7 ± -92.4/21.5  2824.1 ± -97.7/104.2  5569.6 ± -248.7/349.3  1696.4 ± -16.5/19.4  1.1 ± -0.6/0.2  20.4 ± -0.8/2.0  29.8 ± -1.1/1.9  0.7 ± -0.3/2.9
+> Vc 25.1 ± -17.5/11.3  23.1 ± -16.8/8.0  16.2 ± -3.7/8.6  25.7 ± -8.1/4.4  33.5 ± -10.6/8.7  28.2 ± -3.4/4.1  23.1 ± -9.9/4.5  28.9 ± -8.0/20.0 Reg + 1323.7 ± -195.1/284.9  1142.2 ± -319.2/1209.0  116.9 ± -73.5/249.9  3568.0 ± -735.9/1988.6  6067.1 ± -546.1/977.0  2532.2 ± -276.8/206.1  2247.0 ± -415.5/615.1  2701.4 ± -388.8/1840.8 CUP  Vr 3092.0 ± -53.8/170.7  2916.7 ± -346.9/116.8  5677.9 ± -173.1/40.2  1639.8 ± -88.2/63.1  2.3 ± -1.8/3.9  22.4 ± -7.7/1.2  27.6 ± -3.2/2.3  0.5 ± -0.3/1.1
+> Vc 25.1 ± -1.9/2.7  40.7 ± -27.7/34.1  24.0 ± -7.0/10.5  23.9 ± -8.6/14.7  71.5 ± -28.2/57.0  45.2 ± -5.4/4.1  21.6 ± -5.9/6.3  35.6 ± -11.0/14.8 Reg + 3160.9 ± -377.1/641.8  4719.9 ± -915.0/3503.3  509.0 ± -276.6/306.5  4849.7 ± -1176.6/984.8  23726.4 ± -10827.1/20476.7  11715.5 ± -2047.7/1636.0  4774.5 ± -484.2/2431.3  3209.9 ± -1255.9/1967.1 FOCOPS  Vr 2942.2 ± -96.3/45.6  2997.8 ± -380.0/17.8  5420.0 ± -262.0/183.0  1670.6 ± -19.4/8.3  1.9 ± -0.7/1.1  17.6 ± -3.1/3.6  24.7 ± -4.8/4.1  0.7 ± -0.5/2.1
+> Vc 28.1 ± -8.1/1.4  36.9 ± -7.5/3.2  10.9 ± -4.1/8.5  25.9 ± -2.4/5.5  33.0 ± -10.0/30.4  33.7 ± -10.8/20.4  21.4 ± -8.1/4.7  24.7 ± -8.4/4.8 Reg + 2257.8 ± -437.4/248.0  3472.8 ± -1021.9/664.2  872.7 ± -766.6/684.7  3647.8 ± -307.0/383.5  11359.2 ± -750.1/3436.6  5917.6 ± -1987.9/7276.3  6031.9 ± -1427.1/1075.8  2684.0 ± -451.8/484.2 PPO-LAG  Vr 3210.7 ± -126.6/85.8  3033.6 ± -27.6/1.5  5814.9 ± -102.9/122.0  240.1 ± -92.7/159.0  0.3 ± -1.0/0.8  9.4 ± -1.3/1.8  30.9 ± -16.5/1.8  0.6 ± -0.2/0.0
+> Vc 28.9 ± -8.6/8.7  23.2 ± -2.8/1.9  12.7 ± -7.6/31.0  38.8 ± -24.4/36.4  39.2 ± -12.7/41.1  22.5 ± -4.3/10.1  31.7 ± -9.2/2.7  18.2 ± -11.4/9.5 Reg + 1767.5 ± -224.5/194.1  3339.6 ± -486.9/512.1  1299.1 ± -320.5/455.9  5909.8 ± -3420.8/2790.5  22554.4 ± -6386.9/10174.9  5135.6 ± -729.3/1539.8  6322.2 ± -419.5/722.3  3464.7 ± -453.1/743.8 IPO  Vr 2962.4 ± -39.2/31.6  2810.9 ± -143.1/124.8  5886.8 ± -205.5/149.3  1535.2 ± -857.1/167.6  -0.5 ± -0.2/0.5  6.6 ± -3.3/3.0  1.5 ± -0.3/0.4  0.6 ± -0.2/0.3
+> Vc 28.3 ± -6.1/4.8  27.4 ± -3.5/7.9  18.1 ± -6.9/8.2  24.9 ± -10.3/2.0  38.5 ± -6.7/3.9  25.6 ± -2.0/6.5  24.6 ± -4.2/9.9  23.7 ± -9.0/3.9 Reg + 1548.1 ± -469.7/459.5  2351.2 ± -1385.0/1098.6  580.3 ± -319.9/167.0  3958.3 ± -2464.1/2771.1  6570.8 ± -871.6/1370.8  3496.1 ± -717.2/1900.7  5926.5 ± -938.8/1361.4  2464.2 ± -711.4/1688.5
+
+26

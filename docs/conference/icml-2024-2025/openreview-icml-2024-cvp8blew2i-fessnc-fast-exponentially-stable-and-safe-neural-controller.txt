@@ -1,0 +1,1518 @@
+Title: FESSNC: Fast Exponentially Stable and Safe Neural Controller
+
+URL Source: https://openreview.net/pdf?id=cVp8blEw2i
+
+Number of Pages: 23
+
+Markdown Content:
+# FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Jingdong Zhang * 1 2 Luan Yang * 2 Qunxi Zhu 2 3 4 Wei Lin 1 2 3 4 
+
+# Abstract 
+
+In order to stabilize nonlinear systems modeled by stochastic differential equations, we design a Fast Exponentially Stable and Safe Neural Con-troller (FESSNC) for fast learning controllers. Our framework is parameterized by neural net-works, and realizing both rigorous exponential stability and safety guarantees. Concretely, we design heuristic methods to learn the exponen-tially stable and the safe controllers, respectively, in light of the classical theory of stochastic expo-nential stability and our established theorem on guaranteeing the almost-sure safety for stochastic dynamics. More significantly, to rigorously en-sure the stability and the safety guarantees for the learned controllers, we develop a projection opera-tor, projecting to the space of exponentially-stable and safe controllers. To reduce the highly compu-tational cost for solving the projection operation, approximate projection operators are delicately proposed with closed forms that map the learned controllers to the target controller space. Further-more, we employ Hutchinson’s trace estimator for a scalable unbiased estimate of the Hessian ma-trix that is used in the projection operator, which thus allows for reducing computational cost and, therefore, can accelerate the training and testing processes. More importantly, our approximate projection operations are applicable to the non-parametric control methods, improving their sta-bility and safety performance. We empirically demonstrate the superiority of the FESSNC over the existing methods.        
+
+> *Equal contribution 1School of Mathematical Sciences, LMNS, and SCMS, Fudan University, China. 2Research Institute of In-telligent Complex Systems, Fudan University, China. 3State Key Laboratory of Medical Neurobiology and MOE Frontiers Center for Brain Science, Institutes of Brain Science, Fudan University, China. 4Shanghai Artificial Intelligence Laboratory, China. Cor-respondence to: Qunxi Zhu <qxzhu16@fudan.edu.cn>, Wei Lin <wlin@fudan.edu.cn>.
+> Proceedings of the 41 st International Conference on Machine Learning , Vienna, Austria. PMLR 235, 2024. Copyright 2024 by the author(s).
+
+# 1. Introduction 
+
+Stabilizing the nonlinear systems modeled by stochastic differential equations (SDEs) is a challenging focal task in many fields of mathematics and engineering. The neural networks (NNs) equipped with the suitable loss of stabil-ity conditions have remarkable abilities in learning the sta-bilization controllers for the underlying systems, such as the neural Lyapunov control for ordinary differential equa-tions (ODEs) (Chang et al., 2019) and the neural stochastic control for SDEs (Zhang et al., 2022). However, these frameworks, which heuristically train the NNs on the finite samples from the data space, are suffered from the lack of a rigorous stability guarantee for the learned neural con-trollers, i.e., satisfying the anticipated conditions on the whole data space. Safety is another major concern for controlled dynamics, such as robotic and automotive systems (Wang et al., 2016). Recent advances in the control barrier function theory pave a direct way to impose the safety for the nonlinear SDEs. Sev-eral algorithms have theoretically investigated the structures of the barrier functions and designed the optimal control via quadratic programming (QP) or Sum-of-Squares (SOS) op-timization according to the theoretical results (Sarkar et al., 2020; Mazouz et al.). Although all these algorithms try to obtain the controllers that rigorously satisfy the safety conditions, they either suffer high computational costs or only consider the safety with probability δ < 1 rather than the probability one which is urgently required in the safety-critical applications. In this paper, our goal is to provide a framework for fast learning the neural controllers with rigorous exponential stability and safety guarantees such that the trajectories of the controlled SDEs exponentially converge to the target equilibria and remain in the safe region all the time. The major contributions of this paper are summarized as follows. • We train the neural controllers with the exponential stability conditions, and impose an exponential stabil-ity guarantee for the learned controller by projecting it into the space of the exponentially stable controllers. To avoid the high computational complexity of solving the projection operation, we propose an approximate projection operator ˆπes with a closed form that can 1FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+map the controller to the target space if and only if the state space of the controlled SDEs is bounded. • We provide a theorem for restricting the controlled SDEs in the predefined bounded safe region based on the zeroing barrier functions. Similarly, we train the neural controller according to the safety loss and project it to the space of safe controllers with the ap-proximate projection operator ˆπsf . Theoretically, it can be verified that one can combine ˆπes and ˆπsf to provide both exponential stability and safety guaran-tees for the neural controllers. • We introduce an unbiased stochastic estimator of trace estimation of the Hessian matrix involved in the pro-jection operator with cheap computation. • We demonstrate the efficacy of the FESSNC on a variety of classic control problems, such as, the synchronization of coupled oscillators. In addi-tion to the neural network controllers, we also show our framework can be applied to the non-parametric controllers to provide stability and safety guarantee for them. Our code is available at 
+
+github.com/jingddong-zhang/FESSNC .
+
+# 2. Preliminaries 
+
+2.1. Problem Formulation 
+
+To begin with, we consider the SDE in a general form of 
+
+dx(t) = f (x(t))d t + g(x(t))d Bt, t ≥ 0, (1) where x(0) = x0 ∈ Rd, {x(t)}t≥0 ⊂ X is the state space, the drift term f : Rd → Rd and the diffusion term 
+
+g : Rd → Rd×r are Borel-measurable functions, and Bt is a standard r-dimensional ( r-D) Brownian motion defined on probability space (Ω , F, {F t}t≥0, P) with a filtration 
+
+{F t}t≥0 satisfying the regular conditions. The state x∗
+
+with f (x∗) = 0 and g(x∗) = 0 is called equilibrium or zero solution. 
+
+Notations. Denote by ∥·∥ the Euclidean norm for a vector. Denote by ∥ · ∥ C(Rd) the maximum norm for the continuous function in C(Rd). a ≪ b means that the number a is much smaller than b. For a function V ∈ C2(Rd), denote by ∇V
+
+and HV the gradient and the Hessian matrix, respectively. 
+
+Problem Statement We assume that the zero solution of the Eq. (1) is unstable, i.e. lim t→∞ x(t)̸ = x∗ on some set of positive measures. We aim to stabilize the zero solution using the neural controller with rigorous stability and safety guarantees that can be trained quickly. Specifically, we leverage the NNs to design an appropriate controller u(x)
+
+with u(x∗) = 0 such that the controlled system 
+
+dx(t) = fu(x(t))d t + g(x(t))d Bt (2) is steered to the zero solution with the whole controlled trajectory staying in the safety region, where fu ≜ f +
+
+u. Additionally, the neural controller should be optimized quickly in the training stage as well as in the testing stage such that it can be applied in the actual scenarios. 
+
+Basic Assumptions. To guarantee the existence of unique solutions, it is sufficient for Eq. (2) to own an initial condi-tion and locally Lipschitz drift and diffusion terms. There-fore, we require the neural controllers to be locally Lipschitz continuous. This requirement is not overly onerous since the NNs can be designed by the compositions of Lipschitz continuous functions such as ReLU and affine functions. Without loss of generality, we assume that x∗ = 0.To investigate the analytical properties of the controlled SDE (2), we introduce the stochastic derivative operator as follows. 
+
+Definition 2.1 (Derivative Operator ) Define the differential operator Lu associated with Eq. (2) by 
+
+Lu ≜ dP
+
+> i=1
+
+(fu(x)) i
+
+∂∂x i
+
++ 12
+
+> d
+
+P
+
+> i,j =1
+
+[g(x)g⊤(x)] ij 
+
+∂2
+
+∂x i∂x j
+
+.
+
+The subscript of Lu represents the dependence on u.
+
+According to the above definition of the derivative operator, an operation of Lu on the function V ∈ C2(Rd; R) yields: 
+
+LV (x) = ∇V (x)⊤fu(x) + 12 Tr g⊤(x)HV (x)g(x) .
+
+Next, we provide stability and safety analyses for Eq. (2) based on this derivative operator. 
+
+2.2. Exponential Stability 
+
+In stochastic stability theory, an exponentially stable dynam-ical system implies that all solutions in some region around an equilibrium exponentially converge to this equilibrium almost surely (a.s.). Generally, stochastic stability theory investigates the exponential stability for the dynamics by studying the behavior of a potential function V along the trajectories. Suppose the equilibrium is the minimum point of some potential function V . The convergence of the solu-tion x(t) is equivalent to the descent of the potential energy 
+
+V (x(t)) . In order to guarantee the exponential convergence, we can impose special structures for V such that the poten-tial field LuV around the minimum is sinkable enough to attract the states from the high potential levels, as described in the following theorem. 2FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Theorem 2.1 (Mao, 2007) For the controlled SDE (2) , sup-pose that there exists a potential function V ∈ C2(X ; R+)
+
+with V (0) = 0 , constants p > 0, ε > 0, c ∈ R such that 
+
+ε∥x∥p ≤ V (x),
+
+LuV (x) ≤ cV (x), (3) 
+
+for all x ∈ X . Then, 
+
+lim sup 
+
+> t→∞
+
+1
+
+t log ∥x(t; t0, x0)∥ ≤ cp a.s., 
+
+for all solution x(t; t0, x0) initiated from (t0, x0). In par-ticular, if c < 0, the zero solution of Eq. (2) is exponentially stable almost surely. 
+
+Learning Exponentially Stable Controller. In order to learn the exponentially stable controller for SDEs, Zhang et al. (Zhang et al., 2022) design a heuristic neural controller framework that integrates the conditions in Eq. (3) to the loss function. However, they can only assure the expected conditions are satisfied on finite training data instead of the whole state space. Hence, it lacks a rigorous stability guar-antee and cannot be applied in stability-critical scenarios. In this paper, we circumvent this drawback for heuristic neural controllers through a projection operator. 
+
+Difference From the Lyapunov Theory One may natu-rally regard the potential function V and the Theorem 2.1, respectively, as the classic Lyapunov function and the Lya-punov stability theory for ODEs. The main difference is that the Lyapunov stability guarantees the decrease of the potential function, but the stochastic theory can only guar-antee that the potential function eventually converges to a minimum. In other words, trajectories of exponentially stable SDEs may reach undesired states due to the stochas-ticity, which is not safe as we elaborate in the following subsection. 
+
+2.3. Safe Controller Synthesis 
+
+Safety-critical systems in application domains, such as auto-matic drive and medicine, require their state trajectories to stay in the specified safe region in order to prevent loss of life and economic harm. Here, we formalize the concept of safety in the following definition. 
+
+Definition 2.2 (Safe Controller ) The controller in the con-trolled system (2) is a safe controller if every solution x(t)
+
+initiated from x(0) ∈ int( C) satisfying: 
+
+∀t ≥ 0 : x(t) ∈ C a.s., 
+
+where C is a specified safe region induced by a locally Lipschitz function h as C = {x : h(x) ≥ 0} and 0 ∈ C .
+
+Recent works on the safe controller synthesis typically treat 
+
+∂C = {x : h(x) = 0 } as a barrier, and require the con-trolled dynamics to satisfy additional conditions such that the trajectories never cross the barrier (Clark, 2019). In ad-dition, existing works design complicated barrier functions, and/or the controller through the online quadratic program (QP) method, which requires a high computational cost (Fan et al., 2020; Sarkar et al., 2020). In Section 4, we propose a theorem for safety guarantee with a simpler barrier function and design an offline safe controller based on this result. 
+
+Connection to Safe RL The flow maps {St}t≥0 of the Eq. (2) can be modeled as: 
+
+St(x0) ≜ x0 +
+
+Z t
+
+> 0
+
+fu(x(s))d s +
+
+Z t
+
+> 0
+
+g(x(s))d Bs, (4) which induce a class of Markovian decision processes (MDPs) (Filar & Vrieze, 2012). Hence, the safe controller synthesis with a fixed time point t can be regarded as the safe reinforcement learning (RL) problems (Garcıa & Fer-nández, 2015). The major gap for applying RL methods to our problem is that, generally, the analytical expression of 
+
+St is intractable given Eq. (2) . And the unbounded diffusion term g further incurs difficulty for handling safety issues in RL. Besides, existing RL methods consider the safety in the meaning of average over trajectory or risk probability (Chow et al., 2017; Sootla et al., 2022), rather than satisfying the safety constraint almost surely (or with the probability one) as proposed in this paper. 
+
+# 3. Neural Controller with Exponential Stability Guarantee 
+
+We leverage the NNs to learn the neural controller with the exponential stability guarantee, i.e. satisfying the ex-ponential stability condition as specified in Theorem 2.1. The specific process is divided into two steps: 1) we pro-pose a heuristic neural framework for learning the neural controller according to an optimization problem based on Theorem 2.1; 2) A projection operator is developed to pull the learned controller into the stable domain, and we provide an operator with a closed form to approximate this projec-tion operator in Theorem 3.1. Furthermore, we analyze the rationality of the conditions in Theorem 3.1 based on the safety of the controller. 
+
+3.1. Heuristic Neural Controller 
+
+A consensus in the control field is that the controllers should be as simple and small as possible (Lewis et al., 2012). Hence, we use a class of Lipschitz functions on X , denoted as Lip (X ), to represent the space of candidate controllers. Incorporating with the Theorem 2.1, we can obtain the fol-lowing optimal problem for learning the stabilization con-3FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+troller: 
+
+arg min  
+
+> u∈Lip (X)
+
+12 ∥u(x)⊤Ru(x)∥C(Rd)
+
+s.t. ε∥x∥p − V (x) ≤ 0,
+
+LuV (x) − cV (x) ≤ 0,
+
+where ε > 0, c < 0, p > 0 are predefined hyper-parameters, and semi-positive-definite matrix R measures the importance of different control components. 
+
+Neural Network Framework. In order to find the closed-form controller u, we transform the above optimization problem into an NN framework. Specifically, we parameter-ize the controller by an NN, i.e., u = uθ (x) with uθ (0) = 
+
+0, where θ is trainable parameter vector. Additionally, we constrain the Lipschitz constant of the neural controller by utilizing the spectral normalization method (Yoshida & Miy-ato, 2017; Miyato et al., 2018). The other Lipschitz neural networks can be used as well (Virmaux & Scaman, 2018; Liu et al., 2022a). Then, we construct the neural potential function Vθ by using the convex functions (Amos et al., 2017) such that it satisfies the positive definite condition, i.e., Vθ (x) ≥ 0 and Vθ (0) = 0 . Second-order differentiable activation functions are used to guarantee Vθ ∈ C2(R; R+).We add Lp regularization term ε∥x∥p with ε ≪ 1 to Vθ
+
+such that Vθ (x) ≥ ε∥x∥p. Then, we define the supervised stabilization loss function as follows. 
+
+Definition 3.1 (Stabilization Loss ) Consider a candidate potential function Vθ and a controller uθ for the controlled system (2) . The exponential stabilization loss is defined as 
+
+Les (θ) ≜ 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+uθ (xi)⊤Ruθ (xi)+λ1 max  0, Luθ Vθ (xi) − cV θ (xi) ,
+
+(5) 
+
+where λ1 > 0 is a hyper-parameter representing the weight factor and {(xi)}Ni=1 is the dataset. 
+
+Weaknesses of The Heuristic Framework. Two aspects could be improved in the current learning framework. First, the NNs trained on finite samples cannot guarantee the con-dition in the loss function is also satisfied in the infinite set 
+
+X . Second, the computational complexity of computing the Hessian matrix HV is O(d2), a major bottleneck for applications in high-dimensional systems. We introduce the projection operation in the following subsection to over-come the first weakness. We defer the solution to the second weakness in Section 5. 
+
+3.2. Projection Operator for Exponential Stability 
+
+We define the space of the exponentially stable controllers as follows: 
+
+Ues (V, X ) ≜ {u ∈ Lip (X ) : LuV − cV ≤ 0}.𝑥 ∗                   
+
+> 𝑓 (𝑥 )
+> ො𝜋 𝑒𝑠
+> Increasing 𝑉
+> 𝑓 +ො𝜋 𝑒𝑠 𝑢 𝑑𝑡 𝑔 𝑥 𝑑 𝐵 𝑡
+> 𝑓 (𝑥 )
+> 𝑓 +ො𝜋 𝑠𝑓 (ො𝜋 𝑒𝑠 𝑢 )𝑑𝑡
+> Barrier ℎ𝑥 =0Safe region
+> 𝑥 ∗
+> ො𝜋 𝑠𝑓
+
+Figure 1. Illustration of the stable and safe controlled dynamics. 
+
+Left: Operator ˆπes projects candidate controller u to the exponen-tially stable domain, i.e. LuV ≤ − cV , s.t. any trajectory will exponentially converge to the equilibrium point x∗. The trajec-tory cannot stay in the safe region (green shaded area) due to the stochasticity. Right: Operator ˆπsf project the controller to the safe domain, i.e. Luh ≥ − α(h), to restrict the trajectory (orange line) in the safe region. 
+
+To force the learned controller in Ues (V, X ), a common technique is to find the L2 projection of the controller which is defined as follows. 
+
+Definition 3.2 (Projection Operator ) Denote by π(u, U)
+
+the projection from u onto the target space U as 
+
+π(u, U) ∈ arg min 
+
+> ˜u∈U
+
+12 ∥u(x) − ˜u(x)∥2
+
+> C(Rd)
+
+.
+
+In General, it is difficult to obtain a closed form of the above projection operator. Recently, the QP method has been used to solve the following simplified projection for each data x
+
+as an alternative (Chow et al., 2019), 
+
+˜π(u)( x) ∈ arg min 12 ∥u(x) − ˜u(x)∥2,
+
+s.t. L˜uV (x) − cV (x) ≤ 0.
+
+However, this simplified operation ˜π cannot assure the conti-nuity of the projection and causes additional computational costs. In the following theorem, we approximate the projec-tion operator π with a closed form. 
+
+Theorem 3.1 (Approximate Projection Operator ) For a candidate controller u and the target space Ues (V, X ), an approximate projection operator is defined as follows, 
+
+ˆπes (u, Ues (V, X )) ≜ u − max(0 , LuV − cV )
+
+∥∇ V ∥2 · ∇ V, (6) 
+
+then, the operator ˆπes satisfies ˆπes (u, Ues (V, X )) ∈Ues (V, X ) if and only if the state space X of the controlled systems (2) is bounded. 
+
+The proof is shown in the Appendix A.1.2. We can directly apply this approximate projection operator to the learned 4FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+controller to provide the exponential stability guarantee when X is bounded. However, this bounded condition may not hold on a general exponentially stable system, the fol-lowing example illustrates this point. 
+
+Example 3.2 (Exponential Martingale ) Consider a 1-D SDE described by dx = ax dt+bx dBt, where a < 0, |a| > 
+
+> 12
+
+b2 and x0 > 0, the zero solution is exponentially stable, but for any M > 0, P(x(t) > M ) > 0, i.e. X = R.
+
+See the poof in the Appendix A.1.3. This example implies that the boundedness of state space X cannot be induced under the exponential stability. As introduced in Section 2.3, if the controller is safe in the bounded safe region C, then X
+
+is bounded for any x0 ∈ C . We, therefore, take safety into consideration to bound the X . Furthermore, this example shows that a stable controller may not be safe. 
+
+# 4. Neural Controller with Safety Guarantee 
+
+In this section, we present an approach for safe controller synthesis. Similar to the analysis in Section 3, the safe con-troller’s construction can be divided into two steps as well: 1) training a heuristic neural safe controller (Section 4.1), and 2) projecting the learned controller to obtain the safety guarantee in the post-training stage (Section 4.2). In par-ticular, we propose a new sufficient condition for the safe controller based on the barrier function theory (Ames et al., 2016). Then one can design a neural safe controller accord-ing to this result. In addition, we show that the intersection of the space of the safe controller and Ues is not empty, which assures the existence of a controller with both safety and stability guarantees. 
+
+4.1. Zeroing Barrier Function for Safety 
+
+As specified in Section 2.3, the primary task for safe con-troller synthesis is to impose additional structures for the controlled system (2) to restrict the trajectory, never ap-proaching the barrier ∂C. Here, we present a concise struc-ture for safety based on the zeroing barrier function. 
+
+Definition 4.1 (Ames et al., 2016) A continuous function 
+
+α : (0 , a ) → (−∞ , ∞) is said to belong to class-K for some a > 0 if it is strictly increasing and α(0) = 0 .
+
+Theorem 4.1 For the SDE (2), if there exists a class-K
+
+function α(x) such that 
+
+Luh(x) ≥ − α(h(x)) (7) 
+
+for x ∈ C . Then, the controller u is a safe controller, and 
+
+h(x) is called a zeroing barrier function (ZBF). 
+
+The proof is provided in Appendix A.1.4. An intuition be-hind this theorem is that α(h) can be regarded as a potential function. When the trajectory x(t) approaches the barrier 
+
+∂C, the potential α(h(x(t))) decreases to the minimum 0
+
+so that Luh ≥ 0, which in turn lifts the potential to pull the trajectory back to the interior of C.
+
+Neural Safe Controller. Given the ZBF h(x), we can also formulate the safety problem as an optimization problem, 
+
+arg min 
+
+> u∈Lip (C),α ∈K
+
+12 ∥u(x)⊤Ru(x)∥C(Rd×R+)
+
+s.t. − L uh(x) − α(h(x)) ≤ 0.
+
+To convert this problem into a learning-based framework, we adopt the same neural controller uθ as in Section 3.1. We apply the monotonic NNs to construct the candidate extended class-K function as αθ (x) = R x 
+
+> 0
+
+qθ (s)d s, where 
+
+qθ (·), an NN, is definitely positive (Wehenkel & Louppe, 2019). Then we train the monotonic NNs with the safe loss as follows. 
+
+Definition 4.2 (Safety Loss ) For a candidate class-K func-tion αθ and a controller uθ , the safety stabilization loss is defined as 
+
+Lsf (θ) ≜ 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+uθ (xi)⊤Ruθ (xi)+λ2 max  0, −L uθ h(xi) − αθ (h(xi))  ,
+
+(8) 
+
+where λ2 > 0 is a tunable weight factor and {(xi)}Ni=1 is the dataset. 
+
+4.2. Projection Operator for Safety 
+
+Notably, the learned neural safe controller may not satisfy the expected condition in Eq. (7) . However, we can project it to the safe controller’s space Usf (α, C) ≜ {u ∈ U (C) : 
+
+−L uh − α(h) ≤ 0} as π(uθ , Usf (αθ , C)) . To efficiently implement the projection, we construct an approximate pro-jection operator with a closed form again. 
+
+Theorem 4.2 For the bounded safe region C, the approxi-mate projection operator defined as 
+
+ˆπsf (u, Usf (α, C)) ≜ u + max(0 , −L uh − α(h)) 
+
+∥∇ h∥2 · ∇ h, 
+
+(9) 
+
+satisfies ˆπsf (u, Usf (α, C)) ∈ U sf (α, C).
+
+Remark 4.3 To maintain ˆπsf (u, Usf (α, C))( 0) = 0, we further require ∇h(0) = 0, this condition is easy to sat-isfy since one can modify the ZBF around the equilibrium without change the safe region C.
+
+The proof is shown in Appendix A.1.5. Based on this ap-proximate projection operator in the post-training stage, one can transform the learned controller into a safe controller 
+
+ˆπsf (uθ , Usf (αθ , C)) .5FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Controller with Both Safety and Exponential Stabil-ity. Actually, we can jointly train the uθ , V θ , α θ with the summed loss Les (θ) + Lsf (θ) to learn a safe and exponen-tially stable controller with the finite sample size. A natural question is whether we can composite the approximate pro-jection operator ˆπes and ˆπsf together to get the controller with rigorous safety and stability guarantees or not. To an-swer this question, we study the relationship between the safe controller space Usf (·, C) and the exponentially stable controller space Ues (·, C).
+
+Theorem 4.4 (Existence of the Safe and Exponentially Stable Controller ) For any ZBF h(x) with a bounded safe region C and a class-K function α, there exists a potential function V , s.t. Ues (V, C) ∩ U sf (α, C)̸ = ∅.
+
+Proof Sketch. For the special case that h(0) =max x∈C h(x), we can construct the potential function as 
+
+V (x) = h(0) − h(x) s.t. V ≥ k∥x∥ for some k > 0.Then it can be shown that there exists u ∈ U sf (α, C) s.t. 
+
+LuV ≤ − kV . If h(0)̸ = max x∈C h(x), we can modify the ZBF as ˜h = h + λ s.t. ˜h(0) = max x∈C ˜h(x) without changing the safe region, where λ is a smooth approxima-tion of the Dirac function δ0. Similar to the special case, we can derive the remaining parts of the theorem. The detail of the proof is shown in Appendix A.1.6. 
+
+Remark 4.5 The bounded safe region condition is Theo-rem 4.4 can be relaxed to unbounded cube [a1, b 1] × · · · × 
+
+[ad, b d], −∞ ≤ ai < b i ≤ ∞ , where at least one interval 
+
+[ai, b i] is bounded. The proof is provided in Appendix A.1.6. 
+
+According to Theorem 4.4, we can first apply operator ˆπsf 
+
+to the learned controller uθ to obtain the safety guarantee and restrict the state space X ⊂ C . Since X is bounded now, then, we can apply operator ˆπes to the safe controller to obtain the exponential stability guarantee according to Theorem 3.1. 
+
+# 5. Accelerate the Training and the Projection 
+
+In general, computing LuV costs O(d2). The term 
+
+Tr[ g⊤HV g ] requires computing a Hessian matrix of V .The same is valid for computing Luh. Here, two tricks can be used to achieve low computational costs. First, due to the commutativity of the trace operator, we can get the following unbiased estimate: 
+
+Tr[ g⊤HV g ] = E[ξ⊤HV gg ⊤ξ] = E[( ∇(ξ⊤∇V )) ⊤gg ⊤ξ],
+
+where ξ is a d-D noise vector with mean zero and variance 
+
+I. The Monte Carlo estimator for the above expectation is known as the Hutchinson’s trace estimator (Hutchinson, 1989). Second, if g is a vector independent of x, computing the gradient of the vector-Jacobian product g⊤∇V costs 
+
+O(d), and the remaining part is simply a vector-Jacobian product Tr[ g⊤HV g ] = g⊤∇(g⊤∇V ). These two tricks can be used according to the shape of the diffusion term 
+
+g(x, t ) ∈ Rd×r , i.e., matrix ( r > 1) or vector ( r = 1 ). 
+
+Case 1: r > 1. In this case, g is a matrix, and we use the former trick to accelerate the training stage. Assuming the cost of evaluating Tr[ g⊤HV g ] is on the order of O(N d 2)
+
+where d is the dimensionality of the data and N is the size of the dataset, then the cost of computing the following Hutchinson’s trace estimator via automatic differentiation, which only involve vector-Jacobian products, is O(N M d ),
+
+Tr[ g⊤HV g ] ≈ 1
+
+M
+
+> M
+
+X
+
+> i=1
+
+(∇(ξ⊤ 
+
+> i
+
+∇V )) ⊤gg ⊤ξi, (10) where M is the number of samples in the Monte Carlo esti-mation with M ≪ d. In practice, M can be tuned to trade off the variance and the computational cost. As suggested in (Grathwohl et al., 2018; Song et al., 2020), M = 1 is al-ready a good choice, which worked well in our experiments. Notice that although the approximate projection operator applied to the learned controller in the projection stage also involves computing the LuV , we cannot use this trick here because it does not equal the real trace. 
+
+Case 2: r = 1 . Since g is a vector, we can use the latter trick by removing the dependency of g on data x.Specifically, after getting the g(x) on data x, we apply the 
+
+detach operator in Pytorch (Paszke et al., 2019) to g to prevent calculating the gradients w.r.t x. Then the computa-tional cost reduces from O(N d 2) to O(N d ). This trick is shown as follows: 
+
+Tr[ g⊤HV g ] = g⊤∇(( g. detach() )⊤∇V ). (11) We note that the result in Eq. (11) is an identity equation. Hence, it is an ideal choice when r = 1 . Since the deriva-tive operator Lu is calculated in both the training and post-training projection stages, and these two cases always cover at least one stage, we can accelerate the whole framework of the proposed safe and exponentially stable controller. We summarized the complete framework of the proposed FESSNC in Algorithm 1. 
+
+# 6. Experiments 
+
+In this section, we demonstrate the superiority of the FESSNC over existing methods using several case stud-ies, then we validate the scalability of FESSNC to the high dimensional system with an application in synchronizing the coupled oscillators. More details of the experiments can be found in Appendix B. 6FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Algorithm 1 FESSNC 
+
+Input: Dynamics f, g , ZBF h, safe region C, max iter-ations m, learning rate γ, initial parameters θ, weight factors λ1,2, noise vector samples {ξi}Mi=1 .
+
+Output: Controller uθ , potential function Vθ , class K
+
+function αθ .
+
+for r = 1 : m do 
+
+{xi}Ni=1 ∼ C ▷ Sample training data 
+
+L(θ) = Les (θ) + Lsf (θ) ▷ Compute loss (5)(8)(10) 
+
+θ ← θ − γ · ∇ θ L(θ) ▷ Update parameters 
+
+Return: ˆπes (ˆ πsf (uθ , Usf (αθ , C )) , Ues (Vθ , C)) 
+
+▷ Safety and exponential stability guarantee (6)(9)(11) 
+
+6.1. Case Studies 
+
+We first show that our approach is able to produce reliable control policies with stability and safety guarantees for each task. We then show the advantages of the FESSNC in com-putational costs compared with representative baselines. 𝜃 1 
+
+> 𝜃 2
+> 2𝜋
+> 3
+> 𝑢
+> Inverted
+> position
+> 𝑦
+> 𝑥
+> 𝜃 𝑣
+> Target position
+> Barrier
+
+Figure 2. Schematic diagrams of the double pendulum ( left ) and the kinetic bicycle ( right ) with state constraints. 
+
+Models We consider two classic control models, the fully actuated double pendulum swing-up and the fully actu-ated planar kinetic bicycle motion. The double pendulum is a 4-D system with 2 angles and 2 angular velocities, 
+
+(θ1, ˙θ1, θ 2, ˙θ2) (Deisenroth et al., 2013). We add multipli-cation noise force to the system such that the angular ac-celeration is perturbed related to angles. The objective is to learn a control strategy that steers the double pendulum to the inverted position within the safe region where the inner pendulum can only spin in [−π/ 6, 7π/ 6] , see Figure 2 (left). The kinematic bicycle model for car-like vehicles has 
+
+4 variables (x, y, θ, v ), where (x, y ) is the bicycle’s position, 
+
+θ is the direction of motion, and v is the velocity (Rajamani, 2011). The goal is to steer the noise-perturbed bicycle to the target position without crossing the round wall with a radius of 2, see Figure 2 (right). 
+
+Baselines To simulate the trajectories of the controlled system, we approximate the flow St of the SDEs (4) with the Euler–Maruyama method (Särkkä & Solin, 2019). Then the obtained MDPs (or discrete dynamics) can be handled with model-based RL methods. We compare the proposed FESSNC with the GP-MPC algorithm (Kamthe & Deisen-roth, 2018) and the BALSA algorithm (Fan et al., 2020), respectively the most data-efficient MPC-based and QP-based RL algorithms to date. We conduct 5 independent experiments, and the results are shown in Figure 3-4, and Table 4. In the figures, the solid lines are obtained by averaging the sampled trajectories, while the shaded areas stand for the variance regions. 
+
+Performance. As shown in Figure 3, all three methods satisfy the safety constraint for the double pendulum task. The FESSNC and GP-MPC can quickly steer the pendulum to the inverted position, but the GP-MPC cannot balance the pendulum abidingly, whereas the FESSNC does. The BALSA performs poorly because it requires the potential function V and ZBF h to be defined prior, and the predefined functions may induce disjoint safe controllers space and exponentially stable controllers space. The results in the kinetic bicycle task show the same situations as the double pendulum in Figure 4. The motion trajectories of the bicycle under the FESSNC are the most robust. 
+
+Computational Cost. We compare the training time of one complete control process for the FESSNC and baselines. The results are shown in Table 4. We can see that the GP-MPC costs much more time than the others. This is because the GP-MPC method has to roll out the forward dynamics to obtain the predictive and adjoint states, and then find the optimal control through gradient descent. The BALSA is slightly quicker than FESSNC, but its performance is far inferior to the latter. Moreover, QP-based solver costs at least O(d2) for d-D system (Kouzoupis et al., 2018), which makes it hard to be applied in the high-dimensional system, whereas our FESSNC does. 
+
+Further investigations. We further compare the FESSNC with the existing learning based controllers, includ-ing SYNC (Zhang et al., 2023), NNDM controller 0 30 Time   
+
+> -0.5
+> 0
+> 1
+> sin( θ1)
+> FESSNC GP-MPC BALSA Safe Line
+> 030 Time
+> -1
+> 0
+> 1
+> sin( θ2)
+> FESSNC GP-MPC BALSA
+> 010 Trial
+> 0
+> 100 Success rate  %
+> FESSNC GP-MPC BALSA
+
+Figure 3. Results of the constraint double pendulum via different methods. ( left resp., center )) Sine values along the trajectories of 
+
+θ1 (resp., θ2). Safe region is sin( θ1) ≤ 12 . ( right ) The success rate of the three methods is 3 seconds per trial. We define ’success’ if the pendulum tip’s angle is closer than π 
+
+> 40
+
+to the upright position for consecutive 3 seconds. 
+
+7FESSNC: Fast Exponentially Stable and Safe Neural Controller 0 20 Time   
+
+> 0
+> 2r
+> FESSNC GP-MPC BALSA Safe Line
+> −0.50.5x
+> −0.9
+> 0.5y
+> FESSNC GP-MPC BALSA
+> 010 Trial
+> 0
+> 100 Success Rate  %
+> FESSNC GP-MPC BALSA
+
+Figure 4. Results of the constraint kinematic bicycle model. ( left )The distance r between the car and the target position. The safe region is x2 + y2 ≤ 4. ( center ) The mean of motion trajectories. (right ) The success rate of the three methods is 3 seconds per trial. We define ’success’ if the car is closer than 0.1 to the target position for consecutive 2 seconds. 
+
+Table 1. Average amount of time in seconds needed to complete a control process for each method. Method Double Pendulum Kinetic Bicycle FESSNC 10 .35 s 6.39 sGP-MPC 146 .64 s 26 .68 sBALSA 3.08 s 2.18 s
+
+(NNDMC) (Mazouz et al.) and RSM controller (RSMC) (Lechner et al., 2022), using the kinetic bicycle model. The results provided in Table 2 demonstrate the superiority of the FESSNC over the existing methods in terms of stability, safety, scalability and control energy. For the stability guarantee, we achieve the exponential stability (ES), which is stronger than the asymptotic stability (AS). For the safety guarantee, we assure the controlled trajecto-ries stay in the safe region almost surely (a.s.) instead of with some probability p < 1. We emphasize that we are the first to achieve the rigorously theoretical guarantee for stability and safety, while all the other methods rely on the numerical approximation to some extent in the guarantee process. We provide more details in Appendix B.3.1. 
+
+Extension to the nonparametric settings. Although we employ the neural controller as the candidate controller, our framework also works for the nonparametric controller by directly applying the approximated operators in Eqs. (6) ,(9) to it. We apply our framework to the kernel machine based controller and compare it with the FESSNC using a 3-link pendulum control task, the results shown in Figure 5 demon-strate our approximate projection operations have the ability to improve the performance of the kernel based method without further training. More details are provided in Ap-pendix B.5 
+
+6.2. Synchronization of Coupled Oscillators 
+
+The numerical experiments in the previous section demon-strated the feasibility of the proposed framework. Here, we 0 30 Time   
+
+> −π
+> 6
+> 7π
+> 6θ1
+> FESSNC Safe Line
+> 030 Time
+> −π
+> 6
+> 7π
+> 6θ1
+> Kernel
+> 030 Time
+> −π
+> 6
+> 7π
+> 6θ1
+> FESS+Kernel
+
+Figure 5. The angle of the first link θ1(t) over 10 time trajectories. The green dashed lines represent the boundary of the safe region. 
+
+introduce a further application of FESSNC in the synchro-nization of coupled oscillators to validate the scalability of FESSNC in high dimensional system. Phase synchroniza-tion phenomenon in coupled oscillatory systems has been extensively studied in the context of collective behavior of complex networks from all scales and domains (Rosenblum et al., 2001; Sauseng & Klimesch, 2008; Strogatz, 2004). In this section, we show that the FESSNC can synchro-nize the incoherent coupled dynamics in stochastic settings. Specifically, we consider a small world network of n cou-pled FitzHugh-Nagumo (FHN) models (Conley & Smoller, 1986) under the stochastic coupled forces as: 
+
+dvi = ( vi − v3
+
+> i
+
+3 − wi + 1)d t + 13
+
+> n
+
+X
+
+> i=1
+
+Lij vj dBt,
+
+dwi = 0 .1( vi + 0 .7 − 0.8wi)d t, 
+
+where the fast variable v and the slow variable w correspond to the membrane potential and the recovery variable in an excitable nerve cell, respectively (Keener & Sneyd, 1998). We select n = 50 s.t. the networked dynamic is a 100 -dimensional system. We denote the state variables by x =(v, w ). Although the single FHN model has a stable limit cycle Γ, the synchronization manifold M ≜ {x1(t) ⊂ Γ : 
+
+xi(t) = x1(t), ∀i} of the coupled system is not stable due to the stochasticity. We now stabilize the coupled system to the synchronization manifold M by stabilizing the equilibrium of the equation of variance ˜xi = xi − x1 with the FESSNC. The safe region is { ˜x1: n : max 1≤i≤n(˜ vi, ˜wi) ≤ 5} under the ZBF h( ˜ xi:n) = 25 − max 1≤i≤n(˜ v2 
+
+> i
+
+, ˜w2 
+
+> i
+
+). The results are shown in Figure 6. It can be seen that the controlled coupled FHN dynamics converge to the synchronization manifold quickly without crossing the safe region. The experimental details are provided in Appendix. 
+
+# 7. Related Works 
+
+Stabilization of Nonlinear Systems via Deep Learning 
+
+Recent works have focused on finding the stabilization con-trollers for dynamical systems through deep learning (Chang et al., 2019; Schlaginhaufen et al., 2021; Dawson et al., 2022; Zhang et al., 2022). Prior works have also studied 8FESSNC: Fast Exponentially Stable and Safe Neural Controller  
+
+> Table 2. Comparison of learning-based controllers.
+
+Index Method FESSNC SYNC NNDMC RSMC RSMC+ICNN Training time (sec) 14 125 209 435 987 Safety rate(%) 100 90 100 10 90 Success rate (%) 100 90 60 0 90 Control energy 1.5 1.8 2.6 14.5 1.8 Computational Complexity O(d) O(kdd2) O(kdd3) O(kd) O(kd)
+
+Stability guarantee (Type) Yes (ES) Yes (AS) No Yes (AS) Yes (AS) Safety guarantee (Type) Yes (a.s.) Yes (a.s.) Yes (probability) No No Type of guarantee Theoretical Numerical Numerical Numerical Numerical 0 100 Time            
+
+> 05|˜v|max
+> Original Controlled Safe Line
+> 100 Time 050 Oscillator Index
+> 0100 Time −202
+> vi
+> Figure 6. The maximum value of the variances’ modulus |˜v|max ≜
+> max 1≤i≤50 |vi|along the trajectories of the original dynamics and the controlled dynamics ( left ). The solid lines are obtained by averaging the 5sampled trajectories, while the shaded areas stand for the variance regions. Dynamics of the small-world network of coupled FHN without control ( center ) and with control ( right ). The color represents the membrane potential state viof each oscil-lator.
+
+how to rigorously satisfy the expected conditions in the deep learning settings, including projecting the learned dynamics to the stable region (Kolter & Manek, 2019) and solving a constrained optimization problem at each parameters updat-ing iteration (Chow et al., 2019). The drawbacks of these methods are that they either change the equilibria of the original dynamics or cause large computational costs. 
+
+Control Barrier Functions for Safety Recent works have sought to incorporate reciprocal barrier functions, namely the reciprocal of h(x), with suppressing explosion tech-niques to devise safe controllers (Clark, 2019; Jankovic, 2018; Ames et al., 2019). These works impose complicated conditions for the safety, which makes it difficult for us to construct the projection operator. In contrast to the RBFs, ZBFs have (Taylor et al., 2020; Taylor & Ames, 2020) be used to construct the safety-critical control for ODEs with more simple structures. Dawson et al. have utilized the ZBFs in the neural robotic control framework (Dawson et al., 2022). We notice that only the RBFs for SDEs have been intensely studied while the ZBFs for SDEs have not been investigated yet due to the difficulties in theoretical analyses (Clark, 2019; 2021). 
+
+# 8. Conclusion and Future Works 
+
+We have proposed FESSNC, a two-stage framework that learns the neural controllers for stabilizing SDEs with ex-ponential stability and safety guarantees. We present a new theorem on safety criteria for SDEs based on the ZBFs that are more concise than the existing theoretical results. In addition, we develop projection operators to project the learned controllers to the space of exponentially-stable and safe controllers, and we further present approximate projec-tion operators with closed forms to reduce the computational costs. Notably, we prove the existence of both exponentially stable and safe controllers. We accelerate the training and testing processes with trace estimation methods. The empir-ical studies show our framework, an offline control policy, performs better the the SOTA online methods GP-MPC and BALSA. In addition to neural controllers, our projection operators can be applied to the nonparametric controllers to improve their performance. Our work can be applied in stability-critical and safety-critical real-world scenarios. An exciting direction for future work would be to extend the existing model-based offline framework to online learning or model-free cases in specific scenarios (Zhang et al., 2024; Zhu et al., 2019). Moreover, we consider the deterministic control instead of the stochas-tic control proposed in (Zhang et al., 2022) because it’s difficult to construct an approximate projection operator for stochastic control, and we leave it for future work. Finally, how to extend our current fully actuated control framework to the under actuated control settings appeared in many real-world scenarios is a challenging direction. 
+
+# Impact Statement 
+
+This paper presents work whose goal is to advance the field of Machine Learning. There are many potential societal consequences of our work, none of which we feel must be specifically highlighted here. 9FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+# Acknowledgements 
+
+J. Zhang is supported by the China Scholarship Council (No. 202306100154). Q. Zhu is supported by the China Post-doctoral Science Foundation (No. 2022M720817), by the Shanghai Postdoctoral Excellence Program (No. 2021091), and by the STCSM (Nos. 21511100200, 22ZR1407300, 22dz1200502, and 23YF1402500). W. Lin is supported by the NSFC (Grant No. 11925103), by the STCSM (Grants No. 22JC1402500 and No. 22JC1401402), and by the SMEC (Grant No. 2023ZKZD04). The computational work presented in this article is supported by the CFFF platform of Fudan University. 
+
+# References 
+
+Ames, A. D., Xu, X., Grizzle, J. W., and Tabuada, P. Control barrier function based quadratic programs for safety crit-ical systems. IEEE Transactions on Automatic Control ,62(8):3861–3876, 2016. Ames, A. D., Coogan, S., Egerstedt, M., Notomista, G., Sreenath, K., and Tabuada, P. Control barrier functions: Theory and applications. In 2019 18th European Control Conference (ECC) , pp. 3420–3431, 2019. doi: 10.23919/ ECC.2019.8796030. Amos, B., Xu, L., and Kolter, J. Z. Input convex neural net-works. In International Conference on Machine Learning ,pp. 146–155. PMLR, 2017. Chang, Y.-C., Roohi, N., and Gao, S. Neural lyapunov control. In Proceedings of the 33rd International Con-ference on Neural Information Processing Systems , pp. 3245–3254, 2019. Chow, Y., Ghavamzadeh, M., Janson, L., and Pavone, M. Risk-constrained reinforcement learning with percentile risk criteria. The Journal of Machine Learning Research ,18(1):6070–6120, 2017. Chow, Y., Nachum, O., Faust, A., Duenez-Guzman, E., and Ghavamzadeh, M. Lyapunov-based safe policy optimization for continuous control. arXiv preprint arXiv:1901.10031 , 2019. Clark, A. Control barrier functions for complete and incom-plete information stochastic systems. In 2019 American Control Conference (ACC) , pp. 2928–2935. IEEE, 2019. Clark, A. Control barrier functions for stochastic systems. 
+
+Automatica , 130:109688, 2021. Conley, C. and Smoller, J. A. Bifurcation and stability of stationary solutions of the fitz-hugh-nagumo equations. 1986. Dawson, C., Qin, Z., Gao, S., and Fan, C. Safe nonlinear control using robust neural lyapunov-barrier functions. In 
+
+Conference on Robot Learning , pp. 1724–1735. PMLR, 2022. Deisenroth, M. P., Fox, D., and Rasmussen, C. E. Gaussian processes for data-efficient learning in robotics and con-trol. IEEE transactions on pattern analysis and machine intelligence , 37(2):408–423, 2013. Fan, D. D., Nguyen, J., Thakker, R., Alatur, N., Agha-mohammadi, A.-a., and Theodorou, E. A. Bayesian learning-based adaptive control for safety critical sys-tems. In 2020 IEEE international conference on robotics and automation (ICRA) , pp. 4093–4099. IEEE, 2020. Filar, J. and Vrieze, K. Competitive Markov decision pro-cesses . Springer Science & Business Media, 2012. Garcıa, J. and Fernández, F. A comprehensive survey on safe reinforcement learning. Journal of Machine Learning Research , 16(1):1437–1480, 2015. Goodfellow, I. J., Shlens, J., and Szegedy, C. Explain-ing and harnessing adversarial examples. arXiv preprint arXiv:1412.6572 , 2014. Grathwohl, W., Chen, R. T., Bettencourt, J., Sutskever, I., and Duvenaud, D. Ffjord: Free-form continuous dy-namics for scalable reversible generative models. arXiv preprint arXiv:1810.01367 , 2018. Hutchinson, M. F. A stochastic estimator of the trace of the influence matrix for laplacian smoothing splines. Com-munications in Statistics-Simulation and Computation ,18(3):1059–1076, 1989. Jankovic, M. Robust control barrier functions for con-strained stabilization of nonlinear systems. Automatica ,96:359–367, 2018. Kamthe, S. and Deisenroth, M. Data-efficient reinforcement learning with probabilistic model predictive control. In 
+
+International conference on artificial intelligence and statistics , pp. 1701–1710. PMLR, 2018. Keener, J. and Sneyd, J. Mathematical physiology, volume 8 of interdisciplinary applied mathematics. Springer-Verlag, New York , 200:400, 1998. Kolter, J. Z. and Manek, G. Learning stable deep dynamics models. Advances in Neural Information Processing Systems , 32:11128–11136, 2019. Kouzoupis, D., Frison, G., Zanelli, A., and Diehl, M. Re-cent advances in quadratic programming algorithms for nonlinear model predictive control. Vietnam Journal of Mathematics , 46(4):863–882, 2018. 10 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Lechner, M., Žikeli´ c, Ð., Chatterjee, K., and Henzinger, T. A. Stability verification in stochastic control systems via neural network supermartingales. In Proceedings of the AAAI Conference on Artificial Intelligence , vol-ume 36, pp. 7326–7336, 2022. Lewis, F. L., Vrabie, D., and Syrmos, V. L. Optimal control .John Wiley & Sons, 2012. Liu, H.-T. D., Williams, F., Jacobson, A., Fidler, S., and Litany, O. Learning smooth neural functions via lipschitz regularization. arXiv preprint arXiv:2202.08345 , 2022a. Liu, X., Gong, C., and Liu, Q. Flow straight and fast: Learning to generate and transfer data with rectified flow. 
+
+arXiv preprint arXiv:2209.03003 , 2022b. Mao, X. Stochastic differential equations and applications .Elsevier, 2007. Mazouz, R., Muvvala, K., Babu, A. R., Laurenti, L., and Lahijanian, M. Safety guarantees for neural network dynamic systems via stochastic barrier functions. In Ad-vances in Neural Information Processing Systems .Miyato, T., Kataoka, T., Koyama, M., and Yoshida, Y. Spec-tral normalization for generative adversarial networks. 
+
+arXiv preprint arXiv:1802.05957 , 2018. Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga, L., et al. Pytorch: An imperative style, high-performance deep learning library. Advances in neural information processing systems , 32, 2019. Rajamani, R. Vehicle dynamics and control . Springer Sci-ence & Business Media, 2011. Rosenblum, M., Pikovsky, A., Kurths, J., Schäfer, C., and Tass, P. A. Phase synchronization: from theory to data analysis. In Handbook of biological physics , volume 4, pp. 279–321. Elsevier, 2001. Sarkar, M., Ghose, D., and Theodorou, E. A. High-relative degree stochastic control lyapunov and barrier functions. 
+
+arXiv preprint arXiv:2004.03856 , 2020. Särkkä, S. and Solin, A. Applied stochastic differential equations , volume 10. Cambridge University Press, 2019. Sauseng, P. and Klimesch, W. What does phase informa-tion of oscillatory brain activity tell us about cognitive processes? Neuroscience & Biobehavioral Reviews , 32 (5):1001–1013, 2008. Schlaginhaufen, A., Wenk, P., Krause, A., and Dorfler, F. Learning stable deep dynamics models for partially ob-served or delayed dynamical systems. Advances in Neural Information Processing Systems , 34:11870–11882, 2021. Song, Y., Garg, S., Shi, J., and Ermon, S. Sliced score matching: A scalable approach to density and score es-timation. In Uncertainty in Artificial Intelligence , pp. 574–584. PMLR, 2020. Sootla, A., Cowen-Rivers, A. I., Jafferjee, T., Wang, Z., Mguni, D. H., Wang, J., and Ammar, H. Sauté rl: Almost surely safe reinforcement learning using state augmenta-tion. In International Conference on Machine Learning ,pp. 20423–20443. PMLR, 2022. Strogatz, S. Sync: The emerging science of spontaneous order. 2004. Taylor, A., Singletary, A., Yue, Y., and Ames, A. Learning for safety-critical control with control barrier functions. In Learning for Dynamics and Control , pp. 708–717. PMLR, 2020. Taylor, A. J. and Ames, A. D. Adaptive safety with control barrier functions. In 2020 American Control Conference (ACC) , pp. 1399–1405. IEEE, 2020. Virmaux, A. and Scaman, K. Lipschitz regularity of deep neural networks: analysis and efficient estimation. Ad-vances in Neural Information Processing Systems , 31, 2018. Wang, L., Ames, A. D., and Egerstedt, M. Multi-objective compositions for collision-free connectivity maintenance in teams of mobile robots. In 2016 IEEE 55th Conference on Decision and Control (CDC) , pp. 2659–2664. IEEE, 2016. Wehenkel, A. and Louppe, G. Unconstrained monotonic neural networks. Advances in neural information process-ing systems , 32, 2019. Yoshida, Y. and Miyato, T. Spectral norm regularization for improving the generalizability of deep learning. arXiv preprint arXiv:1705.10941 , 2017. Zhang, J., Zhu, Q., and Lin, W. Neural stochastic con-trol. In Oh, A. H., Agarwal, A., Belgrave, D., and Cho, K. (eds.), Advances in Neural Information Processing Systems , 2022. URL https://openreview.net/ forum?id=5wI7gNopMHW .Zhang, J., Zhu, Q., Yang, W., and Lin, W. Sync: Safety-aware neural control for stabilizing stochastic delay-differential equations. In The eleventh international con-ference on learning representations , 2023. Zhang, J., Zhu, Q., and Lin, W. Learning hamiltonian neural koopman operator and simultaneously sustaining and dis-covering conservation laws. Physical Review Research , 6 (1):L012031, 2024. 11 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Zhu, Q., Ma, H., and Lin, W. Detecting unstable periodic orbits based only on time series: When adaptive delayed feedback control meets reservoir computing. Chaos: An Interdisciplinary Journal of Nonlinear Science , 29(9), 2019. 12 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+# A. Appendix 
+
+A.1. Proofs and Derivations 
+
+A.1.1. N OTATIONS AND PRELIMINARIES 
+
+In this section, we introduce some basic definitions and notations and then provide the proofs of the theoretical results. 
+
+Notations. Throughout the paper, we employ the following notation. Let (Ω , F, {F t}t≥0, P) be a complete probability space with a filtration {F t}t≥0 satisfying the usual conditions (i.e. it is increasing and right continuous while F0 contains all P-null sets). If x, y are real numbers, then x ∧ y denotes the minimum of x and y, x ∨ y denotes the maximum of x and y,
+
+x ≪ y denotes x is much smaller than b and a ≫ b vice versa. Let ⟨x, y⟩ be the inner product of vectors x, y ∈ Rd. For a second continuous function f (x) : Rd → R, let ∇f denote the gradient of f (x), that is, Hf denote the Hessian matrix of f .For the two sets A, B , let A ⊂ B denote that A is covered in B. Denote by log the base e logarithmic function. Denote by 
+
+∥ · ∥ the L2-norm for any given vector in Rd. Denote by | · | the absolute value of a scalar number or the modulus length of a complex number. For A = ( aij ), a matrix of dimension d × r, denote by ∥A∥2F = Pdi=1 
+
+Prj=1 a2 
+
+> ij
+
+the Frobenius norm. 
+
+Definition A.1 (Martingale) The stochastic process Xt on t ≥ 0 is called a martingale (submartingale) on probability space (Ω , F, {F t}t≥0, P) with a filtration {F t}t≥0 satisfying the usual conditions, if the following two conditions hold: (1) 
+
+Xt is Ft−measurable for any t ≥ 0; (2) E[Xt|F s] = Xs(E[Xt|F s] = Xs) for any t > s ≥ 0.
+
+Definition A.2 (Stopping Time) Given probability space (Ω , F, {F t}t≥0, P) and a mapping τ : Ω → [0 , ∞), we call τ an 
+
+{F t}t≥0 stopping time, for any t ≥ 0, τ ≤ t ∈ F t,
+
+Definition A.3 (Local Martingale) The stochastic process Xt, t ≥ 0 is called a local martingale, if there exists a family of stopping times {τn}n∈Z+ such that lim n→∞ τn = ∞, a.s. and {Xt∧τn }n∈Z+ is a martingale. 
+
+Definition A.4 (It ˆo’s Process) Let Bt be a d-dimensional Brownian motion on probability space (Ω , F, {F t}t≥0, P). A (d-dimensional) It ˆo’s process is a stochastic process Xt on (Ω , F, {F t}t≥0, P) in the form of 
+
+Xt = X0 +
+
+Z t
+
+> 0
+
+u(s, w )d s +
+
+Z t
+
+> 0
+
+dv(s, w )Bs (⇔ dXt = u(t, w )d t + v(t, w )d Bt) ,
+
+where u and v satisfy the constraints as follows: 
+
+P
+
+Z t
+
+> 0
+
+∥v(s, w )∥2ds < ∞ for all t ≥ 0
+
+
+
+= 1 ,
+
+P
+
+Z t
+
+> 0
+
+∥u(s, w )∥ds < ∞ for all t ≥ 0
+
+
+
+= 1 .
+
+Definition A.5 (It ˆo’s Formula) Let Xt be a d-dimensional It ˆo’s process given by 
+
+dXt = udt + vdBt.
+
+Let f (t, x) ∈ C1,2([0 , ∞) × Rd). Then, Yt = f (t, X t) is an It ˆo’s process as well, satisfying 
+
+dYt = ∂h ∂t (t, X t)d t + ∇xf (t, X t) · dXt + 12 Tr(d X⊤ 
+
+> t
+
+Hf (t, X t)d Xt).
+
+A.1.2. P ROOF OF THEOREM 3.1 To begin with, we check the inequality constraint in Ues (V, X ) is satisfied by the projection element, that is 
+
+LuV u=ˆ πes (u,Ues (V, X )) ≤ cV. 
+
+From the definition of the derivative operator, we have 
+
+LuV u=ˆ πes (u,Ues (V, X )) = ∇V · (f + u − max(0 , LuV − cV )
+
+∥∇ V ∥2 · ∇ V ) + 12 Tr g⊤HV g 
+
+= ∇V · (f + u) + 12 Tr g⊤HV g  − ∇ V · max(0 , LuV − cV )
+
+∥∇ V ∥2 · ∇ V
+
+= LuV − max(0 , LuV − cV ) ≤ cV. 
+
+13 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Next, we show the equivalent condition of the Lipschitz continuity of projection element. Notice that u ∈ Lip (X ), then we have 
+
+ˆπes (u, Ues (V, X )) ∈ Lip (X ), ⇐⇒ max(0 , LuV − cV )
+
+∥∇ V ∥2 · ∇ V ∈ Lip (X ).
+
+Since ∥ ∇V
+
+∥∇ V ∥ ∥ is a continuous unit vector, and naturally is Lipschitz continuous, we only need to consider the remaining term max(0 , LuV − cV )
+
+∥∇ V ∥ . According to the definition, all the functions occured in this term are continuous, so we only need to bound this term to obtain the global Lipschitz continuity, that is 
+
+max(0 , LuV − cV )
+
+∥∇ V ∥ ∈ Lip (X ), ⇐⇒ sup 
+
+> x∈X
+
+max(0 , LuV − cV )
+
+∥∇ V ∥ < +∞.
+
+When LuV ≤ cV , obviously we have max(0 , LuV − cV ) = 0 < +∞, otherwise, since V ≥ ε∥x∥p and c < 0, we have 
+
+LuV − cV ≥ L uV − cε ∥x∥p ≈ O (∥x∥p) → ∞ (∥x∥ → ∞ ).
+
+Thus, we have 
+
+sup 
+
+> x∈X
+
+max(0 , LuV − cV )
+
+∥∇ V ∥ < +∞ ⇐⇒ sup 
+
+> x∈X
+
+∥x∥ < +∞,
+
+which completes the proof. A.1.3. P ROOF OF EXAMPLE 3.2 Consider a 1-D SDE as follows: 
+
+dx = ax dt + bx dBt,
+
+Then, according to the Ito formula, we have 
+
+d log x = dxx − (d x)2
+
+2x2
+
+= adt + bdBt − b2
+
+2 dt. 
+
+Integrate the both sides we have 
+
+log x(t) = x(0) + (( a − b2
+
+2 )t + bB (t)) .
+
+Then we have 
+
+x(t) = x0 exp(( a − b2
+
+2 )t + bB (t)) , x 0 > 0.
+
+Then for any M > 0, we have 
+
+x(t) > M, ⇐⇒ x(0) exp(( a − b2
+
+2 )t + bB (t)) , ⇐⇒ B(t) > 1
+
+b (log Mx0
+
+− (a − b2
+
+2 )t).
+
+Notice that B(t) ∼ N (0 , t ) is a Gaussian noise, it naturally holds that 
+
+P(B(t) > 1
+
+b (log Mx0
+
+− (a − b2
+
+2 )t)) > 0.
+
+Next, for the exponential stability, let potential V = 12 x2, then we have 
+
+LV = ( a + b2
+
+2 )x2 = 2( a + b2
+
+2 )V. 
+
+Since a < 0, |a| > 12 b2 and x0 > 0, we have a + b2
+
+2 < 0, then according to Theorem 2.1, the zero solution is exponential stable. The proof is completed. 14 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+A.1.4. P ROOF OF THEOREM 4.1 Notice that each sample path of x(t) is continuous and h(x) is also continuous. This implies that h(x(t)) > 0 ⇐⇒ x(t) ∈
+
+int( C). Now we prove h(x(t)) > 0 a.s. with initial h(x(0)) > 0, which is equivalent to τ = ∞ a.s. , where stopping time 
+
+τ = inf {t ≥ 0 : h(x(t)) = 0 }. we prove it by contradiction. If τ = ∞ a.s. was false, then we can find a pair of constants 
+
+T > 0 and M ≫ 1 for P(B) > 0, where 
+
+B = {w ∈ Ω : τ < T and ∥x(t)∥ ≤ M, ∀0 ≤ t ≤ T }.
+
+But, by the standing hypotheses, there exists a positive constant KM such that 
+
+α(x) ≤ KM x, ∀| x| ≤ sup 
+
+> ∥x∥≤ M
+
+h(x) < ∞.
+
+Then, for w ∈ B and t ≤ T ,
+
+α(h(x(t))) ≤ KM h(x(t)) .
+
+Now, for any ε ∈ (0 , h (x(0))) , define the stopping time 
+
+τε = inf {t ≥ 0 : h(x(t)) /∈ (ε, h (x(0)) }.
+
+By It ˆo’s formula, 
+
+dh(x(t)) = Lhdt + ∇h⊤gdBt
+
+≥ − α(h)d t + ∇h⊤GdBt.
+
+Take expectation on both sides with respect to τε on set B,
+
+E[h(x(τε ∧ t)) 1B ] ≥ h(x(0)) −
+
+Z t
+
+> 0
+
+E[λ(h(x(τε ∧ s))) 1B ]d s
+
+≥ h(x(0)) −
+
+Z t
+
+> 0
+
+E[KM h(x(τε ∧ s)) 1B ]d s. 
+
+By Gronwall’s inequality, 
+
+E[h(x(τε ∧ t)) 1B ] ≥ h(x(0)) e−KM (τε∧t)P(B).
+
+Note that for w ∈ B, τε ≤ T and h(x(τε)) = ε. The above inequality, therefore, implies that 
+
+E[εP(B)] = εP(B) ≥ h(x(0)) e−KM (τε∧T )P(B) ≥ h(x(0)) e−KM T P(B).
+
+Letting ε → 0 yields that 0 ≥ h(x(0)) e−KM T P(B), but this contradicts the definition of B and P(B) > 0.The proof is completed. A.1.5. P ROOF OF THEOREM 4.2 Similar to section A.1.2, we only have to check the safety constraint is satisfied by the projection element, that is 
+
+Luh u=ˆ πsf (u,Usf (α, C)) ≥ − α(h).
+
+From the definitions we have 
+
+Luh u=ˆ πes (u,Ues (V, X )) = ∇h · (f + u + max(0 , −L uh − α(h)) 
+
+∥∇ h∥2 · ∇ h) + 12 Tr g⊤Hhg 
+
+= ∇h · (f + u) + 12 Tr g⊤Hhg  + ∇h · max(0 , −L uh − α(h)) 
+
+∥∇ h∥2 · ∇ h
+
+= Luh + max(0 , −L uh − α(h)) ≥ − α(h).
+
+Notice that the state space now is C, which is bounded, then the proof is completed. A.1.6. P ROOF OF THEOREM 4.4 We prove there exists a controller u in Ues (V, C) ∩ U sf (α, C) in two steps. 15 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Step 1. To begin with, we consider the special case that 0 ∈ arg max x∈C h(x) and 0 is the only maximum point in C.Notice that 
+
+{u : Luh ≥ − α(h) + a} ⊂ { u : Luh ≥ − α(h)}, ∀a > 0.
+
+Thus, we choose a = kh (0) with k to be defined, then we can get u0 ∈ { u : Luh ≥ − α(h) + kh (0)}, s.t. u0 ∈ U sf (α, C).We now prove that there exists a potential function V s.t. u0 ∈ U es (V, C). Since C is bounded, the class-K function α has linear bounds in C as 
+
+mx ≤ α(x) ≤ qx, 
+
+for some q > 0. Then for u0, the following inequality holds, 
+
+Lu0 h ≥ − qh + kh (0).
+
+Now let k = q, we have 
+
+Lu0 h ≥ q(h(0) − h).
+
+Define V (x) = h(0) − h(x) ≥ 0, due to the continuity on the bounded region C, there exists some positive number l > 0
+
+s.t. V (x) ≥ l∥x∥ in C. Hence, V is a well-defined potential function. Notice that 
+
+Lu0 V = ∇V · (f + u0) + 12 Tr g⊤Hhg  ,
+
+∇V = −∇ h, HV = −H h. 
+
+We have 
+
+Lu0 V = −L u0 h ≤ − q(h(0) − h) = −qV, 
+
+which means u0 ∈ U es (V, C) ∩ U sf (α, C).
+
+Step 2. Now we consider the general case. Since 0 ∈ int( C), and {h(x) = 0 } = ∂C, there exists a small neighborhood 
+
+O(0, ε ), ε > 0 of 0 s.t. O(0, ε ) ⊂ int( C). Then we can modify h on O(0, ε ) without changing the safe region C. Define the smooth approximation of the Dirac function δ0 as 
+
+λ(x) ≜ exp   − 1
+
+∥x∥2 − ε
+
+.
+
+Since h is bounded on C, we can always choose M ≫ 1 s.t. 
+
+0 ∈ arg max  
+
+> x∈C
+
+, ˜h, ˜h = h + M λ. 
+
+According to Step 1, we can choose any u ∈ {L u˜h ≥ − α(˜h) + q˜h(0)}, and let ˜V = ˜h(0) − ˜h, s.t. u ∈ U es ( ˜V , C). Now we only need to show that there exists u ∈ {L u˜h ≥ − α(˜h) + q˜h(0)} ∩ U sf (α, C). Notice that 
+
+Lu˜h = ∇(h + M λ ) · (f + u) + 12 Tr g⊤H(h + M λ )g
+
+=
+
+
+
+∇h · (f + u) + 12 Tr g⊤Hhg  
+
++ M
+
+
+
+∇λ · (f + u) + 12 Tr g⊤Hλg  
+
+= Luh + M Luλ. 
+
+From the median theorem, we have 
+
+α(˜h) = α(h + M λ ) = α(h) + α′
+
+(ξ)M λ ≤ α(h) + LM λ, ξ ∈ (0 , L ), L = max  
+
+> x∈C
+
+h(x).
+
+Then we have 
+
+Lu˜h ≥ − α(˜h) + q˜h(0) ≥ − α(h) − LM λ + q˜h(0),
+
+Lu˜h ≥ − α(h) − LM λ + q˜h(0), ⇐⇒ L uh ≥ − α(h) − LM λ + q˜h(0) − M Luλ. 
+
+16 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+Let N = max(0 , sup x∈O(0,ε ) −LM λ + q˜h(0) − M Luλ), then we have 
+
+Luh ≥ − α(h) − LM λ + q˜h(0) − M Luλ ≥ − α(h) + N. 
+
+From step 1, we know that {L uh ≥ − α(h) + N } ⊂ U sf (α, C), now we choose u ∈ {L uh ≥ − α(h) + N } and complete the proof. For the relaxation in Remark 4.5, we notice that when safe region is covered in unbounded cube as that in Remark 4.5, the safe function h only depends on the variables that locate in the bounded interval. Without loss of generality, we set the first j variables locate in bounded safe region. Then h only depends on x = ( x1, · · · , x j )⊤ and is bounded in 
+
+[a1, b 1] × · · · × [aj , b j ], hence there still exist m, q s.t. mxα (x) ≤ qx as required in Step 1 . Then we repeat the rest of the above proof to complete the proof of Remark 4.5. 
+
+# B. Experimental Configurations 
+
+In this section, we provide the detailed descriptions for the experimental configurations of the control problems in the main text. The computing device that we use for calculating our examples includes a single i7-10870 CPU with 16GB memory, and we train all the parameters with Adam optimizer. Our code is available at 
+
+https://github.com/jingddong-zhang/FESSNC .
+
+B.1. Neural Network Structures 
+
+• For constructing the potential function V , we utilize the ICNN as (Amos et al., 2017): 
+
+z1 = σ(W0x + b0),
+
+zi+1 = σ(Uizi + Wix + bi), i = 1 , · · · , k − 1,p(x) ≡ zk,V (x) = σ(p(x) − p(0)) + ε∥x∥2,
+
+where σ is the smoothed ReLU function as defined in the main text, Wi ∈ Rhi×d, U i ∈ (R+ ∪ { 0})hi×hi−1 , x ∈ Rd,and, for simplicity, this ICNN function is denoted by ICNN (h0, h 1, · · · , h k−1);• The class-K function α is constructed as: 
+
+q1 = ReLU (W0s + b1),
+
+qi+1 = ReLU (Wiqi + bi), i = 1 , · · · , k − 2,
+
+qk = ELU (Wk−1qk−1 + bk−1),α(x) = 
+
+Z x
+
+> 0
+
+qk(s)d s
+
+where Wi ∈ Rhi+1 ×hi , and this class-K function is denoted by K(h0, h 1, · · · , h k);• The neural control function (nonlinear version) is constructed as: 
+
+z1 = F(W0x + B1),
+
+zi+1 = F(Wizi + bi), i = 1 , · · · , k − 1,
+
+NN (x) ≡ Wkzk,
+
+u(x) = diag (x)NN (x),
+
+where F(·) is the activation function, Wi ∈ Rhi+1 ×hi , and this control function is denoted by Control (h0, h 1, · · · , h k+1 ).17 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+B.2. Double Pendulum 
+
+Here we model the state of the fully actuated noise-perturbed double pendulum as 
+
+dθ1 = z1dt
+
+dz1 = m2g sin( θ2) cos( θ1 − θ2) − m2 sin( θ1 − θ2)[ l1z21 cos( θ1 − θ2) + l2z22 ] − (m1 + m2)g sin( θ1)
+
+l1[m1 + m2 sin 2(θ1 − θ2)] dt + sin( θ1)d Bt
+
+dθ2(t) = z2dt, 
+
+dz2 = (m1 + m2)[ l1z21 sin( θ1 − θ2) − g sin( θ2) + g sin( θ1) cos( θ1 − θ2)] + m2l2z22 sin( θ1 − θ2) cos( θ1 − θ2)
+
+l2[m1 + m2 sin 2(θ1 − θ2)] dt
+
++ sin( θ2)d Bt.
+
+We transform the equilibrium to the zero by the coordinate transformation ˜θ1,2 = θ1,2 − π. the The ZBF is h(θ1,2, z 1,2) = sin( θ1) + 0 .5 ⇐⇒ h(˜θ1,2, z 1,2) = 0 .5 − sin( ˜θ1). Then we consider the dynamic for x = ( ˜θ1,2, z 1,2) For training controller 
+
+u, we sample 500 data from the safe region [−π/ 6 − π, 7π/ 6 − π] × [−5, 5] 3, we construct the NNs as follows. 
+
+FESSNC We parameterize V (x) as ICNN (4 , 12 , 12 , 1) , α(x) as K(1 , 10 , 10 , 1) , u(x) as Control (4 , 12 , 12 , 4) . We set 
+
+ε = 1e -3, c = −0.1. We train the parameters with lr = 0 .1 for 300 steps. 
+
+GP-MPC Since we have known the dynamics, there is no need to fitting the dynamics as GP flows from data. We obtain the dynamics of moment z = ( μ, Σ) of distribution p(x) as 
+
+μt+1 =μt + dt (·f (μt) + ut)Σt+1 =Σ t + dt · g(μt)
+
+where f, g are the drift and diffusion terms, respectively. We denote the above dynamic as 
+
+zt+1 = ˜f (zt, ut).
+
+Then we solve the MPC problem as 
+
+min 
+
+> u0: k−1
+
+Φ( zk) + 
+
+> k−1
+
+X
+
+> i=0
+
+l(zi, u i),
+
+s.t. zi+1 = ˜f (zi, ui), z0 = ( x, 0),
+
+and apply the first control element u0 to the current dynamic. We use the PMP method as proposed in (Kamthe & Deisenroth, 2018) to solve the above problem. For safety and stability, we select cost function as 
+
+Φ( z) = p1∥μ∥2 + p3∥Σ∥2,l(z, u) = p2ReLU (sin( ˜θ1) − 0.5) + ∥z∥2.
+
+We set p1 = 6 , p 2 = 2 .5, p 3 = 0 .5, k = 10 and find the optimal control sequence via the gradient descent of the Hamiltonian function in PMP. 
+
+QP The object function in QP is set as 
+
+min 
+
+> u,d 1,d 2
+
+12 ∥u∥2 + p1d21 + p2d22,
+
+s.t. LuV − εV ≤ d1,
+
+Lu
+
+1
+
+h(x) − γh (x) ≤ d2,
+
+where d1,2 are the relaxation numbers. We choose V = 12 ∥x∥2, p 1 = 10 , p 2 = 10 , ε = 0 .5, γ = 2 .We use Euler–Maruyama numerical scheme to simulate the system without and with control, and the random seeds are set as {1, 4, 6, 8, 9}.18 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+B.3. Planar kinematic bicycle model 
+
+Here we model the state of the common noise-perturbed kinematic bicycle system as x = ( x, y, θ, v )⊤, where x, y are the coordinate positions in phase plane, θ is the heading, v is the velocity. The dynamic is as follows, 
+
+dx(t) = v(t) cos θ(t)d t + x(t)d Bt,
+
+dy(t) = v(t) sin θ(t)d t + y(t)d Bt,
+
+dθ(t) = v(t)d t, 
+
+dv(t) = ( x(t)2 + y(t)2)d t. 
+
+The ZBF is h(x, y, θ, v ) = 2 2 − (x2 + y2). For training controller u, we sample 500 data (r cos( w), r sin( w), θ, v ) from the safe region (r, w, θ, v ) ∈ [0 , 3] × [0 , 2π] × [−3, 3] 2, we construct the NNs as follows. 
+
+FESSNC We parameterize V (x) as ICNN (4 , 12 , 12 , 1) , α(x) as K(1 , 10 , 10 , 1) , u(x) as Control (4 , 12 , 12 , 4) . We set 
+
+ε = 1e -3, c = −0.5. We train the parameters with lr = 0 .05 for 500 steps. 
+
+GP-MPC Since we have known the dynamics, there is no need to fitting the dynamics as GP flows from data. We obtain the dynamics of moment z = ( μ, Σ) of distribution p(x) as 
+
+μt+1 =μt + dt (·f (μt) + ut),
+
+Σt+1 =Σ t + dt · g(μt),
+
+where f, g are the drift and diffusion terms, respectively. We denote the above dynamic as 
+
+zt+1 = ˜f (zt, ut)
+
+Than we solve the MPC problem as 
+
+min 
+
+> u0: k−1
+
+Φ( zk) + 
+
+> k−1
+
+X
+
+> i=0
+
+l(zi, u i),
+
+s.t. zi+1 = ˜f (zi, ui), z0 = ( x, 0),
+
+and apply the first control element u0 to the current dynamic. We use the PMP method as proposed in (Kamthe & Deisenroth, 2018) to solve the above problem. For safety and stability, we select cost function as 
+
+Φ( z) = p1∥μ∥2 + p3∥Σ∥2,l(z, u) = p2ReLU (z2 
+
+> x
+
++ z2 
+
+> y
+
+− 22) + ∥z∥2.
+
+We set p1 = 5 , p 2 = 2 .5, p 3 = 0 .5, k = 5 and find the optimal control sequence via the gradient descent of the Hamiltonian function in PMP. 
+
+QP The object function in QP is set as 
+
+min 
+
+> u,d 1,d 2
+
+12 ∥u∥2 + p1d21 + p2d22,
+
+s.t. LuV − εV ≤ d1,
+
+Lu
+
+1
+
+h(x) − γh (x) ≤ d2,
+
+where d1,2 are the relaxation numbers. We choose V = 12 ∥x∥2, p 1 = 10 , p 2 = 10 , ε = 0 .5, γ = 2 .We use Euler–Maruyama numerical scheme to simulate the system without and with control, and the random seeds are set as {3, 5, 6, 9, 10 }.19 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+B.3.1. F URTHER COMPARISON WITH LEARNING -BASED CONTROLLERS 
+
+We further compare the proposed FESSNC with the neural network based control methods to stabilize SDEs, we consider the SYNC (Zhang et al., 2023), NNDMC (Mazouz et al.) and RSMC (Lechner et al., 2022) methods. All these considered methods provide stability or safety guarantee for the controller based on the finite decomposition of the compact state space and a fine design of the loss function, which belong to the numerical guarantee and cannot assure the obtained controllers satisfy the stability or safety guarantee rigorously. The model details of the compared methods are listed as follows, 
+
+SYNC We use the grid discretization method with mesh size r = 10 to obtain 10 4 grid data in safe region [−2, 2] 2 ×
+
+[−3, 3] 2. We parameterize the controller as Control (4 , 12 , 12 , 4) , the batch size is set as N = 500 , we train the parameters with lr = 0 .05 for 500 steps with the same loss function as follows 
+
+Lsf (θ, θα) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+max {0, −L h(x) − α(h(x)) + 4 M r } .Lst (θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ max  0, (α − 2) ∥xi⊤g(xi)∥2 + ∥xi∥2(2 ⟨xi, f u(xi)⟩ + ∥g(xi)∥2F) ,L = Lsf + Lst 
+
+Here fu and g represent the controlled drift and diffusion terms, respectively. We set the stability strength as α = 0 .8,the Lipschitz constant of the corresponding functions in the safe region can be calculated as M = 4 max q(x) where 
+
+α(x) = R x 
+
+> 0
+
+q(z)d z.
+
+NNDMC We first train the stabilization controller ust with the same structure as that in FESSNC, then, we obtain the neural network dynamical model (NNDM) under control. In order to provide safety guarantee for the NNDM, we discretize the safe region to grid data as same in SYNC, then we use the auto LiRPA package to compute the linear lower bound 
+
+lb q = ( lb qx , lb qy , lb qθ , lb qv )⊤ and upper bound ub q = ( ub qx , ub qy , ub qθ , ub qv )⊤ of the NNDM on each grid subspace 
+
+q ∈ Q. Here Q is the set of all grid subspace. The input to the auto LiRPA model is the center point of the grid subspace, i.e., the center point of (x, y, θ, v ) ∈ [a1, b 1] × [a2, b 2] × [a3, b 3] × [a4, b 4] is ( a1+b1 
+
+> 2
+
+, a2+b2 
+
+> 2
+
+, a3+b3 
+
+> 2
+
+, a4+b4 
+
+> 2
+
+). Since we know the safe function is this case, we do not have to solve the SOS problem to obtain the safe function and the minimizer of the safe function is (0 , 0, 0, 0) . We then use the obtained lower and upper bound to solve the linear programming (LP) problem to obtain the safe controller usf . Finally, the controller u = usf + ust is applied to the original system. According to (Mazouz et al.), the LP problem is solved as follows, 
+
+min   
+
+> a1,a 2,a 3,a 4,u qx ,u qy ,u qθ ,u qv
+> 4
+
+X
+
+> i=1
+
+ai
+
+s.t. − a1 ≤ x ≤ a1,
+
+− a2 ≤ y ≤ a2,
+
+− a3 ≤ θ ≤ a3,
+
+− a4 ≤ v ≤ a4,lb qx + uqx ≤ x ≤ ub qx + uqx ,lb qy + uqy ≤ y ≤ ub qy + uqy ,lb qθ + uqθ ≤ θ ≤ ub qθ + uqθ ,lb qv + uqv ≤ v ≤ ub qv + uqv , ∀q ∈ Q. 
+
+The final safe controller takes value as u(x, y, θ, v ) = ( uqx , u qy , u qθ , u qv ), ∀(x, y, θ, v )⊤ ∈ q.
+
+RSMC According to (Lechner et al., 2022), the training data should be discretization of the compact state space, here we employ the same grid data as above. For the supermartingale function V , we parameterize it with the standard forward 20 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+neural network FNN (4 , 12 , 12 , 1) . The training parameters are the same as above. The loss function is set as 
+
+Lst = 1
+
+N
+
+> j
+
+X
+
+> i=1
+
+"
+
+ReLU 1
+
+m
+
+> m
+
+X
+
+> k=1
+
+V (zki ) − V (zi) + τ K 
+
+!# 
+
+zki = zi + dt · fu(zi) + √dtξ kg(zi), z = ( x, y, θ, v )⊤, ξ k ∼ N (0 , I ),Llip = ReLU Lip V − κτ (Lip f (Lip u + 1) + 1) 
+
+!
+
+,L = Lst + Llip .
+
+We set the tolerance error κ = 0 .1, τ = 6 /10 , m = 5 is the sample size to estimate the expectation, the Euler step size 
+
+dt = 0 .01 , and the Lipschitz constants Lip V , Lip u and calculated by the method in (Goodfellow et al., 2014). 
+
+RSMC+ICNN We directly replace the FNN supermartingale V as ICNN (4 , 12 , 12 , 1) .We use Euler–Maruyama numerical scheme to simulate the system without and with control, and the random seeds are set as {3, 6, 9, 10 , 11 , 12 , 14 , 15 , 16 , 28 }. The results are summarized in the Table 4. We train all the methods with 
+
+batch size = 500 for 500 steps and calculate the training time. We test the learned controller on 10 sample temporal trajectories over 20 seconds. The results are summarized in the following table. The safety rate is the ratio of time that the controlled state stays in the safe region to total time. The success rate is the number of controlled states that satisfy the safety constraint and is closer than 0.1 to the target position for consecutive 2 seconds to 10 . The control energy is calculated as 
+
+R T 
+
+> 0
+
+|| u(t)|| 2dt . We notice that the RSMC failed in the task, but we could improve the performance of this method if we replace the original parameterized V function in [R3] with the ICNN constructed in our paper. We can see that our FESSNC achieves the best performance with rather low energy. For the computational complexity, d is the state dimension and k is the grid size for discretizing the state space needed in all the methods in [R1-R3]. The results show that only our FESSNC avoids the curse of dimensionality, and hence our FESSNC can scale to high-dimensional tasks. For the stability guarantee, only our method achieves exponential stability (ES) while the other methods achieve weaker asymptotic stability (AS). For the safety guarantee, our method holds almost surely (a.s.) for any controlled trajectory, that is P(x(t) ∈ C , t ≥ 0) = 1 ,while the NNDMC method holds in probability, that is P(x(t) ∈ C , 0 ≤ t ≤ N ) > 1 − N δ for some δ ∈ (0 , 1) . Last but not least, all the existing methods provide the numerical guarantee for the neural controller using the finite decomposition of the compact state space as the training data, but none of these methods can assure the stability or safety condition is rigorously satisfied after training. In contrast, we are the first to provide the theoretical stability and safety guarantee for the learned controller based on the analytical approximate projections.  
+
+> Table 3. Performance and comparison of learning-based controllers.
+
+Index Method FESSNC SYNC NNDMC RSMC RSMC+ICNN Training time (sec) 14 125 209 435 987 Safety rate(%) 100 90 100 10 90 Success rate (%) 100 90 60 0 90 Control energy 1.5 1.8 2.6 14.5 1.8 Complexity O(d) O(kdd2) O(kdd3) O(kd) O(kd)
+
+Stability guarantee (Type) Yes (ES) Yes (AS) No Yes (AS) Yes (AS) Safety guarantee (Type) Yes (a.s.) Yes (a.s.) Yes (probability) No No Type of guarantee Theoretical Numerical Numerical Numerical Numerical B.3.2. A BLATION STUDY 
+
+We further investigate the influence of the hyperparameters in our framework, including k, λ 1, λ 2 relating to the strength of exponential stability, the weight of stability loss, and the weight of safety loss, respectively. We train the FESSNC under different combinations of hyperparameters {k, λ 1, λ 2} ∈ { 0.1, 0.5, 1.0}3, then we test them using 10 sample trajectories. 21 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+We summarize the results in the following table, in which the Error is the minimum distance between the controlled bicycle to the target position, i.e., Error = min t r(t) = || (x(t), y (t)) || , the Std is the standard deviation of r(t), and we use max r(t)
+
+to assess the risk to cross the boundary of safe region r ≤ 2. The controllers under all the hyperparameter combinations perform fairly well, implying our method is not very sensitive to the selection of the hyperparameters.  
+
+> Table 4. Performance and comparison of learning-based controllers.
+
+λ1 = 0 .1 λ1 = 0 .5 λ1 = 1 .0
+
+k = 0 .1 k = 0 .5 k = 1 .0 k = 0 .1 k = 0 .5 k = 1 .0 k = 0 .1 k = 0 .5 k = 1 .0
+
+Error 
+
+λ2 = 0 .1 0.02 0.02 0.02 4e-4 0.01 0.05 0.018 0.05 0.01 
+
+λ2 = 0 .5 0.11 0.03 0.03 2e-3 0.02 0.01 0.03 0.05 0.04 
+
+λ2 = 1 .0 0.08 0.04 0.03 8e-4 0.01 0.06 0.03 0.01 0.07 
+
+Std 
+
+λ2 = 0 .1 0.06 0.38 0.35 1e-3 0.41 2.07 0.20 0.27 0.10 
+
+λ2 = 0 .5 0.29 0.32 0.34 2e-3 0.04 0.05 0.17 0.68 0.10 
+
+λ2 = 1 .0 0.29 0.58 0.38 4e-3 0.26 0.16 0.33 0.15 0.21 max r(t)
+
+λ2 = 0 .1 1.81 1.73 1.90 1.94 1.82 1.83 1.78 1.95 1.83 
+
+λ2 = 0 .5 1.91 1.66 1.86 1.90 |1.77 1.83 1.76 1.87 1.81 
+
+λ2 = 1 .0 1.72 1.70 1.78 1.88 1.89 1.77 1.67 1.80 1.77 
+
+B.4. Fitzhugh-Nagumo model 
+
+Consider the coupled FHN model x1:50 as 
+
+dxi = f (xi)d t +
+
+> N
+
+X
+
+> j=1
+
+g(xj )d Bt
+
+where 
+
+xi = vi, w i,f (xi) = ( vi − v3
+
+> i
+
+3 − wi + 1 , 0.1( vi + 0 .7 − 0.8wi)) ⊤,g(xi) = ( 13 vi, 0) ⊤
+
+Let ˜x = ( ˜ x1, · · · , ˜x50 )⊤ = ( x1 − s, · · · , x50 − s)⊤, where s is on the synchronization manifold s.t. ˙s = f (s), then we have the following variance equation 
+
+dδ = ( I ⊗ ∇ f )δdt + ( I ⊗ ∇ g)δdBt.
+
+We only need to stabilize the variance δ to zero, and the ZBF is set as h(δ) = 5 2 − max 1≤i≤50 (˜ v2 
+
+> i
+
+, ˜w2 
+
+> i
+
+). We parameterize 
+
+V (x) as ICNN (100 , 100 , 100 , 1) , α(x) as K(1 , 10 , 10 , 1) , u(x) as Control (100 , 200 , 200 , 100) . We set ε = 1e -3, c = −0.1.We train the parameters with lr = 0 .1 for 300 steps. We use Euler–Maruyama numerical scheme to simulate the system without and with control, and the random seeds are set as {1, 4, 5, 9, 15 }.
+
+B.5. 3-link Pendulum 
+
+In this section, we test our framework on a complex 3-link planar pendulum, which possesses 6 state variables 
+
+(θ1, θ 2, θ 3, ˙θ1, ˙θ2, ˙θ3) representing the 3 link angles and the 3 angle velocities of three joints. For sake of simplicity, we suppose the joints and links have unit mass mi, unit length li, unit moment of inertia Ii, and unit relative position lci of the center of gravity. The corresponding controlled system under noise perturbed is: 
+
+dx = ydt, 
+
+dy = M (x)−1[−N (x, y)y − Q(x)] + u(x, y) dt + g(x)d B2(t),
+
+22 FESSNC: Fast Exponentially Stable and Safe Neural Controller 
+
+where x = ( θ1, θ 2, θ 3)⊤, y = ( ˙θ1, ˙θ2, ˙θ3)⊤, M , N ∈ R3×3, Q ∈ R3, g(x) = (sin( θ1), sin( θ2), sin( θ3)) ⊤ with 
+
+Mij = aij cos( xj − xi), Nij = −aij yj sin( xj − xi), Qi = −bi sin( xi),aii = Ii + mil2 
+
+> ci
+
++ l2
+
+> i
+
+P3 
+
+> k=i+1
+
+mk, aij = aji = mj lilcj + lilj
+
+P3 
+
+> k=j+1
+
+mk,bi = milci + li
+
+P3 
+
+> k=i+1
+
+mk.0 30 Time 
+
+# −π
+
+6
+
+7π
+
+6θ1
+
+# FESSNC Safe Line 
+
+# 0 30 Time 
+
+# −π
+
+6
+
+7π
+
+6θ1
+
+# Kernel 
+
+# 0 30 Time 
+
+# −π
+
+6
+
+7π
+
+6θ1
+
+# FESS+Kernel 
+
+Figure 7. The angle of the first link θ1(t) over 10 time trajectories. The green dashed lines represent the boundary of the safe region. 
+
+The mission is to stabilize the 3-link pendulum to the upright position θi = π, i = 1 , 2, 3 without crossing the safe region 
+
+θ1 ∈ (− π 
+
+> 6
+
+, 7π 
+
+> 6
+
+) (the same safe region as that for double pendulum in Section B.2). In addition to test the efficacy the proposed FESSNC, we also investigate the extension of our framework to nonparametric setting. We employ the kernel machine based controller as a benchmark of nonparametric controller. Specifically, we consider the implementation in Rectified Flow (Liu et al., 2022b) with Gaussian RBF kernel to design a model-based stabilization controller, named Kernel. This controller naturally lacks stability and safety guarantee, hence we apply our approximate projection operators to this controller to provide expected guarantees, the corresponding controller is dubbed as FESS+Kernel. The detailed model structures are set as follows, We transform the equilibrium to the zero by the coordinate transformation ˜θ1,2 = θ1,2 − π. the The ZBF is h(θ1,2, z 1,2) = sin( θ1) + 0 .5 ⇐⇒ h(˜θ1,2, z 1,2) = 0 .5 − sin( ˜θ1). Then we consider the dynamic for x = ( ˜θ1,2, z 1,2). For training controller u, we sample 500 data from the safe region [−π/ 6 − π, 7π/ 6 − π] × [−5, 5] 3, we construct the NNs as follows. 
+
+FESSNC We parameterize V (x) as ICNN (6 , 12 , 12 , 1) , α(x) as K(1 , 10 , 10 , 1) , u(x) as Control (6 , 18 , 18 , 6) . We mask the output of the Control (6 , 18 , 18 , 6) with matrix [0 , 0, 0, 1, 1, 1] s.t. the control only acts on the y term. We set ε = 1e -3,
+
+c = −0.1. We train the parameters with lr = 0 .1 for 300 steps. 
+
+Kernel We sample 10000 points from the safe region as the sample from initial distribution π0, we set 10000 zero data as the samples of the target distribution π1. We set the RBF kernel as k(z1, z2) = exp( −∥ z1 − z2∥2/h ), z = ( x⊤, y⊤)⊤
+
+with bandwidth h = 1 e − 3. To move the controlled system from π0 to π1, the controller is designed as, 
+
+u(z, t ) = E˜z0∼π0, ˜z1∼π1
+
+"
+
+˜z1 − z
+
+1 − tk( ˜z(t), z)
+
+E˜z0∼π0, ˜z1∼π1 [k( ˜z(t), z)] 
+
+#
+
+− f (z).
+
+Here we take the empirical expectation using samples ˜z0 ∼ π0 and ˜z1 ∼ π1, and we denote f (z) by the original drift term of the 3-link pendulum. 
+
+FESS+Kernel We directly apply our approximate projection operators in Eqs. (9)(6) to the Kernel controller, and denote the obtained controller as FESS+Kernel. We test these controllers and summarize the results in Fig. 7. In can be seen that although the kernel machine based controller performs poorly in this task, our framework can successfully improve the Kernel controller with safety and stability guarantee. 23

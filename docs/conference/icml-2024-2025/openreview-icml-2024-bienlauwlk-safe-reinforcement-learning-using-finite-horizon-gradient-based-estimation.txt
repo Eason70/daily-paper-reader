@@ -1,0 +1,2423 @@
+Title: Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation
+
+URL Source: https://openreview.net/pdf?id=BiENLaUwlK
+
+Number of Pages: 32
+
+Markdown Content:
+# Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+Juntao Dai 1 2 Yaodong Yang 3 Qian Zheng 1 2 Gang Pan 1 2 
+
+## Abstract 
+
+A key aspect of Safe Reinforcement Learning (Safe RL) involves estimating the constraint con-dition for the next policy, which is crucial for guiding the optimization of safe policy updates. However, the existing Advantage-based Estima-tion (ABE) method relies on the infinite-horizon discounted advantage function. This dependence leads to catastrophic errors in finite-horizon sce-narios with non-discounted constraints, result-ing in safety-violation updates. In response, we propose the first estimation method for finite-horizon non-discounted constraints in deep Safe RL, termed Gradient-based Estimation (GBE), which relies on the analytic gradient derived along trajectories. Our theoretical and empirical analy-ses demonstrate that GBE can effectively estimate constraint changes over a finite horizon. Con-structing a surrogate optimization problem with GBE, we developed a novel Safe RL algorithm called Constrained Gradient-based Policy Opti-mization (CGPO). CGPO identifies feasible opti-mal policies by iteratively resolving sub-problems within trust regions. Our empirical results reveal that CGPO, unlike baseline algorithms, success-fully estimates the constraint functions of subse-quent policies, thereby ensuring the efficiency and feasibility of each update. 
+
+## 1. Introduction 
+
+Reinforcement Learning (RL) (Sutton & Barto, 2018) stands as a powerful paradigm in artificial intelligence. Over the past few years, RL has achieved notable success across var-ious challenging tasks, such as video games (ElDahshan 
+
+> 1
+
+College of Computer Science and Technology, Zhejiang Uni-versity, Hangzhou, China 2The State Key Lab of Brain-Machine Intelligence, Zhejiang University, Hangzhou, China 3Center for AI Safety and Governance, Peking University, Beijing, China. Corre-spondence to: Qian Zheng <qianzheng@zju.edu.cn >, Gang Pan 
+
+<gpan@zju.edu.cn >.
+
+Proceedings of the 41 st International Conference on Machine Learning , Vienna, Austria. PMLR 235, 2024. Copyright 2024 by the author(s). (a) Cost Function (b) Relative Estimation Errors 
+
+Figure 1. Advantage-based Estimation fails even in simple envi-ronments under finite-horizon constraints. (a) The cost obtained by the agent while traversing along the x-axis, namely, ct = c(xt).(b) Relative errors in the estimation of changes in the finite-horizon cumulative constraint (i.e., P⊤ 
+
+> t=1
+
+ct ≤ b). The ABE method gen-erates relative errors even greater than 1.0, showing completely incorrect estimations. Refer to Appendix C for more details. 
+
+et al., 2022), robotic control (Okamura et al., 2000; Singh et al., 2022), Go (Silver et al., 2016; 2017), and the training of large language models (Ouyang et al., 2022; Rafailov et al., 2023). Recently, there has been a growing empha-sis on prioritizing the safety of policy learning. This shift is driven by the critical need for safety in real-world ap-plications, such as autonomous driving (Muhammad et al., 2020) and service robots (Bogue, 2017). In response, Safe RL (Garcıa & Fern ´andez, 2015) has emerged as a related paradigm, aiming to provide reliable and robust policy learning in the face of complex and dynamic environments. The Constrained Markov Decision Process (CMDP) (Alt-man, 1999) stands as a foundational framework of Safe RL, augmenting the traditional Markov Decision Process (MDP) (Puterman, 1990) by incorporating constraints. In most Safe RL benchmarks (Ray et al., 2019; Gronauer, 2022; Ji et al., 2023b), the common practical constraints are represented as non-discounted sums over finite trajec-tories, subject to scalar thresholds. However, existing deep Safe RL algorithms uniformly apply an infinite-horizon ap-proach, the Advantage-based Estimation (ABE) (Achiam et al., 2017), across all types of constraints. This fundamen-tal discrepancy hinders these algorithms’ ability to accu-rately predict the constraint values for subsequent policies, 1Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+thereby misleading the optimization direction in constrained problems. Our straightforward experiment illustrates this issue in Figure 1. Despite the simplicity of the task, the ABE method generates relative errors exceeding 1.0. To bridge the gap in estimating finite-horizon constraints, we introduce a new estimation methodology, Gradient-based Estimation (GBE). Unlike previous methods, GBE avoids re-liance on the infinite-horizon assumption, instead leveraging first-order gradients derived along finite trajectories (Mo-hamed et al., 2020). This approach facilitates precise esti-mation of constraints, particularly where a non-discounted cumulative sum over a finite horizon is compared against a scalar threshold. Utilizing the GBE, we construct the constrained surrogate problem and develop a novel Safe RL algorithm, called Constrained Gradient-based Policy Optimization (CGPO). Additionally, informed by an error analysis of GBE, we implement a trust region approach in the parameter space to mitigate errors and further ensure the feasibility of policy updates. Our contributions are threefold: (1) We introduce the GBE method, designed to estimate finite-horizon non-discounted constraints in Safe RL tasks, along with relevant theoreti-cal analysis. (2) We propose the CGPO algorithm. To our best knowledge, CGPO is the first deep Safe RL algorithm that can effectively address tasks with finite-horizon con-straints. Based on precise estimations of the GBE method, CGPO ensures the efficiency and feasibility of each update. Our analysis includes worst-case scenarios and introduces an adaptive trust region radius strategy for improved per-formance. (3) We develop a series of Safe RL tasks with differentiable dynamics to test our algorithm. Comparative evaluations demonstrate our algorithm’s superior update efficiency and constraint satisfaction against baselines. 
+
+## 2. Related Works 
+
+Differentiable RL. In many RL applications, the knowl-edge of the underlying transition function facilitates policy optimization through analytical gradients, a method known as Differentiable RL (Mohamed et al., 2020; Jaisson, 2022). The development of differentiable simulators (Degrave et al., 2019; Werling et al., 2021; Xian et al., 2023), which rep-resent systems as differentiable computational graphs, sig-nificantly advance this research area. Some well-known differentiable RL algorithms include BPTT (Mozer, 1995), POSD (Mora et al., 2021), and SHAC (Jie Xu et al., 2022). Moreover, differentiable RL techniques extend to model-based algorithms that access analytical gradients from World Models (Clavera et al., 2020; As et al., 2022; Parmas et al., 2023b). Our algorithm, consistent with other Differentiable RL methods, depends on either a differentiable simulator or the World Model method for modeling task environments. Considering the swift advancements in related techniques, we view this requirement optimistically. For further discus-sion, see Section 7. 
+
+Safe RL. The work closely related to ours focuses on on-policy deep Safe RL algorithms, which are categorized into Lagrangian and Convex Optimization methods (Xu et al., 2022). Lagrangian methods, such as PDO (Chow et al., 2018) and CPPO-PID (Stooke et al., 2020), alternate be-tween addressing the primal and the dual problems. The latest APPO (Dai et al., 2023) mitigates the oscillatory is-sue by augmenting a simple quadratic term. Convex Op-timization methods, such as CPO (Achiam et al., 2017) and CVPO (Liu et al., 2022), optimize based on the solu-tion to the primal problem. The latest method, CUP (Yang et al., 2022), divides updates into two steps: updating in the steepest direction first, then mapping into the feasible domain if constraints are violated. Above all methods use estimates of objective and constraint functions to formulate surrogate problems (Achiam et al., 2017), which we refer to as Advantage-based Estimation . Thus, the accuracy of estimates impacts the efficiency and feasibility of updates. However, research on finite-horizon constraints has been limited to non-deep Safe RL contexts (Kalagarla et al., 2021; Guin & Bhatnagar, 2023). Despite their prevalence in the Safe RL Benchmark, aforementioned deep Safe RL algorithms treat these constraints as if they were infinite-horizon (such as Safety-Gym (Ray et al., 2019), Bullet-Safety-Gym (Gronauer, 2022), Safety-Gymnasium (Ji et al., 2023b), and OmniSafe (Ji et al., 2023c)). This leads to poor constraint satisfaction within these benchmarks. 
+
+## 3. Preliminaries 
+
+3.1. Constrained Markov Decision Process 
+
+RL is typically framed as a Markov Decision Process (MDP) (Puterman, 2014), denoted M ≜ ⟨S , A, r, P, μ 0⟩,which encompasses the state space S, the action space A,a reward function r, the transition probability P , and the initial state distribution μ0. A stationary policy π represents a probability distribution defining the likelihood of taking action a in state s. The set Π symbolizes the collection of all such stationary policies. The primary objective of RL is to optimize the performance metric typically formulated as the total expected return over a finite horizon T , namely, 
+
+JR(π) = Eτ ∼π
+
+hPT −1 
+
+> t=0
+
+r(st, a t)
+
+i
+
+.Generally, Safe RL is formulated as a Constrained MDP (CMDP) (Altman, 1999), M ∪ C , augmenting the stan-dard MDP M with an additional set of constraints C. This constraint set C = {(ci, b i)}mi=1 consists of pairs of cost functions ci and corresponding thresholds bi. The constraint function is defined as the cumulative cost over the horizon 
+
+T , JCi (π) = Eτ ∼π
+
+hPT −1 
+
+> t=0
+
+ci (st, a t)
+
+i
+
+, and the feasible 2Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+policy set is ΠC = ∩mi=1 {π ∈ Π | J Ci (π) ≤ bi}. The objective of Safe RL is to find the optimal feasible policy, 
+
+π⋆ = arg max π∈ΠC JR(π).
+
+3.2. Advantage-based Estimation Method 
+
+By introducing the discount factor γ, we define the objective function for an infinite-horizon scenario as 
+
+J γR (π) = Eτ ∼π [P∞ 
+
+> t=0
+
+γtr(st, a t)] and the constraint function as J γCi (π) = Eτ ∼π [P∞ 
+
+> t=0
+
+γtci(st, a t)] . We express the infinite-horizon value function as V γπ (s) = 
+
+Eτ ∼π [P∞ 
+
+> t=0
+
+γtrt | s0 = s] and the state-action value func-tion as Qγπ (s, a ) = Eτ ∼π [P∞ 
+
+> t=0
+
+γtrt | s0 = s, a 0 = a].The infinite-horizon advantage function is Aγπ (s, a ) =
+
+Qγπ (s, a ) − V γπ (s). The discounted future state distribution 
+
+dγπ is denoted as dγπ (s) = (1 − γ) P∞ 
+
+> t=0
+
+γtP (st = s | π).Then, the difference in some metrics between two policies 
+
+π, π′ can be derived as (Kakade & Langford, 2002): 
+
+J γf (π′) − J γf (π) = 11 − γ Es∼dγπ′
+
+> a∼π′
+
+h
+
+Aγπ (s, a )
+
+i
+
+, (1) where J γf represents infinite-horizon J γR , J γC . Equation (1) is difficult to estimate since s ∼ dγπ′ is unknown. Achiam et al. (2017) approximates s ∼ dγπ′ with s ∼ dγπ and em-ploys importance sampling techniques to derive the follow-ing estimation: 
+
+¯J γf (π′) ≜ J γf (π) + 11 − γ Es∼dγπ
+
+> a∼π
+
+h π′(s, a )
+
+π(s, a ) Aπ (s, a )
+
+i
+
+, (2) where dπ and Aπ (s, a ) are both defined in the infinite-horizon format and it requires that γ̸ = 1 . Thus, algorithms based on Equation (2) have to treat all constraints as if they were infinite-horizon. 
+
+3.3. Policy Optimization with Differentiable Dynamics 
+
+Differentiable simulators (Freeman et al., 2021) represent physical rules using a differentiable computational graph, 
+
+st+1 = F(st, at), allowing them to participate in gradi-ent back-propagation process (Mohamed et al., 2020). The fundamental approach for policy optimization with differ-entiable physical dynamics is Back-propagation Through Time (BPTT) (Mozer, 2013). Multiple trajectories {τi}Ni=1 
+
+are collected from and then derivation is performed along the trajectory. Then, the loss function is 
+
+LBPTT = − 1
+
+N T 
+
+> N
+
+X 
+
+> i=1
+> T−1
+
+X
+
+> t=0
+
+r(sit, ait). (3) The Short-Horizon Actor-Critic (SHAC) approach (Jie Xu et al., 2022) modifies BPTT by ultilizing the value function 
+
+V to segment trajectories into sub-windows of length h:
+
+LSHAC = − 1
+
+N h 
+
+> N
+
+X
+
+> i=1
+
+h t0+h−1X
+
+> t=t0
+
+γt−t0 r(sit, ait)+ γhV (sit0+h)
+
+i
+
+.
+
+(4) This change limits the maximum length for gradient back-propagation to h, thereby mitigating the issues of gradient vanishing/exploding and making the training more stable. 
+
+## 4. Constrained Surrogate Problem using Gradient-based Estimation 
+
+Differentiable environments represent physical dynamics as differentiable computational graphs, allowing first-order gradients of objective and constraint functions to be derived via gradient back-propagation along trajectories. In this section, we propose a new estimation method based on this feature, called Gradient-based Estimation (GBE). It facil-itates more accurate approximations for the next police’s objective and constraint functions, which leads to a new constrained surrogate problem for solving Safe RL. 
+
+4.1. Gradient-based Estimation for Objective and Constraint Functions 
+
+Consider a parameterized policy πθ within a parameter space Θ, e.g., represented by a neural network. In the context of differentiable environments, both the objective function JR(θ) and the constraint function JC (θ) can be regarded as differentiable over Θ. Consequently, we can compute the first-order gradients of them along the trajec-tories, denoted as ∇θ JR(θ) and ∇θ JC (θ), through back-propagation. For simplicity and generality, we will focus on a single constraint scenario, though the method applies to multiple constraints via corresponding matrix operations. For a minor update δ in the policy parameter space, transi-tioning from θ0 to θ0 + δ, consider the function Jf , which encapsulates both the objective function JR and the con-straint function JC . We perform a first-order Taylor expan-sion of Jf at θ0 to obtain: 
+
+Jf (θ0 + δ) = Jf (θ0) + δ⊤∇θ Jf (θ0)+ 12 δ⊤∇2 
+
+> θ
+
+Jf (θ0 + tδ)δ. (5) Wherein, t ∈ (0 , 1) and 12 δ⊤∇2 
+
+> θ
+
+Jf (θ0 + tδ)δ represents the Peano remainder term, which is o(∥δ∥). When δ is suffi-ciently small, the remainder term becomes negligible. There-fore, we propose the Gradient-based Estimation method to estimate the values of the objective and constraint functions after a minor update δ from θ0 as follows: 
+
+ˆJR(θ0 + δ) ≜ JR(θ0) + δ⊤∇θ JR(θ0), (6) 
+
+ˆJC (θ0 + δ) ≜ JC (θ0) + δ⊤∇θ JC (θ0). (7) 3Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+Regarding the error analysis for these estimates, the follow-ing lemma states: 
+
+Lemma 4.1. Assume θ0 ∈ Θ and Jf (θ) is twice dif-ferentiable in a neighborhood surrounding θ0. Let δ be a small update from θ0. If we estimate Jf (θ0 + δ) as 
+
+ˆJf (θ0 + δ) = Jf (θ0) + δ⊤∇θ Jf (θ0) and given that 
+
+ϵ = max t∈(0 ,1) ∇2 
+
+> θ
+
+JR(θ0 + tδ) , the estimation error can be bounded as: 
+
+ˆJf (θ0 + δ) − J f (θ0 + δ) ≤ 12 ϵ∥δ∥22. (8) 
+
+Proof. The primary source of estimation error is the neglect of higher-order infinitesimal remainders. Thus, the error is 
+
+ˆJf (θ0 + δ) − J f (θ0 + δ) = 12 δ⊤∇2 
+
+> θ
+
+Jf (θ0 + tδ)δ ≤ 
+
+> 12
+
+ϵ∥δ∥22. See Appendix A.1 for more details. This finding indicates that as policy parameters are updated from θ0 to θ0 + δ, the upper bounds of the estimation errors for both the objective and constraint functions are positively correlated with the square of the L2 norm of the update vector δ. Consequently, when employing ˆJR and 
+
+ˆJC as surrogate objective and constraint functions, meticu-lous control over the magnitude of these updates becomes essential. By carefully managing ∥δ∥22, we could ensure that the estimation error remains within an acceptable range, thus facilitating both effective performance improvement and precise adherence to constraints. 
+
+4.2. Constrained Surrogate Problem within Trust Region 
+
+Based on the analysis of Theorem 4.1, the idea of control-ling the error by managing ∥δ∥22 naturally aligns with the concept of trust regions (Schulman et al., 2015; Meng et al., 2022). Given a trust region radius ˆδ, we suppose that up-dated parameter θk+1 of the kth iteration within the trust region Θk =
+
+n
+
+θ ∈ Θ | ∥ θ − θk∥2 ≤ ˆδ
+
+o
+
+are credible. By employing the approximations of the objective function in Equation (6) and the constraint function in Equation (7) ,We transform the solution of the primal Safe RL problem into an iterative process of solving a series of sub-problems within predefined trust regions. Given the initial policy parameter θk of the kth iteration, our sub-problem targets finding the next optimal and credible parameter θk+1 ∈ Θk,which not only maximize the surrogate objective function 
+
+ˆJR(θk+1 ) but also conform to the surrogate constraint 
+
+ˆJC (θk+1 ) ≤ b. Thus, the surrogate sub-problem within a given trust region at kth iteration can be represented as: 
+
+θk+1 = arg max  
+
+> θ∈Θ
+
+(θ − θk)⊤ ∇θ JR(θk)
+
+s.t. JC (θk) + ( θ − θk)⊤ ∇θ JC (θk) ≤ b
+
+(θ − θk)⊤ (θ − θk) ≤ ˆδ. 
+
+(9) 𝒈 𝒒    
+
+> (b) Entire trust
+> region is feasible
+> 𝒈
+> 𝒒
+> (a) Entire trust
+> region is infeasible
+> (c) Trust region intersects
+> with feasible region
+> Feasible Infeasible Trust Region
+> 𝒈 𝒒
+
+Figure 2. The computational relationship between the policy up-date δ, the gradient of the objective function g, and the gradient of the constraint function g varies in three scenarios. 
+
+## 5. Constrained Gradient-based Policy Optimization 
+
+Based on the constrained surrogate sub-problem in Equa-tion (9) , we develop a novel Safe RL algorithm named 
+
+Constrained Gradient-based Policy Optimization (CGPO). 
+
+5.1. Solution to Surrogate Sub-problem Notations. Considering the kth iteration within the trust re-gion Θk, we introduce additional notations to make the dis-cussion more concise: gk ≜ ∇θ JR(θk), gk ≜ ∇θ JC (θk),
+
+ck ≜ JC (θk) − b, and δ ≜ θ − θk. With these definitions, we rewrite the sub-problem (9) within the trust region: 
+
+max  
+
+> δ
+
+g⊤ 
+
+> k
+
+δ s.t. ck + q⊤ 
+
+> k
+
+δ ≤ 0, δ⊤δ ≤ ˆδ (10) Since the sub-problem (10) may have no solution, we first discuss the conditions under which this problem is unsolv-able. The following theorem holds: 
+
+Theorem 5.1 (Solvability Conditions for the Sub-problem) .
+
+The sub-problem (10) is unsolvable if and only if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk −
+
+ˆδ > 0 and ck > 0.Proof. Consider whether there is an intersection between the trust region and the feasible half-space. For a detailed proof, refer to Appendix A.2.1. Through a similar proof, we arrive at the following corollary: 
+
+Corollary 5.2. θ is deemed feasible for every θ within Θk if and only if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδ > 0 and ck ≤ 0 are both satisfied. 
+
+Based on Theorem 5.1 and Corollary 5.2, we solve for θk+1 
+
+of sub-problem (9) in three different scenarios, as illustrated in Figure 2. 4Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+(a) If c2/q⊤q − ˆδ > 0 and c > 0, the entire trust region is infeasible. We update the policy along the direction of the steepest descent of the constraint function, namely, 
+
+θk+1 = θk −√ˆδ  
+
+> ∥qk∥
+
+qk.
+
+(b) If c2/q⊤q − ˆδ > 0 and c ≤ 0, the trust region lies entirely within the constraint-satisfying half-space. Similarly, we update along the direction of the steep-est ascent of the objective function, namely, θk+1 =
+
+θk +
+
+√ˆδ  
+
+> ∥gk∥
+
+gk.
+
+(c) In other cases, the trust region partially intersects with the feasible region, so we have to solve the constrained quadratic sub-problem (10). The sub-problem (10) is characterized as convex. When the trust region is partially feasible, the existence of at least one strictly feasible point is guaranteed. Consequently, strong duality holds as the conditions of Slater’s theorem are ful-filled. By introducing two dual variables λ and ν, we con-struct the dual function of the primal problem as follows: 
+
+L(δ, λ, ν ) = −g⊤ 
+
+> k
+
+δ + ν  ck + q⊤ 
+
+> k
+
+δ + λ
+
+2
+
+
+
+δ⊤δ − ˆδ
+
+
+
+(11) Since the sub-problem (10) satisfies the strong duality condi-tion, any pair of primal and dual optimal points (δ∗ 
+
+> k
+
+, λ ∗
+
+> k
+
+, ν ∗ 
+
+> k
+
+)
+
+must satisfy the KKT conditions, namely, 
+
+∇δ L(δ, λ, ν ) = −gk + νqk + λδ = 0 , (12) 
+
+ν  ck + q⊤ 
+
+> k
+
+δ = 0 , (13) 
+
+λ
+
+
+
+δ⊤δ − ˆδ
+
+
+
+= 0 , (14) 
+
+ck + q⊤ 
+
+> k
+
+δ ≤ 0, δ⊤δ − ˆδ ≤ 0, ν ≥ 0, λ ≥ 0. (15) Note that the optimal dual variables (λ∗
+
+> k
+
+, ν ∗ 
+
+> k
+
+) for Equa-tion (12) - (15) can be directly expressed as a function of gk
+
+and qk. We provide their pseudo-code in Algorithm 2. For a detailed solution process of Equation (12) - (15) , refer to Appendix A.2.2. Then, following the derivation from Equa-tion (12), we update the policy by θk+1 = θk + gk −ν∗ 
+
+> kqk
+> λ∗
+> k
+
+.So far, the three scenarios for updating policies by solving the surrogate sub-problem (9) have been fully presented. This forms the core component of our CGPO algorithm. 
+
+5.2. Worst-Case Analysis 
+
+In the following theorem, we detail the bounds for perfor-mance update and constraint violations under the worst-case scenarios after the policy update which results from solving the surrogate sub-problem (9). 
+
+Theorem 5.3 (Worst-Case Performance Update and Con-straint Violation) . Suppose θk, θk+1 ∈ Θ are related by Equation (9) . If θk is feasible, a lower bound on the policy performance difference between θk+1 and θk is 
+
+JR(θk+1 ) − J R(θk) ≥ − 12 ϵRk ˆδ (16) 
+
+where ϵRk = max t∈(0 ,1) ∇2 
+
+> θ
+
+JR(θk + t(θk+1 − θk)) .An upper bound on the constraint objective function of θk+1 
+
+is 
+
+JC (θk+1 ) ≤ b + 12 ϵCk ˆδ, (17) 
+
+where ϵCk = max t∈(0 ,1) ∇2 
+
+> θ
+
+JC (θk + t(θk+1 − θk)) .Proof. See Appendix A.3. Theorem 5.3 ensures that the application of the update method purposed in Section 5.1, even in the worst-case scenario, will not drastically reduce performance or severely violate constraints with each iteration. This provides theoret-ical support for the stability and reliability of the algorithm. Moreover, according to Theorem 5.3, the bounds for per-formance update and constraint violation are related to ϵRk
+
+and ϵCk , which are challenging to obtain in practice. There-fore, we indirectly mitigate their impact through an adap-tive radius ˆδ. Based on Equation (16) and (17) , we define two new metrics, the reduction ratio ρk for the objective 
+
+JR and the toleration ratio ζk for the constraint, namely, 
+
+ρk ≜ JR(θk )−J R(θk+1 )ˆJR(θk )− ˆJR(θk+1 ) , ζk ≜ |b−J C (θk+1 )|
+
+|JC (θk+1 )− ˆJC (θk+1 )| .
+
+The reduction ratio ρk evaluates the consistency between es-timated and actual changes in the objective function. The tol-eration ratio ζk assesses error tolerance in the constraint sat-isfaction, suggesting more cautious updates as it approaches the threshold. If ρk and ζk fall short of expectations, we adjust the update radius ˆδ accordingly. Given thresholds 
+
+0 < η 1 < η 2 < 1 and update rates 0 < β 1 < 1 < β 2 within the ˆδ range of [δ, δ ], we derive the following ˆδ update rule: 
+
+ˆδk+1 =
+
+
+
+max( β1 ˆδk, δ ) if ρk < η 1 | ζk < η 1,
+
+ˆδk otherwise ,
+
+min( β2 ˆδk, δ ) if ρk ≥ η2 & ζk ≥ η2.
+
+(18) The above adaptive approach can be considered a plugin for CGPO, transforming a challenging-to-tune parameter into several more manageable parameters, thereby enhancing the algorithm’s stability and convergence. 
+
+5.3. Practical Implementation 
+
+Given our focus on employing gradients to solve Safe RL problems, our algorithm can incorporate any differentiable method to compute gradients gk and qk. Various methods are available, broadly classified into two categories: the 5Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation trajectory #1               
+
+> ℱℱ
+> 𝜋 !
+> ℱℱ
+> 𝜋 !
+> ℱ
+> 𝑠 !!"#$%
+> 𝑠 !!"#$%𝑎 !!"#$%
+> ℱ
+> ⋯⋯𝑉 "
+> #
+> ℱℱ
+> 𝑉 $
+> %
+> 𝑠 !!"#
+> 𝑠 !!"#
+> ⋯
+> ⋯
+> ⋯
+> trajectory #2
+> trajectory #N
+> ℱℱ
+> 𝜋 !
+> 𝑠 !!"%
+> 𝑠 !!"%𝑎 !!"%
+> 𝑅 !!"#,𝐶 !!"#𝑅 !!"$,𝐶 !!"$𝑅 !!"%&#,𝐶 !!"%&#𝑅 !!"%,𝐶 !!"%
+> ℱℱ
+> 𝜋 !
+> 𝑠 !!
+> 𝑠 !!
+> 𝑎 !!
+> 𝑅 !!,𝐶 !!
+
+Figure 3. Gradient computation graph for the short-horizon ap-proach. Here, F(s) represents the differentiable dynamics of the environment, R is the reward signal, C is the cost signal, πθ is the parameterized policy, and V Rϕ and V Cϕ are the value functions for the return and constraint. 
+
+Zero-order Batch Gradient (ZoBG) method and the First-order Batch Gradient (FoBG) method (Suh et al., 2022). In this section, we present an example implementation of CGPO based on a variant of SHAC (Jie Xu et al., 2022), which is a FoBG method. Due to space limitations, we leave the discussion comparing ZoBG and FoBG in the Appendix B. Our empirical results show that the advantages of FoBG are more suited for the Safe RL field. The short-horizon approach from SHAC segments the en-tire trajectory into sub-windows using the value function, improving differentiability and smoothing the optimization space. In constrained tasks, we need to compute the ob-jective gradients gk and the constraint gradients qk within the same computational graph. Consequently, the entire computational graph, as Figure 3, is associated with the corresponding loss of objective and constraint functions: 
+
+LR(θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+h t0+h−1X
+
+> t=t0
+
+r(sit, ait) + V Rϕ (sit0+h)
+
+i
+
+, (19) 
+
+LC (θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+h t0+h−1X
+
+> t=t0
+
+c(sit, ait) + V Cψ (sit0+h)
+
+i
+
+. (20) Please see Appendix A.4 for detailed calculations. After updating the policy πθ , we use these trajectory {τi}Ni=1 
+
+to update critic networks V Rπ and V Cψ . Considering that the constraint function is an accumulative sum over a finite trajectory, it is necessary for the time step t to be accepted by the critic network to construct value functions V (sit, t )
+
+for finite-horizon return. 
+
+LλV = 1
+
+N h 
+
+> N
+
+X
+
+> i=1
+> h−1
+
+X
+
+> t=0
+
+
+
+Gλ,i t − V (sit, t )
+
+2
+
+(21) where Gλ,i t is the estimated value computed through the TD( λ) formulation (Sutton & Barto, 2018). Refer to Ap-pendix A.5 for more details. The pseudo-code of CGPO is provided in Algorithm 1. 
+
+Algorithm 1 Constrained Gradient-based Policy Optimiza-tion (CGPO) 
+
+Input: Initialize policy πθ0 , critic Vϕ0 and V c 
+
+> ψ0
+
+, radius 
+
+ˆδ0, and number of iterations K.
+
+for k = 1 , 2, . . . , K do 
+
+Sample a set of trajectories D = {τ } ∼ πθk .Compute the gk, qk using (19) and (20). 
+
+if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδk ≥ 0 and ck > 0 then 
+
+Update the policy as θk+1 = θk −√ˆδk  
+
+> ∥qk∥
+
+qk.
+
+else if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδk ≥ 0 and ck < 0 then 
+
+Update the policy as θk+1 = θk +
+
+√ˆδk  
+
+> ∥gk∥
+
+gk.
+
+else 
+
+Compute dual variables λ∗
+
+> k
+
+, ν∗ 
+
+> k
+
+using Algorithm 2. Update the policy as θk+1 = θk + gk −ν∗ 
+
+> kqk
+> λ∗
+> k
+
+.
+
+end if 
+
+Update Vϕk , V c 
+
+> ψk
+
+using (21), and ˆδk+1 using (18). 
+
+end for Output: Policy πθK .
+
+## 6. Experiments 
+
+We conduct experiments to validate the effectiveness of our proposed CGPO. Our focus is primarily on four aspects: • CGPO outperforms the baseline algorithms in Safe RL, demonstrating more efficient performance improvement and more precise constraint satisfaction (Section 6.2). • CGPO employs the GBE method to obtain accurate esti-mations, unlike the ABE method fails (Section 6.3). • CGPO can overcome the differentiability requirements through Model-based approaches (Section 6.4). • CGPO can achieve more stable constraint convergence through an adaptive trust region radius (Section 6.5). 
+
+6.1. Experimental Details 
+
+Please refer to Appendix E for the detailed implementation of experimental tasks and Appendix F for baseline algo-rithms. 
+
+Differentiable Safe RL environments. Due to the lack of differentiable Safe RL environments, we develop a se-ries of constrained differentiable tasks on an open-source differentiable physics engine Brax (Freeman et al., 2021). These tasks are based on four differentiable robotic control tasks in Brax (CartPole, Reacher, Half Cheetah, and Ant), with the addition of two common constraints: limiting po-sition(Achiam et al., 2017; Ji et al., 2023b) and limiting velocity(Zhang et al., 2020). It is important to note that while adding these constraints, we maintained the differen-tiability of the physical dynamics. 6Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation (a) CartPole (b) Reacher (c) Half Cheetah (d) Ant 
+
+> Return Constraint
+
+Environment Steps Environment Steps Environment Steps Environment Steps 
+
+Figure 4. Training curves of certain algorithms on different tasks, showing episodic return and constraint for 5 random seeds. Solid lines represent the mean, while the shaded areas indicate variance, without any smoothing to the curves. CGPO demonstrates superior efficiency in improvement and constraint satisfaction. The rest of the training curves can be found in Appendix D.1. 
+
+Table 1. The number of environmental steps to converge to a feasible optimal solution (Conv. Steps), and the proportion of constraint violations during updates in safety-critical areas (Vio. Ratio) for various algorithms. CGPO significantly outperforms others in both metrics. The calculation methods of metrics are explained in Appendix F.2.                                                                            
+
+> CartPole Reacher HalfCheetah Ant Algorithms Conv. Steps ↓Vio. Ratio (%) ↓Conv. Steps ↓Vio. Ratio (%) ↓Conv. Steps ↓Vio. Ratio (%) ↓Conv. Steps ↓Vio. Ratio (%) ↓
+> PDO 4.99e+06 12.01 3.99e+06 64.42 3.43e+06 74.58 1.70e+07 51.84 APPO 5.95e+06 6.59 4.22e+06 46.04 3.58e+06 18.33 1.08e+07 9.54 CPO 6.72e+06 5.96 1.98e+06 30.68 5.81e+06 -†1.69e+07 24.56 CUP 6.84e+06 19.21 7.76e+06 56.12 5.12e+06 57.40 9.29e+06 29.79 BPTT-LAG 3.84e+06 23.99 2.73e+06 67.88 2.32e+06 61.56 2.13e+07 -†
+> SHAC-LAG 2.32e+06 46.31 2.96e+06 50.59 3.15e+06 65.90 1.67e+07 57.53
+> CGPO 1.77e+06 3.96 1.15e+06 14.29 2.02e+06 7.31 8.52e+06 6.44
+> †: The empty entries result from the corresponding algorithms failing to find the optimal feasible policy, leading to a lack of updates in the safety-critical region.
+
+Baselines. We compared CGPO with two categories of algorithms. First, we compare it with traditional Safe RL methods, including both classic and latest Primal-Dual meth-ods: PDO (Chow et al., 2018) and APPO (Dai et al., 2023), as well as classic and latest Primal methods: CPO (Achiam et al., 2017) and CUP (Yang et al., 2020). Secondly, we combined the current SOTA differentiable algorithms, BPTT (Mozer, 2013) and SHAC (Jie Xu et al., 2022), with the Lagrangian method to satisfy constraints. Specifically, we used the Lagrange multiplier λ to trade off the objective 
+
+JR and the constraint JC . The refined algorithms are later termed as BPTT-Lag and SHAC-Lag. 
+
+6.2. Overall Performance 
+
+Figure 4 shows the learning curves of different algorithms across various tasks. We observe that CGPO not only con-verges to a constraint-satisfying policy more quickly and stably than baseline algorithms but also demonstrates en-hanced efficiency in improving performance. 
+
+Compared to conventional Safe RL algorithms, CGPO demonstrates superiority in both constraint satisfaction and sample efficiency. Firstly, as illustrated in Figure 4, CGPO exhibits more precise control over constraints. In scenar-ios where constraint satisfaction conflicts with performance improvement (i.e., CartPole), CGPO can strictly adhere to constraint thresholds to achieve higher performances. Addi-tionally, as shown in Table 1, CGPO significantly reduces the proportion of constraint violations in critical safety zones compared to other baseline algorithms. The advantage of CGPO in constraint satisfaction largely sources from the ac-curacy of the GBE method, which will be further discussed in Section 6.3. Secondly, CGPO demonstrates higher sam-ple efficiency by directly employing analytical gradients, as opposed to Monte Carlo sampling estimation. As shown in Table 1, CGPO requires less than 28.8%-91.7% of samples at convergence compared to baselines. This finding aligns with previous works (Mora et al., 2021; Jie Xu et al., 2022). 7Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation (a) FunctionEn v (b) HalfCheetah       
+
+> Figure 5. GBE and ABE errors across four training stages for equal step length updates and averaging over 100 repetitions, where Relative Error =Estimation Error Constraint Change . GBE effectively predicts the con-straint function of the next policy without failing like ABE. (b) Non -Diff. Swimmer (a) Non -Diff. FunctionEnv
+> Figure 6. CGPO uses gradients from the World Models in non-differentiable tasks. The grey shading represents predictions from the World Model.
+
+Compared to SHAC-Lag and BPTT-Lag, CGPO exhibits more stable convergence. As Figure 4 illustrates, while SHAC-Lag and BPTT-Lag achieve efficient sample utiliza-tion, they oscillate near the threshold. This behavior sources from an inherent issue of Lagrangian methods: the delayed response of dual variables to constraint violations (Platt & Barr, 1987; Wah et al., 2000). Such delays result in inherent oscillations and cost overshoots. 
+
+6.3. Ablation on Estimation Errors 
+
+The enhanced performance of CGPO in our experiments pri-marily results from the GBE method’s accurate estimation of finite-horizon constraints for future policies, a task at which the ABE method fails. Our ablation results to compare GBE and ABE errors are illustrated in Fig. 5. We observe that the estimation error of GBE is much smaller than that of ABE; the relative error of ABE even exceeds 1.0, highlighting its almost ineffectiveness. Thus, solutions from the ABE-based surrogate optimization problem are not as feasible for the (b) An t(a) HalfCheetah    
+
+> Figure 7. Adaptive trust region radius ˆδenables CGPO to achieve better performance improvements and constraint satisfaction.
+
+primal Safe RL problem, preventing traditional algorithms from precisely meeting safety constraints. In the HalfCheetah task, errors are higher than in the Func-tionEnv task, primarily due to the reduced system differen-tiability. This exposes a limitation of CGPO, its potential failure in poorly differentiable systems. CGPO has the po-tential to overcome it by training a World Model for gradient provision, as discussed in the next section. 
+
+6.4. Ablation on World Model Augmentation 
+
+In systems with limited differentiability, we can access ana-lytic gradients by training a World Model. The fundamental implementation of the model-based CGPO algorithm is pre-sented by Algorithm 3. We evaluate its efficacy on two non-differentiable tasks, with specific settings described in Appendix F.4. As shown in Figure 6, the implementa-tion of a World Model enables CGPO to achieve improved performance while adhering to safety constraints in envi-ronments with limited differentiability. This demonstrates that the World Model has the potential to expand CGPO to a broader range of applications, overcoming the limitations of environmental differentiability. Nonetheless, incorporating the World Model incurs additional time and computational overhead, necessitating further optimization. 
+
+6.5. Ablation on Adaptive Trust Region Radius 
+
+Our method dynamically adjusts the trust region radius ˆδ
+
+to maintain estimation error within a tolerable limit. Adap-tive ˆδ, as Figure 7 demonstrates, enhances performance and ensures more accurate adherence to constraints than a static radius. The learning curve of the adaptive radius has two phases: initially, it prioritizes improvements in efficient performance, ensuring consistency between actual and pre-dicted performance changes, while achieving more larger updates. Later, as policy updates approach constraint limits, the focus shifts to reducing estimation errors within the con-straint budget, thereby preventing violations. More ablation 8Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+studies on the hyper-parameters of radius adaptation can be found in Appendix D.2 
+
+## 7. Limitation and Future Works 
+
+Although our algorithm demonstrates theoretical and em-pirical superiority over baseline algorithms, it has certain limitations. Like other differentiable reinforcement learning methods, CGPO relies on environmental differentiability. As discussed in Section 6.3, systems with poor differen-tiability are susceptible to environmental noise, resulting in increased system errors and reduced precision in GBE estimation. While CGPO mitigates the upper bound of worst-case estimation errors through an adaptive trust re-gion radius method, an excessively small radius can reduce update efficiency. We identify three promising solutions to address this lim-itation. First, advancing differentiable physics engines to enhance environmental differentiability (Degrave et al., 2019; Freeman et al., 2021; Howell et al., 2022). Second, developing algorithms to minimize system errors at the software level (Metz et al., 2021), such as the reparame-terization technique (Lee et al., 2018). Third, providing analytic gradients for systems with poor differentiability through more accurate world model training (Parmas et al., 2023a). In Section 6.4, we discuss this approach and its basic implementation using a two-layer Multi-Layer Percep-tron (MLP) (Popescu et al., 2009), resulting in low-precision gradients from the world model. For future work, it is crucial to develop a more universal framework based on our algorithm that incorporates the three aforementioned approaches to mitigate existing limita-tions. Additionally, we plan to extend the application of our algorithm to fields beyond robotic control (He et al., 2024; Wang et al., 2024), such as the safety alignment (Ji et al., 2023a) of large language models (Ji et al., 2024b; Dai et al., 2024; Ji et al., 2024a) and autonomous driving (Das et al., 2016; Muhammad et al., 2020). 
+
+## 8. Conclusion 
+
+Since current deep Safe RL algorithms uniformly apply an infinite-horizon approach to all constraints, they fail to guarantee the feasibility of each update. In this paper, we introduce the Gradient-based Estimation (GBE) method to bridge the gap of finite-horizon constraint estimation in deep Safe RL. Based on GBE, we formulate a surrogate optimization problem and propose the first deep Safe RL algorithm, named Constrained Gradient-based Policy Opti-mization (CGPO), able to handle tasks with finite-horizon constraints. CGPO leverages precise GBE estimations to ensure the efficiency and feasibility of each update. We also present a differentiable Safe RL environment for algorithm testing. Comparative evaluations reveal that our algorithm outperforms baselines in terms of update efficiency and constraint satisfaction. 
+
+## Acknowledgements 
+
+This research is supported by the Natural Science Founda-tion of China (No. 61925603), STI 2030 Major Projects (2021ZD0200400) 
+
+## Impact Statement 
+
+This paper presents work whose goal is to advance the field of machine learning, specifically focusing on RL within differentiable simulation environments or world models. There are many potential societal consequences of our work, none of which we feel must be specifically highlighted here. 
+
+## References 
+
+Achiam, J., Held, D., Tamar, A., and Abbeel, P. Constrained policy optimization, 2017. Altman, E. Constrained Markov decision processes , vol-ume 7. CRC press, 1999. As, Y., Usmanova, I., Curi, S., and Krause, A. Constrained policy optimization via bayesian world models. arXiv preprint arXiv:2201.09802 , 2022. Bogue, R. Robots that interact with humans: a review of safety technologies and standards. Industrial Robot: An International Journal , 44(4):395–400, 2017. Chow, Y., Ghavamzadeh, M., Janson, L., and Pavone, M. Risk-constrained reinforcement learning with percentile risk criteria. Journal of Machine Learning Research , 18 (167):1–51, 2018. Clavera, I., Fu, V., and Abbeel, P. Model-augmented actor-critic: Backpropagating through paths. arXiv preprint arXiv:2005.08068 , 2020. Dai, J., Ji, J., Yang, L., Zheng, Q., and Pan, G. Augmented proximal policy optimization for safe reinforcement learn-ing. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 37, pp. 7288–7295, 2023. Dai, J., Pan, X., Sun, R., Ji, J., Xu, X., Liu, M., Wang, Y., and Yang, Y. Safe RLHF: Safe reinforcement learn-ing from human feedback. In The Twelfth International Conference on Learning Representations , 2024. URL 
+
+https://openreview.net/forum?id=TyFr POKYXw .Das, B., Subudhi, B., and Pati, B. B. Cooperative formation control of autonomous underwater vehicles: An overview. 9Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+International Journal of Automation and computing , 13: 199–225, 2016. Degrave, J., Hermans, M., Dambre, J., et al. A differentiable physics engine for deep learning in robotics. Frontiers in neurorobotics , pp. 6, 2019. ElDahshan, K. A., Farouk, H., and Mofreh, E. Deep re-inforcement learning based video games: A review. In 
+
+2022 2nd International Mobile, Intelligent, and Ubiq-uitous Computing Conference (MIUCC) , pp. 302–309. IEEE, 2022. Freeman, C. D., Frey, E., Raichuk, A., Girgin, S., Mordatch, I., and Bachem, O. Brax - a differentiable physics en-gine for large scale rigid body simulation. In Thirty-fifth Conference on Neural Information Processing Systems Datasets and Benchmarks Track (Round 1) , 2021. Garcıa, J. and Fern ´andez, F. A comprehensive survey on safe reinforcement learning. Journal of Machine Learning Research , 16(1):1437–1480, 2015. Gronauer, S. Bullet-safety-gym: A framework for con-strained reinforcement learning. 2022. Guin, S. and Bhatnagar, S. A policy gradient approach for finite horizon constrained markov decision processes. In 
+
+2023 62nd IEEE Conference on Decision and Control (CDC) , pp. 3353–3359. IEEE, 2023. He, X., Hu, Z., Yang, H., and Lv, C. Personalized robotic control via constrained multi-objective reinforcement learning. Neurocomputing , 565:126986, 2024. Howell, T. A., Cleac’h, S. L., Br ¨udigam, J., Kolter, J. Z., Schwager, M., and Manchester, Z. Dojo: A differ-entiable physics engine for robotics. arXiv preprint arXiv:2203.00806 , 2022. Jaisson, T. Deep differentiable reinforcement learning and optimal trading. Quantitative Finance , 22(8):1429–1443, 2022. Ji, J., Qiu, T., Chen, B., Zhang, B., Lou, H., Wang, K., Duan, Y., He, Z., Zhou, J., Zhang, Z., et al. Ai alignment: A comprehensive survey. arXiv preprint arXiv:2310.19852 ,2023a. Ji, J., Zhang, B., Zhou, J., Pan, X., Huang, W., Sun, R., Geng, Y., Zhong, Y., Dai, J., and Yang, Y. Safety-gymnasium: A unified safe reinforcement learning bench-mark. arXiv preprint arXiv:2310.12567 , 2023b. Ji, J., Zhou, J., Zhang, B., Dai, J., Pan, X., Sun, R., Huang, W., Geng, Y., Liu, M., and Yang, Y. Omnisafe: An infrastructure for accelerating safe reinforcement learning research. arXiv preprint arXiv:2305.09304 , 2023c. Ji, J., Chen, B., Lou, H., Hong, D., Zhang, B., Pan, X., Dai, J., and Yang, Y. Aligner: Achieving efficient align-ment through weak-to-strong correction. arXiv preprint arXiv:2402.02416 , 2024a. Ji, J., Liu, M., Dai, J., Pan, X., Zhang, C., Bian, C., Chen, B., Sun, R., Wang, Y., and Yang, Y. Beavertails: Towards improved safety alignment of llm via a human-preference dataset. Advances in Neural Information Processing Sys-tems , 36, 2024b. Jie Xu, V., Makoviychuk, Y., and Narang, F. R. Accelerated policy learning with parallel differentiable simulation. In 
+
+ICLR , 2022. Kakade, S. and Langford, J. Approximately optimal approx-imate reinforcement learning. In Proceedings of the Nine-teenth International Conference on Machine Learning ,ICML ’02, pp. 267–274, San Francisco, CA, USA, 2002. Morgan Kaufmann Publishers Inc. ISBN 1558608737. Kalagarla, K. C., Jain, R., and Nuzzo, P. A sample-efficient algorithm for episodic finite-horizon mdp with constraints. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 35, pp. 8030–8037, 2021. Lee, W., Yu, H., and Yang, H. Reparameterization gradi-ent for non-differentiable models. Advances in Neural Information Processing Systems , 31, 2018. Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., and Zhao, D. Constrained variational policy optimization for safe reinforcement learning. In International Conference on Machine Learning , pp. 13644–13668. PMLR, 2022. Meng, W., Zheng, Q., Shi, Y., and Pan, G. An off-policy trust region policy optimization method with monotonic improvement guarantee for deep reinforcement learning. 
+
+IEEE Transactions on Neural Networks and Learning Systems , 33(5):2223–2235, 2022. doi: 10.1109/TNNLS. 2020.3044196. Metz, L., Freeman, C. D., Schoenholz, S. S., and Kach-man, T. Gradients are not all you need. arXiv preprint arXiv:2111.05803 , 2021. Mohamed, S., Rosca, M., Figurnov, M., and Mnih, A. Monte carlo gradient estimation in machine learning. The Journal of Machine Learning Research , 21(1):5183–5244, 2020. Mora, M. A. Z., Peychev, M., Ha, S., Vechev, M., and Coros, S. Pods: Policy optimization via differentiable simulation. In Meila, M. and Zhang, T. (eds.), Proceedings of the 38th International Conference on Machine Learning , volume 139 of Proceedings of Machine Learning Research , pp. 7805–7817. PMLR, 18–24 Jul 2021. 10 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+Mozer, M. A focused backpropagation algorithm for tem-poral pattern recognition. Complex Systems , 3, 01 1995. Mozer, M. C. A focused backpropagation algorithm for temporal pattern recognition. In Backpropagation , pp. 137–169. Psychology Press, 2013. Muhammad, K., Ullah, A., Lloret, J., Del Ser, J., and de Al-buquerque, V. H. C. Deep learning for safe autonomous driving: Current challenges and future directions. IEEE Transactions on Intelligent Transportation Systems , 22 (7):4316–4336, 2020. Nilsson, J., Fredriksson, J., and Coelingh, E. Trajectory planning with miscellaneous safety critical zones**this work was supported by ffi - strategic vehicle research and innovation. IFAC-PapersOnLine , 50(1):9083–9088, 2017. ISSN 2405-8963. doi: https://doi.org/10.1016/j.ifacol.2 017.08.1649. URL https://www.sciencedirec t.com/science/article/pii/S240589631 7322541 . 20th IFAC World Congress. Okamura, A. M., Smaby, N., and Cutkosky, M. R. An overview of dexterous manipulation. In Proceedings 2000 ICRA. Millennium Conference. IEEE International Conference on Robotics and Automation. Symposia Pro-ceedings (Cat. No. 00CH37065) , volume 1, pp. 255–262. IEEE, 2000. Ouyang, L., Wu, J., Jiang, X., Almeida, D., Wainwright, C., Mishkin, P., Zhang, C., Agarwal, S., Slama, K., Ray, A., et al. Training language models to follow instructions with human feedback. Advances in Neural Information Processing Systems , 35:27730–27744, 2022. Parmas, P., Seno, T., and Aoki, Y. Model-based reinforce-ment learning with scalable composite policy gradient es-timators. In International Conference on Machine Learn-ing , pp. 27346–27377. PMLR, 2023a. Parmas, P., Seno, T., and Aoki, Y. Model-based reinforce-ment learning with scalable composite policy gradient estimators. In Krause, A., Brunskill, E., Cho, K., Engel-hardt, B., Sabato, S., and Scarlett, J. (eds.), Proceedings of the 40th International Conference on Machine Learn-ing , volume 202 of Proceedings of Machine Learning Research , pp. 27346–27377. PMLR, 23–29 Jul 2023b. URL https://proceedings.mlr.press/v2 02/parmas23a.html .Platt, J. and Barr, A. Constrained differential optimization. In Neural Information Processing Systems , 1987. Popescu, M.-C., Balas, V. E., Perescu-Popescu, L., and Mas-torakis, N. Multilayer perceptron and neural networks. 
+
+WSEAS Transactions on Circuits and Systems , 8(7):579– 588, 2009. Puterman, M. L. Markov decision processes. Handbooks in operations research and management science , 2:331–434, 1990. Puterman, M. L. Markov decision processes: discrete stochastic dynamic programming . John Wiley & Sons, 2014. Rafailov, R., Sharma, A., Mitchell, E., Ermon, S., Manning, C. D., and Finn, C. Direct preference optimization: Your language model is secretly a reward model. arXiv preprint arXiv:2305.18290 , 2023. Ray, A., Achiam, J., and Amodei, D. Benchmarking safe ex-ploration in deep reinforcement learning. arXiv preprint arXiv:1910.01708 , 7(1):2, 2019. Schulman, J., Levine, S., Abbeel, P., Jordan, M., and Moritz, P. Trust region policy optimization. In International conference on machine learning , pp. 1889–1897. PMLR, 2015. Shi, L., Li, S., Cao, L., Yang, L., and Pan, G. Tbq ( σ): Improving efficiency of trace utilization for off-policy reinforcement learning. arXiv preprint arXiv:1905.07237 ,2019. Silver, D., Huang, A., Maddison, C. J., Guez, A., Sifre, L., Van Den Driessche, G., Schrittwieser, J., Antonoglou, I., Panneershelvam, V., Lanctot, M., et al. Mastering the game of go with deep neural networks and tree search. 
+
+nature , 529(7587):484–489, 2016. Silver, D., Schrittwieser, J., Simonyan, K., Antonoglou, I., Huang, A., Guez, A., Hubert, T., Baker, L., Lai, M., Bolton, A., et al. Mastering the game of go without human knowledge. nature , 550(7676):354–359, 2017. Singh, B., Kumar, R., and Singh, V. P. Reinforcement learning in robotic applications: a comprehensive survey. 
+
+Artificial Intelligence Review , pp. 1–46, 2022. Stooke, A., Achiam, J., and Abbeel, P. Responsive safety in reinforcement learning by pid lagrangian methods. In 
+
+International Conference on Machine Learning , pp. 9133– 9143. PMLR, 2020. Suh, H. J., Simchowitz, M., Zhang, K., and Tedrake, R. Do differentiable simulators give better policy gradients? In International Conference on Machine Learning , pp. 20668–20696. PMLR, 2022. Sutton, R. S. and Barto, A. G. Reinforcement learning: An introduction . MIT press, 2018. Wah, B. W., Wang, T., Shang, Y., and Wu, Z. Improving the performance of weighted lagrange-multiplier methods for nonlinear constrained optimization. Information Sciences ,124(1-4):241–272, 2000. 11 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+Wang, Y., Zhang, M., Li, M., Cui, H., and Chen, X. De-velopment of a humanoid robot control system based on ar-bci and slam navigation. Cognitive Neurodynamics ,pp. 1–14, 2024. Werling, K., Omens, D., Lee, J., Exarchos, I., and Liu, C. K. Fast and feature-complete differentiable physics engine for articulated rigid bodies with contact constraints. In 
+
+Robotics: Science and Systems , 2021. Xian, Z., Zhu, B., Xu, Z., Tung, H.-Y., Torralba, A., Fragki-adaki, K., and Gan, C. Fluidlab: A differentiable envi-ronment for benchmarking complex fluid manipulation. 
+
+arXiv preprint arXiv:2303.02346 , 2023. Xu, M., Liu, Z., Huang, P., Ding, W., Cen, Z., Li, B., and Zhao, D. Trustworthy reinforcement learning against intrinsic vulnerabilities: Robustness, safety, and general-izability. arXiv preprint arXiv:2209.08025 , 2022. Yang, L., Shi, M., Zheng, Q., Meng, W., and Pan, G. A uni-fied approach for multi-step temporal-difference learning with eligibility traces in reinforcement learning. arXiv preprint arXiv:1802.03171 , 2018. Yang, L., Ji, J., Dai, J., Zhang, L., Zhou, B., Li, P., Yang, Y., and Pan, G. Constrained update projection approach to safe policy optimization. Advances in Neural Information Processing Systems , 35:9111–9124, 2022. Yang, T.-Y., Rosca, J., Narasimhan, K., and Ramadge, P. J. Projection-based constrained policy optimization. arXiv preprint arXiv:2010.03152 , 2020. Zhang, Y., Vuong, Q., and Ross, K. First order constrained optimization in policy space. Advances in Neural Infor-mation Processing Systems , 33:15338–15349, 2020. 12 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+# Appendix 
+
+# Table of Contents 
+
+A Supplementing Theoretical Aspects 14 
+
+A.1 The First-Order Approximation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 A.2 The Solution to Constrained Surrogate Sub-Problem . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 A.3 Worst-Case Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 A.4 Gradient Calculation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 A.5 The Update Method of Critic Network . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 
+
+B Zero-order Batched Gradient method vs First-order Batched Gradient method 21 C Experiment Highlighting the Shortcomings of the ABE Method 22 
+
+C.1 Task Settings . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22 C.2 Experimental Details . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23 
+
+D More Experimental Results 24 
+
+D.1 Main Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 D.2 More Ablation Experiments on Radius Adaptation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 
+
+E Implementation of Differentiable Safe RL Tasks 26 
+
+E.1 Position-constrained CartPole . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 E.2 Position-constrained Reacher . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 E.3 Velocity-constrained HalfCheetah . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 E.4 Velocity-constrained Ant . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 
+
+F Experimental Details and Hyper-parameters 27 
+
+F.1 Implementation of Baseline Algorithms . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28 F.2 Evaluation Metrics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28 F.3 Hyper-parameters . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 30 F.4 Ablation Experiments with World Model . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 30 
+
+13 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+## A. Supplementing Theoretical Aspects 
+
+A.1. The First-Order Approximation 
+
+We employ the following first-order estimation to approximate the objective and constraint functions: 
+
+ˆJf (θ0 + δ) = Jf (θ0) + δ⊤∇θ Jf (θ0), (22) where ˆJf represents the both objective function ˆJR and constraint function ˆJC :
+
+ˆJR(θ0 + δ) = JR(θ0) + δ⊤∇θ JR(θ0), (23) 
+
+ˆJC (θ0 + δ) = JC (θ0) + δ⊤∇θ JC (θ0). (24) This approximation introduces the following approximation error: 
+
+Lemma 4.1. Assume θ0 ∈ Θ and Jf (θ) is twice differentiable in a neighborhood surrounding θ0. Let δ be a small update from θ0. If we estimate Jf (θ0 + δ) as ˆJf (θ0 + δ) = Jf (θ0) + δ⊤∇θ Jf (θ0) and given that 
+
+ϵ = max t∈(0 ,1) ∇2 
+
+> θ
+
+JR(θ0 + tδ) , the estimation error can be bounded as: 
+
+ˆJf (θ0 + δ) − J f (θ0 + δ) ≤ 12 ϵ∥δ∥22. (8) 
+
+Proof. The function Jf (θ) is expanded using a Taylor series at the point θ0 + δ, resulting in: 
+
+∃t0 ∈ (0 , 1) , Jf (θ0 + δ) = Jf (θ0) + δ⊤∇θ Jf (θ0) + 12 δ⊤∇2 
+
+> θ
+
+Jf (θ0 + t0δ)δ (25) where 12 δ⊤∇2 
+
+> θ
+
+Jf (θ0 + t0δ)δ represents the Peano remainder term. Substituting this expanded result yields: 
+
+ˆJf (θ0 + δ) − J f (θ0 + δ) = 12 δ⊤∇2 
+
+> θ
+
+Jf (θ0 + t0δ)δ ≤ 12 ϵ∥δ∥22. (26) 
+
+A.2. The Solution to Constrained Surrogate Sub-Problem 
+
+Based on Theorem 4.1, we find that the estimation error is positively correlated with the update step size. Therefore, by controlling the update step size, we can keep the estimation error within an acceptable range. Given the trust region radius, we consider updated parameter θk+1 of the kth iteration within the trust region Θk =
+
+n
+
+θ ∈ Θ | ∥ θ − θk∥2 ≤ ˆδ
+
+o
+
+to be credible. By employing the approximations of the objective function in Equation (23) and the constraint function in Equation (24) , We transform the solution of the primal Safe RL problem into an iterative process of solving a series of sub-problems within predefined trust regions Θk:
+
+θk+1 = arg max  
+
+> θ∈Θ
+
+(θ − θk)⊤ ∇θ JR(θk)
+
+s.t. JC (θk) + ( θ − θk)⊤ ∇θ JC (θk) ≤ b
+
+(θ − θk)⊤ (θ − θk) ≤ ˆδ, 
+
+(27) To simplify the expression, we introduce some new notations. For the kth iteration, we denote the gradient of the objective as gk ≜ JR(θk), the gradient of the constraint as qk ≜ JC (θk), and define ck ≜ JC (θk) − b, δk ≜ θk+1 − θk. Thus, we rewrite the sub-problem as 
+
+δk = arg max  
+
+> δ
+
+g⊤ 
+
+> k
+
+δ, s.t. ck + q⊤ 
+
+> k
+
+δ ≤ 0, δ⊤δ ≤ ˆδ (28) 14 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+A.2.1. S OLVABILITY CONDITIONS FOR THE SUB -PROBLEM 
+
+Since the sub-problem (28) may have no solution, we first discuss the conditions under which this problem is solvable. The following theorem holds: 
+
+Theorem 5.1 (Solvability Conditions for the Sub-problem) . The sub-problem (10) is unsolvable if and only if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδ > 
+
+0 and ck > 0.Proof. Denoting the boundary of the feasible region as ˚∆Ck = δ | ck + q⊤ 
+
+> k
+
+δ = 0 , let ˚δk be the smallest update that places the next policy θk+1 on the boundary of the feasible region, namely 
+
+˚δk = arg min  
+
+> δ
+
+δ⊤δ, s.t. ck + q⊤ 
+
+> k
+
+δ = 0 . (29) To derive the analytical form of ˚δk, we introduce the dual variable λ ≥ 0 to construct the Lagrangian dual function of the problem (29): 
+
+L(δ, λ ) = δ⊤δ + λ  ck + q⊤ 
+
+> k
+
+δ . (30) Since both the objective function and the constraint function in the problem (29) are convex, the optimal solution (˚δk, λ ∗)
+
+should satisfy the Karush-Kuhn-Tucker (KKT) conditions: 
+
+∇δ L(δ, λ ) = δ + λqk = 0 
+
+ck + q⊤ 
+
+> k
+
+δ = 0 (31) This can be solved to obtain λ∗ = ck/q⊤ 
+
+> k
+
+q and ˚δk = −ckqk/q⊤ 
+
+> k
+
+qk.
+
+=⇒: if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+q − ˆδ > 0 and ck > 0,
+
+˚δ⊤ 
+
+> k
+
+˚δk = c2
+
+> k
+
+q⊤ 
+
+> k
+
+qk
+
+> ˆδ (32) Denoting the trust region of the kth iteration as ∆k =
+
+n
+
+δ ∈ Θ | ∥ δ∥2 ≤ ˆδ
+
+o
+
+. For all δ ∈ ˚∆Ck we have δ⊤δ ≥ ˚δ⊤ 
+
+> k
+
+˚δk > ˆδ.Thus, ∀δ ∈ ˚∆Ck , δ / ∈ ∆k, namely, the trust region ∆k does not intersect with the boundary plane ˚∆Ck .Let the feasible region for the kth iteration be defined as ∆Ck = δ ∈ Θ | ck + q⊤ 
+
+> k
+
+δ ≤ 0 , which is a half-space determined by the plane ˚∆Ck . Since the trust region ∆k does not intersect with the plane ˚∆Ck , only two scenarios are possible, namely, either ∆k̸ ⊂ ∆Ck or ∆k ⊂ ∆Ck . When ck > 0, 0 ∈ ∆k and 0 /∈ ∆Ck . Assuming ∆k ⊂ ∆Ck , then for all δ ∈ ∆k, it follows that δ ∈ ∆C . This leads to a contradiction, hence ∆k̸ ⊂ ∆Ck . In other words, the sub-problem expressed in Equation (28) is unsolvable. 
+
+⇐=: If the sub-problem expressed in Equation (28) is unsolvable, it follows that ∆k̸ ⊂ ∆Ck and ∆k ∩ ˚∆Ck = ∅.Given that ∆k̸ ⊂ ∆Ck and considering 0 ∈ ∆k but 0 /∈ ∆Ck , it is deduced that ck + q⊤ 
+
+> k
+
+0 = ck > 0. Furthermore, the condition ∆k ∩ ˚∆Ck = ∅ implies that for any δ ∈ ˚∆Ck , the relation δ⊤δ > ˆδ holds true. Consequently, for ˚δk ∈ ˚∆Ck , it is observed that ˚δ⊤ 
+
+> k
+
+˚δk = c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk > ˆδ. Thus, it is concluded that c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδ > 0 and ck > 0.In addition, the following corollary holds: 
+
+Corollary 5.2. θ is deemed feasible for every θ within Θk if and only if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδ > 0 and ck ≤ 0 are both satisfied. Proof. The proof is analogous to that of Theorem 5.1. The condition c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδ > 0 is necessary and sufficient for the trust region ∆k not to intersect with the boundary of the half-space ˚∆Ck . Since the trust region ∆k does not intersect with the plane ˚∆Ck , only two scenarios are possible: either ∆k̸ ⊂ ∆Ck or ∆k ⊂ ∆Ck . Moreover, ck ≤ 0 is the necessary and sufficient condition for ∆k ⊂ ∆Ck under these circumstances. 15 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 𝒈 𝒒    
+
+> (b) Entire trust
+> region is feasible
+> 𝒈
+> 𝒒
+> (a) Entire trust
+> region is infeasible
+> (c) Trust region intersects
+> with feasible region
+> Feasible Infeasible Trust Region
+> 𝒈 𝒒
+
+Figure 8. The computational relationship between the policy update δ, the gradient of the objective function g, and the gradient of the constraint function g varies in three scenarios. 
+
+A.2.2. THE SOLUTION TO THE SUB -PROBLEM 
+
+Based on Theorem 5.1 and Corollary 5.2, solving the sub-problem within the trust region, as defined in Equation 28, should be discussed in three scenarios: (a) when the entire trust region is infeasible, (b) when the entire trust region is feasible, and (c) when the trust region is partially feasible, as shown in Figure 8. (a) If c2/q⊤q − ˆδ > 0 and c > 0, the entire trust region is infeasible. We update the policy along the direction of the steepest descent of the constraint function, namely, 
+
+θk+1 = θk −
+
+pˆδ
+
+∥qk∥ qk. (33) (b) If c2/q⊤q − ˆδ > 0 and c ≤ 0, the trust region lies entirely within the constraint-satisfying half-space. We directly update the step length to 
+
+pˆδ along the direction of the steepest ascent of the objective function, represented by the gradient vector g, namely, 
+
+θk+1 = θk +
+
+pˆδ
+
+∥gk∥ gk. (34) (c) In other cases, the trust region partially intersects with the feasible region, so we have to solve the constrained quadratic sub-problem (28). The sub-problem (28) is characterized as convex. When the trust region is partially feasible, the existence of at least one strictly feasible point is guaranteed. Consequently, strong duality holds as the conditions of Slater’s theorem are fulfilled. By introducing two dual variables λ and ν, we construct the dual function of the primal problem as follows: 
+
+L(δ, λ, ν ) = −g⊤ 
+
+> k
+
+δ + ν  ck + q⊤ 
+
+> k
+
+δ + λ
+
+2
+
+
+
+δ⊤δ − ˆδ
+
+
+
+(35) Since the sub-problem (28) satisfies the strong duality condition, any pair of primal and dual optimal points (δ∗, λ ∗, ν ∗)
+
+must satisfy the KKT conditions, namely, 
+
+∇δ L(δ, λ, ν ) = −gk + νqk + λδ = 0 , (36) 
+
+ν  ck + q⊤ 
+
+> k
+
+δ = 0 , (37) 
+
+λ
+
+
+
+δ⊤δ − ˆδ
+
+
+
+= 0 , (38) 
+
+ck + q⊤ 
+
+> k
+
+δ ≤ 0, δ⊤δ − ˆδ ≤ 0, ν ≥ 0, λ ≥ 0 (39) 16 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+Algorithm 2 Dual variable solver in the case of solvability. 
+
+Input: the objective gradient gk, the constraint gradient qk, the constraint satisfaction ck, and the trust region radius ˆδ.Compute the rk = g⊤ 
+
+> k
+
+gk, sk = g⊤ 
+
+> k
+
+qk, and tk = q⊤ 
+
+> k
+
+qk.Compute Λa = {λ|λc k + sk > 0, λ ≥ 0} and Λb = {λ|λc k + sk ≤ 0, λ ≥ 0}.Compute λa = Proj 
+
+r rk −s2  
+
+> k/t k
+> ˆδ−c2
+> k/t k
+
+, Λa
+
+
+
+.Compute λb = Proj 
+
+q rk 
+
+> ˆδ
+
+, Λb
+
+
+
+.Compute La(λa) = 12λa
+
+ s2 
+
+> k
+> tk
+
+− rk
+
+
+
++ λa
+
+> 2
+
+ c2 
+
+> k
+> tk
+
+− ˆδ
+
+
+
++ sk ck 
+
+> tk
+
+.Compute Lb(λb) = − 12
+
+ rk 
+
+> λb
+
++ λb ˆδ
+
+
+
+.
+
+if La(λa) > L b(λb) then 
+
+λ∗ 
+
+> k
+
+= λa;
+
+else 
+
+λ∗ 
+
+> k
+
+= λb.
+
+end if 
+
+Compute ν∗ 
+
+> k
+
+= max 
+
+ λ∗   
+
+> kck+sk
+> tk
+
+, 0
+
+
+
+.
+
+Output: λ∗
+
+> k
+
+, ν ∗ 
+
+> k
+
+.Based on Equation (36), we derive that 
+
+δ∗ = 1
+
+λ (gk − νqk) . (40) Substituting this into Equations (37), we obtain 
+
+ν  λc k + q⊤ 
+
+> k
+
+g − νq⊤q = 0 (41) To simplify the expression, we denote that rk ≜ g⊤ 
+
+> k
+
+gk, sk ≜ g⊤ 
+
+> k
+
+qk, and tk ≜ q⊤ 
+
+> k
+
+qk. Thus, it follows that 
+
+ν =
+
+( λc k +q⊤  
+
+> kgk
+> q⊤
+> kqk
+
+, if λc k + q⊤ 
+
+> k
+
+gk > 0; 0, if λc k + q⊤ 
+
+> k
+
+gk ≤ 0. =
+
+( λc k +sk 
+
+> tk
+
+, if λc k + sk > 0; 0, if λc k + sk ≤ 0. (42) Substituting Equation (40) and Equation (42) into Equation (38), we obtain 
+
+
+
+rk − 2sk
+
+ λc k +sk
+
+> tk
+
+
+
++ tk
+
+ λc k +sk
+
+> tk
+
+2
+
+= λ2 ˆδ, λ ∈ Λa;
+
+rk = λ2 ˆδ, λ ∈ Λb.
+
+(43) where Λa
+
+.
+
+= {λ|λc k +sk > 0, λ ≥ 0}, Λb
+
+.
+
+= {λ|λc k +sk ≤ 0, λ ≥ 0}. It is noted that when ck < 0, Λa = [0 , −sk/c k) and 
+
+Λb = [ −sk/c k, ∞); when c > 0, Λa = [ −sk/c k, ∞) and Λb = [0 , −sk/c k). Additionally, the inequality rk − s2
+
+> k
+
+/t k > 0
+
+is satisfied, which is a consequence of the Cauchy-Schwarz inequality, as it implies ∥gk∥22∥qk∥22 ≥ (g⊤ 
+
+> k
+
+qk)2. Therefore, the following solution holds: 
+
+λ∗ =
+
+
+
+λa ≜ Proj 
+
+r rk −s2  
+
+> k/t k
+> ˆδ−c2
+> k/t k
+
+, Λa
+
+
+
+, La(λa) > L b(λb); 
+
+λb ≜ Proj 
+
+q rk 
+
+> ˆδ
+
+, Λb
+
+
+
+, otherwise .
+
+(44) In above context, La and Lb are the results obtained by substituting equations (40) and (42) into dual function (35) , namely, 
+
+
+
+La(λ) ≜ 12λ
+
+ s2 
+
+> k
+> tk
+
+− rk
+
+
+
++ λ
+
+> 2
+
+ c2 
+
+> k
+> tk
+
+− ˆδ
+
+
+
++ sk ck 
+
+> tk
+
+, λ ∈ Λa;
+
+Lb(λ) ≜ − 12
+
+ rk 
+
+> λ
+
++ λˆδ
+
+
+
+, λ ∈ Λb. (45) Since the dual variable λ is used to maximize the dual function (35) , we can determine which one of λa and λb is the optimal solution by comparing La(λa) and Lb(λb).17 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+Consequently, the optimal ν can be expressed in terms of λ∗ as follows: 
+
+ν∗ =
+
+ λ∗ck + sk
+
+tk
+
+
+
+> +
+
+. (46) The pseudo-code for computing the optimal (λ∗
+
+> k
+
+, ν ∗ 
+
+> k
+
+) is provided in Algorithm 2. Then, we update the policy as 
+
+θk+1 = θk + gk − ν∗qk
+
+λ∗ . (47) 
+
+A.3. Worst-Case Analysis 
+
+In the subsequent corollary, we detail the bounds for both performance improvement and constraint violations under the worst-case conditions following the policy update from resolving the sub-problem (27). 
+
+Theorem 5.3 (Worst-Case Performance Update and Constraint Violation) . Suppose θk, θk+1 ∈ Θ are related by Equa-tion (9) . If θk is feasible, a lower bound on the policy performance difference between θk+1 and θk is 
+
+JR(θk+1 ) − J R(θk) ≥ − 12 ϵRk ˆδ (16) 
+
+where ϵRk = max t∈(0 ,1) ∇2 
+
+> θ
+
+JR(θk + t(θk+1 − θk)) .An upper bound on the constraint objective function of θk+1 is 
+
+JC (θk+1 ) ≤ b + 12 ϵCk ˆδ, (17) 
+
+where ϵCk = max t∈(0 ,1) ∇2 
+
+> θ
+
+JC (θk + t(θk+1 − θk)) .Proof. Let the feasible region of the sub-problem be denoted as 
+
+ΘCk =
+
+n
+
+θ ∈ Θ | J C (θk) + ( θ − θk)⊤ ∇θ JC (θk) ≤ b, ∥θ − θk∥2 ≤ ˆδ
+
+o
+
+. (48) Furthermore, because 
+
+θk+1 = arg max 
+
+> θ∈ΘCk
+
+(θ − θk)⊤ ∇θ JR(θk), (49) it follows that 
+
+∀θ ∈ ΘCk , (θk+1 − θk)⊤ ∇θ JR(θk) ≥ (θ − θk)⊤ ∇θ JR(θk). (50) Since θk is feasible, it follows that θk ∈ ΘCk . Consequently, we have 
+
+(θk+1 − θk)⊤ ∇θ JR(θk) ≥ (θk − θk)⊤ ∇θ JR(θk) = 0 . (51) Further, we have ∃tk ∈ (0 , 1) such that 
+
+JR(θk+1 ) − J R(θk) = ( θk+1 − θk)⊤∇θ JR(θk) + 12 (θk+1 − θk)⊤∇2 
+
+> θ
+
+JR(θk + tk(θk+1 − θk))( θk+1 − θk)
+
+≥ − 12 (θk+1 − θk)⊤∇2 
+
+> θ
+
+JR(θk + tk(θk+1 − θk))( θk+1 − θk)
+
+≥ − 12 ϵRk ∥θk+1 − θk∥22
+
+≥ − 12 ϵRk ˆδ
+
+(52) where ϵRk = max t∈(0 ,1) ∇2 
+
+> θ
+
+JR(θk + t(θk+1 − θk)) .
+
+On the other hand, since θk+1 is feasible, it follows that 
+
+JC (θk) + ( θk+1 − θk)⊤ ∇θ JC (θk) ≤ b (53) 18 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+Furthermore, we have 
+
+JC (θk+1 ) = JC (θk) + ( θk+1 − θk)⊤∇θ JC (θk) + 12 (θk+1 − θk)⊤∇2 
+
+> θ
+
+JC (θk + tk(θk+1 − θk))( θk+1 − θk)
+
+≤ b + 12 (θk+1 − θk)⊤∇2 
+
+> θ
+
+JC (θk + tk(θk+1 − θk))( θk+1 − θk)
+
+≤ b + 12 (θk+1 − θk)⊤∇2 
+
+> θ
+
+JC (θk + tk(θk+1 − θk))( θk+1 − θk)
+
+≤ b + 12 ϵCk ∥θk+1 − θk∥22
+
+≤ b + 12 ϵCk ˆδ
+
+(54) where ϵCk = max t∈(0 ,1) ∇2 
+
+> θ
+
+JC (θk + t(θk+1 − θk)) .
+
+By combining Equation (52) and Equation (54), Corollary 5.3 is thus proven. 
+
+Figure 9. Computation graph of CGPO. 
+
+A.4. Gradient Calculation 
+
+Given our focus on employing gradients to solve Safe RL problems, our algorithm can incorporate any differentiable method for computing gradients gk and qk, such as BPTT (Mozer, 2013) and SHAC (Jie Xu et al., 2022). Here, we give an example of implementation using SHAC approach. We compute the gradients of the objective function JR and constraint functions JC concerning policy θ using a methodology similar to SHAC (Jie Xu et al., 2022). While training the policy network, we concurrently train a reward critic network V R
+
+> ϕ
+
+and a cost one V C 
+
+> ψ
+
+. We divide the entire trajectory into short-horizon sub-windows, each with a length of h. Subsequently, the gradients of the objective function (constraint function) are calculated by multi-step rewards (costs) within sub-windows plus a final value estimation from the corresponding learned critics. Specifically, considering the N-trajectory collection 
+
+{τi}Ni=1 obtained from a given policy at = πθ (st) and differentiable simulator st+1 = F(st, at), we employ the following two loss functions to compute gradients on a short-horizon sub-window: 
+
+LR(θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+" t0+h−1X
+
+> t=t0
+
+r(sit, ait)
+
+!
+
++ V Rϕ (sit0+h)
+
+#
+
+, (55) 
+
+LC (θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+" t0+h−1X
+
+> t=t0
+
+c(sit, ait)
+
+!
+
++ V Cψ (sit0+h)
+
+#
+
+, (56) where t0 is the starting time step of a sub-window. To compute the gradients ∂LR(θ) 
+
+> ∂θ
+
+and ∂LC (θ) 
+
+> ∂θ
+
+, we treat the simulator F
+
+as a differentiable layer and incorporate it into the overall computational graph, as illustrated in Figure 9. The gradients are 19 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+then computed by back-propagation through time (BPTT) (Mozer, 1995), with the replacement of the final time step by values V Rψ (sit0+h), V Cψ (sit0+h), and with truncation at the beginning of each sub-window. When performing specific gradient calculations, we need to start from the last time step t0 + h of the sub-window for each trajectory τi:
+
+∂LR(θ)
+
+∂s it0+h
+
+= 1
+
+N∂V Rϕ (sit0+h)
+
+∂s it0+h
+
+, (57) 
+
+∂LC (θ)
+
+∂s it0+h
+
+= 1
+
+N∂V Cψ (sit0+h)
+
+∂s it0+h
+
+. (58) Then, we can compute the adjoints in the previous steps t0 ≤ t < t 0 + h in reverse order: 
+
+∂LR(θ)
+
+∂s it
+
+= 1
+
+N∂R (sit, a it)
+
+∂s it
+
++
+
+ ∂LR(θ)
+
+∂s it+1 
+
+  ∂F(sit, a it)
+
+∂s it
+
+
+
++
+
+ ∂F(sit, a it)
+
+∂a it
+
+  πθ (sit)
+
+∂s it
+
+ 
+
+(59) 
+
+∂LC (θ)
+
+∂s it
+
+= 1
+
+N∂C (sit, a it)
+
+∂s it
+
++
+
+ ∂LC (θ)
+
+∂s it+1 
+
+  ∂F(sit, a it)
+
+∂s it
+
+
+
++
+
+ ∂F(sit, a it)
+
+∂a it
+
+  πθ (sit)
+
+∂s it
+
+ 
+
+(60) 
+
+∂LR(θ)
+
+∂a it
+
+= 1
+
+N∂R (sit, a it)
+
+∂a it
+
++
+
+ ∂LR(θ)
+
+∂s it+1 
+
+  ∂F(sit, a it)
+
+∂a it
+
+
+
+(61) 
+
+∂LC (θ)
+
+∂a it
+
+= 1
+
+N∂C (sit, a it)
+
+∂a it
+
++
+
+ ∂LC (θ)
+
+∂s it+1 
+
+  ∂F(sit, a it)
+
+∂a it
+
+
+
+(62) From all the computed adjoints, we can compute the objective loss and the constraint loss by 
+
+∂LR(θ)
+
+∂θ =
+
+> N
+
+X
+
+> i=1
+> t0+h−1
+
+X
+
+> t=t0
+
+ ∂LR(θ)
+
+∂a it
+
+  ∂π θ (sit)
+
+∂θ 
+
+
+
+(63) 
+
+∂LC (θ)
+
+∂θ =
+
+> N
+
+X
+
+> i=1
+> t0+h−1
+
+X
+
+> t=t0
+
+ ∂LC (θ)
+
+∂a it
+
+  ∂π θ (sit)
+
+∂θ 
+
+
+
+(64) 
+
+A.5. The Update Method of Critic Network 
+
+As mentioned in Section 5.3, line 309, the time step t is incorporated into the state as an input to the critic network, namely, 
+
+V (st, t ). This value function forecasts the expected return for a future finite horizon of T − t at time step t and state s:
+
+Vπ (s, t ) .
+
+= Eπ
+
+"T −tX
+
+> k=1
+
+Rt+k | St = s
+
+#
+
+(65) We define a series of n-step estimates as follows: 
+
+Gt:t+n
+
+.
+
+= Rt+1 + Rt+2 + · · · + Rt+n + Vπ (St+n, t + n) (66) Specifically, in our implementation, the data {τ it0:th }Ni=1 obtained from each short horizon h rollout is used to calculate 
+
+Gt:t+n, n = 1 , 2, · · · , h − t. Given λ, an unbiased finite-horizon TD( λ) estimate of V (sit, t ), s it ∈ τ it0:th can be obtained by the following formula: 
+
+Gλ,i t = (1 − λ)
+
+> h−t−1
+
+X
+
+> n=1
+
+λn−1Git:t+n + λh−t−1Git:t+h (67) Note that the weight decays as n increases and the total summation is 1. Thus, the updated Loss function can be defined as: 
+
+Lλ(ϕ) = 1
+
+N h 
+
+> N
+
+X
+
+> i=1
+> h−1
+
+X
+
+> t=0
+
+
+
+Gλ,i t − Vϕ(sit, t )
+
+2
+
+(68) 20 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+## B. Zero-order Batched Gradient method vs First-order Batched Gradient method 
+
+Given our focus on employing gradients to solve Safe RL problems, our algorithm can incorporate any differentiable method to compute gradients gk and qk. Various methods are available, broadly classified into two categories: the Zero-order Batch Gradient (ZoBG) method and the First-order Batch Gradient (FoBG) method (Suh et al., 2022). compared to zeroth-order batched gradient (ZoBG) estimation on {τi}Ni=1 ,
+
+∇θ J (θ) ≃ gZoBG 
+
+.
+
+= 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+" TX
+
+> t=0
+
+∇θ log πθ (ait | sit)R(τi)
+
+#
+
+, (69) we find that FoBG is more suitable for the Safe RL field for the following two reasons: 
+
+First, using ZoBG to estimate the constraint at θk + δ results in significant estimation errors. In Safe RL, the estimation of constraint condition JC (θk + δ) ≤ b serves as an important basis for solving the optimal feasible update 
+
+δ∗. Thus, inaccurate estimations can lead to suboptimal constraint satisfaction. Intuitively, since ZoBG does not utilize the first-order gradient of environmental dynamics, it fails to capture how policy changes affect state visitation changes. Particularly in long trajectories, this effect is amplified, resulting in greater changes to states visited later due to earlier state modifications. However, first-order batched gradient (FoBG) estimation mitigates this amplification effect by incorporating the first-order gradient of environmental dynamics, allowing the gradient to propagate along the trajectory. We empirically confirmed this through experiments comparing the relative errors of ZoBG and FoBG in estimating constraint functions. These experiments were conducted in simple FunctionEnv environments, as detailed in Appendix D.1, across various trajectory lengths and update magnitudes ˆδ. Each experiment ran for 100 epochs using 5 random seeds, with the results displayed in the tables below:  
+
+> Table 2. Relative error of ZoBG in constraint function estimation in the simple FunctionEnv which is detailed in Appendix C.
+
+Traj. Len. → 1 5 10 50 100 200 
+
+ˆδ = 0.0001 0.3387 ± 0.2420 0.8862 ± 0.3499 3.093 ± 1.394 15.40 ± 15.93 35.90 ± 29.11 65.19 ± 138.6 
+
+ˆδ = 0.0001 0.6291 ± 1.4107 0.4401 ± 1.722 15.575 ± 6.813 32.09 ± 132.9 150.6 ± 68.59 39.17 ± 134.4 
+
+ˆδ = 0.0001 0.3171 ± 2.039 8.709 ± 33.90 31.38 ± 139.1 68.71 ± 292.6 197.6 ± 488.8 66.40 ± 348.7 
+
+ˆδ = 0.0001 1.630 ± 11.76 4.393 ± 17.18 22.56 ± 132.8 276.8 ± 372.7 202.4 ± 291.1 35.99 ± 181.0 
+
+ˆδ = 0.0001 12.00 ± 26.20 11.51 ± 66.89 65.47 ± 118.9 94.81 ± 93.27 174.9 ± 515.3 71.00 ± 288.0                                                                                                        
+
+> Table 3. Relative error of FoBG in constraint function estimation in the simple FunctionEnv which is detailed in Appendix C.
+> Traj. Len. →1510 50 100 200
+> ˆδ= 0.0001 0.0081 ±0.0070 0.0033 ±0.0029 0.0018 ±0.0015 0.0007 ±0.0006 0.0011 ±0.0014 0.0015 ±0.0024
+> ˆδ= 0.0001 0.0029 ±0.0022 0.0027 ±0.0021 0.0027 ±0.0022 0.0030 ±0.0028 0.0059 ±0.0163 0.0129 ±0.0606
+> ˆδ= 0.0001 0.0050 ±0.0038 0.0046 ±0.0038 0.0045 ±0.0039 0.0056 ±0.0064 0.0084 ±0.0154 0.0165 ±0.0661
+> ˆδ= 0.0001 0.0283 ±0.0295 0.0221 ±0.0226 0.0194 ±0.0170 0.0189 ±0.0227 0.0224 ±0.0327 0.0494 ±0.2030
+> ˆδ= 0.0001 0.1433 ±1.1200 0.0371 ±0.0502 0.0308 ±0.0330 0.0290 ±0.0406 0.0399 ±0.0577 0.1045 ±0.5258
+
+Table 2 shows that ZoBG effectively estimates the constraint function only at short trajectory lengths ( ≤ 5) and small update magnitudes ( ≤ 0.001 ). However, with longer trajectory lengths and larger update magnitudes, ZoBG quickly loses its ability to estimate constraints ( Relative Error ≥ 1). In contrast, Table 3 demonstrates that FoBG consistently estimates the constraint function accurately across all trajectory lengths and update magnitudes, indicating superior stability. These results highlight FoBG’s significant advantages over ZoBG in constraint prediction within the Safe RL domain. 
+
+Second, ZoBG, which employs the Monte Carlo method, exhibits significant estimation variance and poor sample efficiency. To validate this, we introduced a new baseline, CGPO-ZoBG, in our training, where ZoBG is utilized for gradient estimation in our algorithm. The training curve of CGPO-ZoBG is depicted in the figure below: Figure 10 illustrates that CGPO-ZoBG has low and unstable update efficiency, complicating the search for the optimal feasible update. This evidence further underscores ZoBG’s inadequacy for Safe RL. 21 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00         
+
+> 1e7
+> 200
+> 0
+> 200
+> 400
+> 600
+> 800
+> 1000
+> 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00
+> 1e7
+> 200
+> 400
+> 600
+> 800
+> 1000
+> CGPO-ZoBG
+> CGPO-FoBG
+> Cost Limit
+
+Figure 10. Training curves of CGPO using ZoBG method and FoBG method to calculate the gradients, showing episodic return and constraint for 5 random seeds. Solid lines represent the mean, while the shaded areas indicate variance, without any smoothing to the curves. 
+
+In summary, despite challenges in its application, FoBG’s advantages in Safe RL are more pronounced than those of ZoBG. Furthermore, as the techniques of differentiable simulators and world models continue to evolve, FoBG’s application potential will significantly expand. Therefore, we argue that integrating differentiable RL methods into our algorithm is essential. 
+
+## C. Experiment Highlighting the Shortcomings of the ABE Method 
+
+C.1. Task Settings 10 5 0 5 10 
+
+x - Position 
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Cost
+
+Figure 11. Cost values at different x-axis positions for the agent. 
+
+To clearly demonstrate the shortcomings of the Advantage-based Estimation (ABE) method, we designed a simple task. The goal of this task is to train an agent to move along the x-axis, receiving rewards and incurring costs based on its position on the x-axis. The specific settings of the task are as follows: 
+
+Action Space: The direction and step length of the agent’s movement along the x-axis constitute the action space, which is a single-element vector, i.e., a ∈ (−1, 1) .
+
+Observation Space: The observation data for the agent is its position on the x-axis, which is also a single-element vector, i.e., s ∈ R.The task employs a simple, artificially set state transition function: 
+
+st+1 = st + 0 .2 × at.
+
+Reward Function and Cost Function: Since the purpose of this simple task is to verify the accuracy of the estimation method, we set the reward function and cost function in the same form, i.e., 
+
+f (x) = 
+
+ x
+
+10 .0
+
+2
+
++ 0 .1 + 0 .1 × sin 
+
+ 8xπ
+
+
+
+(70) This function is sourced from Metz et al. (2021), and its visualization is shown in Figure 11. 
+
+Constraint: Since the task is solely aimed at verifying the accuracy of the estimation method, the set constraint has no physical significance. Specifically, the cumulative cost on a trajectory of length 100 for the agent should be less than 8.0: 
+
+JC (π) ≜
+
+> 99
+
+X
+
+> t=0
+
+f (xt) ≤ 8.0 (71) 22 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+This constraint setting is consistent with many well-known Safe Benchmarks (such as Safety-Gym (Ray et al., 2019), Bullet-Safety-Gym (Gronauer, 2022), Safety-Gymnasium (Ji et al., 2023b), and OmniSafe (Ji et al., 2023c)), where the undiscounted cumulative cost on a finite-length trajectory must be less than a scalar threshold, namely, PT −1 
+
+> t=0
+
+ct ≤ b.
+
+C.2. Experimental Details 
+
+In the training procedure, the parameterized initial strategy πθ0 is updated iteratively, leveraging both the Advantage-based Estimation (ABE) and the Gradient-based Estimation (GBE) methods. The magnitude of each update, denoted by δ, remains fixed at ∥δ∥ = 0 .01 . For every update, the value of the updated constraint function is computed separately using the ABE and GBE methods: 
+
+ABE method: 
+
+ˆJ ABE  
+
+> C
+
+(θ + δ) ≜ JC (θ) + 11 − γ Es∼dπθ
+
+> a∼πθ
+
+ πθ+δ (s, a )
+
+πθ (s, a ) Aπθ (s, a )
+
+
+
+(72) 
+
+GBE method: ˆJ GBE  
+
+> C
+
+(θ + δ) ≜ JC (θ) + δ⊤∇θ JC (θ). (73) 
+
+Metrics: Given that both methods aim to approximate the variation relative to JC (θ), the relative error in the actual shift of the constraint function is employed as the evaluative metric: 
+
+∆relative =
+
+JC (θ + δ) − ˆJC (θ + δ)
+
+JC (θ + δ) − J C (θ)
+
+(74) Notably, an estimation is considered valid when the relative error stays below 1.0. Conversely, an estimation loses its scalar referential value when the relative error exceeds 1.0. 23 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+## D. More Experimental Results 
+
+D.1. Main Results 
+
+To ensure clarity, we avoid placing numerous training curves on a single graph as this can lead to difficulties in differentiation. Given the space constraints in the main text, the comprehensive set of training curves for all algorithms is provided exclusively in the appendix. Additionally, the baseline algorithms have been categorized into two distinct groups: Traditional Safe RL Algorithms and Lagrangian-Revised Differentiable RL Algorithms. (a) CartPole (b) Reacher (c) Half Cheetah (d) Ant    
+
+> Return Constraint
+> Environment Steps Environment Steps Environment Steps Environment Steps
+
+Figure 12. Training curves compared to the Traditional Safe RL Algorithms on different tasks, showing episodic return and constraint for 5 random seeds. Solid lines represent the mean, while the shaded areas indicate variance, without any smoothing to the curves. (a) CartPole (b) Reacher (c) Half Cheetah (d) Ant    
+
+> Return Constraint
+> Environment Steps Environment Steps Environment Steps Environment Steps
+
+Figure 13. Training curves compared to the Lagrangian-revised differentiable Safe RL algorithms on different tasks, showing episodic return and constraint for 5 random seeds. Solid lines represent the mean, while the shaded areas indicate variance, without any smoothing to the curves. 
+
+D.2. More Ablation Experiments on Radius Adaptation 
+
+Large changes in hyper-parameter ˆδ have some impact on the convergence speed and constraint satisfaction, as shown in Figure 14 (a). Therefore, we propose an adaptive delta setting method, which can automatically adjust the value of delta according to the current training status, further reducing the difficulty of setting this hyperparameter. To validate the 24 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+effectiveness of the adaptive method in managing hyperparameter settings, we conducted a series of ablation studies. The outcomes of these experiments are presented below: (d) Update Ratio 𝛽 (e) Negative Threshold 𝜂 ! (f) Positive Threshold 𝜂 "
+
+(a) Fixed Radius (b) Lower Bound 𝛿 (b) Upper Bound 𝛿  
+
+> Figure 14. Ablation studies on the hyper-parameters of the adaptive method of trust-region radius.
+
+Figure 14 (b) - (f) illustrate that the adaptive approach’s hyper-parameters exhibit robustness, demonstrating its effectiveness in transforming a challenging-to-tune hyper-parameter into several more manageable hyper-parameters. 25 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+## E. Implementation of Differentiable Safe RL Tasks 
+
+Our algorithm requires computing first-order gradients along trajectories, necessitating a guarantee of system differentiability. Given the rapid advancement of differentiable physics engines (Degrave et al., 2019; Werling et al., 2021; Xian et al., 2023), we selected robotic control tasks for our tests. We developed the first Differentiable Safe RL task series, based on four robotic control tasks in the fully differentiable Brax engine (Freeman et al., 2021), as shown in Figure 15 We introduced two common constraints to these four unconstrained tasks: one on position (Achiam et al., 2017; Yang et al., 2018; Ji et al., 2023b) and another on velocity (Zhang et al., 2020; Shi et al., 2019). The specific constraint settings may lack sufficient physical significance, yet they suffice for algorithm testing. This section details the settings of these tasks. (a) CartPole (d) Ant (c) HalfCheetah (b) Reacher  
+
+> Figure 15. Four distinct agents used in our experiments originate from Brax, a fully differentiable physics engine.
+
+E.1. Position-constrained CartPole 
+
+This environment features a cart that moves linearly with one end of a pole fixed to it and the other end free. The goal is to push the cart left or right to balance the pole on its top by applying forces. The constraint requires maintaining the cart’s position at a specific distance from the origin. Since the optimal policy involves the cart staying stationary at its initial position, the constraint introduces a contradiction between the constraints and the goal. 
+
+Action Space: The agent takes a 1-element vector for actions. The action space is a continuous range, a ∈ [−3, 3] . The action denotes the numerical force applied to the cart, with its magnitude indicating the force amount and its sign in the direction. 
+
+Observation Space: The state space includes positional values of the pendulum system’s body parts, followed by the velocities of these parts, with positions listed before velocities. The observation is a vector with a shape of (4 , ).
+
+Reward Function: Receives a reward of 1.0 at each time step, i.e., rt = 1 .0.
+
+Cost Function: Incurs a cost equal to the negative square of the cart’s position at each time step, i.e., ct = −∥ xpos ∥2.
+
+Constraint: The cumulative cost on a trajectory of length 300 for the agent should be less than −50 .0.
+
+E.2. Position-constrained Reacher 
+
+Reacher is a two-jointed robot arm. The goal is to guide the robot’s end effector (fingertip), close to a target appearing at a random location. We set a constraint opposite to the objective function, requiring that the fingertip must not be too close to the target point. 
+
+Action Space: The action space is defined as a bounded box, designated as Box(-1, 1, (2,), float32). This notation represents a two-dimensional continuous space, with each action represented by a pair (a, b ). These values represent the torques’ magnitudes applied to the hinge joints, enabling precise control of the system’s movements. 
+
+Observation Space: The observation data includes key aspects: cosine and sine values of the two arms’ angles, target coordinates, arms’ angular velocities, and a three-dimensional vector from the target to the fingertip. This information is compiled into a vector with a shape of (11 , ).
+
+Reward Function: At each time step, the reward function comprises two parts: a distance reward rdist = −∥ xpos ∥ and a control reward rctrl = −(a2 + b2), and rt = rdist + βctrl · rctrl . Here, βctrl is a pre-configured coefficient. 
+
+Cost Function: Incurs a cost equal to the square of the position of the fingertip at each time step, i.e., ct = ∥xpos ∥2.
+
+Constraint: The cumulative cost on a trajectory of length 300 for the agent should be less than 400 .0.26 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+E.3. Velocity-constrained HalfCheetah 
+
+The HalfCheetah, a 2D robot, features 9 linked segments and 8 joints, with two joints designed to mimic paws. The main goal is to strategically apply torque to these joints to make the cheetah sprint forward swiftly. The agent gets a positive reward for distance moved forward and a negative reward for moving backward. Notably, the cheetah’s torso and head are static, with a torque applied only to six joints: the front and back upper legs (attached to the torso), lower legs (attached to the upper legs), and feet (attached to the lower leg). The constraint involves requiring the velocity to be less than a threshold, as referenced from Zhang et al. (2020). 
+
+Action Space: The action space is defined as a bounded box, designated as Box(-1, 1, (6,), float32). The agents operate using a set of six actions, each represented by a vector element. The values for these actions fall within the range of −1.0 to 
+
+1.0.
+
+Observation Space: In the state space, the cheetah’s body parts’ positions are detailed first, followed by their velocities, representing their rate of change. This information is organized with all positional data listed before the velocity data. The observation is a vector shaped as (18 , ).
+
+Reward Function: At each time step, the reward function comprises two parts: an x-axis velocity reward rvel = vx and a control reward rctrl = ∥a∥2, and rt = rdist + βctrl · rctrl . Here, βctrl is a pre-configured coefficient. 
+
+Cost Function: At each time step, the incurred cost is equal to the value of the velocity, denoted as ct = ∥v∥.
+
+Constraint: The cumulative cost on a trajectory of length 200 for the agent should be less than 400 .0. The cost thresholds are calculated using 50% of the speed attained by an unconstrained PPO agent after training for sufficient samples (Zhang et al., 2020). 
+
+E.4. Velocity-constrained Ant 
+
+The Ant is a 3D robot with a torso-like, freely rotating body and four attached legs. Each leg comprises two segments joined by hinges. The goal is to maneuver these legs coordinately, propelling the robot forward and to the right. This is achieved by precisely applying forces to the eight hinges connecting the leg segments to the torso, managing a system of nine parts and eight hinges. The constraint involves requiring the velocity to be less than a threshold, as referenced from Zhang et al. (2020). 
+
+Action Space: The action space is defined as a bounded box, designated as Box(-1, 1, (8,), float32). The agent operates with an 8-element vector, where each element represents an action. The action space is continuous, spanning eight components in the range of −1.0 to 1.0. These components indicate the numerical torques at hinge joints, with each action representing torque intensity and direction. 
+
+Observation Space: The state space represents the ant’s body, detailing the positions of its body parts followed by their corresponding velocities. This is represented by a 27-element vector, a numerical array that captures a comprehensive view of the ant’s physical state. The observation is a vector shaped as (27 , ).
+
+Reward Function: At each time step, the reward function comprises two parts: an x-axis velocity reward rvel = vx and a control reward rctrl = ∥a∥2, and rt = rdist + βctrl · rctrl . Here, βctrl is a pre-configured coefficient. 
+
+Cost Function: At each time step, the incurred cost is equal to the value of the velocity, denoted as ct = ∥v∥.
+
+Constraint: The cumulative cost on a trajectory of length 300 for the agent should be less than 1000 .0. The cost thresholds are calculated using 50% of the speed attained by an unconstrained PPO agent after training for sufficient samples (Zhang et al., 2020). 
+
+## F. Experimental Details and Hyper-parameters 
+
+This chapter outlines our experimental setup, covering baseline algorithm comparisons (Section F.1), evaluation metrics (Section F.2), specific hyper-parameters, training equipment details (Section F.3), and ablation study insights on utilizing gradients from trained world models (Section F.4). 27 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+F.1. Implementation of Baseline Algorithms 
+
+We implemented traditional safe reinforcement learning algorithms such as PDO (Chow et al., 2018), APPO (Dai et al., 2023), CPO (Achiam et al., 2017), and CUP (Yang et al., 2022), strictly following their original papers. For the training process, we refer to widely-recognized benchmarks like Safety-Gym (Ray et al., 2019) and OmniSafe (Ji et al., 2023c), achieving the optimal algorithm performance through multiple parameter adjustments. Our discussion will focus on the BPTT and SHAC algorithms, which have been modified using the Lagrangian method to meet constraints and are named BPTT-Lag and SHAC-Lag, respectively. These methods are also implemented based on the 
+
+Gradient-based Estimation of the objective and constraint functions, thereby solving the subsequent surrogate optimization problem: 
+
+θk+1 = arg max  
+
+> θ∈Θ
+
+(θ − θk)⊤ ∇θ JR(θk)
+
+s.t. JC (θk) + ( θ − θk)⊤ ∇θ JC (θk) ≤ b
+
+(75) 
+
+Notations. Considering the kth iteration, we also introduce additional notations to make the discussion more concise: 
+
+gk ≜ ∇θ JR(θk), gq ≜ ∇θ JC (θk), ck ≜ JC (θk) − b, and δ ≜ θ − θk.With these definitions, we rewrite the surrogate problem (75): 
+
+max  
+
+> δ
+
+g⊤ 
+
+> k
+
+δ s.t. ck + q⊤ 
+
+> k
+
+δ ≤ 0. (76) By introducing Lagrangian multipliers λ, we construct the dual function of the above constrained problem: 
+
+L(δ, λ ) ≜ −g⊤ 
+
+> k
+
+δ + λ · (ck + q⊤ 
+
+> k
+
+δ) (77) By solving the following primal-dual problem, 
+
+max  
+
+> λ
+
+min  
+
+> δ
+
+L(δ, λ ) (78) iteratively updating the policy parameters θ and the dual variable λ, we can approximate the local optimal point (θ∗, λ ∗).In this process, gk = ∇θ JR(θk), gq = ∇θ JC (θk) can be provided through both the BPTT and SHAC methods. Thus, we obtain two similar algorithms as follows. 
+
+BPTT-Lag: We refer to the method of deriving gk and qk through the following loss functions 
+
+LR(θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+h T −1X
+
+> t=0
+
+r(sit, ait)
+
+i
+
+, (79) 
+
+LC (θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+h T −1X
+
+> t=0
+
+c(sit, ait)
+
+i
+
+. (80) and iteratively solving Equation (78) to update the policy parameters as BPTT-Lag. 
+
+SHAC-Lag: We refer to the method of deriving gk and qk through the following loss functions 
+
+LR(θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+h t0+h−1X
+
+> t=t0
+
+r(sit, ait) + V Rϕ (sit0+h)
+
+i
+
+, (81) 
+
+LC (θ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+h t0+h−1X
+
+> t=t0
+
+c(sit, ait) + V Cψ (sit0+h)
+
+i
+
+. (82) and iteratively solving Equation (78) to update the policy parameters as SHAC-Lag. 
+
+F.2. Evaluation Metrics 
+
+In Section 6, we apply two evaluation metrics to quantify the convergence efficiency and the satisfaction of constraints, respectively. 28 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+F.2.1. N UMBER OF ENVIRONMENT STEPS AT CONVERGENCE (C ONV . S TEPS )This evaluation metric measures the efficiency of algorithmic performance improvement by determining the number of environmental steps needed for convergence on the episodic return curve. The convergence point on the episodic return curve is defined as the point from which the range of variation within a given window is less than a set threshold. In Safe RL tasks, we hope the algorithm can converge to a feasible point, so it is additionally required that this convergence point meets the constraints. The example code for calculating this evaluation metric is as follows:                            
+
+> def find_convergence_point( env_step, returns, constraints, constraint_threshold, window_size, threshold ):
+> for iin range(len(returns)):
+> for jin range(i +1, min(i +window_size, len(returns))):
+> if ((np.abs(returns[j] -returns[i]) >threshold)
+> or (constraints[i] >constraint_threshold) ):
+> break else :
+> return env_step[i]
+> return -1
+
+F.2.2. V IOLATION RATIO WITHIN SAFETY CRITICAL AREAS (V IO . R ATIO )Safety critical areas are defined as key regions where safety issues frequently occur (Nilsson et al., 2017; Xu et al., 2022). Thus, updates nearing the constraint threshold in the policy update process are considered to occur within the safety critical areas. Consequently, we use the proportion of constraint violations in safety critical areas during the policy update process as a measure of the capability of the update algorithm to meet constraints. Additionally, in deep Safe RL, where safety constraints are expressed as the expected value of sampling, a soft margin is introduced to determine if the policy violates constraints. The example code for calculating this evaluation metric is as follows:                        
+
+> def violation_ratio_in_critic_area( constraints, constraint_threshold, critic_area_radius, soft_margin ): num_in_critic_area =np.sum(constraints >(constraint_threshold -critic_area_radius)) num_violation =np.sum(constraints >(constraint_threshold +soft_margin))
+> if num_in_critic_area >0:
+> return num_violation /num_in_critic_area
+> else :
+> return -1
+
+29 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+F.3. Hyper-parameters 
+
+In this section, we present the hyper-parameters for CGPO across four distinct tasks.  
+
+> Table 4. Hyper-parameters for CGPO in different tasks.
+
+Tasks CartPole Reacher HalfCheetah Ant num epochs 100 300 300 300 num envs 128 128 128 256 episode length 300 300 200 300 delta init 1e-3 1e-2 1e-3 1e-3 delta upper 1e-2 1e-1 1e-2 1e-2 delta lower 1e-4 1e-4 1e-4 1e-4 beta 1 0.8 0.8 0.8 0.8 beta 2 1.25 1.25 1.25 1.25 critic learning rate 1e-3 1e-3 1e-3 1e-3 short horizon 10 10 10 10 mini batch size 64 64 64 64 max gradient norm 1e9 1e9 1e9 1e9 normalize observations True True True True cost limit -50 400 400 1000 
+
+F.4. Ablation Experiments with World Model 
+
+We demonstrated through ablation experiments that CGPO has the potential to obtain the system’s analytic gradient by training a world model, which is detailed in the description of this experiment. F.4.1. I MPLEMENTATION OF NON -D IFFERENTIABLE TASKS 10.0 7.5 5.0 2.5 0.0 2.5 5.0 7.5 10.0 
+
+x-axis Position  
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> Constraint
+> Figure 16. Cost values at different x-axis positions for the agent.
+
+Non-differentiable Function Environment. We design a function environment similar to the simple environment in Figure 1. The goal of this task is to train an agent to move along the x-axis, receiving rewards and incurring costs based on its position on the x-axis. The specific settings of the task are as follows: 
+
+Action Space: The direction and step length of the agent’s movement along the x-axis constitute the action space, which is a single-element vector, i.e., a ∈ (−1, 1) .
+
+Observation Space: The observation data for the agent is its position on the x-axis, which is also a single-element vector, i.e., s ∈ R.The task employs a simple, artificially set state transition function: 
+
+st+1 = st + 0 .2 × at.
+
+Reward Function and Cost Function: Since the purpose of this simple task is to verify the accuracy of the estimation method, we set the reward function and cost function in the same form, i.e., 
+
+f (x) = 
+
+ floor (x)10 .0
+
+2
+
++ 0 .1 + 0 .1 × sin 
+
+ 8xπ
+
+
+
+(83) where floor (x) rounds x down to the nearest integer, and its visualiza-tion is shown in Figure 16. 
+
+Constraint: Since the task is solely aimed at verifying the accuracy of the estimation method, the set constraint has no 30 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+physical significance. Specifically, the cumulative cost on a trajectory of length 100 for the agent should be less than 8.0: 
+
+JC (π) ≜
+
+> 99
+
+X
+
+> t=0
+
+f (xt) ≤ 8.0 (84) This constraint setting is consistent with many well-known Safe Benchmarks, where the undiscounted cumulative cost on a finite-length trajectory must be less than a scalar threshold, namely, PT −1 
+
+> t=0
+
+ct ≤ b.
+
+Non-differentiable Swimmer. The swimmers consist of three or more segments, known as ’links’, connected by a slightly smaller number of articulation joints, termed ’rotors’. Each rotor joint smoothly connects two links, forming a linear sequence. These swimmers elegantly move through a two-dimensional aquatic environment. Their goal is to glide swiftly to the right, utilizing the torque applied to the rotors and effectively using the water’s resistance. The constraint involves requiring the velocity to be less than a threshold, as referenced from Zhang et al. (2020). This task has poor differentiability because the differentiable kernel of Brax is not used. 
+
+Action Space: The action space is defined as a bounded box, designated as Box(-1, 1, (2,), float32). The agent takes a 2-element vector for actions. The values for these actions fall within the range of −1.0 to 1.0. It represents the torque applied on the rotor. 
+
+Observation Space: The state space is composed of a series of elements that define the position and movement dynamics within the environment. Specifically, these elements provide detailed information about the positions, angles, and their respective velocities and angular velocities of the segments in our system. The observation is a vector shaped as (8 , ).
+
+Reward Function: At each time step, the reward function comprises two parts: an x-axis velocity reward rvel = vx and a control reward rctrl = ∥a∥2, and rt = rdist + βctrl · rctrl . Here, βctrl is a pre-configured coefficient. 
+
+Cost Function: At each time step, the incurred cost is equal to the value of the velocity, denoted as ct = ∥v∥.
+
+Constraint: The cumulative cost on a trajectory of length 300 for the agent should be less than 150 .0. The cost thresholds are calculated using 50% of the speed attained by an unconstrained PPO agent after training for sufficient samples (Zhang et al., 2020). 
+
+Algorithm 3 Model-based Constrained Gradient-based Policy Optimization (MB-CGPO) 
+
+Input: Initialize World Model Fφ0 , policy πθ0 , critic Vϕ0 and V c 
+
+> ψ0
+
+, radius ˆδ0, and number of iterations K.
+
+for k = 1 , 2, . . . , K do 
+
+Sample a set of trajectories D = {τ } ∼ πθk .Update World Model Fφk with data D using (85). Sample a set of trajectories DM = {τ } ∼ πθk in World Model Fφk+1 .Compute the gk, qk using (19) and (20) with DM .
+
+if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδk ≥ 0 and ck > 0 then 
+
+Update the policy as θk+1 = θk −√ˆδk  
+
+> ∥qk∥
+
+qk.
+
+else if c2
+
+> k
+
+/q⊤ 
+
+> k
+
+qk − ˆδk ≥ 0 and ck < 0 then 
+
+Update the policy as θk+1 = θk +
+
+√ˆδk  
+
+> ∥gk∥
+
+gk.
+
+else 
+
+Compute dual variables λ∗
+
+> k
+
+, ν∗ 
+
+> k
+
+using Algorithm 2. Update the policy as θk+1 = θk + gk −ν∗ 
+
+> kqk
+> λ∗
+> k
+
+.
+
+end if 
+
+Update Vϕk , V c 
+
+> ψk
+
+using (21), and ˆδk+1 using (18). 
+
+end for Output: Policy πθK .F.4.2. B ASIC MODEL -BASED CGPO ALGORITHM 
+
+Here, we present a basic implementation of using a World Model to provide analytic gradients for CGPO, which we refer to as MB-CGPO. The input to this world model is st and at, and the output is a combined vector of st+1 , rt, and ct. By using 31 Safe Reinforcement Learning using Finite-Horizon Gradient-based Estimation 
+
+the MSE loss, we train the world model F with collected data, as shown in: 
+
+L(st, s t+1 , r t, c t) = ( Fs(st, a t) − st+1 )2 + ( Fr (st, a t) − rt)2 + ( Fc(st, a t) − ct)2 (85) When computing analytic gradients, we collect trajectories through the World Model and then derive along the trajectory in the exact same manner as with a differentiable simulator. Thus, the MB-CGPO is given in Algorithm 3. 32

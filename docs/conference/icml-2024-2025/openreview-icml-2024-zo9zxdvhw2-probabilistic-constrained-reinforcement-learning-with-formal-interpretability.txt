@@ -1,0 +1,1968 @@
+Title: Probabilistic Constrained Reinforcement Learning with Formal Interpretability
+
+URL Source: https://openreview.net/pdf?id=Zo9zXdVhW2
+
+Number of Pages: 25
+
+Markdown Content:
+# Probabilistic Constrained Reinforcement Learning with Formal Interpretability 
+
+Yanran Wang 1 Qiuchen Qian 1 David Boyle 1
+
+# Abstract 
+
+Reinforcement learning can provide effective rea-soning for sequential decision-making problems with variable dynamics. Such reasoning in prac-tical implementation, however, poses a persis-tent challenge in interpreting the reward function and the corresponding optimal policy. Conse-quently, representing sequential decision-making problems as probabilistic inference can have con-siderable value, as, in principle, the inference offers diverse and powerful mathematical tools to infer the stochastic dynamics whilst suggest-ing a probabilistic interpretation of policy op-timization. In this study, we propose a novel Adaptive Wasserstein Variational Optimization, namely AWaVO, to tackle these interpretability challenges. Our approach uses formal methods to achieve the interpretability for convergence guarantee, training transparency, and intrinsic decision-interpretation. To demonstrate its prac-ticality, we showcase guaranteed interpretability with a global convergence rate Θ(1 /√T ) in simu-lation and in practical quadrotor tasks. In compar-ison with state-of-the-art benchmarks, including TRPO-IPO, PCPO, and CRPO, we empirically verify that AWaVO offers a reasonable trade-off between high performance and sufficient inter-pretability. 
+
+# 1. Introduction 
+
+Sequential decision-making problems can be represented using Reinforcement Learning (RL) or optimal control tech-nologies to efficiently determine optimal policies or control strategies in the presence of uncertainties (Levine, 2018). Nevertheless, such reasoning poses an ongoing challenge to create a convincing interpretation of sequential decision-making and its corresponding optimal policies (Devidze    
+
+> 1Systems and Algorithms Laboratory, Imperial College London, South Kensington, London. Correspondence to: Yanran Wang
+> <yanran.wang.20@imperial.ac.uk >.
+> Proceedings of the 41 st International Conference on Machine Learning , Vienna, Austria. PMLR 235, 2024. Copyright 2024 by the author(s).
+
+et al., 2021; Levine, 2022). This challenge in comprehen-sion poses a significant barrier to real-world RL’s implemen-tation in safety-critical domains, such as advanced manu-facturing (Napoleone et al., 2020), autonomous navigation (Fernandez-Llorca & G ´omez, 2023) and financial trading (McNamara, 2016). 
+
+Key Challenges. The challenges surrounding interpretabil-ity in the context of RL can be conceptualized through three distinct phases: a. Guarantee of convergence ensures that an RL framework converges towards an optimal pol-icy, e.g., in an asymptotic manner. b. Transparency in training convergence emphasizes the identification of the underlying processes that an RL algorithm employs to reach convergence during its training. An instance is the con-vergence rate, where, based on a given number of training iterations, the rate enables the prediction of the expected level of convergence with a certain degree of confidence. 
+
+c. Interpretation of decisions seeks to explain why these specific sequential decisions were made within a given state and environment. Specifically, this interpretation involves clarifying the quantitative impact of latent factors on these sequential decisions. Moreover, due to legal mandates in industries, this facet of interpretation is of even greater sig-nificance, particularly in ensuring the trustworthiness of self-driving vehicles (Fern ´andez Llorca & G ´omez, 2021; Fernandez-Llorca & G ´omez, 2023), aerospace engineering (Brat, 2021; Torens et al., 2022), and high-frequency trading (McNamara, 2016). One widely adopted approach to achieving model inter-pretability involves the use of post-hoc explanation methods. These methods provide retrospective rationales for model predictions, often through the creation of saliency maps or exemplars, as discussed in previous research (Lipton, 2018; Kenny et al., 2021). Despite their popularity, these approaches may produce incomplete or inaccurate explana-tions (Slack et al., 2020; Zhou et al., 2022). In response to these limitations, recent studies have shifted their fo-cus towards intrinsic interpretability (Rudin, 2019; Kenny et al., 2022). These methods, however, face challenges in providing a transparent and comprehensive view in the decision-making process. While they present decision ex-planations that are user-friendly, as demonstrated in (Kenny et al., 2022), corresponding to Key Challenge c , there is no guaranteed transparency, as highlighted in Key Challenges 
+
+1Probabilistic Constrained RL with Formal Interpretability 
+
+a and b. Establishing such transparency is crucial and serves as a prerequisite for underpinning user trust and predicting the system’s capabilities. To our best knowledge, we present the first intrinsically interpretable constrained RL framework through the lens of probabilistic inference. Specifically, we reframe con-strained RL as Wasserstein variational optimization, lever-aging an enhanced foundational inference framework known as augmented Probabilistic Graphical Models (PGMs). This is illustrated in Figure 1. Our proposed Adaptive Sliced 
+
+Wa sserstein Variational Optimization (AWaVO), as elabo-rated in Figure 2, consists of two primary steps: a. Optimality-Rectified Policy Optimization using Distri-butional Representation (ORPO-DR) : ORPO is con-ducted to dynamically adapt to uncertainties (Algo-rithm 1, Section 4.2). More importantly, Distributional Representation (DR) provides an entire distribution of the action-value function, contributing to heightened transparency in the convergence process (as outlined in 
+
+Theorem 5.4 and Theorem 5.5 ). Consequently, this ef-ficiently tackles a significant portion of the deficiencies outlined in Key Challenges a and b;b. Wasserstein Variational Inference (WVI) : as detailed in Section 4.1, WVI is subsequently performed to achieve the probabilistic interpretation of decisions, thereby tackling Key Challenge c .Our contributions can be summarized as follows: • Adaptive Generalized Sliced Wasserstein Distance ,referred to as A-GSWD, incorporates the Sliced Wasserstein Distance (SWD) along with adaptive Radon transforms to handle dynamic uncertainties. Specifically, the proposed A-GSWD adaptively deter-mines the hypersurfaces’ slicing directions to enhance the precision of distribution distance computation; • Adaptive Sliced Wasserstein Variational Optimiza-tion , abbreviated as AWaVO, employs inference to re-formulate the problem of sequential decision-making. To tackle all Key Challenges, AWaVO leverages ORPO-DR to enhance the transparency of convergence under dynamic uncertainties. Additionally, WVI is em-ployed to provide probabilistic decision-interpretation; • Formal methods for interpretation are employed to demonstrate theoretical comprehension on the metric judgment of A-GSWD, transparency of training con-vergence, and probabilistic interpretation of decisions. The practical hardware implementation and additional demonstrations are showcased in a video 1.     
+
+> 1https://github.com/Alex-yanranwang/AWaVO
+> Figure 1. A new graphical model for constrained RL: refer to Al-gorithm 2 for a comprehensive overview of (i) Parameter Identifi-cation ,(ii) Policy Updating and (iii) Inference Execution .
+
+# 2. Related Work 
+
+Reinforcement Learning as Inference. The relationship between sequential decision-making and probabilistic infer-ence has been explored extensively in recent years (Levine, 2018; Okada & Taniguchi, 2020; Liu et al., 2022). Despite variations in terminology, the core inference frameworks re-main consistent, namely, PGMs (Koller & Friedman, 2009). While substantial research exists on learning and inference techniques within PGMs (Levine, 2018), the direct connec-tion between RL (or control) and probabilistic inference is not immediately apparent. (Welch et al., 1995) estab-lishes that control and inference are dual perspectives of the same problem. This connection offers novel insights and enhanced understanding within control problems by lever-aging mathematical tools of inference (Toussaint & Storkey, 2006; Kappen et al., 2012). Moreover, the study on ‘RL as inference’ represents another prominent trend. Specifi-cally, (Levine, 2018) demonstrates that RL is equivalent to probabilistic inference under dynamics. (Chua et al., 2018; Okada & Taniguchi, 2020) approach dynamics modeling by employing Bayesian inference optimization. Further-more, (O’Donoghue et al., 2020) revisits the formalization of ‘RL as inference’ and demonstrates that with a slight algorithmic modification, this approximation can perform well even in problems where it initially performs poorly. In this study, we formalize constrained RL as Wasserstein variational optimization to achieve decision-interpretations. 
+
+Optimal Transport Theory. Forming effective metrics between two probability measures is a fundamental chal-lenge in machine learning and statistics communities. The optimal transport theory, particularly the Wasserstein dis-tance, has garnered significant attention across various do-mains (Solomon et al., 2014; Kolouri et al., 2017; Schmitz et al., 2018; Wang & Boyle, 2023) due to its accuracy, ro-bustness, and stable optimization. Nevertheless, due to its computational demand on high-dimensional data, recent 2Probabilistic Constrained RL with Formal Interpretability 
+
+advancements emphasize computational efficiency through differentiable optimization (Peyr ´e et al., 2017). Among these methods, Sinkhorn distance (Cuturi, 2013; Altschuler et al., 2017) introduces entropy regularization to smoothen the convex regularization. Another notable approach in-volves slicing or linear projection (Ng, 2005), i.e., Sliced Wasserstein Distance (SWD) (Bonneel et al., 2015), which leverages the measures’ Radon transform for efficient di-mensionality reduction. Then, variants of SWD, such as Generalized SWD (GSWD) (Kolouri et al., 2019), improve projection efficiency. These advancements contribute to the efficiency in optimal-transport-based metrics. However, they suffer from reduced accuracy as SWD only slices distri-butions using linear hyperplanes, which may fail to capture the complex structures of data distributions. To overcome the accuracy limitation, Augmented SWD (ASWD) (Chen et al., 2021) projects onto flexible nonlinear hypersurfaces, enabling the capture of intricate data distribution structures. Building upon the ASWD framework, we introduce an adap-tive variant called A-GSWD which leverages the projection onto nonlinear hypersurfaces and combines it with ORPO-DR to achieve adaptivity. This adaptive approach enhances the efficiency and accuracy of Wasserstein distance compu-tation, improving upon the limitations of previous methods. 
+
+# 3. Problem Formulation and Preliminaries 
+
+Sequential Decision-making as Probabilistic Inference. 
+
+A sequential decision-making problem, formalized as a stan-dard RL or control problem, can be seen as an inference problem (Levine, 2018): 
+
+p(τ |O 0: T −1 = 1) ∝
+
+Z T −1Y
+
+> t=0
+
+p(Ot = 1 |st, at)
+
+| {z } 
+
+> := p(O| τ)
+
+·
+
+p(s0)
+
+(T −1Y
+
+> t=0
+
+p(at|st, θ )p(st+1 |st, at)
+
+)| {z }  
+
+> Markov property
+> := p(τ|θ)
+
+· p(θ|D)
+
+| {z }  
+
+> := pD(θ)
+
+dθ
+
+(1) where st, at, τ = {(st, at)}T −1 
+
+> t=0
+
+and D = {(st, at, st+1 )}
+
+are states, actions, a trajectory and observed training dataset. 
+
+Ot = {O r,t , Ogi,t } ∈ { 0, 1} represents an additional binary variable of the optimality for (st, at) in PGM (Levine, 2018; Okada & Taniguchi, 2020). Or,t = 1 and Ogi,t = 1 signify that the trajectory τ is optimized and compliant with the constraints, respectively. In Equation 1, we can deconstruct the various compo-nents: the probability p(at|st, θ ) signifies the stationary policy π which maps one state st to one action at, where 
+
+at ∼ p(·| st, θ ) = π(·| st) at each time step t; the tran-sition probability p(st+1 |st, at) represents state transi-tions (also known as forward-dynamics models), where 
+
+st+1 ∼ p(·| st, at) (Chua et al., 2018) at each time step t;
+
+the prior probability pD (θ) is derived from the posterior probability p(θ|D), where the parameter θ is inferred from the training dataset D; and lastly, the optimality likeli-hood p(O| τ ) is defined in relation to the expected reward and utility formulation of several trajectories, expressed as 
+
+Fr · p (Or |τ ) := er(τ ) and Fg · p (Ogi |τ ) := egi(τ ) , where the operator family F = {F r , Fg } and the optimality fam-ily O = {O r , Ogi } establish this relationship. In Section 4.1 and Section 5 , we offer theoretical understanding to illustrate how such specific definitions influence the RL’s global convergence. 
+
+Constrained Reinforcement Learning as Probabilistic Graphical Models. Specifically, we consider a Con-strained Markov Decision Process (CMDP) (Altman, 1999), a formal framework for constrained RL, which is formulated as a discounted Markov decision process with additional constrained objectives, i.e., a tuple ⟨S, A, P, R, G, γ ⟩: S is a finite set of states {s}; A is a finite set of actions {a};
+
+P : S × A → S is a finite set of transition probabilities 
+
+{p(s′|s, a)}; R : S × A × S → R is a finite set of bounded immediate rewards {r}; G : S × A × S → R comprises a finite collection of unity functions {g}, where, upon satisfy-ing the expected constraints gi, the unity-optimality variable is specified as Ogi = 1 ; and γ ∈ [0 , 1] is the discount rate. A CMDP is presented as: 
+
+max  
+
+> π
+
+Jr (π), s.t. Jg,i (π) ≤ bi + τc, i = 1 , ..., n (2) where Jr (π) := E[ ∞P
+
+> t=0
+
+γtr(st, at)|π, s0 = s] and 
+
+Jg,i (π) := E[ ∞P
+
+> t=0
+
+γtgi(st, at)|π, s0 = s] are the value func-tion associated with the immediate reward r and the utility 
+
+g, respectively; bi is a fixed limit for the i-th constraint; and 
+
+τc is the tolerance. Figure 1 shows how constrained RL can be viewed as a novel variation of PGMs. A complete table of nomenclature is provided in Appendix A for convenient reference. 
+
+# 4. Method: Adaptive Sliced Wasserstein Variational Optimization (AWaVO) 
+
+In this section, we present AWaVO’s two primary submod-ules: WVI and ORPO-DR. The detailed algorithm is out-lined in Algorithm 2, and the overarching algorithmic struc-ture is depicted in Figure 2. 
+
+4.1. WVI: Wasserstein Variational Inference Variational Inference for Dynamic Uncertainties. Given uncertainties in a dynamics model, it is reasonable to assume that the optimal trajectories {τ } are uncertain. To infer opti-mal policies under uncertainties, let us consider a variational 3Probabilistic Constrained RL with Formal Interpretability  
+
+> Figure 2. The algorithmic framework of AWaVO. We reform constrained RL as a Wasserstein variational optimization setup, consisting of two primary submodules: ORPO-DR and WVI ( Section 4 ).
+
+inference: D(qθ (τ )|| p(τ |O )) , where, for simplicity, we use 
+
+p(τ |O ) to represent p(τ |O t:T = 1) ; and D(·||· ) represents a distance metric between two probabilities. Building upon Equation 1, the variational distribution qθ (τ ) is constructed as qθ (τ ) = q(a)p(τ |θ)pD (θ). The construction suggests an assumption that the state transitions are controlled by 
+
+p(st+1 |st, at). According to Equation 1, we formulate the posterior as p(τ |O ) ∝ p(O| τ )p(τ |θ)pD (θ) (see Assump-tion 2 for our implementation details). While Kullback-Leibler (KL) divergence is widely used in conventional variational inference, its application in certain practical implementations can be risky due to its limitations, including asymmetry and infinity, arising when there are unequal supports. In this section, we extend the Wasser-stein distance into the variational inference, and present the derivation of how we transform the GSWD between the two posteriors to the optimality likelihood p(O| τ ) and its approximation q(a).
+
+Adaptive Generalized Sliced Wasserstein Distance. 
+
+GSWD has exhibited high projection efficiency in previ-ous studies (Kolouri et al., 2019; Chen et al., 2021) (please refer to Appendix B for a comprehensive background and definition of Wasserstein distance). However, the identifi-cation of the hypersurface hyperparameters, such as l and 
+
+eθ, remains to be a challenge. The selection of these pa-rameters, specifying the hypersurface along with its slicing direction, is generally a task-specific problem and requires prior knowledge or domain expertise. We now present a new adaptive sliced Wasserstein distance, called A-GSWD, that integrates GSWD with ORPO-DR, an adaptive process for determining the parameters of a hypersurface. 
+
+Definition 4.1. Given SWD and GSWD (defined in Ap-pendix B.1 and Appendix B.2 , respectively), we define A-GSWD by utilizing ORPO-DR for the adaptive slicing: 
+
+A − GSWD k(μ, ν ) = 
+
+Z
+
+> Reθ
+
+W kk
+
+
+
+Aμ
+
+
+
+·, eθ
+
+
+
+, Aν
+
+
+
+·, eθ
+
+ 
+
+deθ
+
+! 1
+
+> k
+
+where μ, ν ∈ Pk(X ) are two measures of probability dis-tributions over the space X (see Appendix B.1 for details). 
+
+l ∈ R and eθ ∈ R eθ represent the parameters of hypersur-faces, both of which are the outputs from actor networks in ORPO-DR (see Figure 2 for details). The Adaptive General-ized Radon Transforms (AGRT) A is used as a push-forward operator Aμ, defined by Aμ(l, eθ) = R 
+
+> Gd
+
+δ(l − α(x, eθ))d μ,where α(x, eθ) is a defining function satisfying the condi-tions H.1-H.4 in (Kolouri et al., 2019). Reθ ⊂ Rd is a compact set of all feasible parameters eθ, where Reθ = Sd−1
+
+for α(·, eθ) = ⟨· , eθ⟩.Although the proposed adaptive slicing method, i.e., A-GSWD, improves the efficiency and accuracy of the Wasser-stein distance computation, its demonstration on a valid metric guarantee remains a problem (Kolouri et al., 2019). In Section 5 , we prove that the proposed A-GSWD is a true metric that satisfies non-negativity, symmetry, the triangle inequality and A − GSWD k(μ, μ ) = 0 , respectively. We then employ A-GSWD to address the variational in-ference, i.e., minimizing the distance D(qθ (τ )|| p(τ |O )) = 
+
+A − GSWD k(qθ (τ ), p (τ |O )) between the variational dis-tribution qθ (τ ) and the posterior distribution p(τ |O ). Sub-sequently, the variational inference can be reformulated to the minimization problem, as shown in WVI of Fig-ure 2: arg min   
+
+> qθ(τ)
+
+A − GSWD k (q (a) , p (O| τ )) , where 
+
+p(O| τ ) represents the optimality likelihood, and the detailed derivation is in Appendix D.1 .4Probabilistic Constrained RL with Formal Interpretability 
+
+4.2. ORPO-DR: Optimality-Rectified Policy Optimization using Distributional Representation 
+
+The current policy optimization for constrained RL can be classified into two categories: primal-dual and primal approaches (Xu et al., 2021). The former, transforming the constrained problem into an unconstrained one, are most commonly used although sensitive to Lagrange multipliers and other hyperparameters, such as the learning rate. On the other hand, the latter (i.e., primal approaches) require less hyperparameter tuning but have received less attention in terms of convergence demonstration compared to the primal-dual approaches. 
+
+Policy Optimization combining Optimality Likelihood. 
+
+Based on Section 4.1 , a constrained RL problem, as outlined in Equation 2, can be iteratively substituted and resolved as: 
+
+
+
+arg max  
+
+> q(a)
+
+E[Fr · p (Or |τ )] , E[Fg · p (Ogi |τ )] ≤ bi + τc
+
+arg min  
+
+> q(a)
+
+E[Fg · p (Ogi |τ )] , otherwise 
+
+where we recall that {F r , Fg } are two operators defined as Fr · p (Or |τ ) := er(τ ) and Fg · p (Ogi |τ ) := egi(τ ), re-spectively. Furthermore, we can calculate the accumulated reward and utility function: er(τ ) = E[T −1P
+
+> t=0
+
+γtr(st, at)] 
+
+and egi(τ ) = E[T −1P
+
+> t=0
+
+γtgi(st, at)] . Consequently, we obtain 
+
+Jr (π) = E[er(τ )] and Jg,i (π) = E[egi(τ )] if T = ∞.If we only define Fr ∝ log[ ·], it becomes equivalent to the formulation used in (Levine, 2018; Okada & Taniguchi, 2020; 2018). In this case, we can retrieve an optimiza-tion process that resembles Model Predictive Path Integral (MPPI) (Okada & Taniguchi, 2018). The design of reward functions in the traditional RL is typically based on task-specific heuristics which is often considered as much an art as science. We will present such interpretation in Section 5 to show how the reward operator family F acts on con-vergence, as well as a more rigorous approach to ensure guaranteed global convergence rate during the training pro-cess. Additionally, in Section 6 , we empirically verify these theoretical guarantees. 
+
+Policy Updating. As shown in Algorithm 1, we first up-date the policy towards either maximizing E[Fr · p (Or |τ )] 
+
+or minimizing E[Fg · p (Ogi |τ )] by using the distributional representation (introduced in Appendix C ), where the gra-dient of actor and critic network, denoted as δθμ and δθQ ,are defined in Equation 8 in Appendix C . Then, as shown in ORPO-DR of Figure 2, the actor network outputs the parameters to dynamically determine the hypersurfaces and the corresponding slicing directions; and the critic network provides an entire state-action distribution, which is directly utilized as the variational distribution of the optimality like-
+
+Algorithm 1 ORPO-DR: Optimality-Rectified Policy Opti-mization using Distributional Representation 
+
+Input: sk , sk+1 , τc, θμ, θQ
+
+Output: updated θμ, θQ
+
+1: Constraint Estimation :
+
+Jg,i (πθ (s, a)) = E[Fg · p (Ogi |τ )] , ∀i ∈ [1 , p ]
+
+2: Policy Improvement :3: if Jg,i (π) ≤ bi + τc, ∀i ∈ [1 , p ] then 
+
+4: update the policy towards maximizing E[Fr · p (Or |τ )] :
+
+θμ ← θμ + lμδθμ , and θQ ← θQ + lθ δθQ
+
+5: else 
+
+6: update the policy towards minimizing E[Fg · p (Ogi |τ )] :
+
+θμ ← θμ − lμ∇θμ egi(τ ), and θQ ← θQ − lQ∇θQ egi(τ )
+
+7: end if 
+
+Algorithm 2 AWaVO: Adaptive Sliced Wasserstein Varia-tional Optimization 
+
+Input: sk , sk+1 , θμ, θQ
+
+Output: ak
+
+1: Initialize :
+
+θ = [ θμ, θ Q]: the parameters of actor and critic network 2: repeat 
+
+3: for t = 0 , 1, 2, ..., T − 1 do 
+
+4: Parameter Identification: achieve pD (θ) by doing in-ference of the posteriors p(θ|D) (Section 3) 5: Policy Updating: θμ, θ Q ← Exec. Algorithm 1 (sk ,
+
+sk+1 , τc, θμ, θQ)
+
+6: Inference Execution: do inference of the posterior prob-ability, as described in Section 4.1: 
+
+p(τ |O t:T ) ← arg min   
+
+> qθ(τ)
+
+A − GSWD k (q (a) , p (O| τ )) 
+
+7: sample actions ak ← p(τ |O t:T ), execute ak , and ob-serve sk+1 
+
+8: end for 
+
+9: until convergence 
+
+lihood q(a) in A-GSWD, as shown in Figure 2. 
+
+# 5. Formal Methods for Interpretability 
+
+Proposition 5.1. (Pseudo-metric): Given two probability measures μ, ν ∈ Pk(X ) and a mapping α : X → R eθ , the adaptive slicing A-GSWD, defined in Definition 4.1 , with order k in the range [1 , ∞), is a pseudo-metric that satis-fies non-negativity, symmetry, the triangle inequality and 
+
+A − GSWD k(μ, μ ) = 0 . See Appendix D.3 for Proof. Remark 5.2 . The adaptive slicing A-GSWD, with order 
+
+k ∈ [1 , ∞), is a true metric if and only if the AGRT A,defined in Definition 4.1 , is an injective mapping. We make the following three assumptions. 
+
+Assumption 1. We define the function: p(τ |O ) =
+
+p(O| τ )p(τ |θ)pD (θ).
+
+Assumption 2. Let Ψ( s, a ) be a feature vector, and χπ be a stationary distribution in CMDP: (s, a ) ∼ χπ . There exists a constant ˆC0 such that for any ϱ ≥ 0, it holds that 
+
+5Probabilistic Constrained RL with Formal Interpretability    
+
+> (a) Acrobot tasks in OpenAI Gym (b) Cartpole tasks in OpenAI Gym
+> (c) Walker tasks in GUARD (d) Drone tasks in GUARD
+> Figure 3. Performance comparison over 10 seeds. CRPO and AWaVO outperform PaETS, with a trade-off highlighted: although PaETS offers probabilistic interpretation with Bayesian networks, its convergence is generally unstable. Our proposed AWaVO achieves a better balance between high performance and interpretability. In contrast to two other constrained RL algorithms, i.e., TRPO-IPO and PCPO, we observe an interesting result: PCPO performs better in tasks like Acrobot, Cartpole, and Walker, while TRPO-IPO outperforms PCPO in the more complex drone tasks (Figure 3(d)). Further, in Figure 5, we will explore more complex real-world tasks using an aerial robot.
+
+p( xTΨ( s, a ) ≤ ϱ) ≤ ˆC0 · ϱ, where x ∈ Rd.
+
+Assumption 3. We define the family of functions: 
+
+BR, ∞ = f (( s, a ); θq ) = f (( s, a ); θq, 0)+
+
+Z
+
+1(θq TΨ( s, a ) > 0) · ω(θq )TΨ( s, a )d φ(θq )
+
+where f (( s, a ); θq ) is an H-layer neural network corre-sponding to the initial parameter θq, 0. The weighted func-tion ω(θq ) : Rd → Rd satisfies ∥ω(·)∥∞ ≤ CR/√d, where 
+
+CR ∈ R denotes an upper bounded value and d ≥ 2.
+
+φ(·) : Rd → R represents the density of the weight dis-tribution. We assume Qπ ∈ B R, ∞, for all π.
+
+Assumption 1 specifies that in our implementation, the term p(τ |O ) is explicitly formulated as p(O| τ )p(τ |θ)pD (θ).
+
+Assumption 2 implies that the probability density of the distribution Ψ( s, a ) is uniformly upper-bounded over the unit sphere, a condition achievable in most ergodic Markov chains (Mitrophanov, 2005; Xu et al., 2021). Assumption 3 
+
+implies a mild and broadly applicable regularity condition on Qπ , as BR, ∞ can be interpreted as a function class with infinite width neural networks, thus representing a suffi-ciently general set of functions. To establish a link between the reward operator family F
+
+and the global convergence of ORPO-DR, here, we intro-duce Conditions 5.3 and then present Theorem 5.4 (Global Convergence) .
+
+Conditions 5.3. The reward operator family F = {F r , Fg }
+
+satisfies that: (i) Fr is monotonically increasing and contin-uously defined on (0 , 1] , and the range covers [rmin , r max ];and (ii) Fg is monotonically decreasing and continuously defined on (0 , 1] , and the range covers [rmin , r max ].
+
+Theorem 5.4. (Global Convergence): Given the policy in the i-th policy improvement πi, πi → π∗ and i → ∞ ,suppose Assumption 1 holds, there exists Qπ∗
+
+(s, a ) ≥
+
+Qπi
+
+(s, a ) if and only if the reward operator family F satis-fies the both Conditions 5.3 . See Appendix D.3 for Proof. 
+
+Subsequently, we present a more rigorous comprehension of how F precisely influences the convergence rate. To our best knowledge, this study represents the first attempt to de-velop an intrinsic interpretation of how the reward function design influences convergence within the RL community. 
+
+Theorem 5.5. (Global Convergence Rate): Let m and H
+
+be the width and layers of a neural network, Ktd = (1 −
+
+6Probabilistic Constrained RL with Formal Interpretability  
+
+> Figure 4. We use our AWaVO as the tracking controller for a quadrotor, where ORPO-DR is employed as the uncertainty esti-mator, and WVI using A-GSWD is leveraged as the controller.
+
+γ)− 32 m H 
+
+> 2
+
+be the iterations required for convergence of the distributional Temporal Difference (TD) learning (defined in Equation 10), lQ = 1√T be the policy update (in Line 4 of Algorithm 1) and τc = Θ( 1(1 −γ)√T ) + Θ( 1(1 −γ)T m H
+
+> 4
+
+)
+
+be the tolerance (in Line 3 of Algorithm 1). Suppose As-sumptions 1-3 hold. There exists a global convergence rate of Θ(1 /√T ), and a sublinear rate of Θ(1 /√T ) if the con-straints are violated with an error of Θ(1 /m H 
+
+> 4
+
+), with prob-ability of at least 1 − δ. This holds if and only if the reward operator family F satisfies Conditions 5.3 . See Appendix D.3 for Proof. 
+
+Probabilistic interpretation on sequential decisions. We now quantitatively establish the relationships between la-tent factors, such as disturbances, that possibly influence decision-making and the sequential decisions, namely tra-jectories, by providing a probabilistic interpretation. Re-ferring to the abbreviation presented in Equation 1, we re-form it as: p(τ |D) = p(O| τ ) · p(s, a|θ) · pD (θ). Then, the latent factors are denoted by L = {Li}M −1 
+
+> i=0
+
+, where M
+
+represents the total number of defined factors. By apply-ing the chain rule to the posterior probability p(τ |D), we have {p(τ |Li)}Mi=0 =
+
+n p(τ |D)
+
+> p(Li|D)
+
+oMi=0 
+
+, where the equation provides a decomposition of the joint posterior probability 
+
+p(τ |D) into conditional probabilities that involve individual factors Li. This decomposition is not only notable for its theoretical simplicity but facilitates a practical probabilis-tic understanding of how each factor influences policy in real-world safety-critical scenarios, such as robot autonomy. In Section 6 , we showcase numerical examples to illustrate such probabilistic interpretation. 
+
+# 6. Experiments 
+
+In this section, we explain our empirical assessments of AWaVO’s performance in simulated platforms and real-  
+
+> Figure 5. Performance comparison in a real quadrotor: our AWaVO slightly outperforms the constrained RL approach, i.e., PCPO, whilst achieving interpretability in Figure 7.
+
+world robot tasks. Initially, we perform tasks with mul-tiple constraints in OpenAI Gym framework (Brockman et al., 2016). Then we showcase AWaVO’s practicality through real quadrotor Flight Tasks (FTs) to provide a more comprehensive assessment of its performance. These eval-uations serve a dual purpose: to validate AWaVO’s per-formance; and, critically, to empirically demonstrate its quantitative interpretability. This interpretability includes confirming properties such as the guaranteed convergence rate as demonstrated in Theorem 5.5 and the probabilistic decision interpretation discussed in Section 5 within the context of sequential decision-making tasks. 
+
+Comparative Performance in Simulated Tasks. We conduct tasks with multiple constraints in OpenAI Gym (Brockman et al., 2016) and GUARD (Zhao et al., 2023) (a constrained RL benchmark): Acrobot, Cartpole, Walker and Drone. We use four appropriate constrained RL bench-marks: PaETS (Okada & Taniguchi, 2020), i.e., a Bayesian RL combining with variational inference, TRPO-IPO (Liu et al., 2020), i.e., an enhanced variant of TRPO-Lagrangian (Bohez et al., 2019), PCPO (Yang et al., 2020), i.e., an ad-vanced variant of CPO (Achiam et al., 2017) and CRPO (Xu et al., 2021), i.e., a primal constrained RL approach. The AWaVO parameter settings given in Table 2 of Ap-pendix E.1 are based on selected benchmarks, i.e., CRPO (Xu et al., 2021) and GUARD (Zhao et al., 2023). Accord-ing to our proposed Proposition 5.1 and the Proposition 1 presented in (Kolouri et al., 2019), the defining function 
+
+α(·, eθ) can be defined as homogeneous polynomials, i.e., 
+
+α(·, eθ) = P 
+
+> |κ|=m
+
+eθκxκ, where the defining function α is injective if the degree of the polynomial m is odd. Thus we set m = 3 based on (Kolouri et al., 2019). The comprehen-sive task descriptions are available in Appendix E.2 .AWaVO’s training depicted in Figure 3 initially corresponds to the benchmarks provided by CRPO (Xu et al., 2021) and GUARD (Zhao et al., 2023). The distinction in iterations lies 7Probabilistic Constrained RL with Formal Interpretability       
+
+> Figure 6. Real quadrotor Flight Tasks (FTs): (i) FT 1 -tracking reference trajectories under external forces without obstacles; (ii) FT 2 -
+> tracking trajectories around dense obstacles; and (iii) FT 3 -tracking trajectories under external forces around dense obstacles.
+
+in showcasing the entire convergence process across four discrete tasks. We establish the constraint limit to facilitate a straightforward comparison of constraint convergence; see Appendix E.3 for additional details. The tolerance is set as τc = 0 .5, following CRPO (Xu et al., 2021). By analyzing the comparative training performances in Fig-ure 3, we observe that the superiority of CRPO and AWaVO stems from their primal constrained RL nature, which in-volves training under constraints and ensuring global con-vergence rate. Although CRPO exhibits comparable or slightly better convergence performance than AWaVO, as evident in Figure 3(d), we place greater emphasis on two other aspects: training convergence under uncertainties and decision-making interpretation. In Figure 5 below, we pro-vide comparative demonstrations in real robot tasks to show-case how AWaVO effectively balances a trade-off between performance and interpretability in a more complex sequen-tial decision-making scenario. Furthermore, we empirically verify the formal method 
+
+Theorem 5.5 (Global Convergence Rate) on the conver-gence rate, and conclude that, based on the average per-formance, the convergence rate of AWaVO is in the range of Θ(1 /√T ) < C rate ≤ Θ(1 /T 1.2). According to the re-sults shown in Figure 3(d), CRPO performs better than our AWaVO in the simulated drone task, with the absence of dis-turbances. Subsequently, in Figure 5 below, we further eval-uate these approaches in a real-world physical environment characterized by varying uncertainties, leading to different outcomes. It is worth noting that our approach incorporates two optimizations for handling uncertainties: variational inference and policy updating. This combination reduces the frequency of policy updates whilst enhancing our ability to handle uncertainties. In the upcoming real robot task, we will introduce variable disturbances to demonstrate our capability to optimize policies under uncertain conditions. 
+
+Comparative Performance in Real-world Tasks. We demonstrate the effectiveness of AWaVO by practical im-plementation in real-world decision-making problems. The       
+
+> Figure 7. Probabilistic interpretation of decisions: the probability
+> p(τ|L0)reveals the degree to which the measurement of external forces (Ding et al., 2021), denoted as nf, influences the decisions made by the quadrotor. For additional discussion on the case of ‘RS 02’, as an example instance, please refer to Appendix E.4 .
+
+quadrotor’s tracking control system, shown in Figure 4, is an end-to-end learning-based framework. The techni-cal specification of our quadrotor is shown in Table 3 of Appendix E.1 . The training convergence is demon-strated in Figure 5. The aim of the real-world tasks (shown in Figure 6) is to track the reference effectively and ac-curately, where VID-Fusion (Ding et al., 2021) is used to measure external forces such as aerodynamic effects. To view the hardware experiments in action, please re-fer to the accompanying video demonstration at https: //github.com/Alex-yanranwang/AWaVO .Next, we illustrate the interpretation of sequential decisions, i.e., the actual control commands fed into the four motors. Leveraging the Intel RealSense D435i depth camera on-board, we can detect obstacles and estimate external forces. These latent factors, denoted as L = L0, L 1, represent ex-ternal forces and obstacles, respectively. The probability 
+
+p(τ |L) reveals why the quadrotor makes these decisions and quantifies the extent to which factor L contributes to the sequential decisions, i.e., the real-time trajectory τ . Fig-8Probabilistic Constrained RL with Formal Interpretability 
+
+ure 7 presents a quantitative interpretation, i.e., p(τ |L0),indicating the magnitude and evolution that the external force nf impacts on the current control decisions. Please see Appendix E.4 for further discussion on Figure 7. Practically, this probabilistic interpretation represents signif-icant progress in addressing a longstanding and challenging question: why do machine systems powered by Artificial Intelligence (AI) technologies make certain decisions, and what are the exact latent factors influencing those decisions? Such progress holds particular value for safety-critical in-dustries like self-driving vehicles, aerospace engineering and high-frequency trading in financial services, particu-larly in cases where AI-based approaches exhibit erratic performance and thorough analysis is necessary. 
+
+# 7. Limitation 
+
+The primary limitation we encounter is ensuring the trust-worthiness of the posterior probability generated by the critic network, which operates as a Bayesian network. Our ongoing efforts involve applying statistical methods to estab-lish a specific confidence interval for the Bayesian network’s outcomes. Additionally, we intend to study AWaVO’s suit-ability for more real-world safety-critical applications. For scalability, please refer to Appendix E.5 . This may serve as a starting point from which to formally analyze AWaVO’s scalability and how the approach could extend to larger and more complex real-world domains. Another limitation is the lack of human-centered validation (although this would need to be taken on an ad hoc basis per deployment context), and considering policy or regulatory issues. 
+
+# 8. Conclusion 
+
+Enthusiasm towards the possible applications of constrained RL is growing worldwide. The insufficient ability to in-terpret agent actions and policy optimizations, however, poses a significant hurdle in deploying RL in safety-critical domains like advanced manufacturing and financial trad-ing. Our primary motivation in introducing AWaVO, an intrinsically interpretable RL framework, is to tackle key challenges concerning convergence guarantees, optimiza-tion transparency, and sequential-decision interpretation. Empirical results demonstrate that the proposed AWaVO balances a reasonable trade-off between high performance and quantitative interpretability in both simulation and real quadrotor tasks. 
+
+# Acknowledgments 
+
+This work was partially supported by NSF-UKRI [grant number NE/T011467/1]; and the Engineering and Physical Sciences Research Council [grant number EP/X040518/1]. 
+
+# Impact Statement 
+
+This paper presents work whose goal is to advance knowl-edge about interpretability and reproducibility in the RL community. There are many potential societal consequences of our work, none of which we feel must be specifically highlighted here. Additionally, we provide the video and additional demonstration to the real-world quadrotor experi-ments. 
+
+# References 
+
+Achiam, J., Held, D., Tamar, A., and Abbeel, P. Constrained policy optimization. In International conference on ma-chine learning , pp. 22–31. PMLR, 2017. Altman, E. Constrained Markov decision processes: stochastic modeling . Routledge, 1999. Altschuler, J., Niles-Weed, J., and Rigollet, P. Near-linear time approximation algorithms for optimal transport via sinkhorn iteration. Advances in neural information pro-cessing systems , 30, 2017. Bahouri, H., Chemin, J.-Y., and Danchin, R. Fourier analy-sis and nonlinear partial differential equations , volume 343. Springer, 2011. Bellemare, M. G., Dabney, W., and Munos, R. A distribu-tional perspective on reinforcement learning. In Interna-tional Conference on Machine Learning , pp. 449–458. PMLR, 2017. Beylkin, G. The inversion problem and applications of the generalized radon transform. Communications on pure and applied mathematics , 37(5):579–599, 1984. Bohez, S., Abdolmaleki, A., Neunert, M., Buchli, J., Heess, N., and Hadsell, R. Value constrained model-free contin-uous control. arXiv preprint arXiv:1902.04623 , 2019. Bonneel, N., Rabin, J., Peyr ´e, G., and Pfister, H. Sliced and radon wasserstein barycenters of measures. Journal of Mathematical Imaging and Vision , 51:22–45, 2015. Bonnotte, N. Unidimensional and evolution methods for optimal transportation . PhD thesis, Universit ´e Paris Sud-Paris XI; Scuola normale superiore (Pise, Italie), 2013. Brat, G. Are we ready for the first easa guidance on the use of ml in aviation? In SAE G34 Meeting , 2021. 9Probabilistic Constrained RL with Formal Interpretability 
+
+Brockman, G., Cheung, V., Pettersson, L., Schneider, J., Schulman, J., Tang, J., and Zaremba, W. Openai gym. 
+
+arXiv preprint arXiv:1606.01540 , 2016. Cai, Q., Yang, Z., Lee, J. D., and Wang, Z. Neural temporal-difference and q-learning provably converge to global optima. arXiv preprint arXiv:1905.10027 , 2019. Chen, X., Yang, Y., and Li, Y. Augmented sliced wasser-stein distances. In International Conference on Learning Representations , 2021. Chua, K., Calandra, R., McAllister, R., and Levine, S. Deep reinforcement learning in a handful of trials using proba-bilistic dynamics models. Advances in neural information processing systems , 31, 2018. Clement, P. and Desch, W. An elementary proof of the tri-angle inequality for the wasserstein metric. Proceedings of the American Mathematical Society , 136(1):333–339, 2008. Cuturi, M. Sinkhorn distances: Lightspeed computation of optimal transport. Advances in neural information processing systems , 26, 2013. Dabney, W., Rowland, M., Bellemare, M., and Munos, R. Distributional reinforcement learning with quantile re-gression. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 32, 2018. Deshpande, I., Hu, Y.-T., Sun, R., Pyrros, A., Siddiqui, N., Koyejo, S., Zhao, Z., Forsyth, D., and Schwing, A. G. Max-sliced wasserstein distance and its use for gans. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 10648–10656, 2019. Devidze, R., Radanovic, G., Kamalaruban, P., and Singla, A. Explicable reward design for reinforcement learn-ing agents. Advances in Neural Information Processing Systems , 34:20118–20131, 2021. Ding, Z., Yang, T., Zhang, K., Xu, C., and Gao, F. Vid-fusion: Robust visual-inertial-dynamics odometry for accurate external force estimation. In 2021 IEEE Interna-tional Conference on Robotics and Automation (ICRA) ,pp. 14469–14475. IEEE, 2021. Ehrenpreis, L. The universality of the Radon transform .OUP Oxford, 2003. Fern ´andez Llorca, D. and G ´omez, E. Trustworthy au-tonomous vehicles. Publications Office of the European Union, Luxembourg,, EUR , 30942, 2021. Fernandez-Llorca, D. and G ´omez, E. Trustworthy artifi-cial intelligence requirements in the autonomous driving domain. Computer , 56(2):29–39, 2023. Gannoun, A., Saracco, J., and Yu, K. Comparison of kernel estimators of conditional distribution function and quan-tile regression under censoring. Statistical Modelling , 7 (4):329–344, 2007. Gorbach, N. S., Bauer, S., and Buhmann, J. M. Scalable variational inference for dynamical systems. Advances in neural information processing systems , 30, 2017. Homan, A. and Zhou, H. Injectivity and stability for a generic class of generalized radon transforms. The Jour-nal of Geometric Analysis , 27:1515–1529, 2017. Kakade, S. and Langford, J. Approximately optimal ap-proximate reinforcement learning. In In Proc. 19th In-ternational Conference on Machine Learning . Citeseer, 2002. Kappen, H. J., G ´omez, V., and Opper, M. Optimal control as a graphical model inference problem. Machine learning ,87:159–182, 2012. Kenny, E. M., Ford, C., Quinn, M., and Keane, M. T. Explaining black-box classifiers using post-hoc explanations-by-example: The effect of explanations and error-rates in xai user studies. Artificial Intelligence , 294: 103459, 2021. Kenny, E. M., Tucker, M., and Shah, J. Towards inter-pretable deep reinforcement learning with human-friendly prototypes. In The Eleventh International Conference on Learning Representations , 2022. Koenker, R. Quantile regression , volume 38. Cambridge university press, 2005. Koller, D. and Friedman, N. Probabilistic graphical models: principles and techniques . MIT press, 2009. Kolouri, S., Park, S. R., Thorpe, M., Slepcev, D., and Rohde, G. K. Optimal mass transport: Signal processing and machine-learning applications. IEEE signal processing magazine , 34(4):43–59, 2017. Kolouri, S., Nadjahi, K., Simsekli, U., Badeau, R., and Rohde, G. Generalized sliced wasserstein distances. Ad-vances in neural information processing systems , 32, 2019. Kullback, S. and Leibler, R. A. On information and suf-ficiency. The annals of mathematical statistics , 22(1): 79–86, 1951. Levine, S. Reinforcement learning and control as proba-bilistic inference: Tutorial and review. arXiv preprint arXiv:1805.00909 , 2018. 10 Probabilistic Constrained RL with Formal Interpretability 
+
+Levine, S. Understanding the world through action. In 
+
+Conference on Robot Learning , pp. 1752–1757. PMLR, 2022. Lipton, Z. C. The mythos of model interpretability: In machine learning, the concept of interpretability is both important and slippery. Queue , 16(3):31–57, 2018. Liu, Y., Ding, J., and Liu, X. Ipo: Interior-point policy optimization under constraints. In Proceedings of the AAAI conference on artificial intelligence , volume 34, pp. 4940–4947, 2020. Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., and Zhao, D. Constrained variational policy optimization for safe reinforcement learning. In International Conference on Machine Learning , pp. 13644–13668. PMLR, 2022. Lorenz, E. N. and Emanuel, K. A. Optimal sites for supple-mentary weather observations: Simulation with a small model. Journal of the Atmospheric Sciences , 55(3):399– 414, 1998. McNamara, S. The law and ethics of high-frequency trading. 
+
+Minn. JL Sci. & Tech. , 17:71, 2016. Mitrophanov, A. Y. Sensitivity and convergence of uni-formly ergodic markov chains. Journal of Applied Proba-bility , 42(4):1003–1014, 2005. Nadjahi, K., Durmus, A., Chizat, L., Kolouri, S., Shahram-pour, S., and Simsekli, U. Statistical and topological properties of sliced probability divergences. Advances in Neural Information Processing Systems , 33:20802– 20812, 2020. Napoleone, A., Macchi, M., and Pozzetti, A. A review on the characteristics of cyber-physical systems for the future smart factories. Journal of manufacturing systems ,54:305–335, 2020. Ng, R. Fourier slice photography. In ACM Siggraph 2005 Papers , pp. 735–744. 2005. Nietert, S., Goldfeld, Z., Sadhu, R., and Kato, K. Statisti-cal, robustness, and computational guarantees for sliced wasserstein distances. Advances in Neural Information Processing Systems , 35:28179–28193, 2022. O’Donoghue, B., Osband, I., and Ionescu, C. Making sense of reinforcement learning and probabilistic infer-ence. arXiv preprint arXiv:2001.00805 , 2020. Okada, M. and Taniguchi, T. Acceleration of gradient-based path integral method for efficient optimal and inverse op-timal control. In 2018 IEEE International Conference on Robotics and Automation (ICRA) , pp. 3013–3020. IEEE, 2018. Okada, M. and Taniguchi, T. Variational inference mpc for bayesian model-based reinforcement learning. In 
+
+Conference on robot learning , pp. 258–272. PMLR, 2020. Peyr ´e, G., Cuturi, M., et al. Computational optimal transport. 
+
+Center for Research in Economics and Statistics Working Papers , (2017-86), 2017. Rabin, J., Peyr ´e, G., Delon, J., and Bernot, M. Wasser-stein barycenter and its application to texture mixing. In 
+
+Scale Space and Variational Methods in Computer Vision: Third International Conference, SSVM 2011, Ein-Gedi, Israel, May 29–June 2, 2011, Revised Selected Papers 3 ,pp. 435–446. Springer, 2012. Radon, J. 1.1 ¨uber die bestimmung von funktionen durch ihre integralwerte l ¨angs gewisser mannigfaltigkeiten. 
+
+Classic papers in modern diagnostic radiology , 5(21): 124, 2005. Rahimi, A. and Recht, B. Weighted sums of random kitchen sinks: Replacing minimization with randomization in learning. Advances in neural information processing systems , 21, 2008. Rudin, C. Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead. Nature machine intelligence , 1(5):206– 215, 2019. Schmitz, M. A., Heitz, M., Bonneel, N., Ngole, F., Coeur-jolly, D., Cuturi, M., Peyr ´e, G., and Starck, J.-L. Wasser-stein dictionary learning: Optimal transport-based unsu-pervised nonlinear dictionary learning. SIAM Journal on Imaging Sciences , 11(1):643–678, 2018. Slack, D., Hilgard, S., Jia, E., Singh, S., and Lakkaraju, H. Fooling lime and shap: Adversarial attacks on post hoc ex-planation methods. In Proceedings of the AAAI/ACM Con-ference on AI, Ethics, and Society , pp. 180–186, 2020. Solomon, J., Rustamov, R., Guibas, L., and Butscher, A. Wasserstein propagation for semi-supervised learning. In 
+
+International Conference on Machine Learning , pp. 306– 314. PMLR, 2014. Torens, C., Durak, U., and Dauer, J. C. Guidelines and regulatory framework for machine learning in aviation. In AIAA Scitech 2022 Forum , pp. 1132, 2022. Toussaint, M. and Storkey, A. Probabilistic inference for solving discrete and continuous state markov decision processes. In Proceedings of the 23rd international con-ference on Machine learning , pp. 945–952, 2006. Villani, C. The wasserstein distances. In Optimal transport ,pp. 93–111. Springer, 2009. 11 Probabilistic Constrained RL with Formal Interpretability 
+
+Villani, C. et al. Optimal transport: old and new , volume 338. Springer, 2009. Wang, Y. and Boyle, D. Trustworthy reinforcement learning for quadrotor uav tracking control systems. arXiv preprint arXiv:2302.11694 , 2023. Wang, Y., O’Keeffe, J., Qian, Q., and Boyle, D. Quadue-ccm: Interpretable distributional reinforcement learning using uncertain contraction metrics for precise quadrotor trajectory tracking. In Conference on Robot Learning , pp. 2306–2316. PMLR, 2023. Welch, G., Bishop, G., et al. An introduction to the kalman filter. 1995. Xu, T., Liang, Y., and Lan, G. Crpo: A new approach for safe reinforcement learning with convergence guarantee. In International Conference on Machine Learning , pp. 11480–11491. PMLR, 2021. Yang, T. Y., Rosca, J., Narasimhan, K., and Ramadge, P. J. Projection-based constrained policy optimization. In 8th International Conference on Learning Representations, ICLR 2020 , 2020. Zhao, W., Chen, R., Sun, Y., Liu, R., Wei, T., and Liu, C. Guard: A safe reinforcement learning benchmark. arXiv preprint arXiv:2305.13681 , 2023. Zhou, Y., Booth, S., Ribeiro, M. T., and Shah, J. Do fea-ture attribution methods correctly attribute features? In 
+
+Proceedings of the AAAI Conference on Artificial Intelli-gence , volume 36, pp. 9623–9633, 2022. 12 Probabilistic Constrained RL with Formal Interpretability 
+
+# Appendix 
+
+# A. Notation Table  
+
+> Table 1. Main Notation Conventions
+
+Parameters Definition 
+
+st A state s sampled at a discrete timestamp t.
+
+at An action a sampled at a discrete timestamp t.
+
+τ A trajectory. 
+
+D Observed training dataset. 
+
+S A finite set of states {s}.
+
+A A finite set of actions {a}.
+
+P A finite set of transition probabilities {p}.
+
+R A finite set of bounded immediate rewards {r}.
+
+G A finite collection of unity functions {g}.
+
+Ot = {O r,t , Ogi,t }
+
+Binary variables of the optimality. 
+
+Or,t = 1 and Ogi,t = 1 signify that the trajectory τ is optimized and compliant with the constraints. 
+
+pD (θ) The posterior probability p(θ|D).
+
+p(O| τ ) The optimality likelihood. 
+
+er(τ ) The accumulated reward er(τ ) = E[T −1P
+
+> t=0
+
+γtr(st, at)] .
+
+egi(τ ) The utility function egi(τ ) = E[T −1P
+
+> t=0
+
+γtgi(st, at)] .
+
+F = {F r , Fg } Fr and Fg are the operators, with specifically defined as Fr ·p(Or |τ ):= er(τ ) and 
+
+Fg · p(Ogi |τ ) := egi(τ ).
+
+bi A fixed limit for the i-th constraint. 
+
+τc The tolerance. 
+
+l A curve on the hypersurface in the spatial Radon transform. 
+
+eθ An unit vector tangent to l. Both l and eθ represent the parameters of hypersurfaces. 
+
+qθ (τ ) A variational distribution. 
+
+q(a) An approximation of p(O| τ ).
+
+# B. Background on Wasserstein Distance 
+
+B.1. Sliced Wasserstein Distance 
+
+A fundamental challenge in both machine learning and statistics communities is to form effective metrics between pairs of probability distributions. Weaker notions, such as divergence measures, including KL divergence (Kullback & Leibler, 1951), have been proposed and widely used. However, such measures do not satisfy the two basic properties of a metric, namely symmetry and triangle inequality. To address this issue, interest has rapidly increased in optimal transport in recent years. In this subsection, we introduce the Wasserstein distance and its variants, including SWD (Rabin et al., 2012; Nietert et al., 2022) and GSWD (Kolouri et al., 2019), as metrics that conditionally satisfy the properties. Let Γ( μ, ν ) be a set of all transportation plans γ ∈ Γ( μ, ν ), where γ is a joint distribution over the space X × X ,and μ, ν ∈ Pk(X ) are two measures of probability distributions over X . Pk(X ) represents a set of Borel probability measures with finite k-th moment on a Polish metric space (Villani et al., 2009). d(x, y ) represents a distance function over X . The Wasserstein distance of order k ∈ [1 , ∞) between two measures μ, ν is defined as (Villani et al., 2009): 
+
+Wk(μ, ν ) = 
+
+
+
+inf γ∈Γ( P,Q )
+
+R 
+
+> X ×X
+
+d(x, y )kdγ(x, y )
+
+1/k 
+
+. This definition, however, involves solving an optimization problem that is computationally expensive in practical implementation, particularly for high-dimensional distributions. Thus sliced 
+
+k-Wasserstein distance (Rabin et al., 2012; Nietert et al., 2022), defined over spaces of hyperplanes in Rd, is proposed as a 13 Probabilistic Constrained RL with Formal Interpretability 
+
+computationally efficient approximation: 
+
+SWD k(μ, ν ) = 
+
+Z 
+
+> Sd−1
+
+W kk
+
+
+
+Rμ
+
+
+
+·, eθ
+
+
+
+, Rν
+
+
+
+·, eθ
+
+ 
+
+deθ
+
+ 1
+
+> k
+
+(3) where Radon transform R (Radon, 2005) is introduced in SWD to map a function f (·) to the hyperplanes n
+
+x ∈ Rd|⟨ x, eθ⟩ = l
+
+o
+
+, i.e., Rf (l, eθ) = R 
+
+> Rd
+
+f (x)δ(l − ⟨ x, eθ⟩)d x: l ∈ R and eθ ∈ Sd−1 ⊂ Rd represent the parameters of these hyperplanes. In the definition of SWD, the Radon transform Rμ is employed as the push-forward operators, defined by Rμ(l, eθ) = R 
+
+> Rd
+
+δ(l − ⟨ x, eθ⟩)d μ (Kolouri et al., 2019). 
+
+B.2. Generalized Sliced Wasserstein Distance 
+
+While SWD offers a computationally efficient way to approximate the Wasserstein distance, the projections are limited to linear subspaces, such as hyperplanes {x}. Due to the nature of these linear projections, the resulting metrics typically have low projection efficiency in high-dimensional spaces (Kolouri et al., 2019; Deshpande et al., 2019). Thus various variants of SWD are proposed to enhance its projection effectiveness. Specifically, the GSWD (Kolouri et al., 2019), defined in Equation 4, is proposed by incorporating nonlinear projections. Its main novelty is that Generalized Radon Transforms (GRTs) G (Beylkin, 1984; Ehrenpreis, 2003; Homan & Zhou, 2017), i.e., Gf (l, eθ) = R 
+
+> Rd
+
+f (x)δ(l − β(x, eθ))d x, are used to define the nonlinear projections towards hypersurfaces rather than linear projections to the hyperplanes in SWD. Let β(x, eθ)
+
+be a defining function when satisfying the conditions H.1-H.4 in (Kolouri et al., 2019). 
+
+GSWD k(μ, ν ) = 
+
+Z
+
+> Xeθ
+
+W kk
+
+
+
+Gμ
+
+
+
+·, eθ
+
+
+
+, Gν
+
+
+
+·, eθ
+
+ 
+
+deθ
+
+! 1
+
+> k
+
+(4) where eθ ∈ X eθ and Xeθ is a compact set of all feasible parameters eθ for β(·, eθ), e.g., Xeθ = Sd−1 for β(·, eθ) = ⟨· , eθ⟩. The GRT operator Gμ is utilized as the push-forward operator, i.e., Gμ(l, eθ) = R 
+
+> Gd
+
+δ(l − β(x, eθ))d μ. For the theoretical properties of a metric, SWD is a true metric that satisfies both symmetry and triangle inequality (Bonnotte, 2013), where the approximation error is obtained and analyzed in (Nadjahi et al., 2020). The GSWD defined by Equation 4 is a true metric if and only if β(·)
+
+in G is an injective mapping (Chen et al., 2021). 14 Probabilistic Constrained RL with Formal Interpretability 
+
+# C. Background on Distributional Representation in Bellman Equation and Temporal Difference Learning 
+
+C.1. Reasoning behind Distributional Representation 
+
+The motivation for employing a distributional representation is twofold. Firstly, it provides more comprehensive and richer value-distribution information, thereby enhancing the stability of the learning process. This stability is particularly important for Bayesian learning processes, which often encounter challenges in achieving stable convergence. Secondly, the distributional representation contributes significantly to interpretability. As illustrated in Equation 16 of the proof, it uses quantiles derived from the distributional representation to formally establish the transparency of the convergence process outlined in Theorem 5.5 .
+
+C.2. Distributional Representation in Bellman Equation 
+
+Unlike traditional RL, where the primary objective is to maximize the expected action-value function Q, the distributional Bellman equation (Bellemare et al., 2017) was proposed to approximate and parameterize the entire distribution of future rewards. In the setting of policy evaluation, given a deterministic policy π, the Bellman operator T π is defined as (Bellemare et al., 2017; Dabney et al., 2018): 
+
+T π Z(s, a) D
+
+:= R(s, a) + γZ (S′, A ′) (5) where Zπ denotes the state-action distribution, and R(s, a) denotes the reward distribution. In control setting, a distributional 
+
+Bellman optimality operator T with quantile approximation is proposed in (Dabney et al., 2018): 
+
+T Z(s, a) D
+
+:= R(s, a) + γZ (s′, arg max  
+
+> a′
+
+E
+
+> p,R
+
+[Z(s′, a′)]) (6) where we let Zθ := 1
+
+> NN
+
+P
+
+> i=1
+
+δqi(s,a) be a quantile distribution mapping one state-action pair (s, a) to a uniform probability distribution supported on qi. Based on Equation 5, a contraction is demonstrated (Dabney et al., 2018) over the Wasserstein metric: −
+
+d∞(Π W1 T π Z1, ΠW1 T π Z2) ≤ −
+
+d∞(Z1, Z 2), where −
+
+dk := sup Wk(Z1, Z 2) denotes the maximal form of the 
+
+k-Wasserstein metrics. Wk, k ∈ [1 , ∞] denotes the k-Wasserstein distance. ΠW1 is a quantile approximation under the minimal 1-Wasserstein distance W1.
+
+C.3. Distributional Representation in Temporal Difference Learning 
+
+Building upon the aforementioned contraction guarantees, we utilize distributional TD learning to estimate the distribution of state-action value, denoted as Z. In each iteration, we have the following: 
+
+ζik+1 (s, a) = ζik(s, a) + ltd ∆ik
+
+= ζik(s, a) + ltd × −
+
+d∞(Π W1 T π (hi(s, a, s′) + γζ ik(s′)) , ΠW1 T π ζik(s, a)) 
+
+(7) where ζik ∈ S × A represents the estimated distribution of the state-action distribution Z in the k-th TD-learning-iteration for all i = 0 , ..., p . The TD learning rate is denoted as ltd . The function hi : S × A × S → R maps the triple (s, a, s′) to a 
+
+real number . Specifically, hi is defined as hi = r when i = 0; and hi = gi when i ∈ [1 , n ]. The distributional TD error ∆ik
+
+in Equation 10 is calculated by −
+
+d∞(Π W1 T π (hi(s, a, s′) + γζ ik(s′)) , ΠW1 T π ζik(s, a)) .In Algorithm 1, the gradient of actor and critic network, denoted as δθμ and δθQ , can be calculated as follows: 
+
+δθμ = (1 /N ) X ∇θμ πθμ (sn)E[∇aZθQ (sn, a)] a=πθμ (sn)
+
+δθQ = (1 /N ) X ∇θQ
+
+> −
+
+d∞(Π W1 T π ZθQ (sn, an), ΠW1 T π egi(τ )) 
+
+(8) where ΠW1 represents a quantile approximation under the minimal 1-Wasserstein distance W1.15 Probabilistic Constrained RL with Formal Interpretability 
+
+# D. Algorithm Details and Proofs 
+
+D.1. Detailed Derivation of the Objective Function 
+
+The aim of variational inference is to minimize the distance D(qθ (τ )|| p(τ |O )) = A − GSWD k(qθ (τ ), p (τ |O )) between the variational distribution qθ (τ ) and the posterior distribution p(τ |O ). Let Ptrans = p (s, a|θ) pD (θ), ˜x = x/ Ptrans 
+
+and ˜y = y/ Ptrans and recall Definition 4.1 , i.e., the definition of A − GSWD k. Then, the variational inference can be reformulated to the minimization problem: 
+
+arg min   
+
+> qθ(τ)
+
+A − GSWD k (qθ (τ ) , p (τ |O )) = arg min   
+
+> qθ(τ)
+
+A − GSWD k (q (a) · P trans , p (O| τ ) · P trans )= arg min   
+
+> qθ(τ)
+
+Z 
+
+> Xθ
+
+W kk
+
+
+
+Aq(a)·P trans 
+
+
+
+·, eθ
+
+
+
+, Ap(O| τ )·P trans 
+
+
+
+·, eθ
+
+ 
+
+deθ
+
+ 1
+
+> k
+> (i)
+
+= arg min   
+
+> qθ(τ)
+
+Z 
+
+> Xθ
+
+W kk
+
+
+
+Ptrans · A q(a)
+
+
+
+·, eθ
+
+
+
+, Ptrans · A p(O| τ )
+
+
+
+·, eθ
+
+ 
+
+deθ
+
+ 1
+
+> k
+
+= arg min    
+
+> qθ(τ)
+
+inf  
+
+> γ∈Γ( Ptrans ·A q(a),Ptrans ·A p(O| τ))
+
+Z 
+
+> Xθ
+
+Z
+
+> X ×X
+
+d(x, y )kdγ(x, y )d eθ
+
+ 1
+
+> k
+
+= arg min    
+
+> qθ(τ)
+
+inf  
+
+> γ∈Γ( Aq(a),Ap(O| τ))
+
+Z Z
+
+d(Ptrans ˜x, Ptrans ˜y)kdγ(Ptrans ˜x, Ptrans ˜y)d eθ
+
+ 1
+
+> k
+> (ii )
+
+= arg min    
+
+> qθ(τ)
+
+inf  
+
+> γ∈Γ( Aq(a),Ap(O| τ))
+
+Z Z
+
+(Ptrans · d(˜ x, ˜y)) k dγ(Ptrans ˜x, Ptrans ˜y)d eθ
+
+ 1
+
+> k
+> (iii )
+
+= arg min   
+
+> qθ(τ)
+
+Ptrans · inf  
+
+> γ∈Γ( Aq(a),Ap(O| τ))
+
+Z Z
+
+d(˜ x, ˜y)kdγ(˜ x, ˜y)d eθ
+
+ 1
+
+> k
+
+= arg min   
+
+> qθ(τ)
+
+Ptrans · A − GSWD k (q (a) , p (O| τ )) 
+
+(9) where (i) follows from the push-forward operator definition: Aμ(l, eθ) = R 
+
+> Gd
+
+δ(l−α(x, eθ))d μ. (ii ) follows from d(c˜x, c ˜y) = 
+
+cd (˜ x, ˜y), c ∈ (0 , 1) as d is a metric. (iii ) follows from the fact that dγ(c˜x, c ˜y) = d γ(cx, cy ) = d γ(x, y ) = d γ(˜ x, ˜y),since dγ(c˜x, c ˜y) is the measure of the subset of X × X , which is just the re-scaled version of the subset (˜ x, ˜y) by the map 
+
+(x, y ) 7 → (x, y ).Equation 9 presents that the objective can be transformed to the minimization problem, i.e., 
+
+arg min   
+
+> qθ(τ)
+
+A − GSWD k (q (a) , p (O| τ )) , where p(O| τ ) represents the optimality likelihood. 
+
+D.2. Definition of Distributional Temporal Difference 
+
+We use distributional TD learning to estimate the distribution of state-action value, denoted as Z. In each iteration, we have the following: 
+
+ζik+1 (s, a) = ζik(s, a) + ltd ∆ik
+
+= ζik(s, a) + ltd × −
+
+d∞(Π W1 T π (hi(s, a, s′) + γζ ik(s′)) , ΠW1 T π ζik(s, a)) 
+
+(10) where ζik ∈ S × A represents the estimated distribution of the state-action distribution Z in the k-th TD-learning-iteration for all i = 0 , ..., p . The TD learning rate is denoted as ltd . The function hi : S × A × S → R maps the triple (s, a, s′) to a 
+
+real number . Specifically, hi is defined as hi = r when i = 0; and hi = gi when i ∈ [1 , p ]. The distributional TD error ∆ik
+
+in Equation 10 is calculated by −
+
+d∞(Π W1 T π (hi(s, a, s′) + γζ ik(s′)) , ΠW1 T π ζik(s, a)) .
+
+D.3. Proofs 
+
+Here we present the proofs of Proposition 5.1 (Pseudo-metric) , Theorem 5.4 (Global Convergence) and Theorem 5.5 
+
+(Global Convergence Rate) , as outlined in Section 5 . The associated propositions, namely Proposition D.1 (Policy Evaluation) and Proposition D.2 (Policy Improvement) , are explicated and clarified by their respective proofs below. 16 Probabilistic Constrained RL with Formal Interpretability 
+
+Proposition 5.1. (Pseudo-metric): Given two probability measures μ, ν ∈ Pk(X ) and a mapping α : X → R eθ , the adaptive slicing A-GSWD, defined in Definition 4.1 , with order k in the range [1 , ∞), is a pseudo-metric. This pseudo-metric satisfies non-negativity, symmetry, the triangle inequality, and A − GSWD k(μ, μ ) = 0 .Proof : The non-negativity property naturally arises from the fact that the Wasserstein distance Wk is a metric (Villani et al., 2009). To prove symmetry, since the k-Wasserstein distance is a metric (Villani et al., 2009): 
+
+Wk
+
+
+
+Aμ(·, eθ; α), Aν (·, eθ)
+
+
+
+= Wk
+
+
+
+Aν (·, eθ), Aμ(·, eθ)
+
+
+
+Thus, there exists (Chen et al., 2021): 
+
+A − GSWD k(μ, ν ) = 
+
+Z
+
+> Reθ
+
+W kk
+
+
+
+Aμ(·, eθ), Aν (·, eθ)
+
+
+
+deθ
+
+! 1
+
+> k
+
+=
+
+Z
+
+> Reθ
+
+W kk
+
+
+
+Aν (·, eθ), Aμ(·, eθ)
+
+
+
+deθ
+
+! 1
+
+> k
+
+= A − GSWD k(ν, μ )
+
+Therefore, symmetry holds. Then, we prove the triangle inequality. Since the triangle inequality holds for the Wasserstein distance, we can obtain Wk (Aμ1 , Aμ3 ) ≤ Wk (Aμ1 , Aμ2 ) + Wk (Aμ2 , Aμ3 ). Thus, there exists: 
+
+A − GSWD k(μ1, μ 3) = 
+
+Z
+
+> Reθ
+
+W kk (Aμ1 , Aμ3 ) d eθ
+
+! 1
+
+> k
+
+≤
+
+Z
+
+> Reθ
+
+W kk (Aμ1 , Aμ2 ) + W kk (Aμ2 , Aμ3 ) d eθ
+
+! 1
+
+> k
+
+≤
+
+Z
+
+> Reθ
+
+W kk (Aμ1 , Aμ2 ) d eθ
+
+! 1
+
+> k
+
++
+
+Z
+
+> Reθ
+
+W kk (Aμ2 , Aμ3 ) d eθ
+
+! 1
+
+> k
+
+(11) where the derivation of Equation 11 is based on the Minkowski inequality (Bahouri et al., 2011), which establishes that A − GSWD k satisfies the triangle inequality. Since Wk(μ, μ ) = 0 for any μ (Villani et al., 2009), we have 
+
+A − GSWD k(μ, μ ) = 
+
+R
+
+> Reθ
+
+W kk (Aμ, Aμ) d eθ
+
+ 1
+
+> k
+
+= 0 .Therefore, A-GSWD is a pseudo-metric that satisfies non-negativity, symmetry, the triangle inequality, and 
+
+A − GSWD k(μ, μ ) = 0 . ■
+
+Remark 5.2. The adaptive slicing A-GSWD, with order k ∈ [1 , ∞), is a true metric if and only if the AGRT A, defined in 
+
+Definition 4.1 , is an injective mapping. Proof : Given the indiscernibility property for the Wasserstein distance Wk (Villani et al., 2009), it follows Wk(μ1, μ 2) = 0 if and only if μ1 = μ2. Consequently, A − GSWD k(μ1, μ 2) = 0 is equivalent to Aμ1 (l, eθ) = Aμ2 (l, eθ). The equality Aμ1 (l, eθ) = Aμ2 (l, eθ) implies μ1 = μ2 if and only if A is an injective mapping. Therefore, A-GSWD is a metric if and only if Aμ1 (l, eθ) = Aμ2 (l, eθ) implies μ1 = μ2, i.e., the AGRT A is an injective mapping. ■
+
+Proposition D.1. (Policy Evaluation) (Dabney et al., 2018; Wang et al., 2023)): we consider a quantile approximation ΠW1
+
+under the minimal 1-Wasserstein distance W1, the Bellman operator T π under a deterministic policy π and Zk+1 (s, a) = ΠW1 T π Zk(s, a). The sequence Zk(s, a) converges to a unique fixed point ∼
+
+Zπ under the maximal form of ∞-Wasserstein metric −
+
+d∞.Proof : We recall a contraction proved in (Dabney et al., 2018) over the Wasserstein Metric: 
+
+> −
+
+d∞(Π W1 T π Z1, ΠW1 T π Z2) ≤ −
+
+d∞(Z1, Z 2) (12) 17 Probabilistic Constrained RL with Formal Interpretability 
+
+where Equation 12 implies that the combined operator ΠW1 T π is an ∞-contraction. Based on Banach’s fixed point theorem, 
+
+T π has a unique fixed point, i.e., ∼
+
+Zπ . Furthermore, the definition of Bellman optimality operator , defined as Equation 6, implies that all moments of Z are bounded. Therefore, we conclude that the sequence Zk(s, a) converges to ∼
+
+Zπ in −
+
+d∞ for 
+
+p ∈ [1 , ∞]. ■
+
+Proposition D.2. (Policy Improvement): Given an old policy πold , a new policy πnew and Q(s, a ) = E[Z(s, a )] , suppose Assumption 1 holds, there exists Qπnew (s, a ) ≥ Qπold (s, a ) when performing Algorithm 1, ∀s ∈ S and ∀a ∈ A if and only if the reward operator family F = {F r , Fg } satisfies the both Conditions 5.3 .Proof : We recall that {F r , Fg } are two operators defined as er(τ ) := Fr · p (Or |τ ) and egi(τ ) := Fg · p (Ogi |τ ), respectively. Suppose Assumption 1 holds. Since the two optimization objectives in policy updating, i.e., max E[Fr · p (Or |τ )] and 
+
+min E[Fg · p (Ogi |τ )] (see Section 4.2 ), and p (O| τ ) is defined on (0 , 1] , we can conclude the both Conditions 5.3 that ( i) Fr
+
+is monotonically increasing and continuously defined on (0 , 1] , and the range covers [rmin , r max ]; ( ii ) Fg is monotonically decreasing and continuously defined on (0 , 1] , and the range covers [rmin , r max ].Then based on Equation 6, there exists: 
+
+V π (st) = E[Q(st, π (st))] ≤ max 
+
+> a′∈A
+
+E[Q(st, a ′)] = E[Q(st, π ′(st))] 
+
+(13) where Eπ [·] = P 
+
+> a∈A
+
+π(a|s)[ ·], and V π (s) = Eπ E[Zk(s, a )] is the value function. According to Equation 13 and Equation 6, it yields: 
+
+Qπold = Qπold (st, πold (st)) = rt+1 + γEst+1 Eπold Qπold (st+1 , πold (st+1 )) 
+
+> (i)
+
+≤ rt+1 + γEst+1 Eπnew Qπold (st+1 , πnew (st+1 )) 
+
+≤ rt+1 + Est+1 Eπnew [γr t+2 
+
++ γ2Est+2 Qπold (st+2 , πnew (st+2 )) |]
+
+≤ rt+1 + Est+1 Eπnew [γr t+2 + γ2rt+3 + ... ]= rt+1 + Est+1 V πnew (st+1 )= Qπnew 
+
+(14) where (i) relies on Equation 13, and πnew corresponds to the maximum Q in the Bellman function. Therefore, we have 
+
+Qπnew (s, a ) ≥ Qπold (s, a ). ■
+
+Then we provide Lemma D.3 and the proof of Theorem 5.4 .
+
+Lemma D.3. (Bellemare et al., 2017): The Bellman operator T π is a p-contraction under the p-Wasserstein metric −
+
+dp.
+
+Theorem 5.4. (Global Convergence): Given the policy in the i-th policy improvement πi, πi → π∗ and i → ∞ , suppose Assumption 1 holds, there exists Qπ∗
+
+(s, a ) ≥ Qπi
+
+(s, a ) if and only if the reward operator family F satisfies the both 
+
+Conditions 5.3 .
+
+Proof : Since Proposition D.2 suggests Qπi+1 (s, a ) ≥ Qπi (s, a ), the sequence Qπi (s, a ) is monotonically increasing if and only if the reward operator family F satisfies the both Conditions 5.3 . Furthermore, Lemma D.3 implies that the the state-action distribution Z over R has bounded p-th moment, so the first moment of Z, i.e., Qπi (s, a ), is upper bounded. Therefore, the sequence Qπi (s, a ) converges to an upper limit Qπ∗ (s, a ) with ∀s ∈ S and ∀a ∈ A . ■
+
+To prove Theorem 5.5 , we provide Lemma D.4 and its proof below. 
+
+Lemma D.4. (Convergence rate of neural TD learning): Let m be the width of the actor-critic networks, and −
+
+Zt =
+
+> 1
+> NN
+
+P
+
+> i=1
+
+δqi(s,a) be an estimator of Zit . Suppose Assumption 2 holds, In the TD learning, with probability at least 1 − δ, there exists 
+
+ΠW1
+
+> −
+
+Zt − ΠW1 Z∗ 
+
+> t
+
+≤ Θ( m− H 
+
+> 4
+
+) + Θ([(1 − γ)K]− 12 [1 + log 12 δ−1]) (15) 18 Probabilistic Constrained RL with Formal Interpretability 
+
+Proof : Utilizing Gluing Lemma (Villani, 2009; Clement & Desch, 2008) for Wasserstein distance Wp, where we employ the 
+
+1-Wasserstein distance W1 and the one-dimensional quantile qi, ∗ 
+
+> t
+
+, we establish: 
+
+ΠW1
+
+> −
+
+Zt − ΠW1 Z∗ 
+
+> t
+
+=
+
+> N
+
+X
+
+> i=1
+> −
+
+qit − qi, ∗
+
+> t
+
+=
+
+> N
+
+X
+
+> i=1
+
+f (H) 
+
+> i
+
+(( s, a), θ QKtd ) − f (H) 
+
+> i
+
+(( s, a), θ Q∗
+
+)
+
+≤
+
+> N
+
+X
+
+> i=1
+
+f (H) 
+
+> i
+
+(( s, a), θ QKtd ) − f (H)0,i (( s, a), θ Q)
+
++
+
+> N
+
+X
+
+> i=1
+
+f (H)0,i (( s, a), θ QKtd ) − f (H) 
+
+> i
+
+(( s, a), θ Q∗
+
+)
+
+> (i)
+
+≤ Θ( m− H 
+
+> 4
+
+) + 
+
+> N
+
+X
+
+> i=1
+
+f (H)0,i (( s, a), θ QKtd ) − f (H) 
+
+> i
+
+(( s, a), θ Q∗
+
+)
+
+> (ii )
+
+≤ Θ( m− H 
+
+> 4
+
+) + Θ([(1 − γ)Ktd ]− 12 [1 + log 12 δ−1]) 
+
+(16) where H denotes the layers of the neural network. Suppose Assumption 2 holds. Then (i) follows from Lemma 5.1 in (Cai et al., 2019), where each quantile represents as a form of local linearization (Koenker, 2005; Gannoun et al., 2007): 
+
+> N
+
+X
+
+> i=1
+
+f (H) 
+
+> i
+
+(( s, a), θ QKtd ) − f (H)0,i (( s, a), θ Q) 2
+
+≤ 1
+
+mHNX
+
+> i=1
+
+br
+
+[( 1(W (h) 
+
+> i
+
+x(h−1)  
+
+> i
+
+> 0) − 1(W (0)  
+
+> i
+
+x(h−1)  
+
+> i
+
+> 0)) · W (h) 
+
+> i
+
+x(h−1)  
+
+> i
+
+]2
+
+≤ 4C0
+
+mHNX
+
+> i=1
+
+[
+
+> m
+
+X
+
+> r=1
+
+1( W (0)  
+
+> i,r
+
+x(h−1)  
+
+> i
+
+≤ W (h) 
+
+> i,r
+
+− W (0)  
+
+> i,r 2
+
+)] 
+
+≤ 4C0
+
+mH (
+
+> m
+
+X
+
+> r=1
+
+W (h) 
+
+> i,r
+
+− W (0) 
+
+> i,r
+> 22
+
+) 12 (
+
+> m
+
+X
+
+> r=1
+
+1
+
+W (0) 
+
+> i,r
+> 22
+
+) 12 ≤ 4C0C1
+
+m H
+
+> 2
+
+(17) where the constant C0 > 0 and C1 > 0. Thus we upper bound NP
+
+> i=1
+
+f (H) 
+
+> i
+
+− f (H)0,i ≤ Θ( m− H 
+
+> 4
+
+), which holds (i) in Equation 16. Suppose Assumption 3 holds. Then (ii) follows from Lemma 1 in (Rahimi & Recht, 2008), with probability at least 1 − δ, there exists: NX
+
+> i=1
+
+f (H)0,i (( s, a), θ QKtd ) − f (H) 
+
+> i
+
+(( s, a), θ Q∗
+
+)
+
+≤ 1
+
+√1 − γ
+
+> N
+
+X
+
+> i=1
+
+f (H)0,i (( s, a), θ Qπ 
+
+> Ktd
+
+) − f (H) 
+
+> i
+
+(( s, a), θ Q∗
+
+)
+
+≤ C3
+
+p(1 − γ)Ktd 
+
+(1 + 
+
+r
+
+log 1
+
+δ )
+
+(18) where (iii) holds, and therefore Equation 16 holds. ■
+
+Theorem 5.5. (Global Convergence Rate): Let m and H be the width and the layer of the neural network, Ktd =(1 − γ)− 32 m H 
+
+> 2
+
+be the iterations required for convergence of the distributional TD learning (defined in Equation 10), 
+
+lQ = 1√T be the policy update (in Line 4 of Algorithm 1) and τc = Θ( 1(1 −γ)√T ) + Θ( 1(1 −γ)T m H
+
+> 4
+
+) be the tolerance (in Line 3 of Algorithm 1). Suppose Assumptions 1-3 hold. There exists a global convergence rate of Θ(1 /√T ), and a sublinear rate of Θ(1 /√T ) if the constraints are violated with an error of Θ(1 /m H 
+
+> 4
+
+), with probability at least 1 − δ. Importantly, this conclusion holds if and only if the reward operator family F satisfies both Conditions 5.3 .19 Probabilistic Constrained RL with Formal Interpretability 
+
+Proof : Proposition D.2 suggests that the sequence Qπi (s, a ) achieves global convergence if and only if the reward operator family F satisfies Conditions 5.3 . Then we let △θQ = θQt+1 − θQt , and suppose the critic networks are H-layer neural networks. Based on Lemma 6.1 in (Kakade & Langford, 2002), there exists 
+
+(1 − γ)[ Jr (π∗) − J r (πt)] = E[Qπt (s, a) − EQπt (s, a′)] = E[∇θ f (H)(( s, a), θ Q)T − E[∇θ f (H)(( s, a′), θ Q)T]] △θQ
+
++ E[Qπt (s, a) − ∇ θ f (H)(( s, a), θ Q)T△θQ ]+ E[∇θ f (H)(( s, a′), θ Q)T△θQ − Qπt (s, a′)] = 1
+
+lQ
+
+lQE[∇θ log( πt(a|s)) T]△θQ − l2
+
+> Q
+
+Lf
+
+2 ∥△ θQ ∥22
+
+
+
++ E[Qπt (s, a) − ∇ θ f (H)(( s, a), θ Q)T△θQ ] + lQLf
+
+2 ∥△ θQ ∥22
+
++ E[∇θ f (H)(( s, a′), θ Q)T△θQ − Qπt (s, a′)] 
+
+> (i)
+
+≤ 1
+
+lQ
+
+E[log( πt+1 (a|s)
+
+πt(a|s) )] + lQLf
+
+2 ∥△ θQ ∥22
+
++
+
+q
+
+E[Qπt (s, a) − f (H)(( s, a), △θQ )] 2
+
++
+
+q
+
+E[f (H)(( s, a), △θQ ) − ∇ θ f (H)(( s, a), θ Q)T△θQ ]2
+
++
+
+q
+
+E[∇θ f (H)(( s, a′), θ Q)T△θQ − f (H)(( s, a′), △θQ )] 2
+
++
+
+q
+
+E[f (H)(( s, a′), △θQ ) − Qπt (s, a′)] 2
+
+= 1
+
+lQ
+
+E[DKL (π∗|| πt)] − E[DKL (π∗|| πt+1 )] 
+
++ 2 
+
+q
+
+E[f (H)(( s, a), △θQ ) − ∇ θ f (H)(( s, a), θ Q)T△θQ ]2
+
++ 2 
+
+q
+
+E[Qπt (s, a) − f (H)(( s, a), △θQ )] 2 + lQLf
+
+2 ∥△ θQ ∥22
+
+(19) where (i) follows from the Lf -Lipschitz property of log( πt(a|s)) . Suppose Assumption 2 holds. Next, we upper bound the term pE[f (H)(( s, a), △θQ ) − ∇ θ f (H)(( s, a), θ Q)T△θQ ]2 as shown below. 
+
+q
+
+E[f (H)(( s, a), △θQ ) − ∇ θ f (H)(( s, a), θ Q)T△θQ ]2
+
+=
+
+> N
+
+X
+
+> i=1
+
+f (H) 
+
+> i
+
+(( s, a), △θQ ) − ∇ θ f (H) 
+
+> i
+
+(( s, a), θ Q)T△θQ
+
+≤
+
+> N
+
+X
+
+> i=1
+
+ f (H) 
+
+> i
+
+(( s, a), △θQ ) − ∇ θ f (H)0,i (( s, a), θ Q)T△θQ
+
++ ∇θ f (H)0,i (( s, a), θ Q)T△θQ − ∇ θ f (H) 
+
+> i
+
+(( s, a), θ Q)T△θQ
+
+
+
+= 2 
+
+> N
+
+X
+
+> i=1
+
+f (H) 
+
+> i
+
+(( s, a), △θQ ) − f (H)0,i (( s, a), △θQ )
+
+> (ii )
+
+≤ 4√C0C1
+
+m H
+
+> 4
+
+(20) where (ii) follows from Equation 17. Suppose Assumption 3 holds. Then, in order to upper bound 20 Probabilistic Constrained RL with Formal Interpretability 
+
+pE[Qπt (s, a) − f (H)(( s, a), △θQ )] 2, taking expectation of Equation 19 from t = 0 to T − 1, yields 
+
+(1 − γ)Jr (π∗) − E[Jr (π)] 
+
+= (1 − γ) 1
+
+T 
+
+> T−1
+
+X
+
+> t=0
+
+[Jr (π∗) − J r (πt)] 
+
+≤ 1
+
+T
+
+ 1
+
+lQ
+
+E[DKL (π∗|| πt)] + 8T √C0C1
+
+m H
+
+> 4
+
++ T l QLf
+
+2 d2
+
+> θ
+
++ 2  
+
+> T−1
+
+X
+
+> t=0
+> N
+
+X
+
+> i=1
+
+f (H) 
+
+> i
+
+(( s, a), θ Qt+1 − θQt ) − f (H) 
+
+> i
+
+(( s, a), θ Q∗
+
+) 
+
+= E[DKL (π∗|| πt)] 
+
+lQT + 8√C0C1
+
+m H
+
+> 4
+
++ lQLf
+
+2 d2
+
+> θ
+
++ 2
+
+T
+
+> N
+
+X
+
+> i=1
+
+f (H) 
+
+> i
+
+(( s, a), θ QKtd ,t ) − f (H) 
+
+> i
+
+(( s, a), θ Q∗
+
+)
+
+> (iii )
+
+≤ E[DKL (π∗|| πt)] 
+
+lQT + 8√C0C1
+
+m H
+
+> 4
+
++ lQLf
+
+2 d2
+
+> θ
+
++ 4√C0C1
+
+T m H
+
+> 4
+
++ 2C3
+
+T p(1 − γ)Ktd 
+
+(1 + 
+
+r
+
+log 1
+
+δ )
+
+(21) where (iii) follows from Lemma D.4 (Equation 16). Thus, substituting Ktd = (1 − γ)−1m H 
+
+> 2
+
+and lQ = Θ(1 /√T ) into Equation 21, with probability at least 1 − δ, yields: 
+
+Jr (π∗) − E[Jr (π)] ≤ C5
+
+1(1 − γ)√T + C6
+
+1(1 − γ)m H
+
+> 4
+
++ C7
+
+1(1 − γ)T m H
+
+> 4
+
++ 2 C3
+
+q
+
+log 1
+
+> δ
+
+(1 − γ)T m H
+
+> 4
+
+≤ Θ( 1(1 − γ)√T ) + Θ( 1(1 − γ)T m H
+
+> 4
+
+r
+
+log 1
+
+δ )
+
+(22) where C5 = E[DKL (π∗|| πt)] + Lf d2 
+
+> θ
+> 2
+
+, C6 = 8 √C0C1 and C7 = 4 √C0C1 + 2 C3. Therefore, there exists: 
+
+Jr (π∗) − E[Jr (π)] ≤ Θ( 1(1 − γ)√T )+ Θ( 1(1 − γ)T m H
+
+> 4
+
+r
+
+log 1
+
+δ )
+
+(23) where Equation 23 suggests that there exists a global convergence rate of Θ(1 /√T ), with probability at least 1 − δ.Following Line 6 in Algorithm 1 and recalling Equation 19, Equation 20 and Equation 21, the convergence process is similarly stated for the constraint approximation J ig (π), ∀i ∈ [1 , p ] here 
+
+E[J ig (π)] − J ig (π∗) ≤ Θ( 1(1 − γ)√T )+ Θ( 1(1 − γ)T m H
+
+> 4
+
+r
+
+log 1
+
+δ )
+
+(24) 21 Probabilistic Constrained RL with Formal Interpretability 
+
+the constraint violation is then bounded below 
+
+E[J ig (π)] − bi ≤ J ig (π∗) − bi
+
+ + E[J ig (π)] − J ig (π∗)
+
+≤ τc + E[J ig (π)] − J ig (π∗)
+
+≤ τc + Θ( 1(1 − γ)√T ) + Θ( 1(1 − γ)T m H
+
+> 4
+
+r
+
+log 1
+
+δ )
+
+(25) where we have τc = Θ( 1(1 −γ)√T ) + Θ( 1(1 −γ)T m H
+
+> 4
+
+), therefore, we obtain: 
+
+E[J ig (π)] − bi ≤ Θ( 1(1 − γ)√T )+ Θ( 1(1 − γ)T m H
+
+> 4
+
+r
+
+log 1
+
+δ )
+
+(26) where Equation 26 suggests that there exists a sublinear rate of Θ(1 /√T ) if the constraints are violated with an error of 
+
+Θ(1 /m H 
+
+> 4
+
+), with probability at least 1 − δ. ■
+
+22 Probabilistic Constrained RL with Formal Interpretability 
+
+# E. Experiment Supplementary 
+
+E.1. Experimental Setting 
+
+The parameter setting of AWaVO is shown in Table 2, and the technical specification of the quadrotor is shown in Table 3.  
+
+> Table 2. Parameter Setting of AWaVO
+
+Parameters Definition Values 
+
+lμ,cart Learning rate of actor in Cartpole (Xu et al., 2021) 0.0005 
+
+lθ,cart Learning rate of critic in Cartpole (Xu et al., 2021) 0.0005 
+
+lμ,acro Learning rate of actor in Acrobot (Xu et al., 2021) 0.005 
+
+lθ,acro Learning rate of critic in Acrobot (Xu et al., 2021) 0.005 
+
+lμ,guard Learning rate of actor in Walker and Drone (Zhao et al., 2023) 0.001 
+
+lθ,guard Learning rate of critic in Walker and Drone (Zhao et al., 2023) 0.001 
+
+μ Actor neural network: fully connected with H
+
+hidden layers ( m neurons per hidden layer) -
+
+θ Critic neural network: fully connected with H
+
+hidden layers ( m neurons per hidden layer) -
+
+D Replay memory capacity 10 6
+
+B Batch size 128 
+
+γ Discount rate 0.998 
+
+m the width of neural network 128 
+
+H the layer of neural network 2
+
+T Length in each episode 500 
+
+N Time steps 20  
+
+> Table 3. Technical Specification of Hardware
+
+No. Component Specific Model 
+
+1 Frame QAV250 2 Sensor - Depth Camera Intel RealSense D435i 3 Sensor - Down-view Rangefinder Holybro ST VL53L1X 4 Flight Controller Pixhawk 4 5 Motors T-Motor F60 Pro IV 1750KV 6 Electronic Speed Controller BLHeli-32bit 45A 3-6s 7 On-board Companion Computer DJI Manifold 2-c (CPU Model: Intel Core i7-8550U) 8 Mounts 3D Print for Sensors/ Computer/Controller/Battery 
+
+E.2. Task Descriptions in the Simulated Platforms Acrobot and Cartpole tasks in OpenAI Gym. In Cartpole (Brockman et al., 2016), the pole movement is constrained within the range of [−2.4, 2.4] . Each episode has a maximum length of 200 steps and is terminated if the angle of the pole exceeds 12 degrees. During training, the agent receives a reward of +1 for each step taken. However, it incurs a penalty of +1 if ( i) it enters the areas [−2.4, −2.2] , [−1.3, −1.1] , [−0.1, 0.1] , [1 .1, 1.3] , or [2 .2, 2.4] , or ( ii ) the angle of the pole exceeds 6 degrees. In Acrobot (Brockman et al., 2016), the agent is rewarded for swinging the end-effector at a height of 0.5, where each episode has a maximum length of 500 steps. Conversely, it faces a penalty if ( i) torque is applied to the joint when the first pendulum swings in an anticlockwise direction, or ( ii ) if the second pendulum swings in an anticlockwise direction with 23 Probabilistic Constrained RL with Formal Interpretability 
+
+respect to the first pendulum. 
+
+Walker and Drone tasks in GUARD. Walker (Zhao et al., 2023), a bipedal robot, comprises four primary components: a torso, two thighs, two legs, and two feet. Notably, unlike the knee and ankle joints, each hip joint possesses three hinges in the x, y, and z coordinates, enabling versatile turning. Maintaining a fixed torso height, Walker achieves mobility through the control of 10 joint torques. Drone in GUARD (Zhao et al., 2023) is designed to emulate a quadrotor, simulating the interaction between the quadrotor and the air by applying four external forces to each of its propellers. These external forces are configured to counteract gravity when no control actions are applied. To maneuver in three-dimensional space, the Drone utilizes four additional control forces applied to its propellers. 
+
+E.3. Further Details on Constraint Limit Setting 
+
+In accordance with the benchmark (Xu et al., 2021), we established the constraint limit as 50 in Acrobot, as depicted in Figure 3(a). In the remaining scenarios, namely Cartpole in Figure 3(b), Walker in Figure 3(c), Drone in Figure 3(d), and the real quadrotor in Figure 5, the constraint limit serves as a lower boundary, indicating the level of tolerance the constraints can endure. The agent’s stable performance for specific tasks occurs when it operates below this constraint limit. We hypothesize that there may be potential benefits in establishing a fixed limit, bi, by decoupling the cumulative value into specific fixed limits. This is left for future work. 
+
+E.4. Further Discussion on Probabilistic Interpretation of Sequential Decisions Curves in Figure 7 (a) and (b). The curves in Figure 7 (a), provided as a reference, give the estimated values of external aerodynamic forces (winds) in real-time. These estimates are derived from the signals collected from onboard sensors. In Figure 7 (b), the curves illustrate the quantitative impact of external forces L0 on current sequential decisions, specifically, the planned trajectory τ . This impact is quantified as parts of pulse width modulation signals that are fed into the motors to either resist or cooperate with the measured (or identified) aerodynamic forces. Figure 7 (b) aims to quantitatively interpret and visually convey the decision-making process in response to external forces. Figure 7 (b) becomes particularly important when the agent makes sub-optimal decisions leading to events like quadrotor crashes or collisions. These curves prove valuable for interpreting and performing quantitative analyses of distinct environmental factors, such as winds and obstacles, allowing for an understanding of their magnitudes of influence on the current decision-making process. 
+
+An instance to interpret Figure 7 (b). In the case of Reference State 02 (RS 02), located in an area with a combination of wind and obstacles, both aerodynamic effects (i.e., external forces) from winds and obstacles act simultaneously on the quadrotor. In Flight Task 3 (FT 3), represented by the red curve, we can observe the influence of external forces (i.e., aerodynamic effects from winds and obstacles) on the current trajectory planning decisions. The value is approximately 
+
+0.40 at RS 02, implying that the ongoing trajectory planning decisions have a ∼ 40% probability of being influenced by the aerodynamic effects. Comparing FT 1 and FT 2, where the values at RS 02 are approximately 0.20 (FT 1) and 0.18 (FT 2), respectively, we can decouple the aerodynamic effects generated by the wind on the body (FT 1) and obstacles (FT 2). Quantitatively, at RS 02, situated in an area with a mix of wind and obstacles, the red p(τ |L0)F T 3 is approximately equal to the sum of p(τ |L0)F T 1
+
+(only wind) and p(τ |L0)F T 2 (only obstacles). 
+
+E.5. Scalability 
+
+To explore the full scalability of our methodology, we have implemented it on the Lorenz 96 system (Lorenz & Emanuel, 1998; Gorbach et al., 2017), characterized by the following equations: dx i/dt = ( xi+1 − xi−2) · xi−1 − xi + fθ , where 
+
+fθ represents a scalar forcing parameter, and x−1 = xI−1, x 0 = xI , x I+1 = x1, with I denoting the number of states in the deterministic system. This system serves as a simplified model for weather forecasting. We choose it as a versatile framework for expanding the number of states in our inference task. In our experiment, we range from 50 to 1000 states, with approximately one-third of the states randomly designated as unobserved. We show the results in Figure 8 and Figure 9. Our methodology successfully infers a system with 1000 states in less than 400 seconds (shown in Figure 9). From visual inspection, we observe that the unobserved states are inferred, with 24 Probabilistic Constrained RL with Formal Interpretability 
+
+the approximation error remaining consistent regardless of the problem’s dimensionality. Given that many real-world RL problems involve state spaces significantly larger than 1,000 states, our future work will explore such scalability concerns on larger models.   
+
+> Figure 8. Scalability performance on Lorenz 96 system (Lorenz & Emanuel, 1998; Gorbach et al., 2017).
+> Figure 9. Average RMSE and computation time of the unobserved state for scalability.
+
+25

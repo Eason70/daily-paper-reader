@@ -1,0 +1,1683 @@
+Title: Learning Safe Control via On-the-Fly Bandit Exploration
+
+URL Source: https://openreview.net/pdf?id=X6nIBckemw
+
+Number of Pages: 20
+
+Markdown Content:
+# Learning Safe Control via On-the-Fly Bandit Exploration 
+
+Alexandre Capone 1 Ryan Cosner 2 Aaron Ames 2 Sandra Hirche 3
+
+# Abstract 
+
+Control tasks with safety requirements under high levels of model uncertainty are increasingly com-mon. Machine learning techniques are frequently used to address such tasks, typically by leveraging model error bounds to specify robust constraint-based safety filters. However, if the learned model uncertainty is very high, the corresponding filters are potentially invalid, meaning no control input satisfies the constraints imposed by the safety filter. While most works address this issue by assuming some form of safe backup controller, ours tackles it by collecting additional data on the fly using a Gaussian process bandit-type algo-rithm. We combine a control barrier function with a learned model to specify a robust certificate that ensures safety if feasible. Whenever infeasibility occurs, we leverage the control barrier function to guide exploration, ensuring the collected data con-tributes toward the closed-loop system safety. By combining a safety filter with exploration in this manner, our method provably achieves safety in a setting that allows for a zero-mean prior dynam-ics model, without requiring a backup controller. To the best of our knowledge, it is the first safe learning-based control method that achieves this. 
+
+# 1. Introduction 
+
+With the growing proliferation of robotics in safety-critical fields, e.g., autonomous vehicles, medical robotics, and aerospace systems, the need for methods that ensure the safety of systems and their users has become paramount. In control tasks, guaranteeing safety has become synony-       
+
+> *Equal contribution 1Robotics Institute, Carnegie Mellon Uni-versity, Pittsburgh, PA, USA 2Department of Mechanical and Civil Engineering , California Institute of Technology, Pasadena, CA, USA 3TUM School of Computation, Information and Technology, Technical University of Munich, Munich, Germany. Correspon-dence to: Alexandre Capone <acapone2@andrew.cmu.edu>.
+> Proceedings of the 42 nd International Conference on Machine Learning , Vancouver, Canada. PMLR 267, 2025. Copyright 2025 by the author(s).
+
+mous with guaranteeing that the system always satisfies a pre-specified set of constraints. While there exist vari-ous tools to achieve safety whenever the system is known perfectly (Agrawal & Sreenath, 2017; Ames et al., 2017; Bansal et al., 2017; Wabersich & Zeilinger, 2018; Zeng et al., 2021), doing so if the dynamics have to be learned poses a significantly more difficult challenge. To address safety in a control setting, existing approaches typically attempt to bound the model error and assess how its worst-case estimate affects safety. To estimate the model error, frequently used frameworks include ensembles of neural networks (Chua et al., 2018; Curi et al., 2020) or Gaussian processes (GPs) (Capone et al., 2022; Rodriguez et al., 2021). The impact of the model error on safety is then frequently estimated by predicting the worst-case trajectory multiple steps into the future (Akametalu et al., 2014; Hew-ing et al., 2020; Koller et al., 2018). Alternatively, safety filters attempt to condense the long-term impact of a con-trol input on safety (Ao et al., 2025; Berkenkamp et al., 2017; Castañeda et al., 2021; Cheng et al., 2019; Jagtap et al., 2020). A crucial drawback of most of these methods is that they assume the model uncertainty is always small enough for the conservative safety constraints to be feasible. In other words, if the uncertainty becomes too large, the underlying methods are no longer applicable. Motivated by the aforementioned challenges, we present a learning-based control algorithm that ensures safety by exploring on the fly. We use a Gaussian process model to es-timate model uncertainty, which we combine with a control barrier function to compute a robust safety filter. Whenever our safety filter becomes infeasible, we employ the control barrier function to guide exploration in a manner that is in-formative for safety. Formally, this is done by leveraging the lower confidence bound of the certificate constraint function for certifiably safe control inputs, and the upper confidence bound for exploration. Our approach draws heaviliy from ideas from Bayesian optimization, where exploration is done in a similar manner. Overall, our main contributions are as follows: 1. We present the first safe control algorithm that ad-dresses infeasible safety filters by exploring online using a Gaussian process bandit algorithm. 1Learning Safe Control via On-the-Fly Bandit Exploration - Starting state - Feasible (safe) region - Infeasible (safe) region - Unsafe region System trajectory     
+
+> (a) System state exits the region where the safety filter is feasible.
+> (b) Our algorithm computes exploratory control inputs using a bandit-type tech-nique.
+> (c) Theorem 3.2 guarantees that the safety filter always becomes feasible before the boundary of the safe set is reached.
+> Figure 1. Illustration of our method (Algorithm 1) and theoretical result (Theorem 3.2).
+
+2. We rigorously analyze our approach and discuss our main theorem, which shows the interdependence be-tween model uncertainty, sampling time, and safety. 3. We showcase our approach using two numerical simu-lations where we achieve safety using a control barrier function, a dynamics model with a zero-mean prior, and no prior measurements. To the best of our knowl-edge, this setting cannot be addressed by current state-of-the-art methods. The remainder of this paper is structured as follows. In Section 2 we describe the problem setting considered in this paper, together with some background on control barrier functions and Gaussian processes. Our main contribution, which includes an exploration-driven safe control algorithm and safety guarantees, is presented in Section 3. In Section 5, we apply our method using numerical simulations of cruise control and a quadcopter. We finalize the paper with some conclusions in Section 7. 
+
+# 2. Background and Problem Setting 
+
+We consider a system that is affine in the control inputs 
+
+˙x = f (x) + g(x)u (1) where x ∈ X ⊆ Rn and u ∈ U ⊆ Rm, and f : Rn → Rn
+
+and g : Rn → Rn×m are (partially) unknown locally Lip-schitz continuous functions that represent the drift dynam-ics and the input matrix, respectively. Eq. (1) represents a broad class of physical systems. Though our method can be straightforwardly extended to the more general case 
+
+˙x = f (x, u ), this structure significantly facilitates the com-putation of safe control inputs, as described in Section 2.1. We further assume that X is an open and connected set and that U is compact. When a locally Lipschitz controller 
+
+π : Rn → Rm is used, we can define the closed-loop sys-tem: 
+
+˙x = f (x) + g(x)π(x). (2) We also assume to know an upper bound L ˙x ∈ R+ for the time-derivative of the dynamics, as specified by the following assumption. 
+
+Assumption 2.1. There exists a known positive constant 
+
+L ˙x, such that ∥ ˙x∥2 ≤ L ˙x holds for all x ∈ X and u ∈ U .We define safety by considering a safe set C, as specified in the following. 
+
+Definition 2.2 (Safety) . The closed-loop system (2) is said to be safe (with respect to C) if x(0) ∈ C implies x(t) ∈ C 
+
+for all t ≥ 0.We consider the case where the safe set C corresponds to the superlevel set of some known continuously differentiable function h : Rn → R with 0 a regular value 1:
+
+C ≜ {x ∈ Rn | h(x) ≥ 0}.
+
+This specification of C allows us to achieve safety through the control barrier function framework, which we discuss in the following section. This paper considers a compact 
+
+C and a Lipschitz continuous functions h, as stated in the following assumption. 
+
+Assumption 2.3. The safe set C is compact and the function 
+
+h admits a Lipschitz constant Lh, i.e., |h(x) − h(x′)| ≤ 
+
+Lh∥x − x′∥2 holds for all x, x ′ ∈ X .Given an arbitrary nominal controller πnom : X → U , we aim to design a control law π that renders the closed loop         
+
+> 1A function hhas 0 as a regular value if h(x) = 0 =⇒
+> ∂h ∂x (x)̸= 0 .
+
+2Learning Safe Control via On-the-Fly Bandit Exploration 
+
+system (2) safe while following πnom as closely as possible. We make the following assumption regarding the nominal controller: 
+
+Assumption 2.4. The nominal controller πnom is locally Lipschitz in X .Assumption 2.4 is not restrictive, as it includes a broad class of controllers, including most types of neural networks. 
+
+2.1. Safety through Control Barrier Functions 
+
+Our method attempts to ensure safety using control barrier functions, which we introduce in the following. 
+
+Definition 2.5 (Control Barrier Function (CBF) (Ames et al., 2017)) . Let C ⊂ X be the 0-superlevel set of a continuously differentiable function h : Rn → R with 0 a regular value. Furthermore, let α be a radially unbounded, strictly mono-tonically increasing function with α(0) = 0 . The function 
+
+h is a control barrier function (CBF) for (1) on C if, for all 
+
+x ∈ X ,
+
+sup 
+
+> u∈U
+
+˙h(x, u ) ≜ sup 
+
+> u∈U
+
+∂h ∂x (x) ( f (x) + g(x)u) > −α(h(x)) .
+
+(3) Intuitively, (3) states that there exists a control input that decreases the time derivative of the CBF as the boundary of the safe set C is approached, effectively slowing down the system as the boundary gets closer. If f and g were known perfectly, we could leverage this property to compute certifiably safe control inputs by including a CBF increase condition as a constraint when synthesizing control inputs: 
+
+π(x) = argmin 
+
+> u∈U
+
+∥u − πnom (x)∥2
+
+s.t. ˙h(x, u ) ≥ − α(h(x)) . (4) Given the affine form of this constraint, this safety filter is a quadratic program (QP) that has a closed form solution (Ames et al., 2017) and can be solved fast enough for online safe controller synthesis (Gurriet et al., 2018). Since we are dealing with unknown systems (3) is not di-rectly applicable, and we need to formulate a robust CBF constraint that accounts for potential modeling errors. To this end, we assume the CBF constraint is feasible up to a positive margin ϵ > 0:
+
+Assumption 2.6 (Robust CBF Feasibility) . There exists a radially unbounded, strictly monotonically increasing func-tion α with α(0) = 0 and a positive scalar ϵ > 0, such that 
+
+sup 
+
+> u∈U
+
+∂h ∂x (x) ( f (x) + g(x)u) ≥ − α(h(x)) + ϵ (5) holds for all x ∈ X .Given the existence of a CBF, we note that this assumption is not very conservative. Intuitively, it states that we can violate the non-robust CBF by a margin of at most ϵ.
+
+2.2. Gaussian Processes and Reproducing Kernel Hilbert Spaces 
+
+We now introduce the tools used to model the the unknown functions f and g.Consider a prior model of the system ˆf and ˆg, which can be set to zero if no prior knowledge is available. For the re-mainder of this paper, we assume ˆf = ˆ g = 0 for simplicity. We then model the residuals f − ˆf and g − ˆg jointly by using a GP model. To obtain theoretical guarantees on the growth of the model error as new data is added, we assume that the residual model belongs to a reproducing kernel Hilbert space (RKHS). This is codified later in this section. In the following, we review both GPs and RKHSs, and provide some preliminary theoretical results. A GP is a collection of random variables, of which any finite number is jointly Gaussian distributed. GPs are fully specified by a prior mean, which we set to zero without loss of generality, and kernel k : X × X → R. We model each dimension of the unknown dynamics f (x) + g(x)u using a separate GP. This is achieved by employing composite kernels 
+
+ki(z, z′) ≜ kfi (x, x ′) + 
+
+> m
+
+X
+
+> j=1
+
+uj kgi,j (x, x ′)u′ 
+
+> j
+
+, (6) where z ≜ (x⊤, u ⊤)⊤. The kernels kfi and kgi,j capture the behavior of the individual entries of the residuals f and 
+
+g, respectively. In this paper, we do not require a specific form of kernel kfi and kgi,j , though the choice of kernel significantly affects performance. We employ a composite kernel (6) because this allows us to leverage measurements of ˙x to improve our learned model. Consider N noisy measurements Di,N ≜
+
+{z(q), y (q) 
+
+> i
+
+}q=1 ,...,N of the i-th entry of the time-derivative of the state, where 
+
+y(q) 
+
+> i
+
+=fi(x(q)) + 
+
+> m
+
+X
+
+> j=1
+
+gi,j (x(q))u(q) 
+
+> j
+
++ ξ(q) 
+
+> i
+
+(7) and the measurement noise ξ(q) satisfies the following as-sumption. 
+
+Assumption 2.7. The measurement noise ξ(q) is iid σi, ns -sub Gaussian for every i ∈ { 1, ..., n }.The posterior of the model at an arbitrary state z∗ is then 3Learning Safe Control via On-the-Fly Bandit Exploration 
+
+given by 
+
+μi,N (z∗) ≜ k⊤
+
+> i, ∗
+
+ Ki,N + σ2
+
+> i, ns
+
+IN
+
+−1 yi,σ2 
+
+> i,N
+
+(z∗) ≜ ki(z∗, z∗) − k⊤
+
+> i, ∗
+
+ Ki,N + σ2
+
+> i, ns
+
+IN
+
+−1 ki, ∗,
+
+where ki, ∗ ≜ (ki(z∗, z(1) ), ..., k i(z∗, z(N ))) ⊤, and the en-tries of the covariance matrix are given by [Ki,N ]pq =
+
+ki(z(p), z(q)). In our approach, we employ μi,N as a model of our system, and σi,N as a measure of uncertainty, which we employ to inform the data-collection trigger. In the following, we refer to the mean and covariance matrix of the full multivariate Gaussian process model as 
+
+μN (·) ≜ (μ1,N (·), . . . , μ n,N (·)) ⊤,
+
+Σ2 
+
+> N
+
+(·) ≜ diag (σ21,N (·), . . . , σ 2 
+
+> n,N
+
+(·)) . (8) Furthermore, we employ DN = {z(q), y(q)}q=1 ,...,N ,where y(q) ≜ (y(q)1 , ..., y (q) 
+
+> n
+
+)⊤, to refer to the full data set corresponding to N system measurements. To be able to ensure safety, we need to estimate how data affects the worst-case model error. Though this is impossi-ble in a general setting, an estimate is possible if we assume that the entries of f and g belong to an RKHS, a very rich function space specified by the composite kernel (6). 
+
+Assumption 2.8. For every i = 1 , .., n , the i-th entry of 
+
+f (x) + g(x)u belongs to the RKHS with reproducing kernel 
+
+ki, and the corresponding RKHS norm is bounded by a known positive scalar Bi ∈ (0 , ∞).The satisfaction of Assumption 2.8 hinges on choosing the kernels correctly. In practice, if little is known about the system, then so-called “universal kernels” (e.g. Matérn or squared-exponential kernels) are often employed, which can approximate continuous functions arbitrarily accurately (Micchelli et al., 2006). Furthermore, there exist several techniques to mitigate kernel specification that can easily be applied to the methods described in this paper (Berkenkamp et al., 2019; Capone et al., 2022; Fiedler et al., 2021). 
+
+# 3. Safe Control Through Bandit Exploration 
+
+In this section, we present our main algorithm and theoreti-cal guarantees. Our algorithms employs two key quantities: the lower confi-dence bound (LCB) and upper confidence bound (UCB) of the time derivative of h given the data. These quantities are computed as 
+
+LCB N (x, u ) = ∂h ∂x (x)μN (x, u ) − LhβN
+
+ptr (ΣN (x, u )) 
+
+(9) 
+
+U CB N (x, u ) = ∂h ∂x (x)μN (x, u ) + LhβN
+
+ptr (ΣN (x, u )) ,
+
+(10) where Lh > 0 is the global Lipschitz constant of h, specified in Assumption 2.3 and 
+
+βN ≜ max 
+
+> i≤n
+
+
+
+Bi + σi, ns 
+
+q
+
+2 ( γi,N + 1 + log ( nδ −1)) 
+
+
+
+.
+
+(11) Here, γi,N denotes the maximal information gain after N
+
+rounds of data collection, and is computed as 
+
+γi,N = max  
+
+> z(1) ,... z(N)
+
+12 log IN + σ−1
+
+> i, ns
+
+Ki,N .
+
+Intuitively, the LCB (9) and UCB (10) respectively corre-spond to the lowest and highest permissible value for ˙h(x, u )
+
+given the model error bound. Given the nominal controller πnom , we leverage the LCB (9) to compute robustly safe control inputs by solving the second-order cone program 
+
+πN, safe (x) = argmin 
+
+> u∈U
+
+∥u − πnom (x)∥2
+
+s.t. LCB N (x, u ) ≥ − α(h(x)) + ϵ 
+
+> 2
+
+.
+
+(12) Note that, due to the nature of the composite kernels (6) ,
+
+μN (x, u ) is a linear function of u and ΣN (x, u ) is a di-agonal matrix whose entries are positive definite quadratic functions of u. Hence, (12) can be solved straightforwardly with conventional second-order cone program optimizers. We include the term ϵ 
+
+> 2
+
+in the constraint in (12) because this keeps the system from getting too close to the boundary. This ensures that when (12) becomes infeasible, there is still some distance to go until it reaches the boundary of the safe set, leaving us with enough time to explore the system. As long as the robust safety filter (12) is strictly feasible, the resulting control policies are locally Lipschitz continuous (Castañeda et al., 2022), yielding unique and well-behaved closed-loop system trajectories. If (12) is feasible for all x ∈ C , we can leverage standard results from CBF theory (Ames et al., 2017) to show that the resulting trajectory is safe. However, since (12) includes model uncertainty, it becomes potentially infeasible in re-gions of the state space where uncertainty is high. We address this by employing a bandit-type exploration algo-4Learning Safe Control via On-the-Fly Bandit Exploration 
+
+rithm to acquire new data whenever infeasibility occurs. Our algorithm is designed to collect sufficiently informative data to render (12) feasible before exiting the safe set. We now describe the corresponding sampling scheme in detail. Let N denote the number of data collected up to the current time. If (12) is strictly feasible, it is used to compute control inputs. As soon as strict feasibility is impossible, we switch to our bandit exploration strategy. This corresponds to the first instance in time when 
+
+max  
+
+> u∈U
+
+LCB N (x, u ) = −α(h(x)) + ϵ
+
+2 (13) holds and can be easily verified using a quadratic program. We denote this point in time by tN +1 . At this point, we switch to an exploration-driven controller ¯πN +1 , which can be chosen freely, provided that it is locally Lipschitz con-tinuous and satisfies ¯π(x(tN +1 )) = u(N +1) , where u(N +1) 
+
+maximizes the upper confidence bound 
+
+u(N +1) = arg max  
+
+> u∈U
+
+U CB N (x(tN +1 ), u ). (14) In our experiments in Section 5, we choose ¯π(x) ≡ u(N +1) .Choosing a control input this way is very similar to bandit exploration algorithms, which aim to find the maximum of an unknown function. In our case, we wish to maximize the unknown time derivative of the CBF ˙h(x, u ) given the state 
+
+x, which we know to satisfy Assumption 2.6. We apply 
+
+¯πN +1 for a time length of ∆t, where ∆t corresponds to the data sampling frequency and is specified a priori. We then collect a noisy measurement of the time-derivative of the system 
+
+y(N +1) = f (x(tN +1 )) + g(x(tN +1 )) u(N +1) + ξ(N +1) 
+
+and update the GP model with the measurement data pair 
+
+(z(N +1) , y(N +1) ), where 
+
+z(N +1) =
+
+
+
+x(tN +1 )
+
+⊤
+
+,
+
+
+
+u(N +1) ⊤⊤
+
+.
+
+After a time of ∆t has passed, we check if the optimization problem (12) is strictly feasible. To this end, we check if 
+
+max  
+
+> u∈U
+
+LCB N (x, u ) > −α(h(x)) + ϵ
+
+2 (15) holds. If so, we apply πN, safe . Otherwise, we repeat the sampling procedure. These steps are summarized in Algo-rithm 1. 
+
+Remark 3.1 . The condition (13) specifies that exploration starts when strict infeasibility is not given, as opposed to waiting until infeasibility occurs. In general, it is not ad-visable to wait for infeasibility to start exploring, as this means that the control law is not well-defined, which can be 
+
+Algorithm 1 Safe Control via On-the-Fly Bandit Explo-ration 
+
+Input: Sampling time ∆t, GP prior, CBF h, class-KL func-tion α 
+
+> 1:
+
+Set EXPLORE = FALSE  
+
+> 2:
+
+for t ∈ [0 , ∞) do  
+
+> 3:
+
+if EXPLORE==FALSE then  
+
+> 4:
+
+if max u∈U LCB N (x, u ) > −α(h(x)) + ϵ 
+
+> 2
+
+then  
+
+> 5:
+
+Solve (12) and apply πN, safe (x) 
+
+> 6:
+
+else  
+
+> 7:
+
+Set EXPLORE=TRUE  
+
+> 8:
+
+Set N = N + 1 . 
+
+> 9:
+
+Set tN = t. 
+
+> 10:
+
+Set x(N ) = x. 
+
+> 11:
+
+Compute u(N ) by solving (14).  
+
+> 12:
+
+end if  
+
+> 13:
+
+end if  
+
+> 14:
+
+if EXPLORE==TRUE then  
+
+> 15:
+
+if t < t N + ∆ t then  
+
+> 16:
+
+Apply a locally Lipschitz controller ¯π with 
+
+¯π(x(N )) = u(N ). 
+
+> 17:
+
+Collect noisy measurement y(N ) =˙x(tN )− ˆf (x(tN )) − ˆg (x(tN )) u(N ) + ξ(N ) 
+
+> 18:
+
+else if t = tN + ∆ t then  
+
+> 19:
+
+Set EXPLORE=FALSE  
+
+> 20:
+
+Set DN = DN −1 ∩ { z(N ), y(N )} and update GP.  
+
+> 21:
+
+end if  
+
+> 22:
+
+end if  
+
+> 23:
+
+end for 
+
+detrimental to control. We then show that, if we choose ∆t high enough, the closed-loop system under Algorithm 1 is safe with high probability. 
+
+Theorem 3.2. Let Assumptions 2.1, 2.3, 2.4 and 2.6 to 2.8 hold. Choose δ ∈ [0 , 1] and βN as in (11) . Moreover, choose the sampling time as 
+
+∆t > ϵLαLhL ˙x∆Nmax 
+
+, (16) 
+
+where ∆Nmax satisfies 
+
+∆Nmax > 32 β2∆Nmax L2
+
+> h
+
+ϵ2 log  1 + σ−2
+
+> i, ns
+
+
+
+> n
+
+X
+
+> i=1
+
+γi, ∆Nmax (17) 
+
+Let the initial state x(0) be strictly within the safe set, such that α(h(x(0))) ≥ ϵ. Then, with probability at least 1 − δ,the closed-loop system under the policy specified by Algo-rithm 1 is safe. Furthermore, the closed-loop stops collect-ing data after at most ∆Nmax collected observations. 
+
+The proof of Theorem 3.2 can be found in Appendix B. 5Learning Safe Control via On-the-Fly Bandit Exploration 0 20 40 60 80 100          
+
+> Time
+> 40 45 50 55 60 65
+> CBF level set
+> (a) Value of control barrier function h(x)for cruise control example. Since no prior model is available for control, safety is obtained by efficiently learning a model online. 0510 15 20 25 30
+
+Time     
+
+> -40 -20 020 40 60
+> CBF constr.
+> (b) Minimum of LCB of CBF time derivative for cruise control example. Spikes are due to training data set updates, leading to decreased model uncertainty. Positive values indicate infea-sibility of the robust safety filter (12).
+> Figure 2. CBF and LCB for a single cruise control simulation using a sampling time of ∆t= 10 −5s.
+
+Intuitively, Theorem 3.2 states that if we choose the data collection frequency high enough, we guarantee safety after collecting a finite number of data. The quantity 
+
+β2∆Nmax 
+
+Pni=1 γi, ∆Nmax is the only part in the right-hand side of (17) that depends on ∆Nmax . It is closely related to the regret metric frequently found in bandit literature, which measures the deviation from optimal decisions. This quan-tity grows sublinearly for most commonly employed kernels, meaning there exists a ∆Nmax that satisfies (17) . In practice, we can approximate by sampling the state and input space. Alternatively, we can obtain a (potentially crude) bound for this term based on the kernel hyperparameters. This is discussed in Appendix C. 
+
+# 4. Discussion and Limitations 
+
+Although we assume that the system structure (1) is affine in the control input, this is not strictly a requirement for theoretical guarantees and can be relaxed, provided that the optimization problems (12) , (13) and (14) can be solved adequately. Theorem 3.2 points at an interaction between various quan-tities, including the sampling frequency, model uncertainty, measurement noise, CBF violation tolerance, and Lipschitz constants of the system and CBF. In simple terms, Theo-rem 3.2 indicates that a higher sampling frequency is likely more beneficial for safety. However, other practical con-siderations can also improve safety. For instance, we can reduce the Lipschitz constant L ˙x of the system by cleverly restricting the permissible control input space U, thereby reducing the bound (17). A practical concern that may arise with control inputs u
+
+geared towards exploration is that the corresponding inputs may strain the system and lead to undesirable behavior, e.g., if the input exhibits a high frequency and amplitude. However, computing the input by maximizing the UCB (14) corresponds to choosing the optimistically safest input under uncertainty. Hence, it is reasonable to expect the corresponding input to be acceptable to the system, i.e., not damaging. The primary focus of this work is the safety of the closed-loop function, and we do not address closed-loop control performance. However, the tools presented here can be straightforwardly extended to address performance, e.g., by designing a data collection scheme that aims to reduce model uncertainty whenever control performance is not satisfactory. Furthermore, our method can be potentially improved by preemptively exploring before infeasibility occurs, increasing the space of permissible control actions. Although Assumption 2.6 can seem strict, it still offers flex-ibility, and there are ways to relax it in practice. Typically, only a portion of the safe set is visited during control. Hence, it is enough if the CBF is valid only for the corresponding subset of the state space. Furthermore, we can achieve con-servatism by initially restricting the safe set to a region that is easy to control and then iteratively expanding it as more data is collected. This potentially allows us to gradually improve the CBF as more system knowledge allows us to expand the safe set. Alternatively, we can include conser-vatism in the safety requirement by computing the CBF condition from a collection of (potentially valid) CBFs and taking the worst case. 
+
+# 5. Numerical Experiments 
+
+We now showcase how our approach performs using two nu-merical simulations: a cruise control system and a quadrotor with ground dynamics. We assume to have either no prior model (cruise control example) or to know only the model component corresponding to the time derivatives (quadro-tor). Note that this is insufficient to implement any state-of-the-art approach, as the prior model does not include 6Learning Safe Control via On-the-Fly Bandit Exploration 
+
+(a) The quadrotor starts at a state within the safe region where (12) is infeasible. 
+
+(b) Our algorithm computes exploratory control inputs without leaving the safe set. The observations are used to update the model. This phase corresponds roughly to the first two seconds of the simulation. 
+
+(c) After a finite amount of data is collected without exiting the safe set, the uncertainty is small enough to achieve the feasibility of the safety filter (12) . This is expected from Theorem 3.2. 
+
+Figure 3. Visualization of a single trajectory of the quadrotor experiment using a sampling time of ∆t = 10 −5s. 0 10 20 30 40 50 
+
+Time   
+
+> 0510 15 20 25 30
+> CBF level set
+> CBF for height Di ,..atness-based CBF
+
+(a) Value of control barrier functions for quadrotor example. 0 10 20 30 40 50        
+
+> Time
+> -200 0200 400 600 800 1000
+> Est. CBF decrease cond.  CBF for height Di ,..atness-based CBF
+> 00.5 11.5 20200 400 600 800
+
+(b) Minimum of the LCB of the CBF time derivative for quadrotor example. 
+
+Figure 4. CBF and LCB for a single quadrotor run using a sampling time of ∆t = 10 −5s. 
+
+the influence of the control input. We additionally perform experiments that aim to answer the following questions: • How does our method compare with random explo-ration during infeasibility? • How does the choice of sampling time ∆t affect safety? 
+
+5.1. Cruise Control 
+
+We employ our approach to learn the road vehicle model pre-sented in Castañeda et al. (2021) while applying an adaptive cruise control system. The states are given by x = [ v z ]⊤,where z is the distance between the ego vehicle and the target vehicle in front, and v denotes the ego vehicle speed. Our setup is fully described in Appendix A.1. As a control barrier function, we employ h(x) = z − Thv,where Th = 1 .8, which aims to maintain a safe distance between the ego vehicle and the vehicle in front. The nomi-nal controller πnom (x) used for the robust CBF-SOCP (12) is a P-controller πnom = −10( v − vd), where vd = 24 
+
+corresponds to the desired velocity. We employ squared-exponential kernels to model f and g and assume to have 
+
+N = 10 data points at the start of the simulation, which we employ exclusively to learn the kernel hyperparameters. We do so by minimizing the posterior likelihood (Rasmussen & Williams, 2006). We simulate the system for 100 seconds. The CBF value for a single simulation run using a sampling time of ∆t =10 −5s is shown in Figure 2a. The minimum of the LCB is depicted in Figure 2b. The CBF value h(x) is always above zero, meaning the system is safe. This is to be expected from Theorem 3.2. As can be seen in Figure 2b, the min-imum of the LCB is frequently positive in the beginning of the simulation. This means that the safety filter (12) is infeasible during these time instances, particularly in the beginning. This leads to a high rate of exploratory inputs, which suddenly decreases model uncertainty, causing the LCB to spike. After approximately 6 seconds, enough in-formation was collected to recover feasibility, after which a safe input can be obtained without further exploration. 7Learning Safe Control via On-the-Fly Bandit Exploration      
+
+> (a) Cruise control. (b) Quadrotor.
+> Figure 5. Rate of failure using our approach and random inputs for the cruise control (left) and quadrotor (right) settings at varying sampling frequencies (∆ t)−1.
+
+5.2. Quadrotor 
+
+We additionally showcase our approach using a numeri-cal simulation of a quadrotor with ground dynamics. The quadrotor dynamics are described in detail in Appendix A.2. The quadrotor states are given by x = [ p, v, q ], where where 
+
+p ∈ R3 is the global position, v ∈ R3 the global velocity, and q ∈ R4 is the system orientation in quaternion for-mat. The control inputs u = [ T ω ]⊤ consist of the thrust acceleration T and the body-frame angle rates ω ∈ SO (3) .In this example, we employ two CBFs. The first is h(x) = 10( pz − Tz vz ), where Tz = 0 .1, and is geared toward keeping altitude higher than zero. The second CBF utilizes the differential flatness of the quadrotor to restrict velocities, orientation we add a rotation, and the orientation of the thrust vector. It is fully described in Appendix A.2. When computing the exploratory control inputs (14) , we alternate between CBFs. The nominal controller πnom (x) used for the robust safety filter (12) corresponds to a differentially flat controller, computed as in Faessler et al. (2018), and we consider bounded thrust, with |T | ≤ 15000 . Similarly to the cruise control setting, we use squared-exponential kernels and assume to have N = 10 data points at the start of the simulation to learn the kernel hyperparameters. We simulate the system for 50 seconds. The CBF value for a single run using a sampling time of ∆t = 10 −5s can be seen in Figure 4a, the minimum of the LCB is depicted in Figure 4b.Figure 4 depicts the corresponding quadrotor tra-jectory. Similarly to the cruise control setting, infeasibility is frequently encountered initially, causing our algorithm to explore. After approximately 2 seconds, feasibility is recovered, causing the quadrotor to hover in place for the remainder of the simulation. 
+
+5.3. Comparison with Random Exploratory Control 
+
+Theorem 3.2 states that it is sufficient to collect data by applying (14) to the system in order to guarantee safety. However, other types of control inputs may also satisfy this requirement. In the following, we investigate how our ap-proach performs compared to random exploratory control inputs. More specifically, we apply our method to the sys-tem with the following difference: instead of computing exploratory inputs by solving (14) , we sample the control inputs from a uniform distribution on U. We again consider the adaptive cruise control and quadrotor settings and inves-tigate how our approach and the random input-based one perform using various sampling frequencies ∆t. This is especially relevant, as many practical settings do not allow for arbitrarily high sampling frequencies. We perform 100 simulations with different initial conditions, uniformly sampled from a region within the safe set. We report how often each method fails, i.e., leads to a positive value for the CBF during the simulation. The average num-ber of failures for both settings is shown in Figure 5. A non-zero failure rate is expected at low sampling frequen-cies since too little data is collected to learn a model quickly. However, our approach nonetheless performs better than the random control input-based approach. This is because the in-puts applied to the system are geared towards recovering the feasibility of the robust safety filter (12) , whereas random inputs are not. We also observe that data efficiency is higher at higher sampling, leading to less collected data. This is because a higher sampling rate means that the elapsed time between data collection and model update is smaller, i.e., the model captures the true system more faithfully imme-diately after an update. This suggests that, if the maximal permissible sampling frequency is low, then particular effort should be put into updating the model as fast as possible. 8Learning Safe Control via On-the-Fly Bandit Exploration 
+
+# 6. Related Work 
+
+6.1. Control Barrier Functions 
+
+CBFs have been studied extensively in settings with per-fectly known dynamics (Agrawal & Sreenath, 2017; Ames et al., 2017; Bansal et al., 2017; Wabersich & Zeilinger, 2018; Zeng et al., 2021). However, the setting where a known CBF is used to guide data collection when dynam-ics are unknown is an ongoing research question that has recently garnered increased attention. In (Choi et al., 2020; Taylor et al., 2020), the authors employ a neural network to learn the residual dynamics in a reinforcement learning set-ting. The safety of the learned policy is enforced by includ-ing a CBF constraint during training. An event-triggered approach for improving the learned dynamics model is pro-posed in (Lederer et al., 2024), where a CBF and the system structure are leveraged to guarantee safety. 
+
+6.2. Safe Exploration with Gaussian Processes 
+
+Gaussian processes have been used extensively in the con-text of safe control and exploration. The work of (Sukhija et al., 2023) leverages contextual bandits to safely tune a parametric controller. By formulating an upper confi-dence bound for the safety function, the method switches to safe parameters whenever the boundary of the safe set is reached. The works of Prajapat et al. (2022); Sui et al. (2015); Turchetta et al. (2016); Wachi & Sui (2020) con-sider exploration with finite state spaces, known dynamics, and unknown functions specifying safe state-action pairs. A lower confidence bound of the safety constraints ensures safe actions, whereas an upper confidence bound for the reward drives exploration. A significant difference between our method and those described above is that they explore safe states to expand the safe set and maximize return, whereas exploration in our approach is driven by the need to ensure safety. The methods of (Hewing et al., 2019; Koller et al., 2018) use a GP to formulate safety constraints over a finite horizon for a model predictive control algorithm. 
+
+# 7. Conclusion 
+
+We have presented a learning-based control approach for exploring on the fly to guarantee safety. Using a Gaussian process model, we have formulated a robust safety filter that guarantees safe inputs whenever feasible. Whenever infea-sibility occurs we revert to a bandit exploration algorithm that is geared toward ensuring that feasibility is recovered before exiting the safe set. We show that if the sampling rate is chosen high enough, we can provably ensure safety with high probability. In future, we aim to apply the proposed approach to real-life and other complex systems. 
+
+# Acknowledgements 
+
+This work is supported by the DAAD programme Kon- rad Zuse Schools of Excellence in Artificial Intelligence (relAI), sponsored by the German Federal Ministry of Education and Research and by the European Research Council (ERC) Consolidator Grant “Safe data-driven control for human-centric systems (CO-MAN)” under grant agreement number 864686. 
+
+# Impact Statement 
+
+This paper presents work toward advancing the safety of Machine Learning-based methods. Safety plays a crucial role in developing Machine Learning techniques, as guaran-teeing safety greatly enhances the applicability of existing methods. We feel that developing and further improving safe learning-based techniques such as the one presented in this paper will have a significant societal impact, as the spectrum of applications is substantial, including health-care, autonomous driving, human-machine interaction, and various other robotics fields. 
+
+# References 
+
+Agrawal, A. and Sreenath, K. Discrete control barrier func-tions for safety-critical control of discrete systems with application to bipedal robot navigation. In Robotics: Sci-ence and Systems , volume 13, pp. 1–10. Cambridge, MA, USA, 2017. Akametalu, A. K., Fisac, J. F., Gillula, J. H., Kaynama, S., Zeilinger, M. N., and Tomlin, C. J. Reachability-based safe learning with Gaussian processes. In 53rd IEEE Conference on Decision and Control , pp. 1424–1431, 2014. doi: 10.1109/CDC.2014.7039601. Ames, A. D., Xu, X., Grizzle, J. W., and Tabuada, P. Control Barrier Function Based Quadratic Programs for Safety Critical Systems. IEEE Transactions on Automatic Con-trol , 62(8):3861–3876, August 2017. ISSN 0018-9286, 1558-2523. doi: 10.1109/TAC.2016.2638961. URL 
+
+http://arxiv.org/abs/1609.06408 . arXiv: 1609.06408. Ao, Y., Esfandiari, H., Carrillo, F., Laux, C. J., As, Y., Li, R., Van Assche, K., Davoodi, A., Cavalcanti, N. A., Farshad, M., Grewe, B. F., Vander Poorten, E., Krause, A., and Fürnstahl, P. Saferplan: Safe deep reinforcement learning for intraoperative planning of pedicle screw placement. 
+
+Medical Image Analysis , 99:103345, 2025. ISSN 1361-8415. Bansal, S., Chen, M., Herbert, S., and Tomlin, C. J. Hamilton-jacobi reachability: A brief overview and re-cent advances. In 2017 IEEE 56th Annual Conference 
+
+9Learning Safe Control via On-the-Fly Bandit Exploration 
+
+on Decision and Control (CDC) , pp. 2242–2253. IEEE, 2017. Berkenkamp, F., Turchetta, M., Schoellig, A., and Krause, A. Safe model-based reinforcement learning with sta-bility guarantees. In Advances in Neural Information Processing Systems , pp. 908–919, 2017. Berkenkamp, F., Schoellig, A. P., and Krause, A. No-regret Bayesian optimization with unknown hyperparameters. 
+
+Journal of Machine Learning Research , 20(50):1–24, 2019. Capone, A. and Hirche, S. Backstepping for partially un-known nonlinear systems using Gaussian processes. IEEE Control Systems Letters , 3:416–421, 2019. Capone, A., Lederer, A., and Hirche, S. Gaussian process uniform error bounds with unknown hyperparameters for safety-critical applications. In International Conference on Machine Learning , pp. 2609–2624. PMLR, 2022. Castañeda, F., Choi, J. J., Zhang, B., Tomlin, C. J., and Sreenath, K. Pointwise feasibility of Gaussian process-based safety-critical control under model uncertainty. In 
+
+2021 60th IEEE Conference on Decision and Control (CDC) , pp. 6762–6769, 2021. doi: 10.1109/CDC45484. 2021.9683743. Castañeda, F., Choi, J. J., Jung, W., Zhang, B., Tom-lin, C. J., and Sreenath, K. Probabilistic safe online learning with control barrier functions. arXiv preprint arXiv:2208.10733 , 2022. Cheng, R., Orosz, G., Murray, R. M., and Burdick, J. W. End-to-end safe reinforcement learning through barrier functions for safety-critical continuous control tasks. In 
+
+Proceedings of the AAAI conference on artificial intelli-gence , volume 33, pp. 3387–3395, 2019. Choi, J., Castañeda, F., Tomlin, C. J., and Sreenath, K. Reinforcement learning for safety-critical control under model uncertainty, using control lyapunov functions and control barrier functions. Robotics: Science and Systems (RSS) , 2020. Chua, K., Calandra, R., McAllister, R., and Levine, S. Deep reinforcement learning in a handful of trials using proba-bilistic dynamics models. Advances in neural information processing systems , 31, 2018. Curi, S., Berkenkamp, F., and Krause, A. Efficient model-based reinforcement learning through optimistic policy search and planning. In Advances in Neural Informa-tion Processing Systems , volume 33, pp. 14156–14170. Curran Associates, Inc., 2020. Danjun, L., Yan, Z., Zongying, S., and Geng, L. Au-tonomous landing of quadrotor based on ground effect modelling. In 2015 34th Chinese Control Conference (CCC) , pp. 5647–5652, 2015. doi: 10.1109/ChiCC.2015. 7260521. Faessler, M., Franchi, A., and Scaramuzza, D. Differen-tial flatness of quadrotor dynamics subject to rotor drag for accurate tracking of high-speed trajectories. IEEE Robotics and Automation Letters , 3(2):620–626, 2018. doi: 10.1109/LRA.2017.2776353. Fiedler, C., Scherer, C. W., and Trimpe, S. Practical and rigorous uncertainty bounds for Gaussian process regres-sion. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 35, pp. 7439–7447, 2021. Gurriet, T., Singletary, A., Reher, J., Ciarletta, L., Feron, E., and Ames, A. Towards a framework for realizable safety critical control through active set invariance. In 
+
+2018 ACM/IEEE 9th International Conference on Cyber-Physical Systems (ICCPS) , pp. 98–106. IEEE, 2018. Hewing, L., Kabzan, J., and Zeilinger, M. N. Cautious model predictive control using Gaussian process regres-sion. IEEE Transactions on Control Systems Technology ,2019. Hewing, L., Wabersich, K. P., Menner, M., and Zeilinger, M. N. Learning-based model predictive control: To-ward safe learning in control. Annual Review of Control, Robotics, and Autonomous Systems , 3:269–296, 2020. Jagtap, P., Pappas, G. J., and Zamani, M. Control barrier functions for unknown nonlinear systems using Gaussian processes. In 2020 59th IEEE Conference on Decision and Control (CDC) , pp. 3699–3704. IEEE, 2020. Khalil, H. K. Noninear systems. Prentice-Hall, New Jersey ,2(5):5–1, 1996. Koller, T., Berkenkamp, F., Turchetta, M., and Krause, A. Learning-based model predictive control for safe explo-ration. In IEEE Conference on Decision and Control , pp. 6059–6066, 2018. Krause, A. and Ong, C. Contextual Gaussian process bandit optimization. In Advances in Neural Information Process-ing Systems , volume 24. Curran Associates, Inc., 2011. Lederer, A., Begzadi´ c, A., Hirche, S., Cortés, J., and Her-bert, S. Safe barrier-constrained control of uncertain systems via event-triggered learning. arXiv preprint arXiv:2408.16144 , 2024. Micchelli, C. A., Xu, Y., and Zhang, H. Universal kernels. 
+
+Journal of Machine Learning Research , 7(Dec):2651– 2667, 2006. 10 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+Nguyen, Q. and Sreenath, K. Exponential control barrier functions for enforcing high relative-degree safety-critical constraints. In 2016 American Control Conference (ACC) ,pp. 322–328. IEEE, 2016. Prajapat, M., Turchetta, M., Zeilinger, M., and Krause, A. Near-optimal multi-agent learning for safe coverage con-trol. Advances in Neural Information Processing Systems ,35:14998–15012, 2022. Rasmussen, C. E. and Williams, C. K. Gaussian processes for machine learning. 2006. The MIT Press, Cambridge, MA, USA , 2006. Rodriguez, I. D. J., Rosolia, U., Ames, A. D., and Yue, Y. Learning unstable dynamics with one minute of data: A differentiation-based Gaussian process approach. arXiv preprint , 2021. Srinivas, N., Krause, A., Kakade, S. M., and Seeger, M. W. Information-theoretic regret bounds for Gaussian process optimization in the bandit setting. IEEE Transactions on Information Theory , 58(5):3250–3265, 2012. Sui, Y., Gotovos, A., Burdick, J., and Krause, A. Safe exploration for optimization with Gaussian processes. In Proceedings of the 32nd International Conference on Machine Learning , volume 37 of Proceedings of Machine Learning Research , pp. 997–1005, Lille, France, 07–09 Jul 2015. PMLR. Sukhija, B., Turchetta, M., Lindner, D., Krause, A., Trimpe, S., and Baumann, D. Gosafeopt: Scalable safe explo-ration for global optimization of dynamical systems. Ar-tificial Intelligence , 320:103922, 2023. ISSN 0004-3702. Taylor, A., Singletary, A., Yue, Y., and Ames, A. Learning for safety-critical control with control barrier functions. In Proceedings of the 2nd Conference on Learning for Dynamics and Control , volume 120 of Proceedings of Machine Learning Research , pp. 708–717. PMLR, 10–11 Jun 2020. Turchetta, M., Berkenkamp, F., and Krause, A. Safe explo-ration in finite markov decision processes with Gaussian processes. In Advances in Neural Information Processing Systems , pp. 4312–4320, 2016. Wabersich, K. P. and Zeilinger, M. N. Linear Model Predic-tive Safety Certification for Learning-Based Control. In 
+
+2018 IEEE Conference on Decision and Control (CDC) ,pp. 7130–7135, December 2018. doi: 10.1109/CDC. 2018.8619829. ISSN: 2576-2370. Wachi, A. and Sui, Y. Safe reinforcement learning in con-strained Markov decision processes. In Proceedings of the 37th International Conference on Machine Learn-ing , volume 119 of Proceedings of Machine Learning Research , pp. 9797–9806. PMLR, 13–18 Jul 2020. Zeng, J., Zhang, B., and Sreenath, K. Safety-critical model predictive control with discrete-time control barrier func-tion. In 2021 American Control Conference (ACC) , pp. 3882–3889. IEEE, 2021. 11 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+# A. Full Description of Numerical Experiments 
+
+A.1. Cruise Control 
+
+In the following, we omit physical dimensions when describing the system model. The state space model of the cruise control is given by ˙x = f (x) + g(x)u, with state-dependent functions 
+
+f (x) = 
+
+− 1 
+
+> m
+
+(ζ0 + ζ1v + ζ2v2)
+
+v0 − v
+
+
+
+, g(x) = 
+
+ 0
+
+> 1
+> m
+
+
+
+(18) and state x = [ v z ]⊤, where z denotes the distance between the ego vehicle and the target vehicle in front, v denotes the ego vehicle speed, m = 1650 its mass, and ζ0 = 0 .2, ζ1 = 10 , ζ2 = 0 .5 are parameters that specify the rolling resistance. 
+
+A.2. Quadrotor 
+
+The quadrotor dynamics are specified by the functions 
+
+˙p = v, ˙v = ggr ez + ζ(pz )Re z T, (19a) 
+
+˙R = R[ω]× (19b) where p ∈ R3 is the global position, v ∈ R3 the global velocity, and R ∈ SO (3) the system orientation. The parameter 
+
+ggr = 9 .81 denotes gravity, [ · ]× : R3 → R3×3 is the skew-symmetric mapping, and ez = [0 0 1] ⊤ is the unit-z vector. The function ζ : R+ → [0 , 1] models ground effects and takes the quadrotor height pz as an input variable. It is computed as Danjun et al. (2015) 
+
+ζ(pz ) = 1 − ρ
+
+ rrot 
+
+4pz
+
+2
+
+, (20) where ρ = 5 and rrot = 0 .09 is the rotor radius. The first CBF is h(x) = 10( pz − Tz vz ), where Tz = 0 .1. It is geared toward keeping altitude higher than zero. The second CBF utilizes the differential flatness of the quadrotor to synthesize a viable safe set. In particular, we are concerned with restricting the system to safe positions defined as the 0-superlevel set of hp(p) = r2 − ∥ p∥2. We extend hp to include velocities as he(p, v ) = ˙hp(p, v ) + αh p(p) for some α > 0 to produce a relative degree-1 CBF for a double integrator system as in Nguyen & Sreenath (2016). To include orientation we add a rotation term to produce a CBF for the drone, 
+
+h(p, v, R ) = he(p, v ) − λ(1 − 12r∂h ∂p Re z ), with some λ ∈ (0 , r 2/2) which shrinks the safe set to ensure that the thrust vector is pointing inwards whenever he(p, v ) = 0 .
+
+# B. Proof of Theorem 3.2 
+
+We prove Theorem 3.2 in two steps. First, we show that the control inputs are well-behaved and the closed-loop system is safe if the robust CBF-SOCP (12) is strictly feasible. Afterward, we show that strict feasibility is always recovered before exiting the safe set when using our exploration approach. We begin by leveraging Assumptions 2.7 and 2.8 to obtain a bound on the model error, which is crucial to establish safety. 
+
+Lemma B.1. Let Assumptions 2.7 and 2.8 hold and let 
+
+βN ≜ max 
+
+> i≤n
+
+
+
+Bi + σi, ns 
+
+q
+
+2 ( γi,N + 1 + log ( nδ −1)) 
+
+
+
+.
+
+Then, with probability at least 1 − δ,
+
+∥f (x∗) + g(x∗)u∗ − μ(x∗, u ∗)∥2 ≤ βN
+
+ptr (ΣN (x∗, u ∗)) 
+
+holds for all x ∈ X , u ∈ U and all N ∈ N.
+
+12 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+Proof. By Capone & Hirche (2019, Lemma 1), with probability at least 1 − δ,
+
+fi(x∗) + 
+
+> m
+
+X
+
+> j=1
+
+gi,j (x∗)u∗ 
+
+> j
+
+− μi,N (x∗, u ∗) ≤
+
+
+
+Bi + σi, ns 
+
+q
+
+2 ( γi,N + 1 + log ( nδ −1)) 
+
+
+
+σi,N (x∗, u ∗)
+
+holds for all i = 1 , ..., n , all x ∈ X , u ∈ U , and all N ∈ N. We then have 
+
+∥f (x∗) + g(x∗)u∗ − μ(x∗, u ∗)∥22 ≤
+
+> n
+
+X
+
+> i=1
+
+fi(x∗) + 
+
+> m
+
+X
+
+> j=1
+
+gi,j (x∗)u∗ 
+
+> j
+
+− μi,N (z∗)
+
+> 2
+
+≤
+
+> n
+
+X
+
+> i=1
+
+β2 
+
+> i,N
+
+σ2 
+
+> i,N
+
+(z∗)
+
+≤
+
+> n
+
+X
+
+> i=1
+
+β2 
+
+> N
+
+σ2 
+
+> i,N
+
+(z∗)=β2 
+
+> N
+
+tr (ΣN (x∗, u ∗)) .
+
+Lemma B.1 allows us to bound the GP model error at any given point z∗ given any data with high probability. This plays a crucial role in establishing robust system safety in the face of model uncertainty. 
+
+Safety under Strict Feasibility 
+
+We first demonstrate that when the robust safety filter (12) is strictly feasible, the control law πN, safe ensures the system remains strictly within the safe set with high probability. Specifically, the control barrier function value of the closed-loop system increases over time whenever α(h(x)) < ϵ 
+
+> 2
+
+. To prove this statement formally, we first present some preliminary results. 
+
+Lemma B.2. Let the robust safety filter (12) be strictly feasible for some x ∈ X . Then the policy πN, safe specified by the safety filter (12) is Lipschitz continuous in a neighborhood of x.Proof. The proof is identical to that of Castañeda et al. (2022, Lemma 6). Lemma B.2 is important to guarantee that the trajectory resulting from applying πN, safe is unique and well-behaved, allowing us to establish safety. 
+
+Lemma B.3. Let Assumptions 2.1, 2.3 and 2.6 to 2.8 hold. Then, with probability at least 1 − δ, the following holds for all 
+
+x ∈ X , all u ∈ U , and all N ∈ N:
+
+LCB N (x, u ) ≤ ˙h(x, u ) ≤ U CB N (x, u ). (21) 
+
+Proof. We show the result only for the lower bound LCB N since the argument is identical for the upper bound U CB N . By 13 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+Lemma B.1, with probability at least 1 − δ,
+
+˙h(x, u ) = ∂h ∂x (x) ( f (x) + g(x)u)= ∂h ∂x (x) ( μN (x, u )) + ∂h ∂x (x) ( f (x) + g(x)u − μN (x, u )) 
+
+≥ ∂h ∂x (x) ( μN (x, u )) − ∂h ∂x (x) 2
+
+∥(f (x) + g(x)u − μN (x, u )) ∥2
+
+≥ ∂h ∂x (x) ( μN (x, u )) − ∂h ∂x (x)
+
+> 2
+
+βN
+
+ptr (ΣN (x, u )) + ϵ
+
+2
+
+≥ ∂h ∂x (x) ( μN (x, u )) − LhβN
+
+ptr (ΣN (x, u )) =LCB N (x, u ).
+
+holds for all x ∈ X , all u ∈ U , and all N ∈ N.We additionally require the following result, which is a direct consequence of a classical result on CBFs (Ames et al., 2017, Theorem 1). 
+
+Lemma B.4. For some τmax ∈ R ∪ ∞ , let ˜x(t), t ∈ [0 , τ max ), be the unique and well-defined solution to the differential equation 
+
+˙˜x = ˜f (˜ x), ˜x ∈ X , ˜x(0) = ˜ x0 (22) 
+
+where ˜f is Lipschitz continuous around a neighborhood of ˜x(t) for all t ∈ [0 , τ max ). If h(˜ x(0)) > 0 and 
+
+∂h ∂ ˜x (˜ x(t)) ˜f (˜ x(t)) ≥ − α(h(˜ x(t))) + ϵ
+
+2 (23) 
+
+holds for all t ∈ [0 , τ max ), then α(h(˜ x(t))) > 0 for all t ∈ [0 , τ max ).Proof. The proof is identical to that of Ames et al. (2017, Theorem 1). Note that, although Ames et al. (2017, Theorem 1) requires ˜f to be locally Lipschitz continuous in X and (23) to hold for any state in X , these properties are only used to generalize the result to all solutions of (22) with arbitrary ˜x(0) ∈ X , which we do not require in this case. We now show that finite-time trajectories obtained with the controller πN, safe are always strictly within the safe set, provided that the safety filter (12) is strictly feasible. 
+
+Lemma B.5. Let Assumptions 2.1, 2.3 and 2.6 to 2.8 hold. For all N ∈ N, define 
+
+XN =
+
+
+
+x ∈ X max  
+
+> u∈U
+
+LCB N (x, u ) > −α (h(x)) + ϵ
+
+2
+
+
+
+and the dynamical system 
+
+˙xN = f (xN ) + g(xN )πsafe ,N (xN ), t ∈ [tN + ∆ t, t N +1 ), (24) 
+
+specified within the time interval [tN + ∆ t, t N +1 ), where the initial condition satisfies xN (tN + ∆ t) ∈ X N , tN +1 is given by 
+
+tN +1 ≜ inf 
+
+(
+
+t ≥ tN + ∆ t max  
+
+> u∈U
+
+LCB N (x, u ) = −α(h(x)) + ϵ
+
+2
+
+)
+
+, (25) 
+
+and α(h(xN (tN + ∆ t))) > 0, and πsafe ,N is given by (12) . Then, if XN is non-empty, (24) has a unique solution xN (t).Furthermore, with probability at least 1 − δ, the trajectories xN (t) satisfy the following conditions for all N ∈ N:
+
+14 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+(i) xN (t) ∈ C for t ∈ [tN + ∆ t, t N +1 ).(ii) If α  h(xN (ˆ t))  < ϵ 
+
+> 2
+
+for any ˆt ∈ [tN + ∆ t, t N ), then α (h(xN (t))) > α  h(xN (ˆ t))  for all t ∈ (ˆ t, t N ).(iii) If α  h(xN (ˆ t))  ≤ ϵ 
+
+> 2
+
+for any ˆt ∈ [tN + ∆ t, t N ], then α (h(xN (t))) ≥ α  h(xN (ˆ t))  for all t ∈ [ˆ t, t N ].Proof. We begin by showing condition (i), then show (ii) and (iii). (i) Due to the definition of XN , the safety filter (12) is strictly feasible for all x ∈ X N . Furthermore, the definition of tN +1 
+
+implies that a candidate solution xN (t) satisfies xN (t) ∈ X N for all t ∈ [tN + ∆ t, t N +1 ). Moreover, πN, safe is well-defined and strictly feasible in XN . By Lemma B.2, πN, safe is Lipschitz continuous around a neighborhood of any x ∈ X N . Since 
+
+f and g are locally Lipschitz continuous, this implies that f (x) + g(x)πN, safe (x) is locally Lipschitz continuous in XN .Hence, by the Picard-Lindelöf Theorem, (24) has a unique solution xN (t). Since XN is bounded and xN (t) ∈ X N for all 
+
+t ∈ [tN + ∆ t, t N +1 ), xN (t) is also well-defined for all t ∈ [tN + ∆ t, t N +1 ). Moreover, due to the definition of πN, safe ,Lemma B.3 implies that, with probability at least 1 − δ,
+
+∂h ∂x (xN ) ( f (xN ) + g(xN )πN, safe (xN )) ≥ − α(h(xN )) + ϵ
+
+2
+
+holds for all N and all xN ∈ X N . By Lemma B.4, xN (t) ∈ C holds for all t ∈ [tN + ∆ t, t N +1 ) and all N ∈ N with probability at least 1 − δ.(ii) The following holds with probability at least 1 − δ: For all xN (t) and all N ∈ N, if α(h(xN (t′)) < ϵ 
+
+> 2
+
+for any 
+
+t′ ∈ [tN + ∆ t, t N +1 ), then, by Lemma B.3 and the definition of πsafe ,N :
+
+˙h(x, π safe ,N (xN (t′))) ≥ − α (h(x(t′))) + ϵ
+
+2 > − ϵ
+
+2 + ϵ
+
+2 = 0 
+
+Due to continuity with respect to time, this means there exists an instance in time tc ∈ (t′, t N +1 ) and an ˜ε > 0, such that ˙h(xN (t), π safe ,N (xN (t))) > ˜ε holds for all t ∈ (t′, t c]. By the Comparison Lemma (Khalil, 1996), h(xN (t)) >h(xN (t′)) + ˜ ε(tc − t′) > h (xN (t′)) for all t ∈ (t′, t c]. By the same argument, h(xN (t)) is strictly increasing in t whenever 
+
+h(xN (t′)) < h (xN (t)) < ϵ 
+
+> 2
+
+, hence h(xN (t)) > h (xN (t′)) for all t ∈ (tc, t N ]. Since α is strictly increasing, this implies the desired result. (iii) The proof is identical to that of (ii), except that the strict inequality is replaced by a non-strict one. A consequence of Lemma B.5 is that safety is guaranteed if infeasibility never occurs within the safe set: 
+
+Corollary B.6. Let Assumptions 2.3, 2.4 and 2.6 to 2.8 hold. With probability 1 − δ, if 
+
+max  
+
+> u∈U
+
+LCB N (x, u ) > −α(h(x)) + ϵ
+
+2 , ∀ x ∈ C (26) 
+
+holds for any N ∈ N, πsafe ,N (x) is well-defined for all x ∈ C . Furthermore, tN +1 = ∞ and the closed-loop system 
+
+˙xN = f (xN ) + g(xN )πN, safe (xN ), t ∈ [tN + ∆ N, ∞),
+
+is safe. Proof. Due to the definition of πsafe ,N , (26) directly implies that its feasible region is non-empty, i.e., πsafe ,N is well-defined, for all x ∈ C . We now show that tN +1 = ∞ by contradiction. Hence, suppose tN +1 < ∞ holds. By Item (ii) in Lemma B.5, the trajectory xN (t) stays strictly in the interior of C for t ∈ [tN + ∆ N, t N +1 ). Due to continuity with respect to time, 
+
+xN (tN +1 ) = lim t→tN +1 xN (t) ∈ C . Recall that tN +1 denotes the earliest instance when the CBF-SOCP specifying 
+
+πsafe ,N is no longer strictly feasible. Since xN (t) ∈ C and πsafe ,N is strictly feasible in C, this is a contradiction, meaning 
+
+tN +1 = ∞.
+
+Recovering Feasibility Through Bandit Exploration 
+
+We now analyze the effect of data collected under Algorithm 1 on the feasibility of the safety filter. Specifically, we demonstrate that by gathering enough data before exiting the safe set C, strict feasibility is ensured anywhere in C. To 15 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+achieve this, we will need the following preliminary results, which bound the growth of the cumulative worst-case model error. 
+
+Lemma B.7. The posterior variance satisfies 
+
+> N
+
+X
+
+> q=1
+
+σ2
+
+> i,q
+
+
+
+z(q−1) 
+
+≤ 2log  1 + σ−2
+
+> i, ns
+
+ γi,N (27) 
+
+for all N , all i and all z(1) , ..., z(N ) ∈ ˜X .Proof. Employing the same argument as in the proof of Srinivas et al. (2012, Lemma 5.4), we get 
+
+σ2
+
+> i,q
+
+
+
+z(q)
+
+≤ 1log  1 + σ−2
+
+> i, ns
+
+ log 
+
+
+
+1 + σ−2
+
+> i, ns
+
+σ2
+
+> i,q
+
+
+
+z(q) 
+
+.
+
+The result then follows from Srinivas et al. (2012, Lemma 5.3). 
+
+Lemma B.8. For all N , the posterior covariance matrices satisfy 
+
+> N
+
+X
+
+> q=1
+
+tr 
+
+
+
+ΣN (x(N ), u (N ))
+
+
+
+≤
+
+> n
+
+X
+
+> i=1
+
+2log  1 + σ−2
+
+> i, ns
+
+ γi,N . (28) 
+
+Proof. By Lemma B.7, 
+
+> N
+
+X
+
+> q=1
+
+tr 
+
+
+
+ΣN (x(N ), u (N ))
+
+
+
+=
+
+> N
+
+X
+
+> q=1
+> n
+
+X
+
+> i=1
+
+σ2
+
+> i,N
+
+
+
+z(N −1) 
+
+≤
+
+> n
+
+X
+
+> i=1
+
+2log  1 + σ−2
+
+> i, ns
+
+ γi,N .
+
+Lemma B.8 bounds the growth of the posterior covariance matrices. We now show that strict feasibility in C is recovered after collecting at most ∆Nmax data points. 
+
+Lemma B.9. Let Assumptions 2.3, 2.4 and 2.6 to 2.8 hold. The following holds with probability at least 1 − δ: If Algorithm 1 collects ∆Nmax − 1 measurements in C, where ∆Nmax satisfies 
+
+∆Nmax > 32 β2∆Nmax L2
+
+> h
+
+ϵ2 log  1 + σ−2
+
+> i, ns
+
+
+
+> n
+
+X
+
+> i=1
+
+γi, ∆Nmax 
+
+then the safety filter is strictly feasible everywhere in C.Proof. We employ a proof by contradiction. Hence, assume that after ∆Nmax − 1 observations have been collected, there exists an xc ∈ C , such that 
+
+max  
+
+> u∈U
+
+LCB ∆Nmax (xc, u ) ≤ − α(h(xc)) + ϵ
+
+2 . (29) In the following, we set 
+
+x(∆ Nmax ) ≜ xc,u(∆ Nmax ) ≜ arg max  
+
+> u∈U
+
+LCB ∆Nmax (xc, u ).
+
+16 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+Recall that Algorithm 1 only collects observations x(N ),u(N ) if (12) is not strictly feasible, i.e., 
+
+LCB N
+
+
+
+x(N ), u (N )
+
+≤ max  
+
+> u∈U
+
+LCB N
+
+
+
+x(N ), u 
+
+
+
+≤ − α
+
+
+
+h(x(N ))
+
+
+
++ ϵ
+
+2
+
+for all u ∈ U . Furthermore, due to Lemma B.3, with probability at least 1 − δ,
+
+sup 
+
+> u∈U
+
+˙h
+
+
+
+x(N ), u 
+
+
+
+≤ max  
+
+> u∈U
+
+U CB N
+
+
+
+x(N ), u 
+
+
+
+=U CB N
+
+
+
+x(N ), u (N )
+
+,
+
+holds for all u ∈ U and all N ∈ N. By employing the identity 
+
+LCB N (x, u ) − U CB N (x, u ) = −2LhβN
+
+ptr (ΣN (x, u )) ,
+
+we then obtain, with probability at least 1 − δ, for all N ∈ N:
+
+−α(h(x(N ))) + ϵ
+
+2 ≥LCB N
+
+
+
+x(N ), u (N )
+
+≥LCB N
+
+
+
+x(N ), u (N )
+
++ sup 
+
+> u∈U
+
+˙h(x(N ), u ) − U CB N
+
+
+
+x(N ), u (N )
+
+= sup 
+
+> u∈U
+
+˙h(x(N ), u ) − 2LhβN
+
+q
+
+tr  ΣN (x(N ), u (N ))
+
+≥ − α(h(x(N ))) + ϵ − 2LhβN
+
+q
+
+tr  ΣN (x(N ), u (N )),
+
+where the last inequality is due to Assumption 2.6. Hence, with probability at least 1 − δ,
+
+2LhβN
+
+q
+
+tr  ΣN
+
+ x(N ), u (N ) ≥ ϵ
+
+2 , ∀ N ∈ N.
+
+By squaring and summing up from N = 1 to ∆Nmax , then employing Lemma B.8 and (29), we get 
+
+∆Nmax 
+
+ ϵ
+
+2
+
+2
+
+=
+
+> ∆Nmax
+
+X 
+
+> N=1
+
+ ϵ
+
+2
+
+2
+
+≤
+
+> ∆Nmax
+
+X 
+
+> N=1
+
+
+
+2LhβN
+
+q
+
+tr  ΣN (x(N ), u (N ))2
+
+≤β2∆Nmax 4L2
+
+> h
+> ∆Nmax
+
+X 
+
+> N=N0
+
+tr 
+
+
+
+ΣN (x(N ), u (N ))
+
+
+
+≤β2∆Nmax 4L2
+
+> hn
+
+X
+
+> i=1
+
+2log  1 + σ−2
+
+> i, ns
+
+ γi, ∆Nmax .
+
+This implies 
+
+∆Nmax ≤ 32 β2∆Nmax L2
+
+> h
+
+ϵ2 log  1 + σ−2
+
+> i, ns
+
+
+
+> n
+
+X
+
+> i=1
+
+γi, ∆Nmax ,
+
+which is a contradiction. Hence, the safety filter is strictly feasible in all of C.Next, we analyze the amount of data collected under Algorithm 1 before potentially exiting the safe set C. Specifically, we show that the closed-loop system under Algorithm 1 collects at least ∆Nmax data points before exiting the safe set. To do so, 17 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+we will require the following result: 
+
+Lemma B.10. Let Assumptions 2.1, 2.3, 2.4 and 2.6 to 2.8 hold. Then, with probability at least 1 − δ: consider the closed-loop system (2) and assume there exists a time interval [t′, t ′′ ] with t′ < t ′′ , such that 
+
+α(h(x(t′)) ≤ ϵ
+
+2 ,α(h(x(t)) <α (h(x(t′)) , ∀ t ∈ (t′, t ′′ ],
+
+(30) 
+
+and let 
+
+tN ′ = max   
+
+> N∈N
+
+tN , s.t. tN ≤ t′ (31) 
+
+denote the last time instance when data is collected up until t′. Then, the safety filter is not strictly feasible at times t′ and 
+
+tN , and 
+
+|α(h(x(tN ))) − α(h(x(t′))) | < L αLhL ˙x∆t
+
+holds, where ∆t is the sampling frequency used by Algorithm 1. Proof. We begin by showing that the safety filter is not strictly feasible at time t′ by contradiction. Hence, assume that the safety filter is strictly feasible at t′. Since α(h(x(t′))) ≤ ϵ 
+
+> 2
+
+, by Item (iii) in Lemma B.5, α(h(x(t))) ≥ ϵ 
+
+> 2
+
+holds for some 
+
+t ∈ (t′, t ′′ ]. This contradicts (30). We now show that strict feasibility does not hold at tN ′ by contradiction. Hence, assume strict feasibility holds at tN ′ . Due to the definition of tN ′ (31) , a new data point is not collected until strictly after t′. This implies strict feasibility at time t′,which is a contradiction. Since the safety filter is not strictly feasible at time tN ′ , and tN ′ is the last time instance when data is collected before t′,from the sampling frequency ∆t, we have 
+
+∆t = tN ′+1 − tN ′ > t ′ − tN ′ .
+
+The result then follows from the Lipschitz continuity of α, x and h.We now show that if the closed-loop system ever exits the safe set, it must collect at least ∆Nmax data points before doing so. 
+
+Lemma B.11. Let Assumptions 2.1, 2.3, 2.4 and 2.6 to 2.8 hold and let x(0) be strictly within the safe set, such that 
+
+α(h(x(0))) ≥ ϵ. Then the following holds with probability at least 1 − δ: if the closed-loop system under Algorithm 1 ever exits the safe set C, then it collects at least ∆Nmax data points before doing so. Proof. Assume that the closed-loop trajectory x(t) reaches the boundary of the safe set C at some time texit before exiting it: 
+
+texit = sup ˆt ≥ 0 α(h(x(t)) ≥ 0 ∀ t ∈ [0 , ˆt] . (32) Due to the continuity of x, α and h, and α(h(x(0))) ≥ ϵ, there exists a time t ϵ 
+
+> 2
+
+< t exit , such that 
+
+t ϵ 
+
+> 2
+
+= sup 
+
+nˆt ≥ 0 α(h(x(ˆ t)) = ϵ
+
+2 , α(h(x(t)) < ϵ
+
+2 , ∀ t ∈ (ˆ t, t exit ]
+
+o
+
+. (33) Let N ϵ 
+
+> 2
+
+and Nexit denote the number of collected observations at time t ϵ 
+
+> 2
+
+and texit , respectively: 
+
+N ϵ 
+
+> 2
+
+= arg max   
+
+> N∈N
+
+tN , s.t. tN ≤ t ϵ
+
+> 2
+
+Nexit = arg max   
+
+> N∈N
+
+tN , s.t. tN ≤ texit .
+
+18 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+Then, with probability at least 1 − δ: Due to Lemma B.10, we have 
+
+|α(h(x(tN ϵ
+
+> 2
+
+))) − α(h(x(t ϵ 
+
+> 2
+
+))) | ≤ LαLhL ˙x∆t (34) 
+
+|α(h(x(tNexit ))) − α(h(x(texit ))) | ≤ LαLhL ˙x∆t. (35) We now analyze the growth of α(h(x(t))) between t = tN and t = tN +1 . We separately analyze the case where the safety filter is strictly feasible and the case where it is not. If the safety filter is not strictly feasible at time tN −1, due to Assumption 2.1 and the sampling frequency ∆t, the CBF changes between tN −1 and tN at most by 
+
+|α(h(x(tN ))) − α(h(x(tN −1))) |≤L ˙xLαLh|tN − tN −1|≤L ˙xLαLh∆t. 
+
+(36) By Item (iii) in Lemma B.5, if the safety filter is strictly feasible at time tN −1 and α(h(x(tN −1))) ≤ ϵ 
+
+> 2
+
+, then α(h(x(tN ))) ≥
+
+α(h(x(tN −1)) . Hence, for all tN −1 ∈ [t ϵ 
+
+> 2
+
+, t exit ], whether the safety filter is feasible or not, 
+
+α(h(x(tN −1)) − α(h(x(tN ))) ≤ L ˙xLαLh∆t (37) holds. We then have 
+
+ϵ
+
+2 =α(h(x(t ϵ 
+
+> 2
+
+)) − α(h(x(texit )) =α(h(x(t ϵ 
+
+> 2
+
+)) − α(h(x(texit )) + α(h(x(tNexit )) − α(h(x(tN ϵ
+
+> 2
+
+)) − α(h(x(tNexit )) + α(h(x(tN ϵ
+
+> 2
+
+)) 
+
+≤α(h(x(tN ϵ
+
+> 2
+
+)) − α(h(x(tNexit )) + 2 LαLhL ˙x∆t
+
+=
+
+> Nexit
+
+X   
+
+> N=Nϵ
+> 2+1
+
+α(h(x(tN −1))) − α(h(x(tN ))) + 2 LαLhL ˙x∆t
+
+≤(Nexit − N ϵ 
+
+> 2
+
+− 1) LαLhL ˙x∆t + 2 LαLhL ˙x∆t
+
+=( Nexit + 1 − N ϵ 
+
+> 2
+
+)LαLhL ˙x∆t, 
+
+where the first inequality is due to (34), and the second inequality is due to (37). This implies 
+
+Nexit − N ϵ 
+
+> 2
+
++ 1 ≥ ϵ
+
+2LαLhL ˙x∆t > ∆Nmax ,
+
+where the last equality follows from the sampling frequency specification (16) . Since Nexit , N ϵ 
+
+> 2
+
+and ∆Nmax are integers, this implies that the amount of collected data satisfies Nexit − N ϵ 
+
+> 2
+
+≥ ∆Nmax .We now put everything together and prove Theorem 3.2. 
+
+Proof of Theorem 3.2. By Lemma B.11, Algorithm 1 collects at least ∆Nmax observations before ever exiting the safe set 
+
+C. Lemma B.9 states that the safety filter is strictly feasible within all of C after collecting at most ∆Nmax observations. Together with Corollary B.6 this implies that, with probability at least 1 − δ, the closed-loop system is safe and Algorithm 1 collects at most ∆Nmax observations. 
+
+# C. Kernel-Dependent Bounds for ∆Nmax 
+
+Theorem 3.2 specifies that 
+
+∆Nmax > 32 β2∆Nmax L2
+
+> h
+
+ϵ2 log  1 + σ−2
+
+> i, ns
+
+
+
+> n
+
+X
+
+> i=1
+
+γi, ∆Nmax (38) 19 Learning Safe Control via On-the-Fly Bandit Exploration 
+
+is a sufficient condition to guarantee safety. We now analyze how the right-hand side term behaves for different kernels. We begin by analyzing how the maximal information gain γi,N depends on the maximal information gain of the kernels kfi and 
+
+kgi,j used to model f and g.
+
+Lemma C.1. Let ki be given as in (6) , and let γfi,N and γgi,j ,N denote the maximal information gain after N rounds of data collection under the kernels kfi and kgi,j , respectively. Then 
+
+γi,N ≤ γfi,N +
+
+> m
+
+X
+
+> j=1
+
+γgi,j ,N + 3 m log( N ) (39) 
+
+Proof. The proof follows directly the definition of the composite kernel ki, Krause & Ong (2011, Theorem 2) and Krause & Ong (2011, Theorem 3). We now dissect the right-hand side of (40) . Define γ∆Nmax ≜ max i≤n γi, ∆Nmax and B ≜ max i≤n Bi. From the definition of 
+
+β∆Nmax , it follows that 
+
+β2∆Nmax 
+
+> n
+
+X
+
+> i=1
+
+γi, ∆Nmax ≤ β2∆Nmax nγ ∆Nmax 
+
+=nγ ∆Nmax B2 + nγ ∆Nmax 2Bσ i, ns 
+
+p2 ( γ∆Nmax + 1 + log ( nδ −1)) + nγ ∆Nmax σ2
+
+> i, ns
+
+2  γ∆Nmax + 1 + log ( nδ −1)
+
+≤C1(B, σ i, ns , n )γ∆Nmax + C 32 (B, σ i, ns , n )γ 32 
+
+> ∆Nmax
+
++ C2(B, σ i, ns , n )γ2∆Nmax 
+
+≤
+
+
+
+C1(B, σ i, ns , n ) + C 32 (B, σ i, ns , n ) + C2(B, σ i, ns , n )
+
+
+
+max {γ2∆Nmax , 1}≤
+
+
+
+C1(B, σ i, ns , n ) + C 32 (B, σ i, ns , n ) + C2(B, σ i, ns , n )
+
+
+
+(γ2∆Nmax + 1) ,
+
+where 
+
+C1(B, σ i, ns , n ) = nB 2 + n2Bσ i, ns 
+
+p2 (1 + log ( nδ −1)) + nσ 2
+
+> i, ns
+
+2  1 + log ( nδ −1)
+
+C 32 (B, σ i, ns , n ) = n2Bσ i, ns 
+
+√2
+
+C2(B, σ i, ns , n ) = 2 nσ 2
+
+> i, ns
+
+.
+
+For most commonly used kernels, the growth rate of the maximal information gain is of the form O(N ω log( N )) , where 
+
+0 ≤ ω < 1 (Srinivas et al., 2012). Hence, using Lemma C.1, we can bound γN as γN ≤ Cγ N ω (log( N )) θ for some positive 
+
+Cγ , ω and θ, and N large enough. Using an estimate of this type, we can compute a (potentially crude) upper bound for the right-hand side of (40) as 
+
+32 β2∆Nmax L2
+
+> h
+
+ϵ2 log  1 + σ−2
+
+> i, ns
+
+
+
+> n
+
+X
+
+> i=1
+
+γi, ∆Nmax ≤ C(B, σ i, ns , n )  Cγ ∆N 2ω
+
+> max
+
+(log( N )) θ + 1  ≤ ˜C(B, σ i, ns , n )∆ N 2ω
+
+> max
+
+(log( N )) 2θ (40) where C and ˜C are appropriate constants. This yields the sufficient condition for choosing ∆Nmax 
+
+∆Nmax ≥
+
+ ˜C(B, σ i, ns , n )(log(∆ Nmax )) 2θ  11−2ω
+
+, (41) which can easily be solved using numerical methods. For squared-exponential kernels, ω = 0 and θ = n. For linear kernels, 
+
+ω = 0 and θ = 1 , whereas for Matérn kernels, θ = 0 and ω depends on its smoothness parameter (Srinivas et al., 2012). 20
