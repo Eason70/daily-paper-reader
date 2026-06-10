@@ -1,0 +1,5243 @@
+Title: 5678_Efficient_Safe_Meta_Reinf.pdf
+
+URL Source: https://openreview.net/pdf?id=ZtKXAbHQ43
+
+Number of Pages: 45
+
+Markdown Content:
+# Efficient Safe Meta-Reinforcement Learning: Provable Near-Optimality and Anytime Safety 
+
+Siyuan Xu & Minghui Zhu 
+
+School of Electrical Engineering and Computer Science The Pennsylvania State University University Park, PA 16801 {spx5032, muz16}@psu.edu 
+
+Abstract 
+
+This paper studies the problem of safe meta-reinforcement learning (safe meta-RL), where an agent efficiently adapts to unseen tasks while satisfying safety constraints at all times during adaptation. We propose a framework consisting of two complementary modules: safe policy adaptation and safe meta-policy training. The first module introduces a novel one-step safe policy adaptation method that admits a closed-form solution, ensuring monotonic improvement, constraint satisfaction at every step, and high computational efficiency. The second module develops a Hessian-free meta-training algorithm that incorporates safety constraints on the meta-policy and leverages the analytical form of the adapted policy to enable scalable optimization. Together, these modules yield three key advantages over existing safe meta-RL methods: (i) superior optimality, (ii) anytime safety guarantee, and (iii) high computational efficiency. Beyond existing safe meta-RL analyses, we prove the anytime safety guarantee of policy adaptation and provide a lower bound of the expected total reward of the adapted policies compared with the optimal policies, which shows that the adapted policies are nearly optimal. Empirically, our algorithm achieves superior optimality, strict safety compliance, and substantial computational gains—up to 70% faster training and 50% faster testing—across diverse locomotion and navigation benchmarks. 
+
+1 Introduction 
+
+Reinforcement learning (RL) [ 47 ] has achieved significant successes in various domains, from video games [ 37 , 46 , 26 ] to robotics [ 28 , 27 , 35 , 36 ]. The RL problem is formulated as a Markov decision process (MDP) and aims to maximize the expected total reward. Safe RL [ 58 , 55 , 15 , 57 ]addresses additional safety requirements, such as collision avoidance for robots [ 51 , 21 ] and operation restrictions in financial management [ 1]. Typically, the safe RL problem is formulated as a constrained MDP (CMDP) [ 4], which aims to maximize the expected total reward while ensuring that the expected safety costs are below given thresholds. As noted in [ 15 ], the goals of reward maximization and constraint enforcement are not completely aligned, aggravating the challenge of the inherent trade-off between exploration and exploitation. Meta-reinforcement learning (meta-RL) [ 5] aims to extract common knowledge from multiple existing RL tasks, accelerating the learning process and increasing the data efficiency of RL algorithms. Safe meta-RL [ 24 , 55 , 59 ] integrates safe RL and meta-RL and inherits the benefits of both. On the other hand, existing safe meta-RL methods face three new challenges: optimality, computational efficiency, and anytime safety. Meta-CRPO [ 24 ] considers an online safe meta-RL problem. In each round, it computes the task-specific policy by CRPO [ 55 ] and updates the meta-policy that has the minimal average distance to the task-specific policies of all previous tasks. However, the 
+
+39th Conference on Neural Information Processing Systems (NeurIPS 2025). Table 1: Comparison with existing safe meta-RL methods Theoretical results Experimental results Methods Safety Bounded optimality gap Efficiency Optimality Constraint violation Target policy [24] Positive Safety for final policy ✓ Low Low [12] Positive Safety for adapted policy × Low Medium Ours Zero Anytime safety ✓ High High 
+
+meta-training does not optimize the performance of the task-specific policy adaptation, and the policies adapted from the learned meta-policy may be sub-optimal for new tasks. Meta-CPO [ 12 ]optimizes the policies adapted from the meta-policy by constraint policy optimization (CPO) [ 2]. Nevertheless, its computational complexity is high in both the meta-training and meta-test stages. Specifically, during the meta-training, meta-CPO solves a constrained bilevel optimization problem [ 52 ] where the constraints are present at both the upper and lower levels. The computation involved, particularly the inverse of the Hessian, is computationally expensive. During the meta-test, each policy adaptation step solves a nonconvex constrained optimization problem. In applications of (safe) meta-RL [ 38 , 6 ], during the meta-test, the agent collects the rewards/costs of state-action pairs by exploring a new, unknown CMDP and optimizes the policy based on the collected data. Therefore, it is important to guarantee anytime safety, i.e., the safety constraints must be satisfied for every policy used for the exploration. However, the anytime safety is overlooked in all existing safe meta-RL algorithms [ 24 , 12 ]. Specifically, during the meta-test, they start with the meta-policy and repeatedly adapt the most recent policy into a new one by the policy adaptation algorithm, which generates a sequence of policies. Except for the final policy in the sequence, each policy, including the initial meta-policy, is used to explore the environment and collect data. Meta-CRPO [ 24 ] only quantifies the safety constraint violation of the final convergent policy in the sequence, neglecting that of intermediate policies for data collection. Meta-CPO [ 12 ] applies the CPO [ 2] as the policy adaptation algorithm, which can quantify the safety constraint violation of policies that have undergone at least one adaptation step. However, the safety of the meta-policy is ignored. Moreover, both meta-CRPO and meta-CPO provide positive upper bounds of the constraint violation, which do not guarantee zero violation of the safety constraints. 
+
+1.1 Main contribution 
+
+This paper develops a safe meta-RL framework consisting of two modules: safe policy adaptation and safe meta-policy training. Specifically, we propose a novel safe policy adaptation method with three key properties for a single policy adaptation step: (a) it guarantees monotonic improvement, (b) it ensures safety of the adapted policy, and (c) it admits a closed-form solution. For the meta-policy training, we impose safety constraints on the meta-policy, derive the meta-gradient, simplify its computation by leveraging the closed-form expression of the adapted policy, and develop a Hessian-free meta-training algorithm. Leveraging these three properties of the safe policy adaptation method, the proposed algorithms offer three key advantages over existing safe meta-RL methods. (i) Superior optimality. Our safe meta-policy training algorithm maximizes the expected accumulated reward of the policies adapted from the meta-policy, and then improves the optimality of meta-CRPO [ 24 ] and naive transfers from meta-RL, which do not consider the task-specific safe policy adaptation in the meta-training. (ii) 
+
+Anytime safety guarantee during the meta-test. With the imposed safety constraint on the meta-policy, the safe meta-policy training produces a safe initial meta-policy. Moreover, as mentioned by (b), the safe policy adaptation guarantees safety for each step when the initial policy is safe. By integrating these two modules, anytime safety is achieved. (iii) High computational efficiency in both the meta-test and meta-training stages. As mentioned by (c), we derive the close-formed solution for the policy adaptation. It makes the meta-test much more efficient than those in meta-CRPO [ 24 ] and meta-CPO [ 12 ], which solve constrained optimization problems. In the meta-training, the close-formed solution of the policy adaptation is used to derive a Hessian-free meta-gradient and reduces the computation complexity of the proposed algorithm to approach that in the single-level optimization, making it more efficient than meta-CPO [ 12 ] and many meta-RL algorithms [ 16 , 30 ]with the bi-level optimization steps and the computation of Hessian and Hessian inverse. We conduct 2experiments on seven scenarios including navigation tasks with collision avoidance and locomotion tasks to verify these advantages of the proposed algorithms. Another major contribution of the paper is that it is the first to derive a comprehensive theoretical analysis regarding near optimality and anytime safety guarantees for safe meta-RL. First, we establish the theoretical basis of the algorithm design that guarantees anytime safety, i.e., zero constraint violation for any policy during the policy adaptation. Second, we derive a lower bound of the expected accumulated reward of the adapted policies compared to that of the task-specific optimal policies, which shows the near optimality of the proposed safe meta-RL framework. Finally, we demonstrate a trade-off between the optimality bound and constraint violation when the allowable constraint violation varies, which enables the algorithm to be adjusted to prioritize either safety or optimality. Table 1 compares both the theoretical and experimental results between this paper and previous works [24 , 12 ]. First, we study anytime safety and provide a zero constraint violation guarantee. In previous works, they only provided positive upper bounds for the constraint violation, and the upper bounds only work for the final policy [ 24 ] or the adapted policies [ 12 ]. Second, although [ 24 ] provides an upper bound of the optimality gap, the experimental optimality is the worst. On the other hand, [ 12 ]does not provide an optimality bound. In contrast, our method exhibits high optimality and provides a near-optimality guarantee, outperforming existing approaches in terms of both experimental and theoretical outcomes. Third, our method is more efficient than the existing methods [24, 12]. 
+
+Related works. Due to the space limit, we include a section of related works in Appendix A. 
+
+1.2 Notations 
+
+Denote the l2 norm of vectors and the spectral norm ( 2-norm) of matrices by ∥ · ∥ . Denote the Kullback–Leibler divergence (KL-divergence) of probability distributions p and q defined on the same sample space X by DKL (p∥q) ≜ R 
+
+> X
+
+ln 
+
+ p(dx )
+
+> q(dx )
+
+
+
+p(dx ).
+
+2 Problem Statement 
+
+CMDP. A CMDP M ≜ {S , A, γ, ρ, P, r, {ci}pi=1 , {di}pi=1 } is defined by the state space S, the action space A, the discount factor γ, the initial state distribution ρ over S, the transition probability 
+
+P (s′|s, a ) : S × A × S → [0 , 1] , the reward function r : S × A × S → [0 , r max ], p cost functions where the i-th cost function is defined as ci : S × A × S → [0 , c max i ] for i = 1 , · · · , p , and the constant di, which is the limit of constraint i. The state space S could be either a discrete space or a bounded continuous space. The action space A could be either discrete or continuous. 
+
+Policy. A stochastic policy π : S → P(A) is a mapping from states to probability distributions over action. When A is discrete, π(a|s) denotes the probability of choosing action a in state s; when 
+
+A is continuous, π(a|s) denotes the probability density. Denote the policy space as Π. In addition, a softmax policy parameterized by θ ∈ Rn is denoted as πθ , where πθ (a|s) ≜ exp( fθ (s,a )) R   
+
+> Aexp( fθ(s,a ′)) da ′
+
+,
+
+∀(s, a ) ∈ S × A , for continuous action space A, or πθ (a|s) ≜ exp( fθ (s,a )) P   
+
+> a′∈A exp( fθ(s,a ′))
+
+, for discrete action space A, and fθ : S × A → R is a continuous function for any θ.
+
+Safe RL. For a policy π, the value function is defined as V π (s) ≜ E[P∞ 
+
+> t=0
+
+γt r(st, a t, s t+1 )|s0 =
+
+s, π ]. The action-value function is defined as Qπ (s, a ) ≜ E[P∞ 
+
+> t=0
+
+γtr(st, a t, s t+1 )|s0 = s, a 0 =
+
+a, π ]. The advantage function is defined as Aπ (s, a ) ≜ Qπ (s, a ) − V π (s). The accumulated reward function is J(π) ≜ Es∼ρ[V π (s)] . Similarly, for each i = 1 , · · · , p , we define V πci (s) ≜
+
+E[P∞ 
+
+> t=0
+
+γtci(st, a t, s t+1 )|s0 = s, π ], Qπci (s, a ) ≜ E[P∞ 
+
+> t=0
+
+γtci(st, a t, s t+1 )|s0 = s, a 0 = a, π ],
+
+Aπci (s, a ) ≜ Qπci (s, a ) − V πci (s), and Jci (π) ≜ Es∼ρ
+
+V πci (s). The discounted state visitation distribution of π is defined as νπ (s) ≜ (1 − γ)Es0∼ρ[P∞ 
+
+> t=0
+
+γt P (st = s|π)] . The safe RL problem is to maximize the accumulated reward function while the accumulated cost functions satisfy the constraints, i.e., solving the problem max π∈Π J(π) s.t. Jci (π) ≤ di, ∀i = 1 , · · · , p .
+
+Safe meta-RL with anytime safety. Safe meta-RL targets multiple safe RL tasks. Consider a space of safe RL tasks Γ, where each task τ ∈ Γ is modeled by a CMDP Mτ ≜ {S , A, γ, ρ τ , P τ , r τ ,
+
+3{ci,τ }pi=1 , {di,τ }pi=1 }. Following the notions in the above subsections, the notations ρτ , P τ , r τ , c i,τ ,di,τ , as well as V πτ , V πci,τ , Qπτ , Qπci,τ , Aπτ , Aπci,τ , Jτ , Jci,τ , and νπτ are defined for task τ . Consider a set of safe RL tasks in Γ following a probability distribution P(Γ) . Safe meta-RL aims to learn the meta-prior from P(Γ) which can be used to train a policy for an unseen task τnew ∼ P(Γ) by a small number of new environment explorations with anytime safety. In specific, during the meta-training, tasks can be sampled from P(Γ) , i.e., {τj }Tj=1 ∼ P(Γ) and the tasks’ CMDPs {M τj }Tj=1 can be explored. During the meta-test, a new task τnew is given, and the agent explores the CMDP Mτnew 
+
+and produces the task-specific policy. Note that we consider the meta-training to be an offline stage, e.g. done in simulated environments, the safety constraints may be violated. In contrast, the policies are deployed to practical environments during the meta-test. Any policy used to explore Mτnew or used to execute the task τnew should satisfy the safety constraints. 
+
+3 Safe Meta-RL Framework 
+
+The proposed safe meta-RL framework aims to learn a meta-policy πϕ such that it can adapt to new tasks with anytime safety guarantee. The framework includes two modules: safe policy adaptation, by which the task-specific policy πτ for task τ is adapted from the meta-policy πϕ, and safe meta-training, which identifies the meta-policy πϕ.Considering that the amount of data collection is limited, we expect that the task-specific policy 
+
+πτ is adapted from the meta-policy πϕ by a few safe policy adaptation steps and can achieve good performance and guarantee safety on the new tasks. To achieve this goal, we design the one-step safe policy adaptation in Section 3.1, which achieves significant policy improvement, guarantees safety, and holds high computational efficiency. In Section 3.2, the meta-policy training is to optimize the task-specific policy, which is adapted from the meta-policy πϕ by one-step safe policy adaptation. 
+
+3.1 One-step safe policy adaptation 
+
+Since data collection is limited when a new task is revealed, performing numerous policy adaptation steps to solve the original RL problem becomes impractical, as each step requires collecting a batch of data using the corresponding policy. Accordingly, we define one-step policy adaptation as the policy adaptation that only needs to collect the data by a single policy and derive the method for one-step safe policy adaptation in the remainder of this section. We derive the optimization problem to achieve a one-step safe policy adaptation from the meta-policy. For task τ , the policy πτ is adapted from the meta-policy πϕ by the safe policy adaptation As:
+
+πτ = As(πϕ, Λ, ∆, τ ) ≜ argmax 
+
+> π∈Π
+
+Es∼νπϕτ ,a ∼π(·| s)
+
+Aπϕ 
+
+> τ
+
+(s, a ) − λ Es∼νπϕτ [DKL (π(·| s)∥πϕ(·| s))] ,
+
+s.t. Jci,τ (πϕ) + E s∼νπϕτ
+
+> a∼π(·| s)
+
+ Aπϕ 
+
+> ci,τ
+
+(s, a )1 − γ
+
+
+
++ λci Es∼νπϕτ [DKL (π(·| s)∥πϕ(·| s))] ≤ di,τ + δci , (1) where i = 1 , · · · , p , Λ ≜ {λ, λ c1 , · · · , λ cp } and ∆ ≜ {δc1 , · · · , δ cp } are the hyper-parameters of 
+
+As. The safe policy adaptation As in problem (1) is inspired by the derivation of CPO [ 2 ], where both problem (1) and CPO aim to approximate the original safe RL problem. Specifically, the objective and constraint functions of problem (1) serve as upper bounds of the true objective and constraint functions Jτ (π) and Jci,τ (π) of the safe RL problem. More details about the upper bounds will be discussed in Lemma 1 of Section 5.1. More importantly, problem (1) only needs to collect state-action data points and evaluate Aπϕ 
+
+> τ
+
+for a single policy πϕ, which keeps the same requirement of data collection as one-step of gradient ascent in MAML [ 16 ]. Therefore, As is the one-step safe policy adaptation. On the other hand, considering a single gradient ascent in MAML is usually insufficient to identify a policy with good performance and safety, As is to completely solve (1). The existence of the solution, the safety, and the monotonic improvement are guaranteed for As.Specifically, when setting ∆ = 0 , given that the meta-policy πϕ is safe for task τ , i.e., Jci,τ (πϕ) ≤
+
+di,τ , ∀i = 1 , · · · , p , for an appropriate hyper-parameter Λ, we have following properties: (i) the feasibility set of problem (1) is not empty; (ii) πτ is safe for task τ , i.e., Jci,τ (πτ ) ≤ di,τ , ∀i =1, · · · , p ; (iii) the performance of πτ is better than the meta-policy πϕ, i.e., Jτ (πτ ) ≥ Jτ (πϕ). The complete statements and proofs of property (i) are shown in Proposition 1 of Section 4.1; properties (ii) and (iii) under selected hyper-parameter Λ are shown in Section 5. Moreover, when the requirement 4of the constraint satisfaction is not strict, setting δci = 0 for all i in problem (1) may overly restrict the policy update step. To enhance the algorithm’s flexibility, we set 0 ≤ δci ≤ δmax as an allowable constraint violation in problem (1). As mentioned in the above properties (ii) and (iii), both CPO and problem (1) can achieve policy improvement and safety guarantee. However, the computational complexity of directly solving CPO or the constrained optimization problem (1) is high. CPO [ 2] and meta-CPO [ 12 ] solve an approximate problem to mitigate the issue, but the computational complexity is still high, meanwhile the safety constraint violation cannot be avoided in theory and also usually appears in practice. In contrast, the safe policy adaptation in (1) is designed to have the closed-form solution under certain Lagrangian multipliers, and then can be efficiently solved, which will be discussed in Section 4.1. Note that problem (1) , for the first time, simultaneously offers two key advantages: (a) constraint satisfaction guarantee for a single policy optimization step (policy optimization using data collected on a single policy), which enables anytime safety in each policy adaptation step during the meta-test, and (b) the closed-form solution, which significantly reduces the computational complexity of the meta-policy training. The details of the two benefits to the safe meta-RL problem will be discussed in Sections 4.1 and 5. Consequently, it is particularly well-suited for the safe meta-RL problem formulation. As the existing safe policy optimization algorithms, such as primal-dual-based algorithm in RCPO [ ? ], PPO-Lagrangian [ 43 ], and CRPO [ 55 ] used by meta-CRPO, do not hold any of these two benefits, and therefore (1) cannot be replaced by these algorithms. Moreover, although some prior works [ 61 , 34 ] also derive closed-form solutions of safe policy optimization, safety cannot be guaranteed in each step. Instead, safety is only guaranteed for the final convergent policy, where the trust region size ϵ is reduced to 0.
+
+3.2 Safe meta-policy training 
+
+We obtain the optimal meta-policy πϕ∗ by solving the following optimization problem: 
+
+max  
+
+> ϕ
+
+Eτ ∼P(Γ) [Jτ (As(πϕ, Λ, ∆, τ ))] , s.t. Jci,τ (πϕ) ≤ di,τ + δci , ∀i = 1 , · · · , p and ∀τ ∈ Γ. (2) Here, Eτ ∼P(Γ) [Jτ (As(πϕ, Λ, ∆, τ ))] is the meta-objective function and is defined by the expected accumulated reward after the parameter is adapted by the policy adaptation, which evaluates the optimality of the meta-policy πϕ. We choose the constraints Jci,τ (πϕ) ≤ di,τ + δci , ∀i = 1 , · · · , p 
+
+for any task τ (similar to problem (1) , we set δci as the allowable error). There are two reasons to set the constraints. First, as shown in Proposition 1, Jci,τ (πϕ) ≤ di,τ + δci , ∀i = 1 , · · · , p is a sufficient condition for that the safe policy adaptation algorithm As(πϕ, Λ, ∆, τ ) has a solution, and further assure the safe meta-policy training (2) is well-defined. Second, the exploration of the CMDP by the meta-policy πϕ should be safe for each task τ to guarantee the initial policy of the policy adaptation is safe. As mentioned in Section 3.1, As(πϕ, Λ, ∆, τ ) is guaranteed to be safe for task τ when πϕ is safe, and iterative policy adaptation using As is guaranteed to be safe. Therefore, the anytime safety of the policy adaptation is guaranteed. Its formal statement is shown in Section 5. 
+
+4 Algorithm 
+
+This section introduces the efficient algorithmic solutions to solve problems (1) and (2) , respectively. 
+
+4.1 Closed-form solution for safe policy adaptation 
+
+Based on the design of problem (1) , we can derive its closed-form solution under certain Lagrangian multipliers, and then solve the Lagrangian multipliers to obtain the overall solution. We first derive the closed-form solution of problem (1) and show its existence in the following proposition. 
+
+Proposition 1. Suppose that the softmax policy πϕ satisfies Jci,τ (πϕ) ≤ di,τ +δci , ∀i = 1 , · · · , p , the solution πτ of the optimization problem (1) exists. Under certain mild constraint qualifications, there exists Lagrangian multipliers {u∗ 
+
+> ci,τ
+
+}pi=1 with 0 ≤ u∗ 
+
+> ci,τ
+
+< ∞, such that πτ (·| s) ∝ exp( fϕ(s, ·) + 
+
+η−1(Aπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, ·))) , for any s ∈ S , where η ≜ λ + (1 − γ) Ppi=1 u∗ 
+
+> ci,τ
+
+λci .
+
+The complete statement of Proposition 1 that includes the sufficient condition for the existence of 
+
+{u∗ 
+
+> ci,τ
+
+}pi=1 , as well as the proof of the proposition are shown in Appendix F.2.1. Proposition 1 shows 5that, when the meta-policy πϕ is softmax, the closed-form solution of the policy adaptation (1) is also softmax. The approximate function fϕ for the meta-policy πϕ is adapted to fϕ + η−1(Aπϕ 
+
+> τ
+
+−Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+) of πτ . With this computation, the approximate function of πτ can be directly obtained, which is much simpler than solving problem (1) . More importantly, it can significantly reduce the computational complexity of the meta-gradient, which will be discussed in Section 4.2. In addition, the closed-form solution in Proposition 1 implies the safe policy adaptation (1) can be reduced to the policy adaptation for an unconstrained MDP under the penalized reward function. Specifically, when we define a comprehensive reward function ¯rτ ≜ rτ − Ppi=1 u∗ 
+
+> ci,τ
+
+ci,τ , then the term Aπϕ 
+
+> τ
+
+− Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+is the advantage function of πϕ for ¯rτ . This implies that problem (1) is equivalent to an unconstrained policy optimization problem, where the reward rτ is penalized by the negative costs −ci,τ and the weights of the cost penalty are given by the Lagrangian multiplier u∗ 
+
+> ci,τ
+
+.
+
+Proposition 2. Suppose that the assumption in Proposition 1 holds. Let πu (u ≜ [u1, · · · , u p]) be the policy with πu(·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ) Ppi=1 uiλci )−1(Aπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 uiAπϕ 
+
+> ci,τ
+
+(s, ·))) .Then, the Lagrangian multipliers {u∗ 
+
+> ci,τ
+
+}pi=1 in Proposition 1 is the solution of the dual problem of 
+
+(1) , i.e., 
+
+min 
+
+> u∈Rp
+> ≥0
+
+Es∼νπϕτ
+
+> a∼πu
+
+[( Aπϕ 
+
+> τ
+
+− Ppi=1 uiAπϕ 
+
+> ci,τ
+
+)( s, a ) − DKL (πu(·| s)∥πϕ(·| s))] + Ppi=1 uid′ 
+
+> i,τ
+
+, (3) 
+
+where ηu ≜ λ + (1 − γ) Ppi=1 uiλci and d′ 
+
+> i,τ
+
+≜ (1 − γ)( di,τ + δci − Jci,τ (πϕ)) .
+
+Proposition 2 shows the derivation of the Lagrangian multiplier u∗ 
+
+> ci,τ
+
+. Its proof is shown in Appendix F.2.2. With u∗ 
+
+> ci,τ
+
+. Note that problem (3) is the dual problem of (1) , which is always convex. As a result, we can apply convex optimization approaches [ 9] to solve problem (3) , and then the solution of safe policy adaptation (1) can be obtained immediately by Proposition 1. We provide an optional algorithm for solving problem (3) and its computational complexity analysis in Appendix E.1. 
+
+Algorithm 1 Safe meta-policy training algorithm 
+
+Require: Initial meta-policy πϕ0 ; allowable constraint violation δci defined in Problems (1) and (2). 1: for n = 0 , · · · , N − 1 do 
+
+2: Sample a task τ with the CMDP Mτ from the task distribution P(Γ) 
+
+3: Evaluate Jci,τ (πϕn ), Aπϕn  
+
+> τ
+
+(·, ·) and Aπϕn  
+
+> ci,τ
+
+(·, ·) by sampling data using the meta-policy πϕn on task τ
+
+4: if Jci,τ (πϕn ) ≤ di,τ + δci , ∀i = 1 , · · · , p then 
+
+5: Solve the task-specific policy πτ and the Lagrangian multipliers u∗ 
+
+> ci,τ
+
+(πϕn ) with meta-policy πϕn
+
+6: Evaluate Qπτ 
+
+> τ
+
+(·, ·) by sampling data using the task-specific policy πτ on task τ
+
+7: Compute the meta-gradient ∇ϕJτ (πτ ) by (4) 8: Take a step of TRPO [44] with using ∇ϕJτ (πτ ) towards maximize Jτ (πτ ) to obtain ϕn+1 
+
+9: else 
+
+10: Choose any in ∈ { 1, · · · , p } such that JCin (πϕn ) > d in,τ + δcin 
+
+11: Compute the policy gradient ∇ϕJCin ,τ (πϕn ) ∝ Es∼νπϕn τ ,a ∼πϕn (·| s)[∇ϕfϕn (s, a )Aπϕn   
+
+> Cin ,τ
+
+(s, a )] .
+
+12: Take a step of TRPO with using ∇ϕJCin ,τ (πϕn ) towards minimize JCin ,τ (πϕ) to obtain ϕn+1 
+
+13: end if 
+
+14: end for 
+
+15: Return πϕN
+
+4.2 Safe meta-policy training algorithm 
+
+To solve the optimization problem (2) for meta-training, we first consider the computation of the meta-gradient, i.e., ∇ϕEτ ∼P(Γ) [Jτ (As(πϕ, Λ, ∆, τ ))] . The following proposition provides the computation of ∇ϕJτ (As(πϕ, Λ, ∆, τ )) . Notice that the Lagrangian multipliers {u∗ 
+
+> ci,τ
+
+}pi=1 in Propositions 1 and 2 are solved by problem (3) , and thus depend on the meta-policy πϕ. We denote the solved Lagrangian multipliers with πϕ as u∗ 
+
+> ci,τ
+
+(πϕ) in the following sections. 
+
+Proposition 3. Suppose the assumption in Proposition 1 holds. Let πτ = As(πϕ, Λ, ∆, τ ).Under certain conditions, we have that ∇ϕJτ (πτ ) exists and ∇ϕJτ (πτ ) = 
+
+> 11−γ
+
+Es∼νπττ ,a ∼πτ (·| s)[( ∇ϕη(πϕ)−1 ¯Qπϕ 
+
+> τ
+
+(s, a ) + η(πϕ)−1 ∇ϕ ¯Qπϕ 
+
+> τ
+
+(s, a ) + ∇ϕfϕ(s, a )) Qπτ 
+
+> τ
+
+(s, a )] ,where η(πϕ) ≜ λ + (1 − γ) Ppi=1 u∗ 
+
+> ci,τ
+
+(πϕ)λci , and ¯Qπϕ 
+
+> τ
+
+≜ Qπϕ 
+
+> τ
+
+− Ppi=1 u∗ 
+
+> ci,τ
+
+(πϕ)Qπϕ 
+
+> ci,τ
+
+.
+
+6We show the computations of ∇ϕQπϕ 
+
+> τ
+
+(·), ∇ϕQπϕ 
+
+> ci,τ
+
+(·) and ∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) in Appendices F.3.2 and F.3.3. The complete statement of Proposition 3 that includes the sufficient condition of the existence of ∇ϕJτ (πτ ), as well as the proof of the proposition are shown in Appendix F.3.1. In Proposition 3, the gradient ∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) w.r.t ϕ, is the gradient of the solved Lagrangian multipliers, i.e. the optimal solution of problem (3) . We apply the implicit gradient theorem for constrained optimization in [ 17 , 52 ] to show the existence and the computation of ∇ϕu∗ 
+
+> ci,τ
+
+(πϕ), which is shown in Appendix F.3.3. We further simplify the computation of the meta-gradient as 
+
+∇ϕJτ (πτ ) ≈ Es∼νπττ ,a ∼πτ (·| s)[( ∇ϕfϕ(s, a ) + η(πϕ)−1 ˜∇ϕ ¯Qπϕ 
+
+> τ
+
+(s, a )) Qπτ 
+
+> τ
+
+(s, a )] , (4) where η(πϕ) ≜ λ + (1 − γ) Ppi=1 u∗ 
+
+> ci,τ
+
+(πϕ)λci and ˜∇ϕ ¯Qπϕ 
+
+> τ
+
+= ∇ϕQπϕ 
+
+> τ
+
+− Ppi=1 u∗ 
+
+> ci,τ
+
+(πϕ)∇ϕQπϕ 
+
+> ci,τ
+
+.In (4) , we take ∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) = 0 in Proposition 3 approximately. On one hand, the computation complexity of ∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) is high, as shown in Appendix F.3.3. On the other hand, under this approximation, we only omit the small change of the Lagrangian multiplier u∗ 
+
+> ci,τ
+
+(πϕ) around the meta-policy πϕ, i.e., we keep the penalty to constraint violation but treat the weight of the penalty to constraint violation unchanged over a small neighbor of πϕ. Therefore, the omitted term is a higher-order term with a smaller impact on the meta-gradient. Note that, the meta-gradients in many meta-learning approaches include the Hessian computation, such as supervised meta-learning approaches, like MAML and iMAML [ 16 , 42 , 53 ], meta-RL [ 16 , 30 ] and safe meta-RL approach meta-CPO [ 12 ]. In contrast, thanks to the closed-form solution (shown in Proposition 1) of the policy adaptation problem (1) , the meta-gradient in (4) does not include the computations of Hessian and inverse of Hessian w.r.t. ϕ, which holds a comparable computational complexity as the policy gradient, and therefore is more computationally efficient than the above meta-learning approaches. The safe meta-policy training algorithm aims to solve the optimization problem in (2) and is stated in Algorithm 1. To handle the constraint imposed on the meta-policy πϕ in problem (2) , we use the idea similar to CRPO [ 55 ]. Specifically, we first check the constraint violation in line 4. If the constraints are not violated, we maximize the meta-objective; otherwise, we minimize the constraint functions. Under this procedure, we always have Jci,τ (πϕn ) ≤ di,τ + δci , ∀i = 1 , · · · , p when computing the task-specific policy πτ = As(πϕn , Λ, ∆, τ ), and therefore the solution of πτ always exists, according to Proposition 1. To stabilize the training, we use the TRPO for the policy update in lines 8 and 12, which only needs the gradient information. 
+
+5 Theoretical Results 
+
+In this section, we introduce the theoretical results of the safe meta-RL framework. Note that problem (2) is a constrained bilevel optimization problem, and the convergence and optimality analysis of solving the problem and obtaining πϕ∗ are widely studied in [ 52 , 7 , 31 ]. So we analyze the performance of the solved meta-policy πϕ∗ in our theoretical results. In particular, we introduce the necessary assumptions and notations, derive the performance guarantee for safe policy adaptation As
+
+in Section 5.1, and then derive the optimality and safety guarantee of the safe meta-RL framework in Section 5.2. We introduce an assumption and several notations used in the theoretical results. 
+
+Assumption 1. The feasible set of problem (2) is not empty and bounded. 
+
+Assumption 1 supposes problem (2) is well defined and its optimal meta-parameter ϕ∗ exists. Since the reward rτ ≤ rmax and ci,τ ≤ cmax i , then |Aπτ (s, a )| ≤ rmax /(1 − γ) and |Aπci,τ (s, a )|≤ cmax i /(1 − γ) are upper bounded. We denote Amax ≜ max τ ∈Γ,π ∈Π |Aπτ (s, a )| and Amax ci ≜
+
+max τ ∈Γ,π ∈Π |Aπci,τ (s, a )| for each i = 1 , · · · , p .
+
+5.1 Monotonic improvement and anytime safety for policy adaptation 
+
+We first introduce a key lemma and show its proof in Appendix F.4.1. Here, we define 
+
+DT V (π(·| s)|| π′(·| s)) ≜ 12
+
+P 
+
+> a∈A
+
+|π(a|s) − π′(a|s)|.
+
+Lemma 1. For any task τ , and any policies π and π′ ∈ Π with max s∈S DT V (π|| π′) ≤ α
+
+Es∼νπτ [DT V (π(·| s) || π′(·| s))] }, we have 
+
+Jτ (π′) ≤ Jτ (π) + Es∼νπτ ,a ∼π′(·| s)
+
+ Aπτ (s, a )1 − γ
+
+
+
++ 2γαA max 
+
+(1 − γ)2 Es∼νπτ [DKL (π′(·| s)|| π(·| s))] 
+
+7Jτ (π′) ≥ Jτ (π) + Es∼νπτ ,a ∼π′(·| s)
+
+ Aπτ (s, a )1 − γ
+
+
+
+− 2γαA max 
+
+(1 − γ)2 Es∼νπτ [DKL (π′(·| s)|| π(·| s))] .
+
+The inequalities also holds when Aπτ , Aπ′ 
+
+> τ
+
+, Amax and Jτ are replaced by Aπci,τ , Aπ′ 
+
+> ci,τ
+
+, Amax ci , and 
+
+Jci,τ , for all i = 1 , · · · , p .
+
+The right-hand sides of the inequalities in Lemma 1 are the objective function and constraint functions of problem (1) . The first inequality in Lemma 1 (applied to Jci,τ (π′)) shows that the constraint function of problem (1) is the upper bound of the accumulated cost Jci,τ . Therefore, the constraint functions in problem (1) limit the upper bound of Jci,τ (π′) to be below the constraint limit, which also applies to Jci,τ (π′) itself. The second inequality in Lemma 1 (applied to Jτ ) shows that the objective function of problem (1) is the lower bound of Jτ (π′). Then, As in problem (1) is to maximize the lower bound of Jτ (π′), which guarantees monotonic improvement. We formalize the results in Proposition 4 and show the proofs in Appendix F.4.2. 
+
+Proposition 4. Suppose πϕ satisfies that ϕ is bounded and Jci,τ (πϕ) ≤ di,τ + δci , ∀i = 1 , · · · , p .There exists a constant α such that, when πτ = As(πϕ, Λ, ∆, τ ) with λ ≥ 2γαA max  
+
+> 1−γ
+
+and λci ≥ 
+
+> 2γαA max ci
+> (1 −γ)2
+
+for each i = 1 , · · · , p , then Jci,τ (πτ ) ≤ di,τ + δci for each i, and Jτ (πτ ) ≥ Jτ (πϕ).
+
+With this proposition, we can derive the properties of monotonic improvement and anytime safety guarantee for the policy adaptation, which is stated in Corollary 1. As Assumption 1 assumes the feasible set of problem (2) is bounded, we fix the constant α in Proposition 4 for the bounded set. 
+
+Corollary 1. Suppose that Assumptions 1 holds. Let λ ≥ 2γαA max  
+
+> 1−γ
+
+and λci ≥ 2γαA max ci 
+
+> (1 −γ)2
+
+for each 
+
+i. Let πτ 
+
+> [k+1]
+
+= As(πτ
+
+> [k]
+
+, Λ, ∆, τ ) with δci = 0 for k ∈ N, where πτ 
+
+> [0]
+
+= πϕ∗ being the solution of problem (2) . Then, for all k ∈ N, Jci,τ (πτ
+
+> [k]
+
+) ≤ di,τ for each i and Jτ (πτ
+
+> [k+1]
+
+) ≥ Jτ (πτ
+
+> [k]
+
+).
+
+When a new task τ ∈ Γ is given, we start from the meta-policy πϕ∗ , iteratively implement As, and generate a policy sequence {πτ
+
+> [k]
+
+}Nk=0 . As indicated in Corollary 1, the constraints are satisfied for each policy in the policy sequence, which shows the anytime safety of the policy adaptations. 
+
+5.2 Near-optimality and safety guarantee after one-step policy adaptation 
+
+In Section 5.1, we show the policy is always monotonically improved from πϕ∗ and satisfies the safety constraints during policy adaptation. On the other hand, πϕ∗ is learned from the task distribution P(Γ) ,which should be a good initial policy for the task sampled from P(Γ) . In this section, we consider the policy that is obtained from using only one step of policy adaptation from πϕ∗ and compare its optimality with the task-specific optimal policy to verify the near-optimality of the proposed safe meta-RL framework. We start by introducing several definitions. 
+
+Definitions. Define the optimal policy πτ 
+
+> ∗
+
+for task τ as πτ 
+
+> ∗
+
+≜ argmax π∈Π Jτ (π) s.t. Jci,τ (π) ≤ di,τ .Define the ϵ-conservatively optimal policy πτ
+
+> ∗,[ϵ]
+
+, which is optimal for τ under conservative safety constraints, i.e., πτ 
+
+> ∗,[ϵ]
+
+≜ argmax π∈Π Jτ (π) s.t. Jci,τ (π) ≤ di,τ − ϵ, where the conservative constant 
+
+ϵ ≥ 0, and πτ 
+
+> ∗
+
+= πτ
+
+> ∗,[0]
+
+. We define the variance of a task distribution P(Γ) as Var (P(Γ)) ≜
+
+min ϕ Eτ ∼P(Γ) Es∼νπϕτ [DKL (πτ 
+
+> ∗
+
+(·| s)|| πϕ(·| s))] , which the minimal mean square of the distances among the optimal task-specific policies πτ 
+
+> ∗
+
+, and the minimal point is denoted as ˆϕ. Similarly, the task variance under the conservative safety constraints is defined as Var ϵ(P(Γ)) ≜ min ϕ Eτ ∼P(Γ) 
+
+Es∼νπϕτ [DKL (πτ
+
+> ∗,[ϵ]
+
+(·| s)|| πϕ(·| s))] , and the minimal point is denoted as ˆϕ[ϵ]. The radius of P(Γ) 
+
+is defined as R(P(Γ)) ≜ max τ ∈Γ,ϵ ∈E Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+[DKL (πτ
+
+> ∗,[ϵ]
+
+(·| s) || π ˆϕ[ϵ] (·| s))] , where the set E is defined by E ≜ {ϵ ≥ 0 : πτ 
+
+> ∗,[ϵ]
+
+exists for all τ ∈ Γ}. Note that the task variance Var [ϵ] and the radius 
+
+R is the inherent property of P(Γ) , which measures the similarity of tasks sampled from P(Γ) . For example, if the reward function r and cost ci among tasks are similar, optimal policies πτ 
+
+> ∗,[ϵ]
+
+are close, then Var [ϵ] and R are close to 0. With the definitions, the near-optimality and safety guarantee of the safe meta-RL is shown in Theorem 1. 
+
+Theorem 1. Suppose that Assumptions 1 holds. Let λ = 2γαA max  
+
+> 1−γ
+
+, λci = 2γαA max ci 
+
+> (1 −γ)2
+
+and δci = 
+
+> 4γαA max ci
+> (1 −γ)2
+
+R(P(Γ)) − ϵ for all i = 1 , · · · , p , where ϵ is chosen from 
+
+h
+
+0, 4γαA max ci 
+
+> (1 −γ)2
+
+R(P(Γ)) 
+
+i
+
+. Let ϕ∗ be 
+
+8the solution of problem (2) . The solution of As(πϕ∗ , Λ, ∆, τ ) exists, and we have 
+
+Eτ ∼P(Γ) [Jτ (As(πϕ∗ , Λ, ∆, τ ))] ≥ Eτ ∼P(Γ) [Jτ (πτ
+
+> ∗,[ϵ]
+
+)] − 4γαA max 
+
+(1 − γ)2 Var ϵ(P(Γ)) , (5) 
+
+Jci,τ (As(πϕ∗ , Λ, ∆, τ )) − di,τ ≤ 4γαA max ci
+
+(1 − γ)2 R(P(Γ)) − ϵ, for any τ ∈ Γ. (6) Theorem 1 is proven in Appendix F.4.3. The theorem derives (i) the lower bound of the expected accumulated reward of the policy πτ adapted by one time of As from the meta-parameter πϕ∗ with the comparison to the task-specific (conservatively) optimal policy πτ
+
+> ∗,[ϵ]
+
+. It also derives (ii) the upper bound of the constraint violation for each task τ . We further discuss the tightness of the derived bounds in Appendix G. Next, we explore two specific cases of δci to illustrate Theorem 1. 
+
+Case 1 (Safety guaranteed) . When δci = 0 , the safe constraint is strictly satisfied, i.e., Jci,τ (πτ ) −
+
+di,τ ≤ 0 for any τ , but the optimality comparator Jτ (πτ
+
+> ∗,[ϵ]
+
+) with ϵ = 4γαA max ci 
+
+> (1 −γ)2
+
+R(P(Γ)) in (5) is conservatively optimal ( ϵ-conservatively optimal). 
+
+Case 2 (Near-optimality) . When δci = 4γαA max ci 
+
+> (1 −γ)2
+
+R(P(Γ)) , the optimality comparator Jτ (πτ
+
+> ∗,[0]
+
+) = 
+
+Jτ (πτ 
+
+> ∗
+
+) in (5) is all-task optimum, but the constraint is violated at most 4γαA max ci 
+
+> (1 −γ)2
+
+R(P(Γ)) .
+
+As shown in Cases 1 and 2, there is a trade-off between the optimality of accumulated reward and the safety constraint satisfaction when the allowable constraint violation thresholds δci vary. In particular, when δci is increased, the optimality is improved while the constraint violation increases. As indicated by the optimality-safety trade-off, in the implementation of the proposed algorithm, we choose a large δci when the constraint satisfaction is not required to be strict, and a small δci ≈ 0
+
+when the constraint satisfaction is prioritized. The reason for the trade-off is that the constraint function in problem (1) approximate the true constraints Jci,τ (π) − di,τ ≤ 0 for any π by only knowing the information (the advantage functions Aπϕ 
+
+> ci,τ
+
+) at a single policy πϕ, and therefore are more conservative than the true constraints, which leads to loss of optimality. To the best of our knowledge, as anytime safety cannot be guaranteed in the existing framework [ 24 , 12 ], it is the first time to show the trade-off between optimality and safety, and is also the first to provide an optimality bound with the anytime safe guarantee. Moreover, when choosing ϵ = 0 , Theorem 1 is reduced to the results in [54] for the unconstrained meta-RL. Next, we delve into the optimality bound. Consider fixing δci and ϵ and then fixing the upper bound of the constraint violation Jci,τ (πτ ). Theorem 1 shows that, the performance of meta-RL is improved when the variance of the task distribution Var ϵ(P(Γ)) is reduced, as πτ approach the task-specific optimal policy πτ
+
+> ∗,[ϵ]
+
+. It corresponds to the intuition of meta-learning, which is that, when the variance of a task distribution is smaller, the tasks are more similar, and then the experience learned from the task distribution works better for new tasks sampled from the task distribution. 
+
+6 Experiments 
+
+Our experiments aim to validate three claimed benefits of the proposed algorithms for safe meta-RL: (i) superior optimality, i,e, the accumulated rewards of the proposed algorithms can exceed those of baselines; (ii) anytime safety, i,e, all the learned meta-policy and the adapted policies should satisfy the safety constraint; (iii) high computational efficiency for both the meta-training and meta-test. We conduct experiments on four high-dimensional locomotion scenarios, including Half-Cheetah, Humanoid, Hopper, Swimmer, and three navigation scenarios with collision avoidance, including Point-Circle, Car-Circle-Hazard, and Point-Button in Gym and Safety-Gymnasium libraries [ 10 , 23 ]. We compare the proposed method with three benchmarks: (a) MAML [ 16 ] with constraint penalty; (b) meta-CPO [ 12 ]; (c) meta-CRPO [ 24 ]. In (a), we add a weighted penalty term for constraint violation to the loss function of the MAML. Note that (c) is originally designed for online safe meta-RL, where tasks are revealed sequentially during the meta-training. So, we use (3) with all training tasks provided before the meta-training and it does not have the meta-training stage (Figures 1 and 2 do not have meta-training for meta-CRPO). For the fairness of the comparison, all the methods have the same data requirements and task settings. More details about the settings of the tasks, algorithm implementation, and hyper-parameters are shown in Appendices D.1 and D.2. 90 50 100 150 200 250 300                             
+
+> Number of meta-training iterations
+> -250
+> -200
+> -150
+> -100
+> -50
+> Average accumulated reward  Half-Cheetah/Meta-training 050 100 150 200 250 300
+> Number of meta-training iterations
+> 20
+> 40
+> 60
+> 80
+> Max accumulated cost
+> Half-Cheetah/Meta-training 0510 15
+> Number of policy adaptation steps
+> -120
+> -100
+> -80
+> -60
+> -40
+> Average accumulated reward  Half-Cheetah/Meta-test 0510 15
+> Number of policy adaptation steps
+> 9.5
+> 10.0
+> 10.5
+> 11.0
+> 11.5
+> 12.0
+> 12.5
+> Max accumulated cost
+> Half-Cheetah/Meta-test 0100 200 300 400 500
+> Number of meta-training iterations
+> 0
+> 10
+> 20
+> 30
+> 40
+> Average accumulated reward  Point-Circle/Meta-training 0100 200 300 400 500
+> Number of meta-training iterations
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> Max accumulated cost
+> Point-Circle/Meta-training 0510 15
+> Number of policy adaptation steps
+> 15
+> 20
+> 25
+> 30
+> 35
+> 40
+> 45
+> Average accumulated reward  Point-Circle/Meta-test 0510 15
+> Number of policy adaptation steps
+> 5
+> 10
+> 15
+> 20
+> 25
+> Max accumulated cost
+> Point-Circle/Meta-test
+
+Figure 1: Average accumulated reward ( columns 1 and 3, higher is better ) and maximal accumulated cost (columns 2 and 4, higher is worse ) across all validation/test tasks during the meta-training ( columns 1 and 2) and the meta-test ( columns 3 and 4 ) in Half-Cheetah ( row 1 ) and Point-Circle ( row 2 ). The accumulated reward and cost during meta-training are computed on the policy adapted one step from the meta-policy. The black dashed line is the constraint of the accumulated cost (below the line means satisfaction). Meta-training Meta-test  
+
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> Normalized computation time
+> Half-Cheetah
+> Safe meta-RL (Ours)
+> Meta-CPO
+> MAML with penalty
+> Meta-CRPO Meta-training Meta-test
+> 0
+> 1
+> 2
+> 3
+> Normalized computation time
+> Point-Circle
+> Safe meta-RL (Ours)
+> Meta-CPO
+> MAML with penalty
+> Meta-CRPO
+
+Figure 2: Normalized computation time of the meta-training (per iteration) and meta-test. 
+
+Figures 1 and 2 present the experimen-tal results on Half-Cheetah and Point-Circle tasks. Due to page limitations, the results for the other four scenarios are deferred to Appendix D.3. 
+
+Performance on optimality and Safety. Figure 1 illustrates that the proposed safe meta-RL algorithm sub-stantially outperforms all baselines in terms of optimality, achieving approx-imately 50% higher accumulated re-wards than the best-performing baseline during both the meta-training and meta-test phases. Moreover, as depicted in the fourth column of Figure 1, our method ensures anytime safety during meta-testing, i.e., the maximal accumulated costs consistently remain below the prescribed safety thresholds, whereas all baselines experience constraint violations at various adaptation stages. 
+
+Efficiency. Figure 2 demonstrates that the proposed algorithm achieves remarkable computational efficiency, reducing the meta-training time by about 70% and the meta-testing time by about 50% relative to meta-CPO. This efficiency gain stems from the closed-form safe policy adaptation and the Hessian-free meta-gradient, which avoid costly second-order computations common in previous meta-RL methods. 
+
+Trade-off Verification. Finally, we empirically examine the optimality–safety trade-off in Appendix D.4, confirming our theoretical analysis that relaxing the safety tolerance slightly improves the achiev-able reward, while strict constraint satisfaction preserves anytime safety with minimal optimality degradation. 
+
+7 Conclusion 
+
+This paper presents an efficient framework for safe meta-RL that achieves provable anytime safety and near-optimality. By integrating a closed-form one-step safe policy adaptation with a Hessian-free safe meta-policy training scheme, the proposed method ensures zero constraint violation for every exploration policy, guarantees monotonic performance improvement, and significantly reduces computational cost. We provide the first formal analysis establishing both an optimality bound and an explicit safety–optimality trade-off, offering a tunable balance between strict safety enforcement and reward maximization. Empirically, our approach outperforms existing safe meta-RL methods in both optimality and efficiency across diverse locomotion and navigation tasks. 10 Acknowledgements 
+
+This work is partially supported by the National Science Foundation through grants ECCS 1846706 and ECCS 2140175. We would like to thank the reviewers for their constructive and insightful suggestions. 
+
+References 
+
+[1] Naoki Abe, Prem Melville, Cezar Pendus, Chandan K Reddy, David L Jensen, Vince P Thomas, James J Bennett, Gary F Anderson, Brent R Cooley, and Melissa Kowalczyk. Optimizing debt collections using constrained reinforcement learning. In Proceedings of ACM SIGKDD international conference on Knowledge discovery and data mining , pages 75–84, 2010. [2] Joshua Achiam, David Held, Aviv Tamar, and Pieter Abbeel. Constrained policy optimization. In International Conference on Machine Learning , pages 22–31, 2017. [3] Alekh Agarwal, Sham M Kakade, Jason D Lee, and Gaurav Mahajan. On the theory of policy gradient methods: Optimality, approximation, and distribution shift. The Journal of Machine Learning Research , 22(1):4431–4506, 2021. [4] Eitan Altman. Constrained Markov decision processes . Routledge, 2021. [5] Jacob Beck, Risto Vuorio, Evan Zheran Liu, Zheng Xiong, Luisa Zintgraf, Chelsea Finn, and Shimon Whiteson. A survey of meta-reinforcement learning. arXiv preprint arXiv:2301.08028 ,2023. [6] Suneel Belkhale, Rachel Li, Gregory Kahn, Rowan McAllister, Roberto Calandra, and Sergey Levine. Model-based meta-reinforcement learning for flight with suspended payloads. IEEE Robotics and Automation Letters , 6(2):1471–1478, 2021. [7] Quentin Bertrand, Quentin Klopfenstein, Mathurin Massias, Mathieu Blondel, Samuel Vaiter, Alexandre Gramfort, and Joseph Salmon. Implicit differentiation for fast hyperparameter selection in non-smooth convex learning. Journal of Machine Learning Research , 23(149):1–43, 2022. [8] Dimitri P Bertsekas. Nonlinear programming. Journal of the Operational Research Society ,48(3):334–334, 1997. [9] Stephen Boyd and Lieven Vandenberghe. Convex optimization . Cambridge university press, 2004. [10] Greg Brockman, Vicki Cheung, Ludwig Pettersson, Jonas Schneider, John Schulman, Jie Tang, and Wojciech Zaremba. Openai gym. arXiv preprint arXiv:1606.01540 , 2016. [11] Yi Chen, Jing Dong, and Zhaoran Wang. A primal-dual approach to constrained markov decision processes. arXiv preprint arXiv:2101.10895 , 2021. [12] Minjae Cho and Chuangchuang Sun. Constrained meta-reinforcement learning for adapt-able safety guarantee with differentiable convex programming. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 38, pages 20975–20983, 2024. [13] Yinlam Chow, Mohammad Ghavamzadeh, Lucas Janson, and Marco Pavone. Risk-constrained reinforcement learning with percentile risk criteria. Journal of Machine Learning Research ,18(167):1–51, 2018. [14] Imre Csiszár and János Körner. Information theory: coding theorems for discrete memoryless systems . Cambridge University Press, 2011. [15] Dongsheng Ding, Xiaohan Wei, Zhuoran Yang, Zhaoran Wang, and Mihailo Jovanovic. Provably efficient safe exploration via primal-dual policy optimization. In International Conference on Artificial Intelligence and Statistics , pages 3304–3312, 2021. 11 [16] Chelsea Finn, Pieter Abbeel, and Sergey Levine. Model-agnostic meta-learning for fast adapta-tion of deep networks. In International Conference on Machine Learning , pages 1126–1135, 2017. [17] Giorgio Giorgi and Cesare Zuccotti. A tutorial on sensitivity and stability in nonlinear program-ming and variational inequalities under differentiability assumptions. Technical report, DEM Working Paper Series, 2018. [18] Yang Guan, Yangang Ren, Qi Sun, Shengbo Eben Li, Haitong Ma, Jingliang Duan, Yifan Dai, and Bo Cheng. Integrated decision and control: toward interpretable and computationally efficient driving intelligence. IEEE Transactions on Cybernetics , 53(2):859–873, 2022. [19] Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, and Sergey Levine. Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor. In International Conference on Machine Learning , pages 1861–1870, 2018. [20] Sandy Huang, Abbas Abdolmaleki, Giulia Vezzani, Philemon Brakel, Daniel J Mankowitz, Michael Neunert, Steven Bohez, Yuval Tassa, Nicolas Heess, Martin Riedmiller, et al. A con-strained multi-objective reinforcement learning framework. In Conference on Robot Learning ,pages 883–893. PMLR, 2022. [21] Yanlong Huang. Ekmp: Generalized imitation learning with adaptation, nonlinear hard con-straints and obstacle avoidance. arXiv preprint arXiv:2103.00452 , 2021. [22] Alfredo N Iusem. On the convergence properties of the projected gradient method for convex optimization. Computational & Applied Mathematics , 22:37–52, 2003. [23] Jiaming Ji, Borong Zhang, Jiayi Zhou, Xuehai Pan, Weidong Huang, Ruiyang Sun, Yiran Geng, Yifan Zhong, Josef Dai, and Yaodong Yang. Safety gymnasium: A unified safe reinforcement learning benchmark. Advances in Neural Information Processing Systems , 36, 2023. [24] Vanshaj Khattar, Yuhao Ding, Javad Lavaei, and Ming Jin. A CMDP-within-online framework for meta-safe reinforcement learning. In International Conference on Learning Representations ,2023. [25] Konwoo Kim, Gokul Swamy, Zuxin Liu, Ding Zhao, Sanjiban Choudhury, and Steven Z Wu. Learning shared safety constraints from multi-task demonstrations. Advances in Neural Information Processing Systems , 36, 2023. [26] Dennis Lee, Haoran Tang, Jeffrey Zhang, Huazhe Xu, Trevor Darrell, and Pieter Abbeel. Modular architecture for starcraft ii with deep reinforcement learning. In Proceedings of the AAAI Conference on Artificial Intelligence and Interactive Digital Entertainment , volume 14, pages 187–193, 2018. [27] Joonho Lee, Jemin Hwangbo, Lorenz Wellhausen, Vladlen Koltun, and Marco Hutter. Learning quadrupedal locomotion over challenging terrain. Science Robotics , 5(47):5986, 2020. [28] Sergey Levine, Chelsea Finn, Trevor Darrell, and Pieter Abbeel. End-to-end training of deep visuomotor policies. Journal of Machine Learning Research , 17(39):1–40, 2016. [29] Boyi Liu, Qi Cai, Zhuoran Yang, and Zhaoran Wang. Neural trust region/proximal policy optimization attains globally optimal policy. Advances in Neural Information Processing Systems , 32, 2019. [30] Hao Liu, Richard Socher, and Caiming Xiong. Taming maml: Efficient unbiased meta-reinforcement learning. In International Conference on Machine Learning , pages 4061–4071, 2019. [31] Risheng Liu, Yaohua Liu, Shangzhi Zeng, and Jin Zhang. Towards gradient-based bilevel opti-mization with non-convex followers and beyond. Advances in Neural Information Processing Systems , 34:8662–8675, 2021. [32] Shicheng Liu and Minghui Zhu. Meta inverse constrained reinforcement learning: Convergence guarantee and generalization analysis. In The Twelfth International Conference on Learning Representations .12 [33] Shicheng Liu and Minghui Zhu. Distributed inverse constrained reinforcement learning for multi-agent systems. Advances in Neural Information Processing Systems , 35:33444–33456, 2022. [34] Zuxin Liu, Zhepeng Cen, Vladislav Isenbaev, Wei Liu, Steven Wu, Bo Li, and Ding Zhao. Constrained variational policy optimization for safe reinforcement learning. In International Conference on Machine Learning , pages 13644–13668. PMLR, 2022. [35] Gabriel B Margolis, Tao Chen, Kartik Paigwar, Xiang Fu, Donghyun Kim, Sang Bae Kim, and Pulkit Agrawal. Learning to jump from pixels. In Annual Conference on Robot Learning , 2021. [36] Gabriel B Margolis, Ge Yang, Kartik Paigwar, Tao Chen, and Pulkit Agrawal. Rapid locomotion via reinforcement learning. The International Journal of Robotics Research , 43(4):572–587, 2024. [37] Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei A Rusu, Joel Veness, Marc G Bellemare, Alex Graves, Martin Riedmiller, Andreas K Fidjeland, Georg Ostrovski, et al. Human-level control through deep reinforcement learning. Nature , 518(7540):529–533, 2015. [38] Anusha Nagabandi, Ignasi Clavera, Simin Liu, Ronald S Fearing, Pieter Abbeel, Sergey Levine, and Chelsea Finn. Learning to adapt in dynamic, real-world environments through meta-reinforcement learning. In International Conference on Learning Representations , 2018. [39] Santiago Paternain, Miguel Calvo-Fullana, Luiz FO Chamon, and Alejandro Ribeiro. Safe policies for reinforcement learning via primal-dual methods. IEEE Transactions on Automatic Control , 68(3):1321–1336, 2022. [40] David W Peterson. A review of constraint qualifications in finite-dimensional spaces. Siam Review , 15(3):639–654, 1973. [41] Nicholas Polosky, Bruno C Da Silva, Madalina Fiterau, and Jithin Jagannath. Constrained offline policy optimization. In International Conference on Machine Learning , pages 17801–17810, 2022. [42] Aravind Rajeswaran, Chelsea Finn, Sham M Kakade, and Sergey Levine. Meta-learning with implicit gradients. Advances in Neural Information Processing Systems , 32, 2019. [43] Alex Ray, Joshua Achiam, and Dario Amodei. Benchmarking safe exploration in deep rein-forcement learning. 2019. [44] John Schulman, Sergey Levine, Pieter Abbeel, Michael Jordan, and Philipp Moritz. Trust region policy optimization. In International Conference on Machine Learning , pages 1889–1897, 2015. [45] John Schulman, Philipp Moritz, Sergey Levine, Michael Jordan, and Pieter Abbeel. High-dimensional continuous control using generalized advantage estimation. arXiv preprint arXiv:1506.02438 , 2015. [46] David Silver, Aja Huang, Chris J Maddison, Arthur Guez, Laurent Sifre, George Van Den Driess-che, Julian Schrittwieser, Ioannis Antonoglou, Veda Panneershelvam, and Marc Lanctot. Mas-tering the game of go with deep neural networks and tree search. Nature , 529(7587):484–489, 2016. [47] Richard S Sutton and Andrew G Barto. Reinforcement learning: An introduction . MIT press, 2018. [48] Chen Tessler, Daniel J Mankowitz, and Shie Mannor. Reward constrained policy optimization. In International Conference on Learning Representations , 2018. [49] Akifumi Wachi and Yanan Sui. Safe reinforcement learning in constrained markov decision processes. In International Conference on Machine Learning , pages 9797–9806, 2020. [50] Lingxiao Wang, Qi Cai, Zhuoran Yang, and Zhaoran Wang. On the global optimality of model-agnostic meta-learning. In International Conference on Machine Learning , pages 9837–9846, 2020. 13 [51] Siyuan Xu and Minghui Zhu. Meta value learning for fast policy-centric optimal motion planning. Robotics Science and Systems , 2022. [52] Siyuan Xu and Minghui Zhu. Efficient gradient approximation method for constrained bilevel optimization. Proceedings of the AAAI Conference on Artificial Intelligence , 37(10):12509– 12517, 2023. [53] Siyuan Xu and Minghui Zhu. Online constrained meta-learning: Provable guarantees for generalization. In Thirty-seventh Conference on Neural Information Processing Systems , 2023. [54] Siyuan Xu and Minghui Zhu. Meta-reinforcement learning with universal policy adaptation: Provable near-optimality under all-task optimum comparator. arXiv preprint arXiv:2410.09728 ,2024. [55] Tengyu Xu, Yingbin Liang, and Guanghui Lan. CRPO: A new approach for safe reinforcement learning with convergence guarantee. In International Conference on Machine Learning , pages 11480–11491, 2021. [56] Tsung-Yen Yang, Justinian Rosca, Karthik Narasimhan, and Peter J Ramadge. Projection-based constrained policy optimization. In International Conference on Learning Representations ,2019. [57] Dongjie Yu, Haitong Ma, Shengbo Li, and Jianyu Chen. Reachability constrained reinforcement learning. In International Conference on Machine Learning , pages 25636–25655, 2022. [58] Ming Yu, Zhuoran Yang, Mladen Kolar, and Zhaoran Wang. Convergent policy optimization for safe reinforcement learning. Advances in Neural Information Processing Systems , 32, 2019. [59] Zhenyuan Yuan, Siyuan Xu, and Minghui Zhu. All-time safety and sample-efficient meta update for online safe meta reinforcement learning under markov task transition. Machine Learning ,114(8):173, 2025. [60] Jesse Zhang, Brian Cheung, Chelsea Finn, Sergey Levine, and Dinesh Jayaraman. Cautious adaptation for reinforcement learning in safety-critical settings. In International Conference on Machine Learning , pages 11055–11065. PMLR, 2020. [61] Yiming Zhang, Quan Vuong, and Keith Ross. First order constrained optimization in policy space. Advances in Neural Information Processing Systems , 33:15338–15349, 2020. 14 Appendix for "Efficient Safe Meta-Reinforcement Learning: Provable Near-Optimality and Anytime Safety" 
+
+A Related Works 
+
+Safety metrics in safe RL. Safe RL aims to handle the safety requirements in the practical applica-tions of RL. Safe RL typically applies two categories of safety metrics. The first metric is used in CMDP [ 4] and is applied in [ 48 , 13 , 15 , 11 , 2, 56 , 41 , 33 , 32 ]. It introduces costs associated with state-action pairs based on MDP, and the agent is defined as safe when the expected accumulated costs satisfy given safety constraints. The second metric is stay in the safety region [ 49 , 57 , 39 ], which is stricter than the first metric. Specifically, the agent is safe when it remains in a desired safe set for any sampled trajectory. In this paper, we consider the anytime safety during policy adaptation, where each policy is required during the exploration of an unknown MDP. It is naturally infeasible to guarantee anytime safety under the second safety metric, as the action to remain in the safety region is unknown before the exploration. In contrast, the agent could be safe under the first safety metric even if it visits some undesired states. As a result, we consider the first safety metric. 
+
+Solutions of CMDPs. The solutions of the CMDPs can be categorized into (i) penalty function [ 18 ], (ii) primal-dual approaches [ 48 , 13 , 58 , 15 , 11 ], (iii) trust-region approaches [ 2 , 56 , 61 , 34 ]. Existing works theoretically establish the safety guarantee for both primal-dual approaches [ 13 , 58 , 15 ] and trust-region approaches [ 2]. The primal-dual approaches update the dual variables and the policy simultaneously. Therefore, they gradually reduce the total cost below the required threshold by multiple policy optimization steps and can only establish the safety guarantee for the final convergent policy and cannot guarantee anytime safety during policy optimization. Therefore, they cannot meet the anytime safety requirement during policy adaptation in the safe meta-RL problems, i.e., the safety constraints are satisfied during each step of policy adaptation. In contrast, trust-region approaches constrain the policy within a safe policy set, potentially ensuring safety for every policy during the policy optimization process. However, the computational complexity of existing trust-region approaches is high, especially when applied to the safe meta-RL problem. The safety policy adaptation in this paper belongs to the category of trust-region approaches. On the other hand, we propose a novel safe policy adaptation method to address the computational inefficiency issue. 
+
+Cautious adaptation and safe meta-RL. Cautious adaptation [ 60 ] and safe meta-RL both consider to learn prior knowledge to improve the safety level of the adaptations in new environments. On the other hand, cautious adaptation considers the out-of-distribution exploration with the prior learned safety knowledge. The safe meta-RL focuses on in-distribution few-shot learning with safety constraints. Therefore, the safe meta-RL requires less exploration data during adaptation than cautious adaptation, but is limited to in-distribution tasks and less generalizable than cautious adaptation. 
+
+Safe meta-RL v.s. multitask/multi-objective safe RL methods. Safe meta-RL, multi-task safe RL [ 25 ], and multi-objective safe RL [ 20 ] all consider the multiple tasks in the safe RL setting. However, the biggest difference between meta-safe RL and multi-task/multi-objective safe RL is that the agent in meta-safe RL is required to adapt to a new and unknown environment under few-shot data collection. Therefore, the policy adaptation algorithm is the most important part of meta-safe RL. This paper designs a novel policy adaptation algorithm that holds several benefits for the few-shot policy adaptation that the existing methods do not hold. In contrast, the multi-task/multi-objective safe RL learns the policies for multiple tasks during the training stage, where the policy adaptation is not required. Therefore, the multi-task/multi-objective can borrow the existing policy optimization methods and do not need to design a new one. 
+
+B Discussion of the relations between CPO [ 2 ] and the safe policy adaptation by problem (1) 
+
+The safe policy adaptation As in (1) is inspired by the derivation of CPO, the first optimization problem in Section 5.3 of [ 2], and replaces the term pDKL (π(·| s)∥πϕ(·| s)) in the objective and the constraint functions of the optimization problem by DKL (π(·| s)∥πϕ(·| s)) . Similarly, we derive the inequalities in Lemma 1 replace the term max s DKL (π′(·| s)|| π(·| s) in Theorem 1 in [ 44 ] and replace the term pEs∼νπτ [DKL (π′(·| s)|| π(·| s))] in Corollary 3 in [ 2 ] by Es∼νπτ [DKL (π′(·| s)|| π(·| s))] in the right-hand side of the inequalities. 15 The modification from [ 2 ] to the safe policy adaptation As holds two benefits: (i) performance guarantee and (ii) computational efficiency. First, as Corollary 3 in [ 2 ] enables the feasibility, the monotonic improvement, and the constraint satisfaction to hold for the solution of the first optimization problem in Section 5.3 of [ 2], Lemma 1 enables the feasibility, the monotonic improvement, and the constraint satisfaction to hold for the safe policy adaptation As. Second, the modification to the safe policy adaptation As enables us to derive its closed-form solution, which significantly reduces the computational complexity of the meta-safe RL algorithm, as mentioned in Section 4.1. On the other hand, one cannot derive the closed-form solution for the first optimization problem in Section 5.3 of [2 ], and the computational complexity is high. Paper [ 2 ] solves an approximate problem to mitigate the issue, but the computational complexity is still high, meanwhile, the safety constraint violation cannot be avoided in theory and also usually appears in practice. 
+
+C Comparisons between the proposed safe policy adaptation method and existing Lagrangian-based safe RL algorithms 
+
+The Lagrangian-based policy optimization algorithm, such as RCPO [ 48 ], PPO-Lagrangian [ 43 ] and CRPO [ 55 ] used in meta-CRPO [ 24 ], has been widely used to solve safe RL. However, although both the proposed method in Section 4.1 and the primal-dual method in RCPO, PPO-Lagrangian, and CRPO, are Lagrangian-based safe policy optimization algorithms, they are different. The primal-dual method is much worse than the proposed method and is not suitable for this safe meta-RL problem. The method in Section 4.1 is to solve the safe policy adaptation problem in (1) . As mentioned in Section 3.1, the safe policy adaptation (1) holds several benefits similar to CPO, including the safety guarantee for a single policy optimization step (using data collected on a single policy) and the monotonic improvement. Moreover, we derive the closed-form solution under certain Lagrangian multipliers for the optimization problem (1) . Based on the derived closed-form solution of (1) (shown in Proposition 1), we can use the method shown in (3) and (7) to solve the safe policy adaptation problem in (1), which significantly reduces the computational complexity during the meta-training. In contrast, RCPO and PPO-Lagrangian do not hold any of the benefits shown in CPO and the proposed algorithm. First, RCPO and PPO-Lagrangian use the gradient ascent steps on the Lagrangian, which do not have the safety guarantee and the monotonic improvement in each policy optimization step, and therefore cannot guarantee anytime safety in the meta-test stage. Moreover, there is no closed-form solution for the policy optimization step in RCPO and PPO-Lagrangian, which leads the high computational complexity during the meta-training. 
+
+D Experimental Supplements 
+
+All experiments are executed on a computer with a 5.20 GHz Intel Core i12 CPU. 
+
+D.1 Task settings 
+
+We conduct experiments on totally seven scenarios, which include four high-dimensional locomotion scenarios (Half-Cheetah, Humanoid, Hopper, and Swimmer) in Gym library [ 10 ], and three navigation scenarios with collision avoidance (Point-Circle, Car-Circle-Hazard, and Point-Button) in Safety-Gymnasium library [ 23 ]. The scenarios are visually illustrated in Figure 3. We use the task setups similar to those used in previous works on meta-RL and safe meta-RL [ 12 , 16 , 24 ]. We provide the details of the task setups as follows. 
+
+Half-Cheetah. Half-Cheetah (Figure 3.a) has a 17-dimensional state space and a 6-dimensional action space. In the experiment of Half-Cheetah, the reward is the negative absolute value between the agent’s current velocity and a goal velocity, where the goal velocity characterizes the task. The task distribution is defined by the distribution of the goal velocity, which is a uniform distribution from 0.0 to 2.0. The cost is defined by hcheetah − h0 ≤ dτ , i.e. the cost is positive when its head is higher than h0.
+
+Humanoid. Humanoid (Figure 3.b) has a 376-dimensional observation space and a 17-dimensional action space. In the experiment of Humanoid, the reward is set as vy sin θ + vx cos θ, where vx and 
+
+vy are the velocities along the x-axis and y-axis, and θ is the walking direction of the humanoid. So 16 (a) Half-Cheetah (b) Humanoid (c) Hopper 
+
+(d) Swimmer (e) Car-Circle-Hazard (f) Point-Button 
+
+(g) Point-Circle Figure 3: High-dimensional locomotion tasks and navigation tasks with collision avoidance. 
+
+the reward is the velocity along the direction θ. The task is characterized by the walking direction θ,which is sampled uniformly from 0 to π/ 2. The cost is defined by the control cost of the humanoid robot, i.e., P 
+
+> i
+
+c2 
+
+> i
+
+, where ci is the torque imposed on each component. 
+
+Hopper. Hopper (Figure 3.c) has a 12-dimensional state space and a 3-dimensional action space. In the experiment of Hopper, the reward is the negative absolute value between the agent’s current velocity and a goal velocity, where the goal velocity characterizes the task. The task distribution is defined by the distribution of the goal velocity, which is a uniform distribution from 0.0 to 1.0. The cost is defined by the control cost of the robot. 
+
+Swimmer. Swimmer (Figure 3.d) has a 8-dimensional state space and a 2-dimensional action space. In the experiment of Swimmer, for different tasks, we add a Gaussian noise to the state transition, and the variance is uniformly sampled from 0.0 to 0.5 for different tasks; we use the reward defined as the negative absolute value between the agent’s current velocity and a goal velocity, which is a uniform distribution from 0.0 to 1.0, we used the cost defined by the control cost of the swimmer robot, i.e., w P 
+
+> i
+
+c2 
+
+> i
+
+, where ci is the torque imposed on each component and the weight w is sampled uniformly from 0.5 to 1.
+
+Point-Circle. Point-Circle (Figure 3.e) has a 28-dimensional state space and a 2-dimensional action space. In the experiment of Point-Circle, a positive reward is given when the agent runs in a circle, and a positive cost is given when the agent does not stay within the safe region. The setting of the safe region characterizes the task. The task distribution is defined by the distribution of the circle radius and the wall distance. The circle radius is a uniform distribution from 1.0 to 1.5 and the wall distance is a uniform distribution from 0.55 to 0.75 .
+
+Car-Circle-Hazard. Car-Circle-Hazard (Figure 3.f) has a 60-dimensional state space and a 2-dimensional action space. In the experiment of Car-Circle-Hazard, a positive reward is given when the agent runs in a circle, and a positive cost is given when the agent does not stay within the safe 17 Table 2: Hyper-parameter setting in As
+
+scenario λ, λ c1 dτ δc1
+
+Half-Cheetah 1.0 10 .0 0.0
+
+Humanoid 5.0 20 .0 0.0
+
+Hopper 1.0 5.0 0.0
+
+Swimmer 0.2 5.0 0.0
+
+Point-Circle 0.5 10 .0 0.0
+
+Car-Circle-Hazard 0.5 10 .0 0.0
+
+Point-Button 0.5 10 .0 0.0
+
+region or collides with Hazards. The setting of the safe region and the hazards characterize the task. The task distribution is defined by the distribution of the circle radius, the distribution of the positions, and the distribution of the number of hazards. The circle radius is a uniform distribution from 0.7 to 
+
+1.0 and the number of hazards is a uniform distribution from 3 to 7. the distribution of the position of the hazard is a uniform distribution over the safety space. 
+
+Point-Button. Point-Button (Figure 3.g) has a 56-dimensional state space and a 2-dimensional action space. In the experiment of Point-Button, a positive reward is given when the agent touches a goal button, and a positive cost is given when it does not stay within the safe region and touches any no-goal button or hazards. The setting of the buttons and the hazards characterize the task. The task distribution is defined by the distribution of the number and the positions of buttons and the number and the positions of hazards. Both the number of buttons and the number of hazards is a uniform distribution from 6 to 10 , and the distributions of positions of buttons and hazards are uniform distributions over the safety space. 
+
+D.2 Algorithm settings 
+
+We apply Algorithm 4. We consider the policy as a Gaussian distribution, where the neural network produces the means and variances of the actions. The neural network policy has two hidden layers of size 64, with tanh nonlinearities. The horizon is 200 , with 40 rollouts per policy adaptation step for all problems in the high-dimensional locomotion scenarios. The horizon is 500 , with 10 rollouts per policy adaptation step for all problems in the navigation scenarios. The discount factor γ = 0 .99 .In each iteration, we sample 10 tasks from the task distribution. Therefore, for each meta-training iteration, the number of the sampled state-action pairs is 50 k or 80 k. The models are trained for up to 300 meta-iterations in the meta-training. Therefore, the overall number of sampled state-action pairs is from 15 M or 24 M. The meta-policy is tested on 20 tasks and is adapted by 20 iterations for each task in the meta-test. For the TRPO in meta-parameter optimization, we use the KL-divergence constraint as δ = 1 e − 3. We set λ = λc1 in the safe policy adaptation As in problem (1) . Table 2 shows the setting of λ and dτ in As for each scenario. We compare the proposed method with three benchmarks: (a) MAML [ 16 ] with constraint penalty, (b) meta-CPO [ 12 ], and meta-CRPO [ 24 ]. For all methods, we run each algorithm 5 times, including meta-training and meta-test, and show the mean and standard deviation of the evaluation quantities. 
+
+D.3 Supplemental results 
+
+Figures 4 and 5 show the experimental results in Humanoid, Hopper, Car-Circle-Hazard, and Point-Button. Note that meta-CRPO is not designed for offline optimization of meta-policy, and then there is no meta-training result for the approach. Due to the high dimension of the Humanoid tasks, the meta-training of meta-CPO is too slow (10 times slower than the proposed method) in Humanoid tasks. It is extremely time-consuming to run the meta-training of meta-CPO multiple times on humanoid tasks and draw its figure. So the result of meta-CPO is not shown in Fig 4. Figure 4 shows that the proposed safe meta-RL algorithm significantly outperforms all the baseline methods regarding the optimality, i.e. the accumulated reward during both the meta-training and the meta-test in all the scenarios. Moreover, it shows that the proposed algorithms achieve anytime safety during the meta-test, i.e., the maximal accumulated costs always satisfy the constraints, while 18 the baselines cannot achieve it. Figure 5 shows that our algorithm is much more efficient than the baselines in both the meta-training and meta-test stages. 0 50 100 150 200 
+
+Number of meta-training iterations 
+
+> 700
+> 800
+> 900
+> 1000
+> 1100
+> Average accumulated reward
+
+Humanoid/Meta-training 0 50 100 150 200 
+
+Number of meta-training iterations 
+
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> Max accumulated cost
+
+Humanoid/Meta-training 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 800
+> 900
+> 1000
+> 1100
+> Average accumulated reward
+
+Humanoid/Meta-test 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 20
+> 25
+> 30
+> Max accumulated cost
+
+Humanoid/Meta-test 0 50 100 150 200 250 300 
+
+Number of meta-training iterations 
+
+> 60
+> 80
+> 100
+> 120
+> 140
+> 160
+> 180
+> Average accumulated reward
+
+Hopper/Meta-training 0 50 100 150 200 250 300 
+
+Number of meta-training iterations 
+
+> 4
+> 6
+> 8
+> 10
+> 12
+> 14
+> Max accumulated cost
+
+Hopper/Meta-training 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 120
+> 130
+> 140
+> 150
+> 160
+> 170
+> 180
+> Average accumulated reward
+
+Hopper/Meta-test 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 5
+> 10
+> 15
+> 20
+> Max accumulated cost
+
+Hopper/Meta-test 0 50 100 150 200 
+
+Number of meta-training iterations 
+
+> -120
+> -100
+> -80
+> -60
+> Average accumulated reward
+
+Swimmer/Meta-training 0 50 100 150 200 
+
+Number of meta-training iterations 
+
+> 2
+> 3
+> 4
+> 5
+> 6
+> Max accumulated cost
+
+Swimmer/Meta-training 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> -85
+> -80
+> -75
+> -70
+> -65
+> Average accumulated reward
+
+Swimmer/Meta-test 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 2
+> 3
+> 4
+> 5
+> 6
+> Max accumulated cost
+
+Swimmer/Meta-test 0 100 200 300 400 500 
+
+Number of meta-training iterations 
+
+> 0
+> 5
+> 10
+> 15
+> Average accumulated reward
+
+Car-Circle-Hazard/Meta-training 0 100 200 300 400 500 
+
+Number of meta-training iterations 
+
+> 0
+> 10
+> 20
+> 30
+> 40
+> Max accumulated cost
+
+Car-Circle-Hazard/Meta-training 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 6
+> 8
+> 10
+> 12
+> 14
+> Average accumulated reward
+
+Car-Circle-Hazard/Meta-test 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 8
+> 10
+> 12
+> 14
+> 16
+> 18
+> Max accumulated cost
+
+Car-Circle-Hazard/Meta-test 0 100 200 300 400 500 
+
+Number of meta-training iterations 
+
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> Average accumulated reward
+
+Point-Botton/Meta-training 0 100 200 300 400 500 
+
+Number of meta-training iterations 
+
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> Max accumulated cost
+
+Point-Botton/Meta-training 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 4
+> 6
+> 8
+> 10
+> Average accumulated reward
+
+Point-Botton/Meta-test 0 5 10 15 
+
+Number of policy adaptation steps 
+
+> 4
+> 6
+> 8
+> 10
+> 12
+> Max accumulated cost
+
+Point-Botton/Meta-test 
+
+Figure 4: Average accumulated reward ( columns 1 and 3, higher is better ) and maximal accumulated cost (columns 2 and 4, higher is worse ) across all validation/test tasks during the meta-training ( columns 1 and 2) and the meta-test ( columns 3 and 4 ) in Humanoid ( row 1 ), Hopper ( row 2 ), Swimmer ( row 3 ), Car-Circle-Hazard ( row 4 ), Point-Botton ( row 5 ). The accumulated reward and cost during meta-training are computed on the policy adapted one step from the meta-policy. The black dashed line is the constraint of the accumulated cost (below the line means satisfaction). 
+
+D.4 Experimental results on the trade-off between optimality and constraint satisfaction 
+
+To investigate the influence of the allowable constraint violation constant δci , in experiments, we conduct the experiments with δci = 0 .0, 1.0, 2.0 and 3.0, on two environments, including Half-cheetah and Car-Circle-Hazard. The results are shown in Figure 6. As stated in Section 5.2, the theoretical result shows a trade-off between the optimality and the safety constraint satisfaction when the allowable constraint violation thresholds δci vary. In particular, when 
+
+δci is increased, the optimality is improved while the constraint violation increases. This statement is verified by Figure 6. Specifically, especially in Car-Circle-Hazard, when the allowable constraint violation threshold δci varies from 0.0 to 3.0, the performance is improved but the constraint violation is increased in both the meta-training and the meta-test. Therefore, as indicated in both theoretical results in Section 5.2 and the experimental results in Figure 6, we choose a large δci when the 19 Meta-training Meta-test 
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+> Namalized computation time
+
+Humanoid 
+
+> Safe meta-RL (Ours)
+> Meta-CPO
+> MAML with penalty
+> Meta-CRPO
+
+Meta-training Meta-test 
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 
+
+2.0 
+
+> Normalized computation time
+
+Hopper 
+
+> Safe meta-RL (Ours)
+> Meta-CPO
+> MAML with penalty
+> Meta-CRPO
+
+Meta-training Meta-test 
+
+0
+
+1
+
+2
+
+3
+
+> Normalized computation time
+
+Swimmer  
+
+> Safe meta-RL (Ours)
+> Meta-CPO
+> MAML with penalty
+> Meta-CRPO Meta-training Meta-test
+> 0
+> 1
+> 2
+> 3
+> 4
+> Normalized computation time
+> Car-Circle-Hazard
+> Safe meta-RL (Ours)
+> Meta-CPO
+> MAML with penalty
+> Meta-CRPO
+
+Meta-training Meta-test 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> Namalized computation time
+
+Point-Botton 
+
+> Safe meta-RL (Ours)
+> Meta-CPO
+> MAML with penalty
+> Meta-CRPO
+
+Figure 5: Normalized computation time of the meta-training and the meta-test in Humanoid, Hopper, Swimmer, Car-Circle-Hazard, and Point-Botton. 0 50 100 150 200 250 300 
+
+Number of meta-training iterations 
+
+> -250
+> -200
+> -150
+> -100
+> -50
+> Average accumulated reward
+
+Half-Cheetah/Meta-training           
+
+> δci= 0
+> δci= 1
+> δci= 2
+> δci= 3 050 100 150 200 250 300
+
+Number of meta-training iterations 
+
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> Max accumulated cost
+
+Half-Cheetah/Meta-training        
+
+> δci= 0
+> δci= 1
+> δci= 2
+> δci= 3 0510 15
+
+Number of policy adaptation steps 
+
+> -100
+> -80
+> -60
+> -40
+> Average accumulated reward
+
+Half-Cheetah/Meta-test        
+
+> δci= 0
+> δci= 1
+> δci= 2
+> δci= 3 0510 15
+
+Number of policy adaptation steps 
+
+> 9.5
+> 10.0
+> 10.5
+> 11.0
+> 11.5
+> 12.0
+> 12.5
+> Max accumulated cost
+
+Half-Cheetah/Meta-test          
+
+> δci= 0
+> δci= 1
+> δci= 2
+> δci= 3 0100 200 300 400 500
+
+Number of meta-training iterations 
+
+> 0
+> 5
+> 10
+> 15
+> Average accumulated reward
+
+Car-Circle-Hazard/Meta-training          
+
+> δci= 0
+> δci= 1
+> δci= 2
+> δci= 3 0100 200 300 400 500
+
+Number of meta-training iterations 
+
+> 0
+> 5
+> 10
+> 15
+> 20
+> Max accumulated cost
+
+Car-Circle-Hazard/Meta-training        
+
+> δci= 0
+> δci= 1
+> δci= 2
+> δci= 3 0510 15
+
+Number of policy adaptation steps 
+
+> 5
+> 10
+> 15
+> 20
+> Average accumulated reward
+
+Car-Circle-Hazard/Meta-test        
+
+> δci= 0
+> δci= 1
+> δci= 2
+> δci= 3 0510 15
+
+Number of policy adaptation steps 
+
+> 8
+> 9
+> 10
+> 11
+> 12
+> 13
+> Max accumulated cost
+
+Car-Circle-Hazard/Meta-test     
+
+> δci= 0
+> δci= 1
+> δci= 2
+> δci= 3
+
+Figure 6: Average accumulated reward ( columns 1 and 3, higher is better ) and maximal accumulated cost (columns 2 and 4, higher is worse ) across all validation/test tasks during the meta-training ( columns 1 and 2 )and the meta-test ( columns 3 and 4 ) in Half-Cheetah ( row 1 ) and Car-Circle-Hazard ( row 2 ). The accumulated reward and cost during meta-training are computed on the policy adapted one step from the meta-policy. The black dashed line is the constraint of the accumulated cost (below the line means satisfaction). 
+
+constraint satisfaction is not required to be strict, and a small δci → 0 when the constraint satisfaction is prioritized. 
+
+D.5 Selection of hyper-parameter 
+
+For the hyper-parameter λ, λ ci , we set λ = λci and tune them such that, the KL divergence of initial policy π and the adapted policy π′ solved from the safe policy adaptation problem (1) is close to 
+
+0.03 . If the KL divergence is too large, the objective and constraint functions of problem (1) are not good approximations to the accumulated reward/cost functions, as indicated by Lemma 1. If the KL divergence is too small, the policy adaptation step of problem (1) is too small. 
+
+E Algorithm Supplement 
+
+E.1 An optional algorithm for solving problem (3) Algorithm 2 states the algorithm for the safe policy adaptation. We apply the projected gradient descent (PGD) to solve the optimization problem (3) to obtain the Lagrangian multipliers {u∗
+
+ci,τ }pi=1 ,then the closed-form solution of problem (1) is immediately obtained. The gradient of the objective function ¯L(u) of problem (3) w.r.t u (used in line 4 of Algorithm 2) can be stated as 
+
+∇ui
+
+¯L(u) = −Es∼νπϕτ [Ea∼πu(·| s)[Aπϕ
+
+ci,τ (s, a )] + (1 − γ)λci DKL (πu(·| s)∥πϕ(·| s))] + d′
+
+i,τ , (7) 20 where πu and d′ 
+
+> i,τ
+
+are defined in Proposition 2, and then the gradient step is projected to Rp
+
+> ≥0
+
+. The computation in (7) is derived based on the dual method shown in Proposition 6.1.1 in [ 8 ], which is simplified compared with direct computation by the chain rule. The derivation is shown in Appendix F.2.3. As the optimization problem (3) is the dual problem of (1) and is always convex, the PGD method in Algorithm 2 can guarantee convergence to the global optimum [ 22 ]. Due to the low dimensionality of the decision variables of problem (3) (the dimension of the Lagrangian multipliers 
+
+{u∗ 
+
+> ci,τ
+
+}pi=1 is the constraint number p) and the simplicity of gradient computation, the computational complexity of Algorithm 2 is much lower than directly solving problem (1). 
+
+Algorithm 2 Safe policy adaptation algorithm 
+
+Require: Meta-policy πϕ; Advantage functions Aπϕ 
+
+> τ
+
+and Aπϕ 
+
+> ci,τ
+
+; step size β.1: ui = 0 for all i ∈ 1, · · · , p 
+
+2: for n = 1 , · · · , N do 
+
+3: Compute πu(·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ) Ppi=1 uiλci )−1(Aπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 uiAπϕ 
+
+> ci,τ
+
+(s, ·))) 
+
+4: ui ← max {0, u i − β∇ui ¯L(u)} for each i = 1 , · · · , p , where ∇ui L(u) is shown in (7) 5: end for 
+
+6: u∗ 
+
+> ci,τ
+
+= ui for all i = 1 , · · · , p 
+
+7: πτ (·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ) Ppi=1 u∗ 
+
+> ci,τ
+
+λci )−1(Aπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, ·))) 
+
+8: Return {u∗ 
+
+> ci,τ
+
+}pi=1 , πτ
+
+E.2 An alternative algorithm implementation 
+
+When the proposed algorithms are applied to high-dimensional continuous state and action spaces, we provide Algorithms 3 and 4, an alternative algorithm implementation of Algorithms 1 and 2. Compared with Algorithms 1 and 2, Algorithms 3 and 4 avoid approximating Aπϕn  
+
+> τ
+
+and Aπϕn 
+
+> ci,τ
+
+during the meta-training, since it is costly to approximate the value functions V πϕn  
+
+> τ
+
+and V πϕn  
+
+> ci,τ
+
+by neural networks and use GAE [ 45 ] to estimate the advantage functions Aπϕn  
+
+> τ
+
+and Aπϕn  
+
+> ci,τ
+
+for each sampled task. Instead, Algorithms 3 and 4 only require to approximate Qπϕn  
+
+> τ
+
+and Qπϕn  
+
+> ci,τ
+
+, which can be estimated by Monte-Carlo sampling. More specifically, in line 3 of Algorithm 3 replace 
+
+πu(·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ)
+
+> p
+
+X
+
+> i=1
+
+uiλci )−1(Aπϕ 
+
+> τ
+
+(s, ·) − Xpi=1 uiAπϕ 
+
+> ci,τ
+
+(s, ·))) 
+
+in line 3 of Algorithm 2 by 
+
+πu(·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ)
+
+> p
+
+X
+
+> i=1
+
+uiλci )−1(Qπϕ 
+
+> τ
+
+(s, ·) − Xpi=1 uiQπϕ 
+
+> ci,τ
+
+(s, ·))) . (8) These two equations are equivalent, where the Q function replaces the A function. Similarly, line 10 of Algorithm 3 is also equivalent to line 7 of Algorithm 2. Line 11 in Algorithm 4 is equivalent to line 11 of Algorithm 1, where the Q function also replaces the A function. The left problem is how to solve the optimization problem (3) and obtain the the Lagrangian multipliers u∗ 
+
+> ci,τ
+
+(πϕn ) only using the Q functions. We show the solution next. The gradient of the objective function ¯L(u) in problem (3) w.r.t u is 
+
+∇ui
+
+¯L(u) = −Es∼νπϕτ [Ea∼πu(·| s)[Aπϕ 
+
+> ci,τ
+
+(s, a )] + (1 − γ)λci DKL (πu(·| s)∥πϕ(·| s))] + d′ 
+
+> i,τ
+
+,
+
+as shown in (7) . Notice that the value of ∇ui
+
+¯L(u) is the constraint function in the optimization problem (1), 
+
+−Es∼νπϕτ [Ea∼π(·| s)[Aπϕ 
+
+> ci,τ
+
+(s, a )] + (1 − γ)λci DKL (π(·| s)∥πϕ(·| s))] + d′ 
+
+> i,τ
+
+,
+
+when π = πu. Moreover, the constraint function in problem (1) is already designed as a replacement of −Jci,τ (π) + di,τ + δci and it is cheaper to compute than −Jci,τ (π) + di,τ + δci for arbitrary π in problem (1) . However, in the problem of approximating ∇ui
+
+¯L(u), thanks to the derived closed-form 21 Algorithm 3 Safe policy adaptation algorithm with the first-order approximation 
+
+Require: Meta-policy πϕ; Advantage functions Qπϕ 
+
+> τ
+
+and Qπϕ 
+
+> ci,τ
+
+; step size β.1: ui = 0 for all i ∈ 1, · · · , p 
+
+2: for n = 1 , · · · , N do 
+
+3: Compute πu(·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ) Ppi=1 uiλci )−1(Qπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 uiQπϕ 
+
+> ci,τ
+
+(s, ·))) 
+
+4: for i = 1 , · · · , p do 
+
+5: ui ← max {0, u i − β∇ui ¯L(u)} where ∇ui L(u) is shown in (9) 6: end for 
+
+7: end for 
+
+8: u∗ 
+
+> ci,τ
+
+= ui for all i = 1 , · · · , p 
+
+9: πτ (·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ) Ppi=1 u∗ 
+
+> ci,τ
+
+λci )−1(Qπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 u∗ 
+
+> ci,τ
+
+Qπϕ 
+
+> ci,τ
+
+(s, ·))) 
+
+10: Return {u∗ 
+
+> ci,τ
+
+}pi=1 , πτ
+
+Algorithm 4 An alternative algorithm of meta-training 
+
+Require: Initial meta-policy πϕ0 ;1: for n = 0 , · · · , N do 
+
+2: Sample a task τ with the CMDP Mτ from the task distribution P(Γ) 
+
+3: Evaluate Jci,τ (πϕn ), Qπϕn  
+
+> τ
+
+(·, ·) and Qπϕn  
+
+> ci,τ
+
+(·, ·) for the current meta-policy πϕn on task τ
+
+4: if Jci,τ (πϕn ) ≤ di,τ + δci , ∀i = 1 , · · · , p then 
+
+5: Obtain the task-specific policy πτ and the Lagrangian multipliers u∗ 
+
+> ci,τ
+
+(πϕn ) by Algorithm 3 with the meta-policy πϕn
+
+6: Evaluate Qπτ 
+
+> τ
+
+(·, ·) for the task-specific policy πτ on task τ
+
+7: Compute the meta-gradient ∇ϕJτ (πτ ) = 11−γ Es∼νπττ ,a ∼πτ (·| s)[∇ϕfϕn (s, a )Qπτ 
+
+> τ
+
+(s, a )] 
+
+8: Take a step of TRPO [44] with using ∇ϕJτ (πτ ) towards maximize Jτ (πτ ) to obtain ϕn+1 
+
+9: else 
+
+10: Choose any in ∈ { 1, · · · , p } such that JCin (πϕn ) > d in,τ + δcin 
+
+11: Compute the policy gradient ∇ϕJCin ,τ (πϕn ) ∝ Es∼νπϕn τ ,a ∼πϕn (·| s)[∇ϕfϕn (s, a )Qπϕn   
+
+> Cin ,τ
+
+(s, a )] .
+
+12: Take a step of TRPO [ 44 ] with using ∇ϕJCin ,τ (πϕn ) towards minimize JCin ,τ (πϕ) to obtain ϕn+1 
+
+13: end if 
+
+14: end for 
+
+πτ as πu shown in (8) , using the original one −Jci,τ (πu) + di,τ + δci becomes cheaper. So, we directly use −Jci,τ (πu) + di,τ + δci . Therefore, we have 
+
+∇ui
+
+¯L(u) ≈ (1 − γ)( −Jci,τ (πu) + di,τ + δci ). (9) Next, we use the first-order approximation to approximate −Jci,τ (πu) + di,τ + δci . Assume the policy πu is parameterized by πθu , then 
+
+11 − γ ∇ui
+
+¯L(u) ≈ − Jci,τ (πu) + di,τ + δci
+
+≈ −  ∇⊤ 
+
+> ϕ
+
+Jci,τ (πϕ)( θϕ − ϕ) + Jci,τ (πϕ) + di,τ + δci
+
+= − 11 − γ Es∼νπϕτ ,a ∼πϕ(·| s)[∇⊤ 
+
+> u
+
+ln πϕ(a|s)Qπϕ 
+
+> ci,τ
+
+(s, a )]( θu − ϕ) − Jci,τ (πϕ) + di,τ + δci
+
+Then, 
+
+∇ui
+
+¯L(u) ≈ − Es∼νπϕτ ,a ∼πϕ(·| s)[∇⊤ 
+
+> u
+
+ln πϕ(a|s)Qπϕ 
+
+> ci,τ
+
+(s, a )]( θu −ϕ)+(1 −γ)( Jci,τ (πϕ)−di,τ −δci ),
+
+(10) In this way, we replace all the estimations of the A function with the estimations of the Q functions, without the requirement of extra data collection. 
+
+E.3 Action sampling in algorithm implementation 
+
+In Algorithms 2 and 1, we need to sample actions from 
+
+πu(·| s) ∝ exp( fϕ(s, ·) + η−1(Qπϕ 
+
+> τ
+
+(s, ·) − Xpi=1 uiQπϕ 
+
+> ci,τ
+
+(s, ·))) . (11) 22 When the action space is discrete (no matter whether the state space is discrete or continuous), it is trivial to do the sampling. When the action space is high-dimensional and continuous, it is not easy to do the sampling. Here, we show two solutions. In the implementation of Algorithms 2 and 1, we apply the second solution. 
+
+E.3.1 The first solution 
+
+Similar to many widely used RL algorithm implementations, such as [ 44 ], we also consider the policy parameterized by a Gaussian distribution, i.e., 
+
+πϕ(a|s) = exp ( fϕ(s, a )) 
+
+R 
+
+> a′
+
+exp ( fϕ(s, a ′)) da ′ = A1 exp − (a − gϕ(s)) 2
+
+2δ2
+
+> ϕ
+
+!
+
+,
+
+where fϕ = − (a−gϕ(s)) 2
+
+> 2δ2
+> ϕ
+
+and gϕ is a neural network with the input s. So the policy is a softmax policy. For the policy in (11), we have 
+
+πu(a|s) = A2 exp − (a − gϕ(s)) 2
+
+2δ2
+
+> ϕ
+
+− η−1 (a − gQ(s)) 2
+
+2δ2
+
+> Q
+
+!
+
+.
+
+Here, Qπϕ 
+
+> τ
+
+(s, a ) − Ppi=1 uiQπϕ 
+
+> ci,τ
+
+(s, a ) is approximated by − (a−gQ(s)) 2
+
+> 2δ2
+> Q
+
++ C(s) where gQ(s) and 
+
+C(s) are neural networks with the input s.Then, 
+
+πu(a|s) = A3 exp 
+
+−
+
+
+
+a − ( ηδ 2
+
+> Q
+> ηδ 2
+> ϕ+δ2
+> Q
+
+gϕ(s) + δ2
+
+> ϕ
+> ηδ 2
+> ϕ+δ2
+> Q
+
+gQ(s)) 
+
+2
+
+2 δ2
+
+> ϕδ2
+> Q
+> ηδ 2
+> ϕ+δ2
+> Q
+
+ , (12) i.e., the πu(a|s) is Gaussian with the mean is ηδ 2
+
+> Q
+> ηδ 2
+> ϕ+δ2
+> Q
+
+gϕ(s)+ δ2
+
+> ϕ
+> ηδ 2
+> ϕ+δ2
+> Q
+
+gQ(s) and the standard deviation is 
+
+r δ2
+
+> ϕδ2
+> Q
+> ηδ 2
+> ϕ+δ2
+> Q
+
+. This can be sampled by many code libraries directly. We can also treat the approximate function − (a−gQ(s)) 2
+
+> 2δ2
+> Q
+
+as Aπϕ 
+
+> τ
+
+(s, a ) − Ppi=1 uiAπϕ 
+
+> ci,τ
+
+(s, a ) and used in Algorithms (2) and (1) , which take πu(·| s) ∝ exp( fϕ(s, ·)+ η−1(Aπϕ 
+
+> τ
+
+(s, ·)−Ppi=1 uiAπϕ 
+
+> ci,τ
+
+(s, ·))) .
+
+E.3.2 The second solution 
+
+In the second solution, we also consider the policy parameterized by a Gaussian distribution, i.e., 
+
+πϕ(a|s) = exp ( fϕ(s, a )) 
+
+R 
+
+> a′
+
+exp ( fϕ(s, a ′)) da ′ = A1 exp − (a − gϕ(s)) 2
+
+2δ2
+
+> ϕ
+
+!
+
+,
+
+where fϕ = − (a−gϕ(s)) 2
+
+> 2δ2
+> ϕ
+
+and gϕ is a neural network with the input s.We use the policy parameterized by θ to approximate the policy πu(·| s) ∝ exp( fϕ(s, ·) + 
+
+η−1(Qπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 uiQπϕ 
+
+> ci,τ
+
+(s, ·))) , by minimizing the expected KL-divergence, i.e., 
+
+min  
+
+> θ
+
+loss (θ) = Es∼νπϕτ
+
+
+
+DKL 
+
+
+
+πθ (·| s) ∥ exp( fϕ(s, ·) + η−1(Qπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 uiQπϕ 
+
+> ci,τ
+
+(s, ·))) 
+
+Zϕ (s)
+
+ 
+
+.
+
+As shown in [19], the problem is equivalent to min θ loss (θ) = 
+
+Es∼νπϕτ ,a ∼πθ (·| s)
+
+h
+
+ln πθ (a|s) −
+
+
+
+fϕ(s, a ) + η−1(Qπϕ 
+
+> τ
+
+(s, a ) − Xpi=1 uiQπϕ 
+
+> ci,τ
+
+(s, a )) 
+
+i 
+
+.
+
+This optimization problem can be restated as 
+
+min  
+
+> θ
+
+Es∼νπϕτ ,a ∼πϕ(·| s)
+
+ πθ (·| s)
+
+πϕ(·| s)
+
+
+
+ln πθ (a|s) −
+
+
+
+fϕ(s, a ) + η−1(Qπϕ 
+
+> τ
+
+(s, a ) − Xpi=1 uiQπϕ 
+
+> ci,τ
+
+(s, a )) 
+
+ 
+
+.
+
+23 Therefore, we do not need more data to approximate the expectation Es∼νπϕτ ,a ∼πϕ(·| s). Similarly, we can also use πθ to approximate πu(·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ) Ppi=1 uiλci )−1(Aπϕ 
+
+> τ
+
+(s, ·) −Ppi=1 uiAπϕ 
+
+> ci,τ
+
+(s, ·))) .
+
+F Analysis and Proof 
+
+F.1 Auxiliary results Lemma 2 (Policy gradient [ 47 , 3]) . Let πθ be the parameterized policy with the parameter θ. It holds that 
+
+∇θ Jτ (πθ ) = 11 − γ Es∼νπθτ ,a ∼πθ (·| s) [∇θ ln πθ (a|s)Qπθ 
+
+> τ
+
+(s, a )] = 11 − γ Es∼νπθτ ,a ∼πθ (·| s) [∇θ ln πθ (a|s)Aπθ 
+
+> τ
+
+(s, a )] .
+
+Lemma 3 (Policy gradient of the softmax policy) . For the softmax policy πθ as πθ (a|s) =    
+
+> exp( fθ(s,a )) P
+> a′∈A exp( fθ(s,a ′))
+
+(in discrete action space A) or πθ (a|s) ≜ exp( fθ (s,a )) R   
+
+> Aexp( fθ(s,a ′)) da ′
+
+(in continuous action space A), ∀(s, a ) ∈ S × A . It holds that 
+
+∇θ Jτ (πθ ) = 11 − γ Es∼νπθτ ,a ∼πθ (·| s) [∇θ fθ (s, a )Aπθ 
+
+> τ
+
+(s, a )] . (13) 
+
+Proof. We prove it under the discrete action space A. The proof under the continuous action space A
+
+is similar. From Lemma 2, we have 
+
+∇θ Jτ (πθ ) = 11 − γ Es∼νπθτ ,a ∼πθ (·| s) [∇θ ln πθ (a|s)Aπθ 
+
+> τ
+
+(s, a )] = 11 − γ Es∼νπθτ ,a ∼πθ (·| s)
+
+
+
+∇θ ln 
+
+ exp( fθ (s, a )) 
+
+P 
+
+> a′∈A
+
+exp( fθ (s, a ′)) 
+
+
+
+Aπθ 
+
+> τ
+
+(s, a )
+
+
+
+= 11 − γ Es∼νπθτ ,a ∼πθ (·| s)
+
+"
+
+∇θ fθ (s, a ) − ∇ θ ln X
+
+> a′∈A
+
+exp( fθ (s, a ′)) 
+
+!
+
+Aπθ 
+
+> τ
+
+(s, a )
+
+#
+
+Here, ∇θ ln  P  
+
+> a′∈A
+
+exp( fθ (s, a ′))  is independent with a, then ∇θ Jτ (πθ )= 11 − γ Es∼νπθτ ,a ∼πθ (·| s)
+
+"
+
+∇θ fθ (s, a ) − ∇ θ ln X
+
+> a′∈A
+
+exp( fθ (s, a ′)) 
+
+!
+
+Aπθ 
+
+> τ
+
+(s, a )
+
+#
+
+= 11 − γ Es∼νπθτ ,a ∼πθ (·| s) [∇θ fθ (s, a )Aπθ 
+
+> τ
+
+(s, a )] −
+
+11 − γ Es∼νπθτ
+
+"
+
+∇θ ln X
+
+> a′∈A
+
+exp( fθ (s, a ′)) 
+
+!
+
+Ea∼πθ (·| s)Aπθ 
+
+> τ
+
+(s, a )
+
+#
+
+.
+
+Since Ea∼πθ (·| s)Aπθ 
+
+> τ
+
+(s, a ) = Ea∼πθ (·| s)[Qπθ 
+
+> τ
+
+(s, a )] − V πθ 
+
+> τ
+
+(s) = 0 . Then, 
+
+∇θ Jτ (πθ ) = 11 − γ Es∼νπθτ ,a ∼πθ (·| s) [∇θ fθ (s, a )Aπθ 
+
+> τ
+
+(s, a )] .
+
+F.2 Proofs of closed-form solution of safe policy adaptation F.2.1 Proof of Proposition 1 
+
+We provide the complete statement of Proposition 1 as the following Proposition 5. 24 Proposition 5. When the softmax policy πϕ satisfies Jci,τ (πϕ) ≤ di,τ + δci , ∀i = 1 , · · · , p , the solution πτ of the optimization problem (1) exists. Suppose an appropriate constraint qualification (to be stipulated) holds at πτ , there exists {u∗ 
+
+> ci,τ
+
+}pi=1 with u∗ 
+
+> ci,τ
+
+≥ 0, such that 
+
+πτ (·| s) ∝ exp fϕ(s, ·) + η−1(Aπϕ 
+
+> τ
+
+(s, ·) −
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, ·)) 
+
+!
+
+, ∀s ∈ S ,
+
+i.e., 
+
+πτ (a|s) = exp 
+
+
+
+fϕ(s, a ) +  λ + Ppi=1 u∗ 
+
+> ci,τ
+
+λci
+
+−1  Aπϕ 
+
+> τ
+
+(s, a ) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, a )P 
+
+> a∈A
+
+exp  fϕ(s, a ′) + η−1  Aπϕ 
+
+> τ
+
+(s, a ′) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, a ′) ,
+
+in discrete action space A, or 
+
+πτ (a|s) = exp 
+
+
+
+fϕ(s, a ) +  λ + Ppi=1 u∗ 
+
+> ci,τ
+
+λci
+
+−1  Aπϕ 
+
+> τ
+
+(s, a ) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, a )R 
+
+> a′
+
+exp  fϕ(s, a ′) + η−1  Aπϕ 
+
+> τ
+
+(s, a ′) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, a ′) da ′ ,
+
+in continuous action space A, where η = (1 − γ)λ + Ppi=1 u∗ 
+
+> ci,τ
+
+λci .
+
+There are many constraint qualifications where each of them assures the validity of the proposition, including but not limited to Mangasarian-Fromovitz constraint qualification (MFCQ), linear inde-pendence constraint qualification (LICQ), and Slater’s condition (SC) [ 17 ]. Refer to [ 40 ] for more validated constraint qualifications. The assumption that one constraint qualification holds at πτ is mild. For example, if there exists a policy π such that ∀iJci,τ (πϕ) + E
+
+> s∼νπϕτ
+> a∼π(·| s)
+
+ Aπϕ 
+
+> ci,τ
+
+(s, a )1 − γ
+
+
+
++ λci Es∼νπϕτ [DKL (π(·| s)∥πϕ(·| s))] < d i,τ + δci , (14) then the Slater’s condition holds. Note that when π = πϕ, we have Jci,τ (πϕ)+ E
+
+> s∼νπϕτ
+> a∼π(·| s)
+
+ Aπϕci,τ (s,a )1−γ
+
+
+
++
+
+λci Es∼νπϕτ [DKL (π(·| s)∥πϕ(·| s))] ≤ di,τ + δci . It usually exists a π near πϕ such that (14) holds or the πϕ itself can assure (14) holds. Next, we prove the proposition. 
+
+Proofs of Proposition 5. The optimization problem (1) can be restated as 
+
+argmin 
+
+> π∈Π
+
+− E
+
+> s∼νπϕτ
+> a∼π(·| s)
+
+Aπϕ 
+
+> τ
+
+(s, a ) + λ Es∼νπϕτ [DKL (π(·| s)∥πϕ(·| s))] ,
+
+s.t. E
+
+> s∼νπϕτ
+> a∼π(·| s)
+
+Aπϕ 
+
+> ci,τ
+
+(s, a ) + λ′ 
+
+> ci
+
+Es∼νπϕτ [DKL (π(·| s)∥πϕ(·| s))] ≤ d′ 
+
+> i,τ
+
+, i = 1 , · · · , p, 
+
+where the constants λ′ 
+
+> ci
+
+≜ (1 − γ)λci , and d′ 
+
+> i,τ
+
+≜ (1 − γ)( di,τ + δci − Jci,τ (πϕ)) .First, we consider the discrete state-action space S × A . Considering the probability at each state-action pair π(a|s) as the decision variable, the minimization is taken over the probability simplex π(·| s) : 0 ≤ π(a|s) ≤ 1, P 
+
+> a∈A
+
+π(a|s) = 1 . Then the optimization problem is formally stated as 
+
+argmin 
+
+> π
+
+Es∼νπϕτ
+
+"X
+
+> a∈A
+
+−π(a|s)Aπϕ 
+
+> τ
+
+(s, a ) + λD KL (π(·| s)∥πϕ(·| s)) 
+
+#
+
+,
+
+s.t. Es∼νπϕτ
+
+"X
+
+> a∈A
+
+π(a|s)Aπϕ 
+
+> ci,τ
+
+(s, a ) + λ′ 
+
+> ci
+
+DKL (π(·| s)∥πϕ(·| s)) 
+
+#
+
+≤ d′ 
+
+> i,τ
+
+, i = 1 , · · · , p, 
+
+X
+
+> a∈A
+
+π(a|s) = 1 for any s ∈ S ,π(a|s) ≤ 1 for any a ∈ A , s ∈ S ,
+
+− π(a|s) ≤ 0 for any a ∈ A , s ∈ S .
+
+(15) 25 Since πϕ ∈ ΠCτ , we have d′ 
+
+> i,τ
+
+= (1 − γ)( di,τ + δci − Jci,τ (πϕ)) ≥ 0, the solution of (15) exists. According to Theorem 1 in [ 17 ] and theorems in [ 8, 9], since the constraint qualification holds, the Karush-Kuhn-Tucker (KKT) conditions hold at πτ , i.e., there exists Lagrangian multipliers 
+
+{u∗ 
+
+> ci,τ
+
+}pi=1 , u∗
+
+> 0
+
+(s) for all s ∈ S , u∗
+
+> 1
+
+(s, a ) and u∗
+
+> 2
+
+(s, a ) for all (s, a ) ∈ S × A , such that 
+
+u∗ 
+
+> ci,τ
+
+≥ 0, ∀i = 1 , · · · , p, u∗
+
+> 1
+
+(s, a ) ≥ 0, u ∗
+
+> 2
+
+(s, a ) ≥ 0, ∀(s, a ) ∈ S × A , (16) 
+
+Es∼νπϕτ
+
+"X
+
+> a∈A
+
+πτ (a|s)Aπϕ 
+
+> ci,τ
+
+(s, a ) + λ′ 
+
+> ci
+
+DKL (πτ (·| s)∥πϕ(·| s)) 
+
+#
+
+− d′ 
+
+> i,τ
+
+≤ 0, ∀i = 1 , · · · , p, πτ (s, a ) ≥ 0, π τ (s, a ) ≤ 1, ∀(s, a ) ∈ S × A , (17) 
+
+X
+
+> a∈A
+
+πτ (a|s) = 1 , ∀s ∈ S , (18) 
+
+u∗ 
+
+> ci,τ
+
+Es∼νπϕτ
+
+"X
+
+> a∈A
+
+πτ (a|s)Aπϕ 
+
+> ci,τ
+
+(s, a ) + λ′ 
+
+> ci
+
+DKL (πτ (·| s)∥πϕ(·| s)) 
+
+#
+
+− d′
+
+> i,τ
+
+!
+
+= 0 ,u∗
+
+> 1
+
+(s, a )( πτ (s, a ) − 1) = 0 , ∀(s, a ) ∈ S × A , (19) 
+
+−u∗
+
+> 2
+
+(s, a )πτ (s, a ) = 0 , ∀(s, a ) ∈ S × A , (20) 
+
+∇π L(πτ , {u∗ 
+
+> ci,τ
+
+}pi=1 , u ∗
+
+> 0
+
+, u ∗
+
+> 1
+
+, u ∗
+
+> 2
+
+) = 0 , (21) where 
+
+L(π, {u∗ 
+
+> ci,τ
+
+}pi=1 , u ∗
+
+> 0
+
+, u ∗
+
+> 1
+
+, u ∗
+
+> 2
+
+)) ≜ Es∼νπϕτ
+
+"X
+
+> a∈A
+
+−π(a|s)Aπϕ 
+
+> τ
+
+(s, a ) + λD KL (π(·| s)∥πϕ(·| s)) 
+
+#
+
++
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+Es∼νπϕτ
+
+"X
+
+> a∈A
+
+π(a|s)Aπϕ 
+
+> ci,τ
+
+(s, a ) + λ′ 
+
+> ci
+
+DKL (π(·| s)∥πϕ(·| s)) 
+
+#
+
+− d′
+
+> i,τ
+
+!
+
++ X
+
+> s∈S
+
+u∗
+
+> 0
+
+(s) X
+
+> a∈A
+
+π(a|s) − 1
+
+!
+
++ X
+
+> s∈S
+
+X
+
+> s∈S
+
+u∗
+
+> 1
+
+(s, a )( π(s, a ) − 1) − u∗
+
+> 2
+
+(s, a )π(s, a ).
+
+(22) Note that (16) (17) (18) (19) (20)(21) constitute the KKT condition for the following optimization problem: 
+
+argmin 
+
+> π
+
+Es∼νπϕτ
+
+"X
+
+> a∈A
+
+π(a|s) −Aπϕ 
+
+> τ
+
+(s, a ) + 
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, a )
+
+!
+
++ λ +
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+λ′
+
+> ci
+
+!
+
+DKL (π(·| s)∥πϕ(·| s)) 
+
+#
+
+−
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+d′
+
+> i,τ
+
+s.t. X
+
+> a∈A
+
+π(a|s) = 1 for any s ∈ S ,π(a|s) ≤ 1 for any a ∈ A , s ∈ S ,
+
+− π(a|s) ≤ 0 for any a ∈ A , s ∈ S .
+
+(23) i.e., the KKT condition for the optimization problem (23) holds at πτ with Lagrangian multipliers 
+
+u∗
+
+> 0
+
+(s), u∗
+
+> 1
+
+(s, a ) and u∗
+
+> 2
+
+(s, a ). Here, {u∗ 
+
+> ci,τ
+
+}pi=1 are constants for the problem. Since the terms −Es∼νπϕτ
+
+P  
+
+> a∈A
+
+π(a|s)Aπϕ 
+
+> τ
+
+(s, a ) and Es∼νπϕτ
+
+P  
+
+> a∈A
+
+π(a|s)Aπϕ 
+
+> ci,τ
+
+(s, a ) are lin-ear; the term Es∼νπϕτ [DKL (π(·| s)∥πϕ(·| s))] is convex, the optimization problem (23) is convex. Moreover, since all the constraint functions are affine, the Slater’s condition holds naturally for the optimization problem (23) , as shown in [ 9]. Therefore, the strong duality holds. Then, πτ is the optimal solution for (23). 26 In (23) , we can omit the term − Ppi=1 u∗ 
+
+> ci,τ
+
+d′ 
+
+> i,τ
+
+and keep the solution unchanged. Next, we borrow the conclusion of Proposition 3.1 in [29], we have πτ (a|s) = exp 
+
+
+
+fϕ(s, a ) +  λ + Ppi=1 u∗ 
+
+> ci,τ
+
+λ′
+
+> ci
+
+−1  Aπϕ 
+
+> τ
+
+(s, a ) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, a )P 
+
+> a∈A
+
+exp 
+
+
+
+fϕ(s, a ′) +  λ + Ppi=1 u∗ 
+
+> ci,τ
+
+λ′
+
+> ci
+
+−1  Aπϕ 
+
+> τ
+
+(s, a ′) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, a ′) ,
+
+i.e., 
+
+πτ (·| s) ∝ exp fϕ(s, ·) + ( λ +
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+λ′ 
+
+> ci
+
+)−1(Aπϕ 
+
+> τ
+
+(s, ·) −
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, ·)) 
+
+!
+
+,
+
+for all s ∈ S . Since λ′ 
+
+> ci
+
+= (1 − γ)λci , the proof is done. 
+
+F.2.2 Proof of Proposition 2 
+
+Proof of Proposition 2. For the Lagrangian multiplier variables u, u0, u1, u2, we denote the solution of min π L(π, u, u 0, u 1, u 2) as π{u,u 0,u 1,u 2} (L is shown in (22)), i.e., 
+
+π{u,u 0,u 1,u 2} = arg min  
+
+> π
+
+L(π, u, u 0, u 1, u 2).
+
+From the proof of Proposition 1, we have the strong duality for the optimization problem (15) holds. Then, we have {u∗, u ∗
+
+> 0
+
+, u ∗
+
+> 1
+
+, u ∗
+
+> 2
+
+} =arg max {u,u 0,u 1,u 2}L(π{u,u 0,u 1,u 2}, u, u 0, u 1, u 2), s.t. u ≥ 0, u 1 ≥ 0, u 2 ≥ 0. (24) Next, from the above optimization problem, we set u0, u1, u2 as u∗
+
+> 0
+
+(u), u∗
+
+> 1
+
+(u), u∗
+
+> 2
+
+(u) in (24) , where 
+
+u∗
+
+> 0
+
+(u), u∗
+
+> 1
+
+(u), u∗
+
+> 2
+
+(u) are the solution of dual variable (Lagrangian multiplier solution) of the following problem: 
+
+argmin 
+
+> π
+
+Es∼νπϕτ
+
+"X
+
+> a∈A
+
+π(a|s) −Aπϕ 
+
+> τ
+
+(s, a ) + 
+
+> p
+
+X
+
+> i=1
+
+uiAπϕ 
+
+> ci,τ
+
+(s, a )
+
+!
+
++ λ + (1 − γ)
+
+> p
+
+X
+
+> i=1
+
+uiλci
+
+!
+
+DKL (π(·| s)∥πϕ(·| s)) 
+
+#
+
+−
+
+> p
+
+X
+
+> i=1
+
+uid′
+
+> i,τ
+
+s.t. X
+
+> a∈A
+
+π(a|s) = 1 for any s ∈ S ,π(a|s) ≤ 1 for any a ∈ A , s ∈ S ,
+
+− π(a|s) ≤ 0 for any a ∈ A , s ∈ S .
+
+(25) We have 
+
+u∗ = arg max uL(π{u,u ∗   
+
+> 0(u),u ∗
+> 1(u),u ∗
+> 2(u)}
+
+, u, u ∗
+
+> 0
+
+(u), u ∗
+
+> 1
+
+(u), u ∗
+
+> 2
+
+(u)) , s.t. u ≥ 0. (26) Similar to solution of (23) , we have the solution of (25) is πu, where πu(·| s) ∝ exp( fϕ(s, ·) + (Ppi=1 uiλci )−1(Aπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 uiAπϕ 
+
+> ci,τ
+
+(s, ·))) . Moreover, from the strong duality of the opti-mization problem (25) (linear inequality constraints), we have 
+
+π{u,u ∗    
+
+> 0(u),u ∗
+> 1(u),u ∗
+> 2(u)}
+
+= arg min  
+
+> π
+
+L(π, u, u ∗
+
+> 0
+
+(u), u ∗
+
+> 1
+
+(u), u ∗
+
+> 2
+
+(u)) = πu. (27) Therefore, 
+
+u∗ = arg max uL(πu, u, u ∗
+
+> 0
+
+(u), u ∗
+
+> 1
+
+(u), u ∗
+
+> 2
+
+(u)) , s.t. u ≥ 0.
+
+Moreover, we know 
+
+X
+
+> s∈S
+
+u∗
+
+> 0
+
+(u)( s) X
+
+> a∈A
+
+πu(a|s) − 1
+
+!
+
++ X
+
+> s∈S
+
+X
+
+> s∈S
+
+u∗
+
+> 1
+
+(u)( s, a )( πu(s, a ) − 1) − u∗
+
+> 2
+
+(u)( s, a )πu(s, a ) = 0 .
+
+27 Form (26) and (22), we have 
+
+u∗ = max  
+
+> u
+
+Es∼νπϕτ ,a ∼πu(·| s)[−Aπϕ 
+
+> τ
+
+(s, a ) + 
+
+> p
+
+X
+
+> i=1
+
+uiAπϕ 
+
+> ci,τ
+
+(s, a )] + ( λ +
+
+> p
+
+X
+
+> i=1
+
+uiλ′ 
+
+> ci
+
+)
+
+Es∼νπϕτ [DKL (πu(·| s)∥πϕ(·| s))] −
+
+> p
+
+X
+
+> i=1
+
+ui(1 − γ)( di,τ + δci − Jci,τ (πϕ)) 
+
+s.t. ui ≥ 0, ∀i = 1 , · · · , p. 
+
+Then, the proof is done. 
+
+F.2.3 Deviation of gradient w.r.t. the dual variables 
+
+We derive the gradient of ¯L w.r.t. the dual variables u for (7). Let 
+
+ˆL(u, π u) ≜ E
+
+> s∼νπϕτ
+> a∼πu
+
+[Aπϕ 
+
+> τ
+
+(s, a ) −
+
+> p
+
+X
+
+> i=1
+
+uiAπϕ 
+
+> ci,τ
+
+(s, a )] 
+
+− (λ + (1 − γ)
+
+> p
+
+X
+
+> i=1
+
+uiλci ) Es∼νπϕτ [DKL (πu(·| s)∥πϕ(·| s))] + 
+
+> p
+
+X
+
+> i=1
+
+uid′
+
+> i,τ
+
+where d′ 
+
+> i,τ
+
+≜ (1 − γ)( di,τ + δci − Jci,τ (πϕ)) . Then, 
+
+∇u ¯L(u) = ∇1 ˆL(u, π u) + ∇uπu∇2 ˆL(u, π u)
+
+Consider ∇2 ˆL(u, π u). From (27), we have 
+
+π{u,u ∗    
+
+> 0(u),u ∗
+> 1(u),u ∗
+> 2(u)}
+
+= arg min  
+
+> π
+
+L(π, u, u ∗
+
+> 0
+
+(u), u ∗
+
+> 1
+
+(u), u ∗
+
+> 2
+
+(u)) = πu
+
+where L is shown in (22) and u∗
+
+> 0
+
+(u), u∗
+
+> 1
+
+(u), u∗
+
+> 2
+
+(u) are the solution of dual variable of (25). Then 
+
+∇1L(πu, u, u ∗
+
+> 0
+
+(u), u ∗
+
+> 1
+
+(u), u ∗
+
+> 2
+
+(u)) = 0 .
+
+Moreover, we know 
+
+X
+
+> s∈S
+
+u∗
+
+> 0
+
+(u)( s) X
+
+> a∈A
+
+πu(a|s) − 1
+
+!
+
++ X
+
+> s∈S
+
+X
+
+> s∈S
+
+u∗
+
+> 1
+
+(u)( s, a )( πu(s, a ) − 1) − u∗
+
+> 2
+
+(u)( s, a )πu(s, a ) = 0 .
+
+Thus, 
+
+∇2 ˆL(u, π u) = ∇1L(πu, u, u ∗
+
+> 0
+
+(u), u ∗
+
+> 1
+
+(u), u ∗
+
+> 2
+
+(u)) = 0 .
+
+Then, we have 
+
+∇u ¯L(u) = ∇1 ˆL(u, π u).
+
+Therefore, 
+
+∇ui
+
+¯L(u) = −Es∼νπϕτ [Ea∼πu(·| s)[Aπϕ 
+
+> ci,τ
+
+(s, a )] + (1 − γ)λci DKL (πu(·| s)∥πϕ(·| s))] + d′ 
+
+> i,τ
+
+.
+
+F.3 Meta-Gradient F.3.1 Computation of meta-gradient Proposition 6. Let πτ = As(πϕ, Λ, ∆, τ ). Suppose all the assumptions in Proposition (5) hold. Sup-pose the LICQ and the strict complementary slackness condition (SCSC) [ 17 , 52 ] for the optimization problem (3.1) holds at πτ . Then, ∇ϕJτ (πτ ) exists and 
+
+∇ϕJτ (πτ ) = 11 − γ Es∼νπττ ,a ∼πτ (·| s)[ ∇ϕη(πϕ)−1 ¯Qπϕ 
+
+> τ
+
+(s, a )+η(πϕ)−1∇ϕ ¯Qπϕ 
+
+> τ
+
+(s, a ) + ∇ϕfϕ(s, a ) Qπτ 
+
+> τ
+
+(s, a )] ,
+
+where η(πϕ) ≜ λ + (1 − γ) Ppi=1 u∗ 
+
+> ci,τ
+
+(πϕ)λci , and ¯Qπϕ 
+
+> τ
+
+≜ Qπϕ 
+
+> τ
+
+− Ppi=1 u∗ 
+
+> ci,τ
+
+(πϕ)Qπϕ 
+
+> ci,τ
+
+.
+
+28 Proof. For any meta-policy πϕ, the objective function of the optimization problem (3.1) is strongly concave and the constraint function is convex. The LICQ and the SCSC hold at πτ . According to Theorem 2 in [52], ∇ϕJτ (πτ ) exists. We have 
+
+πτ (·| s) ∝ exp( fϕ(s, ·) + η(πϕ)−1(Aπϕ 
+
+> τ
+
+(s, ·) − Xpi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, ·))) 
+
+is equivalent to 
+
+πτ (·| s) ∝ exp( fϕ(s, ·) + η(πϕ)−1(Qπϕ 
+
+> τ
+
+(s, ·) − Xpi=1 u∗ 
+
+> ci,τ
+
+Qπϕ 
+
+> ci,τ
+
+(s, ·))) .
+
+From Lemma 3, we have 
+
+∇ϕJτ (πτ ) = 11 − γ Es∼νπττ ,a ∼πτ (·| s)[∇ϕ
+
+ η(πϕ)−1 ¯Qπϕ 
+
+> τ
+
+(s, a ) + fϕ(s, a ) Qπτ 
+
+> τ
+
+(s, a )] = 11 − γ Es∼νπττ ,a ∼πτ (·| s)[ ∇ϕη(πϕ)−1 ¯Qπϕ 
+
+> τ
+
+(s, a )+η(πϕ)−1∇ϕ ¯Qπϕ 
+
+> τ
+
+(s, a ) + ∇ϕfϕ(s, a ) Qπτ 
+
+> τ
+
+(s, a )] .
+
+F.3.2 Computation of ∇ϕQπϕ 
+
+> τ
+
+(s, a )
+
+We have 
+
+∇ϕQπϕ 
+
+> τ
+
+(s, a ) = γ
+
+1 − γ · E(s′,a ′)∼σ(s,a )
+
+> τ,π ϕ
+
+∇ϕfϕ (s′, a ′) Qπϕ 
+
+> τ
+
+(s′, a ′) . (28) where the state-action visitation probability σ(s,a ) 
+
+> τ,π θ
+
+initialized at (s, a ) ∈ S × A is defined by 
+
+σ(s,a ) 
+
+> τ,π ϕ
+
+(s′, a ′) = (1 − γ)
+
+> ∞
+
+X
+
+> t=0
+
+γtP (st = s′, a t = a′|πϕ, s 0 ∼ Pτ (·| s, a )) .
+
+Proof. As shown in [50], 
+
+∇ϕQπϕ 
+
+> τ
+
+(s, a ) = ∇ϕ
+
+ (1 − γ) · rτ (s, a ) + γ · Es′∼Pτ (·| s,a )
+
+V πϕ 
+
+> τ
+
+(s′) 
+
+= γ
+
+1 − γ · E(s′,a ′)∼σ(s,a )
+
+> τ,π ϕ
+
+∇ϕ ln πϕ (a′|s′) · Qπϕ 
+
+> τ
+
+(s′, a ′) .
+
+By Lemma 3, from (13), we can obtain (28). 
+
+F.3.3 Gradient of Lagrangian multipliers 
+
+We show the existence and the computation of ∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) in the following proposition. 
+
+Proposition 7. Let πτ = As(πϕ, Λ, ∆, τ ). Suppose all the assumptions in Proposition (5) hold. Sup-pose the LICQ and the strict complementary slackness condition (SCSC) [ 17 , 52 ] for the optimization problem (3.1) holds at πτ . Then, the Lagrangian multipliers u∗ 
+
+> ci,τ
+
+(πϕ) is unique for any given πϕ,
+
+∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) exists. For i ∈ { 1, · · · , p }, if u∗ 
+
+> ci,τ
+
+(πϕ) = 0 , then ∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) = 0 . Let ¯u∗ 
+
+> ci,τ
+
+(πϕ) be the vector includes all all i ∈ { 1, · · · , p } with u∗ 
+
+> ci,τ
+
+(πϕ) > 0,
+
+∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) = −∇ ϕ∇¯u ˆL(¯ u, ϕ )∇2¯u ˆL(¯ u, ϕ )−1
+
+where ˆL(¯ u, ϕ ) = E[Aπϕ 
+
+> τ
+
+(s, a ) − Ppi=1 uiAπϕ 
+
+> ci,τ
+
+(s, a )] − ηu Es∼νπϕτ [DKL (πu(·| s)∥πϕ(·| s))] + 
+
+Ppi=1 ui(di,τ + δci − Jci,τ (πϕ)) .Proof. For any meta-policy πϕ, the objective function of the optimization problem (3.1) is strongly concave and the constraint function is convex. The LICQ and the SCSC hold at πτ . According to Theorem 2 in [ 52 ], the Lagrangian multipliers u∗ 
+
+> ci,τ
+
+(πϕ) is unique for any given πϕ and ∇ϕu∗ 
+
+> ci,τ
+
+(πϕ)
+
+exists. The computation is shown in [ 52 ]. For all i ∈ { 1, · · · , p } with u∗ 
+
+> ci,τ
+
+(πϕ) = 0 , we have 
+
+∇ϕu∗ 
+
+> ci,τ
+
+(πϕ) = 0 .29 F.4 Optimality and constraint satisfaction analysis F.4.1 Lemmas for optimality and safe analysis Lemma 4. For any task τ , and any policies π and π′ ∈ Π, the following bound holds: 
+
+11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] − Cπτ (π′) ≤ Jτ (π′) − Jτ (π) ≤ 11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] + Cπτ (π′) (29) 
+
+where 
+
+Cπτ (π′) = 4γ max s,a Aπτ (s, a )(1 − γ)2 Dmax T V (π|| π′)Es∼νπτ [DT V (π(·| s)|| π′(·| s))] .
+
+Here, we define DT V (π(·| s)|| π′(·| s)) ≜ 12
+
+P 
+
+> a∈A
+
+|π(a|s) − π′(a|s)| and Dmax T V (π|| π′) ≜
+
+max s∈S DT V (π(·| s)|| π′(·| s)) .The inequalities (29) also holds for each i = 1 , · · · , p , when Aπτ and Aπ′ 
+
+> τ
+
+are replaced by Aπci,τ and 
+
+Aπ′ 
+
+> ci,τ
+
+, max s,a Aπτ (s, a ) is replaced by max s,a Aπci,τ (s, a ), Jτ is replaced by Jci,τ .Proof. The proof follows similar lines of Theorem 1 in [ 44 ] and Corollary 1 and 2 in [ 2 ]. For the sake of self-containedness, we provide the complete proof. Let P πτ is a matrix where P πτ (i, j ) = Ea∼π(·| si)Pτ (sj |si, a ) and P π′ 
+
+> τ
+
+is a matrix where P π′ 
+
+> τ
+
+(i, j ) = 
+
+Ea∼π′(·| si)Pτ (sj |si, a ). Let G = (1 + γP πτ + ( γP πτ )2 + . . . ) = (1 − γP πτ )−1, and similarly 
+
+˜G = (1 + γP π′ 
+
+> τ
+
++ ( γP π′ 
+
+> τ
+
+)2 + . . . ) = (1 − γP π′ 
+
+> τ
+
+)−1. Let ρ be a density vector on state space and rτ
+
+is a reward function vector on state space, thus r⊤ 
+
+> τ
+
+ρ is a scalar meaning the expected reward under density ρ. Note that Jτ (π) = r⊤ 
+
+> τ
+
+Gρ τ , and Jτ (π′) = r⊤ 
+
+> τ
+
+˜Gρ τ . Here, ρτ is the initial state distribution for task τ . Let ∆ = P π′ 
+
+> τ
+
+− P πτ .Follow the proof in Appendix B in [44], we have 
+
+G−1 − ˜G−1 = (1 − γP π ) − (1 − γP ˜π ) = γ∆.
+
+Left multiply by ˜G and right multiply by G,
+
+˜G = γ ˜G∆G + G. (30) Left multiply by G and right multiply by ˜G,
+
+˜G = γG ∆ ˜G + G. (31) Substituting the right-hand side in (30) into ˜G in (31), then 
+
+˜G = G + γG ∆G + γ2G∆ ˜G∆G. 
+
+So we have 
+
+Jτ (π′) − Jτ (π) = r⊤ 
+
+> τ
+
+( ˜G − G)ρτ = γr ⊤ 
+
+> τ
+
+G∆Gρ τ + γ2r⊤ 
+
+> τ
+
+G∆ ˜G∆Gρ τ . (32) Note that r⊤ 
+
+> τ
+
+G = vπτ ⊤, where v is the value function on the state space. We also have Gρ τ = 11−γ νπτ ,where νπτ is the state visitation distribution vector. So, 
+
+Jτ (˜ π) − Jτ (π) = r⊤ 
+
+> τ
+
+( ˜G − G)ρτ = γ
+
+1 − γ vπτ
+
+> ⊤
+
+∆νπτ + γ2
+
+1 − γ vπτ
+
+> ⊤
+
+∆ ˜G∆νπτ .
+
+Consider the first term γ 
+
+> 1−γ
+
+vπτ ⊤∆νπτ , similar to Equation (50) in [44], we have 
+
+γv πτ
+
+> ⊤
+
+∆νπτ = vπτ
+
+> ⊤
+
+(P π′ 
+
+> τ
+
+− P πτ )νπτ
+
+= X
+
+> s
+
+νπτ (s) X
+
+> s′
+
+X
+
+> a
+
+(π′(a|s) − π(a|s)) Pτ (s′|s, a ) γv πτ (s′)= X
+
+> s
+
+νπτ (s) X
+
+> a
+
+(π′(a|s) − π(a|s)) 
+
+"
+
+r(s) + X
+
+> s′
+
+Pτ (s′|s, a ) γv πτ (s′) − v(s)
+
+#
+
+= X
+
+> s
+
+νπτ (s) X
+
+> a
+
+(π′(a|s) − π(a|s)) Aπτ (s, a )
+
+(33) 30 Since we have P 
+
+> a
+
+π(a|s)Aπτ (s, a ) = 0 , we have 
+
+γv πτ
+
+> ⊤
+
+∆νπτ = X
+
+> s
+
+νπτ (s) X
+
+> a
+
+π′(a|s)Aπτ (s, a ) = E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] .
+
+Combine (32) and the above equation, we have the following for the second term: 
+
+γ2
+
+1 − γ vπτ
+
+> ⊤
+
+∆ ˜G∆νπτ = Jτ (π′) − Jτ (π) − 11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] .
+
+Then we need to show γ2
+
+1 − γ vπτ
+
+> ⊤
+
+∆ ˜G∆νπτ ≤ Cπτ (π′).
+
+First, 
+
+γ2
+
+1 − γ vπτ
+
+> ⊤
+
+∆ ˜G∆νπτ
+
+≤ γ2
+
+1 − γ
+
+
+
+vπτ
+
+> ⊤
+
+∆
+
+
+
+> Sv
+
+ ˜G∆νπτ
+
+ 
+
+> Sv
+
++ γ2
+
+1 − γ
+
+
+
+vπτ
+
+> ⊤
+
+∆
+
+
+
+> S/Sv
+
+ ˜G∆νπτ
+
+
+
+> S/Sv
+
+By Hölder’s inequality, 
+
+γ2
+
+1 − γ vπτ
+
+> ⊤
+
+∆ ˜G∆νπτ ≤ γ
+
+1 − γ ∥γv πτ
+
+> ⊤
+
+∆∥∞∥ ˜G∆νπτ ∥1.
+
+Similar to (33), each element in the vector γv πτ ⊤∆ is P
+
+> a
+
+(π′(a|s) − π(a|s)) Aπτ (s, a ), then we have 
+
+γv πτ
+
+> ⊤
+
+∆ ∞
+
+≤ max 
+
+> s∈S
+
+X
+
+> a
+
+|π′(a|s) − π(a|s)|Aπτ (s, a ) ≤ 2 max  
+
+> s,a
+
+Aπτ (s, a )Dmax T V (π|| π′).
+
+From the Lemma 3 of [2], we have 
+
+∥ ˜G∆νπτ ∥1 ≤ 21 − γ Es∼νπτ [DT V (π(·| s)|| π′(·| s))] .
+
+Therefore, we have 
+
+γ2
+
+1 − γ vπτ
+
+> ⊤
+
+∆ ˜G∆νπτ ≤ Cπτ (π′)= 4γ max s,a Aπτ (s, a )(1 − γ)2 Dmax T V (π|| π′)Es∼νπτ [DT V (π(·| s)|| π′(·| s))] 
+
+Then the bounds hold. 
+
+Lemma 5 (Restatement of Lemma 1) . For any task τ , and any policies π and π′ ∈ Π with 
+
+max s∈S DT V (π|| π′) ≤ α Es∼νπτ [DT V (π(·| s) || π′(·| s))] }, the following bound holds: 
+
+Jτ (π′) − Jτ (π) ≤ 11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] + 2γαA max 
+
+(1 − γ)2 Es∼νπτ [DKL (π′(·| s)|| π(·| s))] 
+
+and 
+
+Jτ (π′) − Jτ (π) ≥ 11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] − 2γαA max 
+
+(1 − γ)2 Es∼νπτ [DKL (π′(·| s)|| π(·| s))] .
+
+These two inequalities also holds for each i = 1 , · · · , p , when Aπτ and Aπ′ 
+
+> τ
+
+are replaced by Aπci,τ and 
+
+Aπ′ 
+
+> ci,τ
+
+, Amax is replaced by Amax ci , Jτ is replaced by Jci,τ .
+
+31 Lemma 5 is a variant of Theorem 1 in [ 44 ] and Corollary 1 and 2 in [ 2]. The difference is that, the inequalities in Lemma 5 replace the term max s DKL (π′(·| s)|| π(·| s) in Theorem 1 in [ 44 ] and replace the term pEs∼νπτ [DKL (π′(·| s)|| π(·| s))] in Corollary 1 and 2 in [ 2] by 
+
+Es∼νπτ [DKL (π′(·| s)|| π(·| s))] in the right-hand side of the inequalities. 
+
+Proof. We show the first inequality. The second inequality can be proven similarly. From Lemma 4, 
+
+Jτ (π′) − Jτ (π) − 11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] 
+
+≤ 4γ max s,a Aπτ (s, a )(1 − γ)2 Dmax T V (π|| π′)Es∼νπτ [DT V (π(·| s)|| π′(·| s))] .
+
+We have Dmax T V (π|| π′) ≤ αEs∼νπτ [DT V (π(·| s)|| π′(·| s))] . Therefore, we have 
+
+Jτ (π′)−Jτ (π)− 11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] ≤ 4γα max s,a Aπτ (s, a )(1 − γ)2 Es∼νπτ [DT V (π(·| s)|| π′(·| s))] 2 .
+
+From Jensen’s inequality, we have 
+
+Es∼νπτ [DT V (π(·| s)∥π′(·| s))] 2 ≤ Es∼νπτ
+
+D2 
+
+> T V
+
+(π(·| s)∥π′(·| s))  .
+
+From the above inequalities, we have 
+
+Jτ (π′) − Jτ (π) − 11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] ≤ 4γαA max 
+
+(1 − γ)2 Es∼νπτ
+
+D2 
+
+> T V
+
+(π(·| s)|| π′(·| s))  . (34) From [14], we have 
+
+D2 
+
+> T V
+
+(π(·| s)|| π′(·| s)) ≤ 12 DKL (π′(·| s)|| π(·| s)) .
+
+Therefore, 
+
+Jτ (π′) − Jτ (π) ≤ 11 − γ E
+
+> s∼νπτ
+> a∼π′(·| s)
+
+[Aπτ (s, a )] + 2γαA max 
+
+(1 − γ)2 Es∼νπτ [DKL (π′(·| s)|| π(·| s))] 
+
+F.4.2 Proof of Propostion 4 
+
+Before we prove Proposition 4, we first show a lemma. 
+
+Lemma 6. There exists a constant α such that, for any bounded ϕ, max s∈S DT V (πϕ|| πτ ) ≤ α
+
+Es∼νπϕτ [DT V (πϕ(·| s) || πτ (·| s))] } where πτ = As(πϕ, Λ, ∆, τ ) with λ ≥ 2γαA max  
+
+> 1−γ
+
+and λci ≥ 
+
+> 2γαA max ci
+> (1 −γ)2
+
+for each i.Proof. Consider πτ = As(πϕ, Λ, ∆, τ ) with λ ≥ 2γαA max  
+
+> 1−γ
+
+and λci ≥ 2γαA max ci 
+
+> (1 −γ)2
+
+for each i. From Lemma 1, we have 
+
+πτ (·| s) ∝ exp( fϕ(s, ·) + ( λ + (1 − γ)
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+λci )−1(Aπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, ·))) .
+
+When λ ≥ 2γαA max  
+
+> 1−γ
+
+and λci ≥ 2γαA max ci 
+
+> (1 −γ)2
+
+,
+
+(λ + (1 − γ)
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+λci )−1 ≤ 1 − γ
+
+2αγ 
+
+1
+
+Amax + Ppi=1 u∗ 
+
+> ci,τ
+
+Amax ci
+
+.
+
+32 Then, 
+
+(λ + (1 − γ)
+
+> p
+
+X
+
+> i=1
+
+u∗ 
+
+> ci,τ
+
+λci )−1(Aπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, ·))) ≤ 1 − γ
+
+2αγ .
+
+Next, we denote λ + (1 − γ) Ppi=1 u∗ 
+
+> ci,τ
+
+λci as λnew , denote (Aπϕ 
+
+> τ
+
+(s, ·) − Ppi=1 u∗ 
+
+> ci,τ
+
+Aπϕ 
+
+> ci,τ
+
+(s, ·)) as 
+
+Anew (s, ·), and denote Amax + Ppi=1 u∗ 
+
+> ci,τ
+
+Amax ci as Amax new . Then, we have |λ−1
+
+> new
+
+Anew (s, ·)| ≤ 1−γ 
+
+> 2αγ
+
+.Consider α is sufficiently large, then 1−γ 
+
+> 2αγ
+
+could be sufficiently small. From 
+
+πτ (·| s) ∝ exp( fϕ(s, ·) + λ−1
+
+> new
+
+Anew (s, ·)) ,
+
+we have 
+
+πτ (·| s) = exp  fϕ(s, a ) + λ−1
+
+> new
+
+Anew (s, ·)P 
+
+> a∈A
+
+exp  fϕ(s, a ′) + λ−1
+
+> new
+
+Anew (s, ·) = exp  fϕ(s, a ) + λ−1
+
+> new
+
+Anew (s, ·)P 
+
+> a∈A
+
+exp ( fϕ(s, a ′)) = πϕ(·| s) exp( λ−1
+
+> new
+
+Anew (s, ·)) = πϕ(·| s)(1 + λ−1
+
+> new
+
+Anew (s, ·)) 
+
+Therefore, 
+
+DT V (πϕ(·| s)|| πτ (·| s)) = 12
+
+X
+
+> a∈A
+
+|πϕ(a|s) − πτ (a|s)| = 12 λ−1
+
+> new
+
+X
+
+> a∈A
+
+|Anew (s, a )|πϕ(a|s)
+
+For a policy with a bounded parameter ϕ, πϕ(a|s) is non-trivial larger than 0. Then P 
+
+> a∈A
+
+|Anew (s, a )|πϕ(a|s) is non-trivial larger than 0 if there exists a with |Anew (s, a )| > 0.If |Anew (s, a )| = 0 for any s ∈ S and a ∈ A , then α could any constant. If there is s ∈ S and 
+
+a ∈ A | Anew (s, a )| > 0, since Anew (s, a ) is continuous, there exists a closed set S, such that P 
+
+> a∈A
+
+|Anew (s, a )|πϕ(a|s) is non-trivial larger than 0. Therefore, there exists a constant α such that 
+
+max  
+
+> s∈S
+
+DT V (πϕ|| πτ ) ≤ αEs∼νπϕτ [DT V (πϕ(·| s)|| πτ (·| s))] }.
+
+Next, we prove Proposition 4. 
+
+Proof of Propostion 4. From Lemma 1 and Lemma 6, we have 
+
+Jτ (π) ≤ Jτ (πϕ) + Es∼νπτ ,a ∼π(·| s)
+
+ Aπϕ 
+
+> τ
+
+(s, a )1 − γ
+
+
+
++ 2γαA max 
+
+(1 − γ)2 Es∼νπϕτ [DKL (π(·| s)|| πϕ(·| s))] 
+
+Since λci ≥ 2γαA max ci 
+
+> (1 −γ)2
+
+, we have 
+
+Jci,τ (πτ )
+
+≤ Jci,τ (πϕ) + E 
+
+> s∼νπϕτ
+> a∼πτ(·| s)
+
+ Aπϕ 
+
+> ci,τ
+
+(s, a )1 − γ
+
+
+
++ 2γαA max ci
+
+(1 − γ)2 Es∼νπϕτ [DKL (πτ (·| s)∥πϕ(·| s))] 
+
+≤ Jci,τ (πϕ) + E 
+
+> s∼νπϕτ
+> a∼πτ(·| s)
+
+ Aπϕ 
+
+> ci,τ
+
+(s, a )1 − γ
+
+
+
++ λci Es∼νπϕτ [DKL (πτ (·| s)∥πϕ(·| s))] 
+
+≤ di,τ + δci .
+
+Also, we have 
+
+Jτ (π) ≥ Jτ (πϕ) + Es∼νπτ ,a ∼π(·| s)
+
+ Aπϕ 
+
+> τ
+
+(s, a )1 − γ
+
+
+
+− 2γαA max 
+
+(1 − γ)2 Es∼νπϕτ [DKL (π(·| s)|| πϕ(·| s))] 
+
+Since λ ≥ 2γαA max  
+
+> 1−γ
+
+, we have 
+
+Jτ (π) ≥ Jτ (πϕ) + Es∼νπτ ,a ∼π(·| s)
+
+ Aπϕ 
+
+> τ
+
+(s, a )1 − γ
+
+
+
+− λ
+
+1 − γ Es∼νπϕτ [DKL (π(·| s)|| πϕ(·| s))] .
+
+33 For the solution πτ of problem (1), we have 
+
+Jτ (πτ ) ≥ E 
+
+> s∼νπϕτ
+> a∼πτ(·| s)
+
+ Aπϕ 
+
+> τ
+
+(s, a )1 − γ
+
+
+
+− λ
+
+1 − γ Es∼νπϕτ [DKL (πτ (·| s)∥πϕ(·| s))] + Jτ (πϕ)= max 
+
+> π∈ΠCτ
+
+E
+
+> s∼νπϕτ
+> a∼π(·| s)
+
+ Aπϕ 
+
+> τ
+
+(s, a )1 − γ
+
+
+
+− λ
+
+1 − γ Es∼νπϕτ [DKL (π(·| s)∥πϕ(·| s))] + Jτ (πϕ)
+
+≥ E
+
+> s∼νπϕτ
+> a∼πϕ(·| s)
+
+ Aπϕ 
+
+> τ
+
+(s, a )1 − γ
+
+
+
+− λ
+
+1 − γ Es∼νπϕτ [DKL (πϕ(·| s)∥πϕ(·| s))] + Jτ (πϕ) = Jτ (πϕ).
+
+where ΠCτ is the feasible set of problem (1). The last inequality comes from πϕ ∈ ΠCτ .
+
+F.4.3 Proof of Theorem 1 
+
+Recall the notations defined in Section 5.2 and used in this section: the optimal task-specific policy 
+
+πτ 
+
+> ∗
+
+for task τ as 
+
+πτ 
+
+> ∗
+
+≜ argmax π∈Π Jτ (π) s.t. Jci,τ (π) ≤ di,τ ;
+
+the conservative task-specific optimal policy πτ
+
+> ∗,[ϵ]
+
+, which is optimal for τ under conservative safety constraints, i.e., 
+
+πτ 
+
+> ∗,[ϵ]
+
+≜ argmax π∈Π Jτ (π) s.t. Jci,τ (π) ≤ di,τ − ϵ, 
+
+where the conservative constant ϵ ≥ 0; the task variance 
+
+Var (P(Γ)) ≜ min ϕ Eτ ∼P(Γ) Es∼νπϕτ [DKL (πτ 
+
+> ∗
+
+(·| s)|| πϕ(·| s))]; 
+
+the task variance under the conservative safety constraints 
+
+Var ϵ(P(Γ)) ≜ min ϕ Eτ ∼P(Γ) Es∼νπϕτ [DKL (πτ
+
+> ∗,[ϵ]
+
+(·| s)|| πϕ(·| s))] ,
+
+and its minimal point 
+
+ˆϕ[ϵ] ≜ arg min ϕ Eτ ∼P(Γ) Es∼νπϕτ [DKL (πτ
+
+> ∗,[ϵ]
+
+(·| s)|| πϕ(·| s))] ,
+
+the radius of the task distribution P(Γ) 
+
+R(P(Γ)) ≜ max τ ∈Γ,ϵ ∈E Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+[DKL (πτ
+
+> ∗,[ϵ]
+
+(·| s)|| π ˆϕ[ϵ] (·| s))] ,
+
+where the set E is defined by {ϵ ≥ 0 : πτ 
+
+> ∗,[ϵ]
+
+exists for all τ ∈ Γ}.We also define 
+
+R[ϵ](P(Γ)) ≜ max τ ∈Γ Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+[DKL (πτ
+
+> ∗,[ϵ]
+
+(·| s)|| π ˆϕ[ϵ] (·| s))] .
+
+We first show some lemmas for the proof of Theorem 1. 
+
+Lemma 7. For any ϵ, the policy πτ 
+
+> ∗,[ϵ]
+
+belongs to the set {π ∈ Π : Jci,τ (π ˆϕ[ϵ] )+ 
+
+E 
+
+> s∼ν
+> πˆϕ[ϵ]
+> τ
+> a∼π(·| s)
+
+ A  
+
+> πˆϕ[ϵ]
+> ci,τ (s,a )1−γ
+
+
+
++ 2γαA max ci 
+
+> (1 −γ)2
+
+Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+[DKL (π(·| s)|| π ˆϕ[ϵ] (·| s))] ≤ di,τ − ϵ + 
+
+> 4γαA max ci
+> (1 −γ)2
+
+R(P(Γ)) for all i = 1 , · · · , p }
+
+Proof. From the second inequality in Lemma 1, Jci,τ (πτ
+
+> ∗,[ϵ]
+
+) ≥
+
+Jci,τ (π ˆϕ[ϵ] ) + 11 − γ E 
+
+> s∼ν
+> πˆϕ[ϵ]
+> τ
+> a∼πτ
+> ∗,[ϵ](·| s)
+
+h
+
+Aπ ˆϕ[ϵ] 
+
+> ci,τ
+
+(s, a )
+
+i
+
+− 2γαA max ci
+
+(1 − γ)2 Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+h
+
+DKL (πτ
+
+> ∗,[ϵ]
+
+(·| s)|| π ˆϕ[ϵ] (·| s)) 
+
+i
+
+.
+
+34 Since Jci,τ (πτ
+
+∗,[ϵ]) ≤ di,τ − ϵ, we have 
+
+Jci,τ (π ˆϕ[ϵ] ) + 11 − γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+ci,τ (s, a )
+
+i
+
+− 2γαA max ci
+
+(1 − γ)2 Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+h
+
+DKL (πτ
+
+∗,[ϵ](·| s)|| π ˆϕ[ϵ] (·| s)) 
+
+i
+
+≤ di,τ − ϵ. 
+
+Then, 
+
+Jci,τ (π ˆϕ[ϵ] ) + E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+"
+
+Aπ ˆϕ[ϵ]
+
+ci,τ (s, a )1 − γ
+
+#
+
++ 2γαA max ci
+
+(1 − γ)2 Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+h
+
+DKL (πτ
+
+∗,[ϵ](·| s)|| π ˆϕ[ϵ] (·| s)) 
+
+i
+
+≤ di,τ − ϵ + 4γαA max ci
+
+(1 − γ)2 Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+h
+
+DKL (πτ
+
+∗,[ϵ](·| s)|| π ˆϕ[ϵ] (·| s)) 
+
+i
+
+≤ di,τ − ϵ + 4γαA max ci
+
+(1 − γ)2 R[ϵ](P(Γ)) 
+
+≤ di,τ − ϵ + 4γαA max ci
+
+(1 − γ)2 R(P(Γ)) .
+
+Lemma 8. We have 
+
+π ˆϕ[ϵ] ∈
+
+
+
+π ∈ Π : Jci,τ (π) ≤ di,τ − ϵ + 4γαA max ci
+
+(1 − γ)2 R(P(Γ)) for all i = 1 , · · · , p and τ ∈ Γ
+
+
+
+.
+
+Proof. From the second inequality in Lemma 1, Jci,τ (πτ
+
+∗,[ϵ]) ≥
+
+Jci,τ (π ˆϕ[ϵ] ) + 11 − γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+ci,τ (s, a )
+
+i
+
+− 2γαA max ci
+
+(1 − γ)2 Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+h
+
+DKL (πτ
+
+∗,[ϵ](·| s)|| π ˆϕ[ϵ] (·| s)) 
+
+i
+
+.
+
+Since Jci,τ (πτ
+
+∗,[ϵ]) ≤ di,τ − ϵ, we have 
+
+Jci,τ (π ˆϕ[ϵ] ) + 11 − γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+ci,τ (s, a )
+
+i
+
+≤ di,τ − ϵ + 2γαA max ci
+
+(1 − γ)2 Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+h
+
+DKL (πτ
+
+∗,[ϵ](·| s)|| π ˆϕ[ϵ] (·| s)) 
+
+i
+
+.
+
+Also, from (33) and the proof of Lemma 1, we have 
+
+11 − γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+ci,τ (s, a )
+
+i
+
+= 11 − γ
+
+X
+
+s
+
+νπ ˆϕ[ϵ]
+
+τ (s) X
+
+a
+
+(πτ
+
+∗,[ϵ](a|s) − π ˆϕ[ϵ] (a|s)) Aπ ˆϕ[ϵ]
+
+ci,τ (s, a )
+
+≤ 2αA max ci
+
+1 − γ Dmax T V (πτ
+
+∗,[ϵ](·| s)|| π ˆϕ[ϵ] (·| s)) 2
+
+≤ 4αA max ci
+
+1 − γ Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+h
+
+DKL (πτ
+
+∗,[ϵ](·| s)|| π ˆϕ[ϵ] (·| s)) 
+
+i
+
+35 Then, 
+
+Jci,τ (π ˆϕ[ϵ] ) + 11 − γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+ci,τ (s, a )
+
+i
+
+≤ di,τ − ϵ + 2αA max ci
+
+(1 − γ)2 Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+h
+
+DKL (πτ
+
+∗,[ϵ](·| s)|| π ˆϕ[ϵ] (·| s)) 
+
+i
+
+≤ di,τ − ϵ + 4γαA max ci
+
+(1 − γ)2 R[ϵ](P(Γ)) 
+
+≤ di,τ − ϵ + 4γαA max ci
+
+(1 − γ)2 R(P(Γ)) .
+
+Here, we assume γ ≥ 0.5, which is commonly used. 
+
+Theorem 2. Suppose that Assumptions 1 holds. Let πτ ( ˆϕ[ϵ]) = As(π ˆϕ[ϵ] , Λ, ∆, τ ) with λ =
+
+2γαA max 
+
+1−γ , λci = 2γαA max ci
+
+(1 −γ)2 and δci = 2γαA max ci
+
+(1 −γ)2 R(P(Γ)) − ϵ. We have 
+
+Eτ ∼P(Γ) [Jτ (πτ
+
+∗,[ϵ]) − Jτ (As(πϕ∗ , Λ, ∆, τ ))] ≤ 4γαA max 
+
+(1 − γ)2 Var ϵ(P(Γ)) .
+
+Proof. From Lemma 7, we have that πτ
+
+∗,[ϵ] ∈ ΠB , where ΠB ≜ {π ∈ Π : Jci,τ (π ˆϕ[ϵ] )+ 
+
+11−γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼π(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+ci,τ (s, a )
+
+i
+
++λci,τ Es∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+[DKL (π(·| s)|| π ˆϕ[ϵ] (·| s))] ≤ di,τ + δci , ∀i}.Also, πτ ( ˆϕ[ϵ]) ∈ ΠB . Therefore, from the definition of As in problem (1), we have 
+
+E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ ( ˆϕ[ϵ])( ·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+τ (s, a )
+
+i
+
+−λ ¯DKL (πτ ( ˆϕ[ϵ]), π ˆϕ[ϵ] ) ≥ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+τ (s, a )
+
+i
+
+−λ ¯DKL (πτ
+
+∗,[ϵ], π ˆϕ[ϵ] ),
+
+where we use ¯DKL (π1(·| s), π 2(·| s)) to represent Es∼νπ2 
+
+> τ
+
+[DKL (π1(·| s), π 2(·| s))] .From the second inequality in Lemma 1 and the above inequality, 
+
+Jτ (πτ ( ˆϕ[ϵ])) − Jτ (π ˆϕ[ϵ] ) ≥ 11 − γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ ( ˆϕ[ϵ])( ·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+τ (s, a )
+
+i
+
+− λ
+
+1 − γ ¯DKL (πτ ( ˆϕ[ϵ]), π ˆϕ[ϵ] )
+
+≥ 11 − γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+τ (s, a )
+
+i
+
+− λ
+
+1 − γ ¯DKL (πτ
+
+∗,[ϵ], π ˆϕ[ϵ] ).
+
+From the first inequality in Lemma 1, 
+
+Jτ (πτ
+
+∗,[ϵ]) − Jτ (π ˆϕ[ϵ] ) ≤ 11 − γ E
+
+s∼ν 
+
+> πˆϕ[ϵ]
+> τ
+
+a∼πτ
+
+> ∗,[ϵ]
+
+(·| s)
+
+h
+
+Aπ ˆϕ[ϵ]
+
+τ (s, a )
+
+i
+
++ 2γαA max 
+
+(1 − γ)2 ¯DKL (πτ
+
+∗,[ϵ], π ˆϕ[ϵ] ).
+
+From the last two inequalities, 
+
+Jτ (πτ ( ˆϕ[ϵ])) − Jτ (πτ
+
+∗,[ϵ]) ≥ − ( 2γαA max 
+
+(1 − γ)2 + λ
+
+1 − γ ) ¯DKL (πτ
+
+∗,[ϵ], π ˆϕ[ϵ] ),
+
+i.e., 
+
+Jτ (πτ
+
+∗,[ϵ]) − Jτ (As(π ˆϕ[ϵ] , Λ, ∆, τ )) ≤ ( 2γαA max 
+
+(1 − γ)2 + λ
+
+1 − γ ) ¯DKL (πτ
+
+∗,[ϵ], π ˆϕ[ϵ] ).
+
+36 Then, 
+
+Eτ ∼P(Γ) [Jτ (πτ
+
+> ∗,[ϵ]
+
+) − Jτ (As(π ˆϕ[ϵ] , Λ, ∆, τ ))] 
+
+≤ ( 2γαA max 
+
+(1 − γ)2 + λ
+
+1 − γ )Eτ ∼P(Γ) [ ¯DKL (πτ
+
+> ∗,[ϵ]
+
+, π ˆϕ[ϵ] )] = ( 2γαA max 
+
+(1 − γ)2 + λ
+
+1 − γ )Var ϵ(P(Γ)) .
+
+Moreover, from Lemma 8, 
+
+π ˆϕ[ϵ] ∈ ΠC ≜ {π ∈ Π : Jci,τ (π) ≤ di,τ + δci for all i = 1 , · · · , p and τ ∈ Γ} .
+
+From the definition of ϕ∗, we have 
+
+Eτ ∼P(Γ) [Jτ (As(πϕ∗ , Λ, ∆, τ ))] ≥ max 
+
+> π∈ΠC
+
+Eτ ∼P(Γ) [Jτ (As(π, Λ, ∆, τ ))] 
+
+≥ Eτ ∼P(Γ) [Jτ (As(π ˆϕ[ϵ] , Λ, ∆, τ ))] 
+
+Then, we have 
+
+Eτ ∼P(Γ) [Jτ (πτ
+
+> ∗,[ϵ]
+
+) − Jτ (As(πϕ∗ , Λ, ∆, τ ))] 
+
+≤ Eτ ∼P(Γ) [Jτ (πτ
+
+> ∗,[ϵ]
+
+) − Jτ (As(π ˆϕ[ϵ] , Λ, ∆, τ ))] 
+
+≤ ( 2γαA max 
+
+(1 − γ)2 + λ
+
+1 − γ )Var ϵ(P(Γ)) 
+
+≤ 4γαA max 
+
+(1 − γ)2 Var ϵ(P(Γ)) .
+
+Proof of Theorem 1. Theorem 1 is proven by combining Theorem 2 with Corrolary 1. 
+
+G Discussion on the Tightness of the Derived Lower Bound in Theorem 1 
+
+Notice that the meta-safe RL aims to extract common knowledge from multiple existing RL tasks. The tasks in the task distribution are usually correlated, and their near-optimal policies usually produce similar actions on a large part of the state space. For example, in the experiments of navigation scenarios with collision avoidance, although optimal policies under different environments should produce different actions when meeting different obstacles, the actions in free space should be similar. As Var (P(Γ)) is defined as min ϕ Eτ ∼P(Γ) Es∼νπϕτ [DKL (πτ 
+
+> ∗
+
+(·| s)|| πϕ(·| s))] , which computes the expectation over the entire state space, it could be small, especially when the state space is large. Moreover, Var (P(Γ)) ≜ min ϕ Eτ ∼P(Γ) Es∼νπϕτ [DKL (πτ 
+
+> ∗
+
+(·| s)|| πϕ(·| s))] is the minimal average distance between policies. According to our experiment, 0.05 is a sufficiently large number for the quantity for the KL divergence between two policies and the value of Var (P(Γ)) under this KL divergence is about 14 × 0.05 .Next, we roughly evaluate the quantity of the optimality bound 4γαA max  
+
+> (1 −γ)2
+
+Var ϵ(P(Γ)) and show it can be relatively tight. We set γ = 0 .99 , the reward/cost r ∈ [0 , 1] and c ∈ [0 , 1] . The max advantage function value Amax ≤ 1 is generally not very small. However, as indicated in the proof of Lemma F.4.1, we actually can replace Amax by max s,a Aπ∗ 
+
+> ϕ
+> τ
+
+(s, a ), which is computed on the meta-policy and is usually much smaller than 1, we set it as 0.05 . Then, the optimality bound of 4γαA max  
+
+> (1 −γ)2
+
+Var ϵ(P(Γ)) 
+
+is about 25 . Note that, the quantity of the total reward/cost is about P∞ 
+
+> n=1
+
+γn = 1 
+
+> γ
+
+= 100 . Therefore, the bound is about 25% of the total reward/cost, which is relatively tight. It is standard in RL and safe RL to derive a lower bound with an order of quantity similar to the optimality bound 4γαA max  
+
+> (1 −γ)2
+
+Var ϵ(P(Γ)) in this paper. For example, in TRPO [ 44 ] and CPO [ 2], the lower bounds also include the term Amax  
+
+> (1 −γ)2
+
+DKL . Moreover, for conciseness and broad applicability, we have to derive a general optimality bound, which makes the bound looser. When the used condition and target problem are specified, a tighter optimality bound can be derived. For example, when a 37 large task distribution is specified, i.e., Var (P(Γ)) is large, we can also make some inequalities (such as those in lines 1573 to 1585) tighter. However, when the target problem is required to be specified, the generality of the optimality bound will be lost and it will become harder to understand and less intuitive. 
+
+H Limitations and Future Works 
+
+In this paper, we consider the safety metric of CMDP, i.e., the expected accumulated costs satisfy the given safety threshold. This metric is generally less rigorous than the safe control research, where safety is defined as persistently satisfying certain state constraints. A future work is establishing a safe meta-RL algorithm with the rigorous safety metric. Another limitation is that we assume the solution of problem (2) exists, i.e., there exists a policy such that it is safe for all tasks as the initial policy for policy adaptation steps. A future work is to release this assumption and identify a safe task-specific meta-policy for each given task. 38 NeurIPS Paper Checklist 
+
+1. Claims 
+
+Question: Do the main claims made in the abstract and introduction accurately reflect the paper’s contributions and scope? Answer: [Yes] Justification: The abstract and introduction, including the main contribution statement and related works, accurately reflect the paper’s contributions and scope. Guidelines: • The answer NA means that the abstract and introduction do not include the claims made in the paper. • The abstract and/or introduction should clearly state the claims made, including the contributions made in the paper and important assumptions and limitations. A No or NA answer to this question will not be perceived well by the reviewers. • The claims made should match theoretical and experimental results, and reflect how much the results can be expected to generalize to other settings. • It is fine to include aspirational goals as motivation as long as it is clear that these goals are not attained by the paper. 2. Limitations 
+
+Question: Does the paper discuss the limitations of the work performed by the authors? Answer: [Yes] Justification: We provide the limitations in the Appendix H. Guidelines: • The answer NA means that the paper has no limitation while the answer No means that the paper has limitations, but those are not discussed in the paper. • The authors are encouraged to create a separate "Limitations" section in their paper. • The paper should point out any strong assumptions and how robust the results are to violations of these assumptions (e.g., independence assumptions, noiseless settings, model well-specification, asymptotic approximations only holding locally). The authors should reflect on how these assumptions might be violated in practice and what the implications would be. • The authors should reflect on the scope of the claims made, e.g., if the approach was only tested on a few datasets or with a few runs. In general, empirical results often depend on implicit assumptions, which should be articulated. • The authors should reflect on the factors that influence the performance of the approach. For example, a facial recognition algorithm may perform poorly when image resolution is low or images are taken in low lighting. Or a speech-to-text system might not be used reliably to provide closed captions for online lectures because it fails to handle technical jargon. • The authors should discuss the computational efficiency of the proposed algorithms and how they scale with dataset size. • If applicable, the authors should discuss possible limitations of their approach to address problems of privacy and fairness. • While the authors might fear that complete honesty about limitations might be used by reviewers as grounds for rejection, a worse outcome might be that reviewers discover limitations that aren’t acknowledged in the paper. The authors should use their best judgment and recognize that individual actions in favor of transparency play an impor-tant role in developing norms that preserve the integrity of the community. Reviewers will be specifically instructed to not penalize honesty concerning limitations. 3. Theory assumptions and proofs 
+
+Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof? Answer: [Yes] 39 Justification: All proofs are provided in Appendix. Guidelines: • The answer NA means that the paper does not include theoretical results. • All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced. • All assumptions should be clearly stated or referenced in the statement of any theorems. • The proofs can either appear in the main paper or the supplemental material, but if they appear in the supplemental material, the authors are encouraged to provide a short proof sketch to provide intuition. • Inversely, any informal proof provided in the core of the paper should be complemented by formal proofs provided in appendix or supplemental material. • Theorems and Lemmas that the proof relies upon should be properly referenced. 4. Experimental result reproducibility 
+
+Question: Does the paper fully disclose all the information needed to reproduce the main ex-perimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)? Answer: [Yes] Justification: We provide all details of the information needed to reproduce the main experimental results in the experiment section and in Appendix B. Guidelines: • The answer NA means that the paper does not include experiments. • If the paper includes experiments, a No answer to this question will not be perceived well by the reviewers: Making the paper reproducible is important, regardless of whether the code and data are provided or not. • If the contribution is a dataset and/or model, the authors should describe the steps taken to make their results reproducible or verifiable. • Depending on the contribution, reproducibility can be accomplished in various ways. For example, if the contribution is a novel architecture, describing the architecture fully might suffice, or if the contribution is a specific model and empirical evaluation, it may be necessary to either make it possible for others to replicate the model with the same dataset, or provide access to the model. In general. releasing code and data is often one good way to accomplish this, but reproducibility can also be provided via detailed instructions for how to replicate the results, access to a hosted model (e.g., in the case of a large language model), releasing of a model checkpoint, or other means that are appropriate to the research performed. • While NeurIPS does not require releasing code, the conference does require all submis-sions to provide some reasonable avenue for reproducibility, which may depend on the nature of the contribution. For example (a) If the contribution is primarily a new algorithm, the paper should make it clear how to reproduce that algorithm. (b) If the contribution is primarily a new model architecture, the paper should describe the architecture clearly and fully. (c) If the contribution is a new model (e.g., a large language model), then there should either be a way to access this model for reproducing the results or a way to reproduce the model (e.g., with an open-source dataset or instructions for how to construct the dataset). (d) We recognize that reproducibility may be tricky in some cases, in which case authors are welcome to describe the particular way they provide for reproducibility. In the case of closed-source models, it may be that access to the model is limited in some way (e.g., to registered users), but it should be possible for other researchers to have some path to reproducing or verifying the results. 5. Open access to data and code 
+
+Question: Does the paper provide open access to the data and code, with sufficient instruc-tions to faithfully reproduce the main experimental results, as described in supplemental material? 40 Answer: [Yes] Justification: We provide open access to the data and code with sufficient instructions in the supplemental material. Guidelines: • The answer NA means that paper does not include experiments requiring code. • Please see the NeurIPS code and data submission guidelines ( https://nips.cc/ public/guides/CodeSubmissionPolicy ) for more details. • While we encourage the release of code and data, we understand that this might not be possible, so “No” is an acceptable answer. Papers cannot be rejected simply for not including code, unless this is central to the contribution (e.g., for a new open-source benchmark). • The instructions should contain the exact command and environment needed to run to reproduce the results. See the NeurIPS code and data submission guidelines ( https: //nips.cc/public/guides/CodeSubmissionPolicy ) for more details. • The authors should provide instructions on data access and preparation, including how to access the raw data, preprocessed data, intermediate data, and generated data, etc. • The authors should provide scripts to reproduce all experimental results for the new proposed method and baselines. If only a subset of experiments are reproducible, they should state which ones are omitted from the script and why. • At submission time, to preserve anonymity, the authors should release anonymized versions (if applicable). • Providing as much information as possible in supplemental material (appended to the paper) is recommended, but including URLs to data and code is permitted. 6. Experimental setting/details 
+
+Question: Does the paper specify all the training and test details (e.g., data splits, hyper-parameters, how they were chosen, type of optimizer, etc.) necessary to understand the results? Answer: [Yes] Justification: We provide all training details in Appendix B. Guidelines: • The answer NA means that the paper does not include experiments. • The experimental setting should be presented in the core of the paper to a level of detail that is necessary to appreciate the results and make sense of them. • The full details can be provided either with the code, in appendix, or as supplemental material. 7. Experiment statistical significance 
+
+Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments? Answer: [Yes] Justification: We provide it in the section of the experiment. Guidelines: • The answer NA means that the paper does not include experiments. • The authors should answer "Yes" if the results are accompanied by error bars, confi-dence intervals, or statistical significance tests, at least for the experiments that support the main claims of the paper. • The factors of variability that the error bars are capturing should be clearly stated (for example, train/test split, initialization, random drawing of some parameter, or overall run with given experimental conditions). • The method for calculating the error bars should be explained (closed form formula, call to a library function, bootstrap, etc.) • The assumptions made should be given (e.g., Normally distributed errors). 41 • It should be clear whether the error bar is the standard deviation or the standard error of the mean. • It is OK to report 1-sigma error bars, but one should state it. The authors should preferably report a 2-sigma error bar than state that they have a 96% CI, if the hypothesis of Normality of errors is not verified. • For asymmetric distributions, the authors should be careful not to show in tables or figures symmetric error bars that would yield results that are out of range (e.g. negative error rates). • If error bars are reported in tables or plots, The authors should explain in the text how they were calculated and reference the corresponding figures or tables in the text. 8. Experiments compute resources 
+
+Question: For each experiment, does the paper provide sufficient information on the com-puter resources (type of compute workers, memory, time of execution) needed to reproduce the experiments? Answer: [Yes] Justification: Justification: We provide the information at the beginning of the Appendix B. Guidelines: • The answer NA means that the paper does not include experiments. • The paper should indicate the type of compute workers CPU or GPU, internal cluster, or cloud provider, including relevant memory and storage. • The paper should provide the amount of compute required for each of the individual experimental runs as well as estimate the total compute. • The paper should disclose whether the full research project required more compute than the experiments reported in the paper (e.g., preliminary or failed experiments that didn’t make it into the paper). 9. Code of ethics 
+
+Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines ?Answer: [Yes] Justification: the NeurIPS Code of Ethics is followed. Guidelines: • The answer NA means that the authors have not reviewed the NeurIPS Code of Ethics. • If the authors answer No, they should explain the special circumstances that require a deviation from the Code of Ethics. • The authors should make sure to preserve anonymity (e.g., if there is a special consid-eration due to laws or regulations in their jurisdiction). 10. Broader impacts 
+
+Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed? Answer: [NA] Justification: This paper presents work whose goal is to advance the field of Machine Learning. There is no potential societal consequence. Guidelines: • The answer NA means that there is no societal impact of the work performed. • If the authors answer NA or No, they should explain why their work has no societal impact or why the paper does not address societal impact. • Examples of negative societal impacts include potential malicious or unintended uses (e.g., disinformation, generating fake profiles, surveillance), fairness considerations (e.g., deployment of technologies that could make decisions that unfairly impact specific groups), privacy considerations, and security considerations. 42 • The conference expects that many papers will be foundational research and not tied to particular applications, let alone deployments. However, if there is a direct path to any negative applications, the authors should point it out. For example, it is legitimate to point out that an improvement in the quality of generative models could be used to generate deepfakes for disinformation. On the other hand, it is not needed to point out that a generic algorithm for optimizing neural networks could enable people to train models that generate Deepfakes faster. • The authors should consider possible harms that could arise when the technology is being used as intended and functioning correctly, harms that could arise when the technology is being used as intended but gives incorrect results, and harms following from (intentional or unintentional) misuse of the technology. • If there are negative societal impacts, the authors could also discuss possible mitigation strategies (e.g., gated release of models, providing defenses in addition to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system learns from feedback over time, improving the efficiency and accessibility of ML). 11. Safeguards 
+
+Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pretrained language models, image generators, or scraped datasets)? Answer: [NA] Justification: The paper poses no such risks. Guidelines: • The answer NA means that the paper poses no such risks. • Released models that have a high risk for misuse or dual-use should be released with necessary safeguards to allow for controlled use of the model, for example by requiring that users adhere to usage guidelines or restrictions to access the model or implementing safety filters. • Datasets that have been scraped from the Internet could pose safety risks. The authors should describe how they avoided releasing unsafe images. • We recognize that providing effective safeguards is challenging, and many papers do not require this, but we encourage authors to take this into account and make a best faith effort. 12. Licenses for existing assets 
+
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected? Answer: [NA] Justification: The paper does not use existing assets. Guidelines: • The answer NA means that the paper does not use existing assets. • The authors should cite the original paper that produced the code package or dataset. • The authors should state which version of the asset is used and, if possible, include a URL. • The name of the license (e.g., CC-BY 4.0) should be included for each asset. • For scraped data from a particular source (e.g., website), the copyright and terms of service of that source should be provided. • If assets are released, the license, copyright information, and terms of use in the package should be provided. For popular datasets, paperswithcode.com/datasets 
+
+has curated licenses for some datasets. Their licensing guide can help determine the license of a dataset. • For existing datasets that are re-packaged, both the original license and the license of the derived asset (if it has changed) should be provided. 43 • If this information is not available online, the authors are encouraged to reach out to the asset’s creators. 13. New assets 
+
+Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets? Answer: [NA] Justification: The paper does not release new assets. Guidelines: • The answer NA means that the paper does not release new assets. • Researchers should communicate the details of the dataset/code/model as part of their submissions via structured templates. This includes details about training, license, limitations, etc. • The paper should discuss whether and how consent was obtained from people whose asset is used. • At submission time, remember to anonymize your assets (if applicable). You can either create an anonymized URL or include an anonymized zip file. 14. Crowdsourcing and research with human subjects 
+
+Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)? Answer: [NA] Justification: The paper does not involve crowdsourcing nor research with human subjects. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Including this information in the supplemental material is fine, but if the main contribu-tion of the paper involves human subjects, then as much detail as possible should be included in the main paper. • According to the NeurIPS Code of Ethics, workers involved in data collection, curation, or other labor should be paid at least the minimum wage in the country of the data collector. 15. Institutional review board (IRB) approvals or equivalent for research with human subjects 
+
+Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained? Answer: [NA] Justification: The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Depending on the country in which research is conducted, IRB approval (or equivalent) may be required for any human subjects research. If you obtained IRB approval, you should clearly state this in the paper. • We recognize that the procedures for this may vary significantly between institutions and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the guidelines for their institution. • For initial submissions, do not include any information that would break anonymity (if applicable), such as the institution conducting the review. 44 16. Declaration of LLM usage 
+
+Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does not impact the core methodology, scientific rigorousness, or originality of the research, declaration is not required. Answer: [NA] Justification: This research does not involve LLMs as any important, original, or non-standard components. Guidelines: • The answer NA means that the core method development in this research does not involve LLMs as any important, original, or non-standard components. • Please refer to our LLM policy ( https://neurips.cc/Conferences/2025/LLM )for what should or should not be described. 45

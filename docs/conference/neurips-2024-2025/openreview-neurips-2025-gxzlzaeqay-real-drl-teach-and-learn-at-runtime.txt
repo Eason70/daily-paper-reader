@@ -1,0 +1,1956 @@
+Title: 671_Real_DRL_Teach_and_Learn_a.pdf
+
+URL Source: https://openreview.net/pdf?id=gXZlZAeqay
+
+Number of Pages: 44
+
+Markdown Content:
+# Real-DRL: Teach and Learn at Runtime 
+
+Yanbing Mao ∗
+
+Engineering Technology Division Wayne State University Detroit, MI 48202 
+
+hm9062@wayne.edu 
+
+Yihao Cai ∗
+
+Department of Electrical and Computer Engineering Wayne State University Detroit, MI 48202 
+
+yihao.cai@wayne.edu 
+
+Lui Sha 
+
+Siebel School of Computing and Data Science University of Illinois Urbana-Champaign Urbana, IL 61801 
+
+lrs@illinois.edu 
+
+## Abstract 
+
+This paper introduces the Real-DRL framework for safety-critical autonomous systems, enabling runtime learning of a deep reinforcement learning (DRL) agent to develop safe and high-performance action policies in real plants (i.e., real physical systems to be controlled), while prioritizing safety! The Real-DRL consists of three interactive components: a DRL-Student, a PHY-Teacher, and a Trigger. The DRL-Student is a DRL agent that innovates in the dual self-learning and teaching-to-learn paradigm and the real-time safety-informed batch sampling. On the other hand, PHY-Teacher is a physics-model-based design of action policies that focuses solely on safety-critical functions. PHY-Teacher is novel in its real-time patch for two key missions: i) fostering the teaching-to-learn paradigm for DRL-Student and ii) backing up the safety of real plants. The Trigger manages the interaction between the DRL-Student and the PHY-Teacher. Powered by the three interactive components, the Real-DRL can effectively address safety challenges that arise from the unknown unknowns and the Sim2Real gap. Additionally, Real-DRL notably features i) assured safety, ii) automatic hierarchy learning (i.e., safety-first learning and then high-performance learning), and iii) safety-informed batch sampling to address the learning experience imbalance caused by corner cases. Experiments with a real quadruped robot, a quadruped robot in NVIDIA Isaac Gym, and a cart-pole system, along with comparisons and ablation studies, demonstrate the Real-DRL’s effectiveness and unique features. 
+
+## 1 Introduction 
+
+Deep reinforcement learning (DRL) has been incorporated into many autonomous systems and has shown significant advancements in making sequential and complex decisions in various fields, such as autonomous driving [ 32 , 33 ] and robot locomotion [ 28 , 34 ]. However, the AI incident database 2 has revealed that machine learning (ML) techniques, including DRL, can achieve remarkable performance but without a safety guarantee [ 60 ]. Therefore, ensuring high-performance DRL with verifiable safety is more crucial than ever, aligning with the growing market demand for safe ML techniques. 
+
+> ∗Equal contribution.
+> 2AIID: https://incidentdatabase.ai 39th Conference on Neural Information Processing Systems (NeurIPS 2025).
+
+1.1 Safety Challenges 
+
+Two significant challenges emerge when developing high-performance DRL with verifiable safety. 
+
+Challenge 1: Unknown Unknowns. The dynamics of learning-enabled autonomous systems are governed by conjunctive known known (e.g., Newtonian physics), known unknowns (e.g., Gaussian noise without identified mean and variance), and unknown unknowns. One significant example of an unknown unknown arises from DNN’s colossal parameter space, intractable activation, and random factors. Moreover, many autonomous systems, such as quadruped robots [ 19 ] and autonomous vehicles [ 44 ], have system-environments interaction dynamics. Unpredictable and complex environments, such as freezing rain [ 51 ], can introduce a new type of unknown unknowns. Safety assurance also requires the resilience to unknown unknowns since they are hard-to-simulate and hard-to-predict, and often lack sufficient historical data for scientific modeling and analysis. 
+
+Challenge 2: Sim2Real Gap. The prevalent DRL strategies involve training a policy within a simulator and deploying it to a physical platform. However, the difference between the simulated environment and the real world creates the Sim2Real gap. This gap causes a significant drop in performance when using pre-trained DRL in a novel real environment. Numerous approaches have been developed to address the Sim2Real gap [ 40 , 38 , 52 , 59 , 14 , 29 , 20 , 54 , 56 ]. These methods aim to improve the realism of the simulator and can mitigate the Sim2Real gap to varying degrees. However, undisclosed gaps continue to hinder the safety assurance of real plants. 
+
+1.2 Related Work 
+
+Significant efforts have been devoted to addressing safety concerns related to DRL, detailed below. 
+
+Safe DRL. Since the reward guides DRL’s learning of action policies, one research focus of safe DRL is the safety-embedded reward to develop a high-performance action policy with verifiable safety. The control Lyapunov function (CLF) proposed in [ 42 , 5 , 15 , 62 ] is a candidate. Meanwhile, the seminal work in [ 55 ] revealed that a CLF-like reward could enable DRL with verifiable stability. Enabling verifiable safety is achievable by extending CLF-like rewards with given safety conditions. However, the systematic guidance for constructing such CLF-like rewards remains open. The residual action policy is another shift in safe DRL, which integrates data-driven action policy and physics-model-based action policy. The existing residual diagrams focus on stability guarantee [ 45 , 35 , 18 , 30 ], with the exception being [ 17 ] on safety guarantee. However, the physics models considered are nonlinear and intractable, which thwarts delivering a verifiable safety guarantee, if not impossible. The recent Phy-DRL (physics-regulated DRL) framework [ 13 , 12 ] can satisfactorily address the open problems. It exhibits verifiable safety, but it is only theoretically possible due to the underlying assumption of the manageable Sim2Real gap and unknown unknowns. 
+
+Fault-Tolerant DRL . It is another direction for enhancing safety assurance of DRL in real plants. Recent approaches include neural Simplex [ 43 ], runtime assurance [ 8, 50 , 16 ], and runtime learning machine [10, 11] for deterministic safety definition, and model predictive shielding [4, 3] for proba-bilistic safety definition. They treat the DRL agent as a high-performance but black-box module that operates in parallel with a high-assurance module. The high-assurance module is a physics-model-based controller, assumed to have assured safety to tolerate the DRL faults. However, this assumption becomes problematic in situations where there are significant model mismatches, particularly due to unknown unknowns such as dynamic and unpredictable operating environments. 
+
+1.3 Contribution: Real-DRL Framework: From Theory to Implementation 
+
+To address Challenges 1 and 2, we propose the Real-DRL framework, which enables the runtime learning of a DRL agent to develop safe and high-performance action policies for safety-critical autonomous systems in real physical environments, while prioritizing safety. As illustrated in Figure 1, Real-DRL, building on Simplex principles [49], has three interactive components: • DRL-Student is a DRL agent that can learn from scratch. It is innovative in the dual self-learning and teaching-to-learn paradigm and the safety-informed batch sampling to efficiently develop a safe and high-performance action policy in real plants. • PHY-Teacher is a physics-model-based design with assured safety, focusing on safety-critical functions only. It aims at fostering the teaching-to-learn mechanism for DRL-Student and backing up the safety of real plants, in the face of Challenges 1 and 2. 2Safety-Critical Environment: A Real Plant       
+
+> 3. Trigger
+> Eq. (6)
+> Mission 1: Foster Teaching-to-Learn about Safety
+> 1. DRL-Student
+> terminal action a(k)
+> Safety
+> Mission 2: Back Up Safety
+> Examples:
+> switch?
+> astudent (k)
+> state s()𝑘
+> ⋮⋮⋮
+> Actor
+> ⋮⋮
+> Critic
+> Off-Policy
+> Algorithm
+> ateacher (k)
+> state s()𝑘
+> Replay Buffer
+> Teaching-to-Learn
+> Replay Buffer
+> Self-Learnin g
+> samples
+> min  {L, ⌈L ⋅ (ρ1 ⋅ V(s) + ρ2)⌉}
+> Batch
+> Samples
+> samples
+> L − min  {L, ⌈L ⋅ (ρ1 ⋅ V(s) + ρ2)⌉}
+> Batch size L
+> 2. PHY-Teacher
+> Theorem 5.2
+> In
+> In
+> Out
+> Out
+
+Figure 1: Real-DRL framework, which is also formally described in Algorithm 1 of Appendix B. • Trigger is responsible for monitoring the real-time safety status of the real plant, facilitating interactions between DRL-Student and PHY-Teacher. Powered by the three interactive components, the Real-DRL notably features i) assured safety in the face of Challenges 1 and 2, ii) automatic hierarchy learning (i.e., safety-first learning and then high-performance learning), and iii) safety-informed batch sampling to address the experience imbalance caused by corner cases. We present the preliminaries in Section 2 and elaborate on the Real-DRL design in Sections 3 to 5. The experimental results and implementation details of Real-DRL are provided in Sections 6 and 7. 
+
+## 2 Preliminaries 
+
+2.1 Notation 
+
+In this paper, we use P ≻ 0 to represent matrix P is positive definite. Rn is the set of n-dimensional real vectors, while N is the set of natural numbers. The superscript ‘ ⊤’ indicates matrix transposition. We define 0m and 1m as the m-dimensional vectors with entries of all zeros and ones, respectively, and Im as the m-dimensional identity matrix. The c > 0n means all entries of c ∈ Rn are strictly positive. Lastly, the diag {c} is diagonal matrix whose diagonal entries are vector c’s elements. 
+
+2.2 Definitions 
+
+The dynamics of safety-critical autonomous systems can be described by the following equation: 
+
+s(t + 1) = f (s(t), a(t)) , t ∈ N (1) where s(t) ∈ Rn represents the real-time state of the system sampled by sensors at time t, while 
+
+a(t) ∈ Rm signifies the real-time action command at time t. The equilibrium point of the system is s∗ = 0n. For a safety-critical system (1) , there exist the sets that system states and actions must always adhere to: Safety set: S ≜ { s ∈ Rn| − c < C · s < c, with c > 0p} , (2) Admissible action set: A ≜ { a ∈ Rm | − d < D · a < d, with d > 0q } , (3) where C and c are provided in advance to describe p ∈ N safety conditions, while D and d are used to describe q ∈ N conditions on admissible action set. The inequalities presented in Equation (2) are sufficiently generic to describe many safety conditions. Examples include yaw control for quadruped robots to prevent collisions [ 22 ], and lane keeping and slip regulation in autonomous vehicles to follow traffic regulation and avoid slipping and skidding [44, 37]. 3In our Real-DRL, the DRL-Student will engage in dual self-learning and teaching-to-learn paradigm to develop a safe and high-performance action policy. To better describe this aspect, we introduce: Self-learning space: L ≜ { s ∈ Rn| − η · c < C · s < η · c, with 0 < η < 1} . (4) 
+
+Remark 2.1 (Buffer Zone ). When system states arrive at a safety boundary of safety set S, the action policy of PHY-Teacher usually cannot immediately drive them back to the safety set S without delay. These delays arise from multiple factors, such as computation time, communication latency, sampling periods, and actuator response times. This consideration motivates the self-learning space 
+
+L (4) . Specifically, the condition 0 < η < 1 in conjunction with Equation (2) and Equation (4) 
+
+indicates that L ⊂ S, which creates a non-empty buffer zone, i.e., S \ L. The Trigger will reference boundary ∂L (not ∂S) to trigger PHY-Teacher for assuring safety, providing adequate margins for response time and decision latency. 
+
+Building on the foundation (4), we introduce the concept of the safe action policy of DRL-Student: 
+
+Definition 2.2 (Safe Action Policy of DRL-Student ). Consider the self-learning space L (4) , the admissible action set A (3) , and the real plant (1) . The action policy of the DRL-Student, denoted as 
+
+πstudent (·) : Rn → Rm, is considered safe if, under its control, the system states satisfy the condition: Given s(1) ∈ L, the s(t) ∈ L and the astudent (t) = πstudent (s(t)) ∈ A hold for all time t ∈ N.
+
+In our Real-DRL framework, PHY-Teacher’s action policy is designed to have assured safety only. We introduce the concept of “assured safety" below, which will guide the design of PHY-Teacher. 
+
+Definition 2.3 (Safe Action Policy of PHY-Teacher ). Consider the safety set S (2) , the action set A
+
+(3) , the self-learning space L (4) , the real plant (1) , and denote: Activation Period of PHY-Teacher: Tk ≜ {k + 1 , k + 2 , . . . , k + τk}, (5) 
+
+where τk ∈ N. The action policy of PHY-Teacher, denoted as πteacher (·) : Rn → Rm, is said to have assured safety, if s(k) ∈ S \ L, then i) the s(t) ∈ S holds for all time t ∈ Tk, ii) the 
+
+ateacher (t) = πteacher (s(t)) ∈ A holds for all time t ∈ Tk, and iii) the s(k + τk) ∈ L holds. 
+
+By Definition 2.3, the PHY-Teacher is deemed trustworthy for guiding the DRL-Student in safety learning and backing up the safety of real plant, only if its action policy simultaneously satisfies the corresponding conditions: i) it must ensure the real plant’s real-time states consistently adhere to the safety conditions within S; ii) it must keep its real-time actions within an admissible action set A; and iii) it must ensure the real plant’s states return to the self-learning space L as activation period ends. With the definitions established, we next detail the design of Real-DRL’s three interactive components in Sections 3 to 5, respectively. 
+
+## 3 Real-DRL: Trigger Component 
+
+Real-DRL’s Trigger facilitates interactions between the DRL-Student and PHY-Teacher by monitoring the triggering condition outlined below. Triggering condition of PHY-Teacher: s(k − 1) ∈ L and s(k) ∈ ∂L, (6) where ∂L denotes the boundaries of the self-learning space L (4) . The condition (6) , in conjunction with the Tk defined in (5) , can describe the conditional activation periods of PHY-Teacher and DRL-Student as follows: 
+
+PHY-Teacher is active for time t ∈ Tk, if condition (6) holds at time k, 
+
+DRL-Student is active for time t / ∈ Tk, otherwise. (7) Furthermore, the logic for managing actions applied to the real plant is as follows: 
+
+a(t) ←
+
+ateacher (t), if condition (6) holds at time k and t ∈ Tk,
+
+astudent (t), otherwise , (8) where a(t) represents the terminal real-time action applied to the real plant, as illustrated in Figure 1. The interactions between the DRL-Student and PHY-Teacher, as facilitated by the Trigger, can be summarized from Equations (6) to (8) as follows: When the states of the plant controlled by the DRL-Student approach a marginal-safety boundary (i.e., they are leaving the safe self-learning space 
+
+L), the Trigger prompts the PHY-Teacher to instruct the DRL-Student on safety learning and back up the safety of real plant. Once system states return to the (safe) self-learning space L, the DRL-Student regains the control of real plant. Next, we detail the design of DRL-Student and PHY-Teacher. 44 Real-DRL: DRL-Student Component 
+
+As shown in Figure 1, DRL-Student adopts an actor-critic architecture [ 36 , 27 ] with dual replay buffers. DRL-Student operates within a dual self-learning and teaching-to-learn paradigm to develop safe and high-performance action policies in real plants. Specifically, it learns safety from the PHY-Teacher’s experience of backing up safety acquired in the teaching-to-learn space, denoted as 
+
+S \ L. At the same time, it learns to achieve high task-performance from its own (purely data-driven) experience in the self-learning space, represented as L. Meanwhile, DRL-Student employs our proposed safety-informed batch sampling to effectively 1) address the experience imbalance (caused by corner cases) throughout learning, and 2) promote the dual self-learning and teaching-to-learn paradigm. Next, we present the novel design of DRL-Student. 
+
+4.1 Self-Learning Mechanism 
+
+The self-learning objective is to optimize an action policy astudent (k) = πstudent (s(k)) which maxi-mizes the expected return from the initial state distribution: 
+
+Qπstudent (s(k), astudent (k)) = Es(k)∼L
+
+" ∞X
+
+> t=k
+
+γt−k · R (s(t), astudent (t), s(t+1)) 
+
+#
+
+, (9) where L is the self-learning space defined in Equation (4), R(·, ·, ·) is the reward function that maps the state-action-next-state triples to real-value rewards, and γ ∈ [0 , 1] is the discount factor. The expected return (9) and action policy πstudent (·) are parameterized by the critic and actor networks, respectively. The reward function is designed to enhance task-oriented performance through runtime learning. One such example is minimizing travel time and power consumption in the robot navigation. Referring to Figure 1, we can summarize that during the activation period of DRL-Student, its interactions with real plants generate the purely data-driven experience data as Self-learning experience: [ s(t) | astudent (t) | s(t+1) | R (s(t), astudent (t), s(t+1)) ] , (10) which is stored in the self-learning replay buffer, and then batch sampled to update the critic and actor networks using the off-policy algorithm, such as deep deterministic policy gradient (DDPG) [ 36 ], twin delayed DDPG [ 23 ] or soft actor-critic [ 27 ]. We thus conclude that the self-learning mechanism is the learning from data-driven experience through the trial-and-error in self-learning space L (4) .This mechanism is also formally described by Lines 25 to 29 in Algorithm 1 of Appendix B. 
+
+4.2 Teaching-to-Learn Mechanism 
+
+The designed PHY-Teacher has successful (physics-model-based) experience — not grounded in data-driven trial-and-error — in backing up the safety of real plants. As shown in Figure 1, this experience is acquired in the teaching-to-learn (or marginally-safe) space S \ L, where the DRL-Student is deactivated due to safety violations that occur as a result of its actions’ failure in assuring safety. If PHY-Teacher shares its successful experiences in backing up the safety of real plants, then DRL-Student can learn about safety from these experiences. This process is known as the teaching-to-learn mechanism. Referring to Figure 1, the teaching-to-learn mechanism can be summarized as that during the activation period of PHY-Teacher, it gains its experience data in backing up safety as Teaching-to-learn experience: [ s(t) | ateacher (t) | s(t+1) | R(s(t), ateacher (t), s(t+1)) ] , (11) where ateacher (t) is computed according to PHY-Teacher’s action policy (18) and its design is detailed in Theorem 5.2. The experience data (11) is stored in the teaching-to-learn replay buffer, and is then batch sampled to update the critic and actor networks using the off-policy algorithm. This teaching-to-learn mechanism is also formally described by Lines 12 to 16 in Algorithm 1 of Appendix B. 
+
+4.3 Safety-Informed Batch Sampling 
+
+This section proposes a batch sampling approach to facilitate the dual self-learning and teaching-to-learn paradigm. The benefits of the proposed approach go beyond achieving this paradigm. Before proceeding, we recall a real problem that the incidents of learning-enabled autonomous systems, such as self-driving cars, often occur in corner cases [ 63 , 7, 6 ]. As illustrated in Figure 1, the marginally-safe (or teaching-to-learn) space can represent the space of corner cases, where a slight disturbance 5or fault can take a system out of control. Such marginal samples are safety-critical and are not often and hard visited normally, creating an experience imbalance for learning. Intuitively, focusing the learning on such corner-case experience will enable a more robust action policy. However, the current DRL frameworks usually adopt random sampling [ 45 , 35 , 18 , 30 , 17 , 47 ], which cannot guarantee sufficient sampling of such samples, and thus cannot overcome the experience imbalance problem. To address the problem, we propose the safety-informed batch sampling for DRL-Student’s learning, which also facilitates the dual self-learning and teaching-to-learn paradigm. To explain the sampling mechanism, we first introduce: Safety-status indicator: V (s) ≜ s⊤ · P · s, (12) where P is computed according to the following: 
+
+P = arg min 
+
+> eP≻0
+
+{log det( eP)}, subject to Ip − (C · diag −1{c}) · eP−1 · (C · diag −1{c})⊤ ≻ 0, (13) with C and c given in Equation (2) for defining the safety set S. We can derive the following property related to safety-status indicator, whose proof is given in Appendix C. 
+
+Theorem 4.1. Consider the safety set S (2) and the function V (s) (12) with its matrix P computed in Equation (13) . The ellipsoid set { s ∈ Rn | V (s) < 1} ⊆ S and it has the maximum volume. 
+
+The proposed mechanism of safety-informed batch sampling is based on Theorem 4.1 and the safety-status indicator in Equation (12). As shown in Figure 1, the sampling mechanism is to generate the batch samples to update critic and actor networks, which, thus, can be summarized as: 
+
+L|{z} 
+
+> Batch size
+
+= min {L, ⌈L · (ρ1 · V (s(t)) + ρ2)⌉} 
+
+| {z }
+
+> Number of samples from teaching-to-learn reply buffer
+
++ L − min {L, ⌈L · (ρ1 · V (s(t)) + ρ2)⌉} 
+
+| {z }
+
+> Number of samples from self-learning reply buffer
+
+, (14) where ρ1 > 0 and ρ2 ≥ 0 are given hyperparameters. V(s) = 1.0            
+
+> V(s)=0.8
+> V(s)=0.6
+> V(s)=0.4
+> V(s)=0.2
+> V(s)=0.0
+> Batch Samples
+> Safety-Status Indicator
+> Safety Set 𝕊
+> : Teaching-to-learn experience sample
+> (Corner Case)
+> : Self-learning experience sample
+
+Figure 2: An illustration example of safety-informed batch sampling, given batch size L = 5 ,
+
+ρ1 = 1 , and ρ2 = 0 .An illustration example of the proposed batch sampling is provided in Figure 2. Along with Theorem 4.1 and Equation (14), it reveals two key insights of DRL-Student’s learning: • The batch comprises experience sam-ples from the teaching-to-learn and self-learning replay buffers, with their contribution ratios depending on real-time safety status due to V (s(t)) .Consequently, the DRL-Student par-ticipates in the dual self-learning and teaching-to-learn paradigm, discussed in Sections 4.1 and 4.2. • The contribution ratio of teaching-to-learn (also, corner-case) experience samples is increasing with respect to the real-time safety status V (s(t)) , thereby addressing the experience imbalance. For example, by Theorem 4.1 and illustrated in Figure 2, an extreme value of V (s(t)) = 1 suggests that the real-time states are approaching safety boundaries. Consequently, according to Equation (14), all batch samples are from the marginally-safe space. This enables the DRL-Student to concentrate on learning from corner-case experience samples (stored in teaching-to-learn replay buffer) about safety, when the real plant is only marginally safe. 
+
+## 5 Real-DRL: PHY-Teacher Component 
+
+PHY-Teacher is a physics-model-based design to have assured safety by Definition 2.3. One aim of PHY-Teacher is to tolerate real-time unknown unknowns (which result Sim2Real gap) to assure safety. We note many autonomous systems, such as quadruped robots [ 19 ] and autonomous vehicles [ 44 ], have system-environments interaction dynamics. So, the real-time unknown unknowns (e.g., unpredictable weather conditions and complex wild terrains) can have a significant influence on system dynamics. To tolerate such unknowns, we develop the real-time patch as for PHY-Teacher. Its design is detailed below. 6The proposed real-time patch first defines the state space in which PHY-Teacher’s action policy has assured safety according to Definition 2.3. Real-time patch: Pk ≜ { s ∈ Rn| − θ · c < C · (s − s∗
+
+> k
+
+) < θ · c, with 0 < θ < 1} , (15) where s∗ 
+
+> k
+
+is the patch center, and also PHY-Teacher’s real-time control goal, which is defined below. 
+
+s∗ 
+
+> k
+
+≜ χ · s(k), where s(k) satisfies the triggering condition (6) and 0 < χ < 1. (16) With the real-time control goal at hand, we introduce the following dynamics model of tracking errors, which is transformed from the dynamics model described in Equation (1). 
+
+e(t + 1) = A(s(k)) · e(t) + B(s(k)) · ateacher (t) + h(e(t)) , for t ∈ Tk, (17) where Tk (as defined in Equation (5)) indicates the PHY-Teacher’s activation period, e(t) ≜ s(t) − s∗
+
+> k
+
+,and h(e(t)) represents an unknown model mismatch, arising from unknown model uncertainties, parameter uncertainties, unmodeled dynamics, and external disturbances that are not captured by the nominal model knowledge {A(s(k)) , B(s(k)}. The {A(s(k)) , B(s(k)) } will be utilized for designing PHY-Teacher’s action policy: 
+
+ateacher (t) = Fk · e(t) = Fk · (s(t) − s∗
+
+> k
+
+), for t ∈ Tk. (18) We can summarize the working mechanism of PHY-Teacher from Equations (15) to (18). When the PHY-Teacher is triggered by the condition (6) at time k, it uses the most recent sensor data s(k) to update the physics-model knowledge {A(s(k)) , B(s(k)) }. This update is then utilized to compute the real-time patch and the associated action policy. Meanwhile, the patch center (16) lies within DRL-Student’s self-learning space L (since of 0 < χ < 1), and also represents the real-time control goal. This arrangement defines the teaching task for the PHY-Teacher: to instruct the DRL-Student in learning a safe action policy that can return the system to space L. Before presenting the overall design, we outline a practical assumption regarding the model mismatch. 
+
+Assumption 5.1. The model mismatch h(e) in Equation (17) is bounded in the patch Pk (15) . In other words, there exists κ > 0 such that h⊤(e) · Pk · h(e) ≤ κ holds for Pk ≻ 0 and any e ∈ Pk.
+
+We present the design of PHY-Teacher in the theorem below; its proof can be found in Appendix D. 
+
+Theorem 5.2 (Real-Time Patch) . Recall the sets defined in Equations (2) to (4) , and consider the PHY-Teacher’s action policy in Equation (18) , whose Fk is computed according to 
+
+Fk = Rk · Q−1 
+
+> k
+
+and Pk = Q−1 
+
+> k
+
+, (19) 
+
+with Rk and Qk satisfying the following linear matrix inequalities (LMIs): 
+
+Ip − C · Qk · C⊤ ≻ 0, and Iq − D · Tk · D⊤ ≻ 0, and Qk − n · diag 2(s(k)) ≻ 0, and (20) 
+
+ α·Qk Qk ·A⊤(s(k))+ R⊤ 
+
+> k
+
+·B⊤(s(k)) 
+
+A(s(k)) ·Qk +B(s(k)) ·Rk Qk
+
+> 1+ ϕ
+
+
+
+≻ 0, and 
+
+ Qk R⊤
+
+> k
+
+Rk Tk
+
+
+
+≻ 0, (21) 
+
+where C ≜ C · diag −1{θ · c}, D = D · diag −1{d}, 0 < α < 1, and ϕ > 0. Meanwhile, the given parameters η in Equation (4) , θ in Equation (15) , χ in Equation (16) , α and ϕ in Equation (21) , and 
+
+κ in Assumption 5.1 satisfy 
+
+η < θ + χ · η < 1 and (ϕ + 1) · κ
+
+(1 − α) · ϕ < (1 − χ)2 · η2
+
+θ2 . (22) 
+
+Then, according to Definition 2.3, the PHY-Teacher’s action policy (18) has assured safety in the real-time patch Pk.
+
+Remark 5.3 (Policy Computation ). By using the CVX [ 26 ] or LMI [ 24 ] toolbox, the matrices 
+
+Qk and Rk can be computed from Equations (20) and (21) for the matrix Fk. The pseudocode for computing Fk using CVX and LMI, with a comment, is presented in Appendix E. 
+
+Remark 5.4 (Adaptive Mechanism for Assuring Validity of Assumption 5.1 ). PHY-Teacher is designed to have verifiable expertise in safety protocols, as formally stated in Theorem 5.2, but this relies on Assumption 5.1. In real-world applications, particularly in hard-to-predict and hard-to-simulate environments (e.g., natural disasters and snow squalls), we cannot always guarantee that Assumption 5.1 will hold. To address this concern, we introduce an adaptive mechanism, presented in Appendix F, that utilizes real-time state to estimate real-time model mismatch, thereby enabling monitoring of Assumption 5.1’s validity. When the assumption is violated, the mechanism computes compensatory actions in real-time to mitigate the effects of model mismatch and restore the validity of Assumption 5.1 timely. 
+
+76 Implementation Best Practices: Minimizing Runtime Overhead 
+
+The PHY-Teacher and DRL-Student are designed to operate in parallel. The DRL-Student uti-lizes GPU acceleration and can be deployed on embedded hardware such as the NVIDIA Jetson series, while the PHY-Teacher efficiently handles real-time safety-critical tasks on the CPU. To minimize runtime overhead, the LMI solver — responsible for automatic and rapid computation of the PHY-Teacher’s real-time action policies — should be implemented in C to significantly improve both memory efficiency and computational speed. To facilitate this implementation, we provide ECVXCONE (embedded CVX for cone programming), an online solver for embedded conic optimization capable of solving LMIs in real-time using C. The code is available at GitHub: https://github.com/Charlescai123/ecvxcone. Table 2 in Appendix G presents an experimental evaluation of ECVXCONE’s computational resource usage across four platforms with varying CPU frequencies, which demonstrates that ECVXCONE makes the Real-DRL well-suited for edge-AI devices with limited computational resources. 
+
+## 7 Experiment 
+
+The section presents experiments on a real quadruped robot, a quadruped robot in the NVIDIA Isaac Gym, and a cart-pole system, along with comprehensive comparisons and ablation studies. The complete code and details can be found on GitHub: https://github.com/Charlescai123/Real-DRL. 
+
+7.1 Real Quadruped Robot: Indoor Environment 
+
+The detailed design of this experiment is presented in Appendix I. During pre-training in the simulator, we set rvx = 0.6 m/s and rh = 0.24 m. To better demonstrate Real-DRL, the real robot’s velocity command is rvx = 0.35 m/s, which is very different from the one in the simulator. For the runtime learning in the real robot, one episode is defined as " running robot for 15 seconds ." 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 
+
+> CoM Height
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> CoM x-Velocity
+> Phy-DRL
+> Continual Phy-DRL
+> Our Real-DRL
+
+Figure 3: Phase plots. We compare our Real-DRL with the state-of-the-art safe DRL, called Phy-DRL, which claims theoretically and experimentally fast training to-wards safety guarantee [ 13 , 12 ]. Meanwhile, Phy-DRL integrates the concurrent delay ran-domization [ 29 ] and domain randomization [ 46 ](randomizing friction force) for addressing the Sim2Real gap into its training. Here, we have three models for comparison: 1) ‘ Continual Phy-DRL ’ representing a well-trained Phy-DRL in the simulator, which performed continual learning in the real robot to fine-tune the ac-tion policy; 2) ‘ Phy-DRL ’ representing the well-trained Phy-DRL policy directly deployed to the real robot, and 3) our Real-DRL . The robot’s CoM height and CoM-x velocity are shown in Figure 3, and a comparison video is available at https://www.youtube.com/watch?v=tQSPcnKEnYU. From the comparison video and Figure 3, we concluded that the Phy-DRL well-trained in simulator cannot guarantee the safety of the real robot due to the Sim2Real gap and unknown unknowns that the delay randomization and force randomization failed to capture. In contrast, our Real-DRL can always guarantee the safety of the real robot. Addi-tionally, we recall that PHY-Teacher fosters DRL-Student’s teaching-to-learn about safety. To verify this, we deactivate the PHY-Teacher in episodes 1 and 20, and compare system behavior. The demon-stration video is available at https://www.youtube.com/shorts/UIFwlMrDgjA, which illustrates that DRL-Student quickly learned from PHY-Teacher to be safe, within 20 episodes, i.e., 300 seconds. Finally, we showcase the Real-DRL’s ability to tolerate various unknown unknowns. In addition to inherent ones in noisy samplings and complex DRL agents, we add five unknown unknowns that have never occurred in DRL-Student’s historical learning . They are 1) Beta : Disturbances injected into DRL-Student’s actions, generated by a randomized Beta distribution (see Appendix H for an explanation of its representation of unknown unknowns); 2) PD : Random and sudden payload 8(around 4 lbs) drops on the robot’s back; 3) Kick : Random kick by a human; 4) DoS : A real denial-of-service fault of the platform, which can be caused by task scheduling latency, communication delay, communication block, etc., but is unknown to us; and 5) SP : A sudden side push. We consider three combinations of them: i) ‘ Beta + PD ,’ ii) ‘ Beta + DoS + Kick ,’ and iii) ‘ Beta + SP .’ The demonstration video is available at https://www.youtube.com/shorts/Tl2jEUJMe_Y, which demonstrates that our Real-DRL successfully assures the safety of the real robot by tolerating such complex combined unknowns. 
+
+7.2 Quadruped Robot in NVIDIA Isaac Gym: Wild Environment (see Figure 8) 
+
+The operating environment plays a crucial role in introducing real-time unknown unknowns and Sim2Real gap. So, this benchmark focuses on comprehensive comparisons in complex environments. We utilized NVIDIA Isaac Gym to create a wild environment, assuming a real one. This environment 500 1000 1500 2000 2500 3000 3500 4000 4500 
+
+> Episode Numbers
+> 5000
+> 0
+> 5000
+> 10000
+> 15000
+> Episode Return
+> Real-DRL
+> Neural Simplex
+> Runtime Assurance
+> Phy-DRL
+> CLF-DRL
+
+Figure 4: Trajectories of episode return. transitions from flat terrain to unstructured and uneven ground, further complicated by unex-pected ice that results in low friction. We here can conclude that the robot’s operating environ-ment are non-stationary and unforeseen. Be-sides, our Real-DRL allows for learning from scratch, which is performed here. Meanwhile, we integrate all comparison models with a nav-igation module, which enable the robot to au-tonomously traverse the uneven and unstruc-tured terrains, and dynamic obstacles in the wild. The architecture of Real-DRL with inte-gration of navigation is shown in Figure 9. The experiment design appears in Appendix J. Table 1: Safety metrics are highlighted in red. If the robot falls, other task-related metrics are labeled as N/A. If collision is not avoided, travel time and energy consumption are represented as ∞.                                                 
+
+> Model ID Navigation Performance Energy Efficiency Success Is Fall Collision Num (wp) Travel Time (s) Avg Power (W) Total Energy (J)
+> CLF-DRL No Yes No 0N/A N/A N/A Phy-DRL No No Yes 1∞507.9441 ∞
+> Runtime Assurance No Yes No 2N/A N/A N/A Neural Simplex No No Yes 2∞487.9316 ∞
+> PHY-Teacher Yes No No 455.5327 482.8468 26817.68 Our Real-DRL Yes No No 445.3383 479.4638 21742.42
+
+The experiment compares our Real-DRL with state-of-the-art frameworks: i) safe DRLs: CLF-DRL [ 55 ] and Phy-DRL [ 13 , 12 ]; ii) fault-tolerant DRLs: neural Simplex [ 43 ] and runtime assurance [ 8, 50 , 16 ]; iii) our sole PHY-Teacher. The testing models are chosen after 4500 episodes. Their performance comparisons are summarized in Table 1. Figure 4 presents the episode returns, and the corresponding comparison video is available at https://www.youtube.com/shorts/QqYSHjhq8vg. Additionally, a comparison video of Real-DRL w/o v.s. w/ PHY-Teacher during early stage of runtime learning is available at https://www.youtube.com/shorts/xcsZwrwfEOM. These comprehensive comparisons showcase our Real-DRL’s notable features: its high-performance learning and assured safety. 
+
+7.3 Cart-Pole System: Ablation Studies 
+
+Our Real-DRL has three learning innovations: i) a teaching-to-learn mechanism focused on safety, ii) safety-informed batch sampling to overcome the experience imbalance, and iii) an automatic hierarchy learning, i.e., safety-first learning and then high-performance learning. In this benchmark, we primarily conduct ablation studies to demonstrate the impact of the three novel designs. The system’s state consists of pendulum angle θ, cart position x, velocities ω = ˙θ, and v = ˙ x. The detailed experiment design can be found in Appendix K. 93 2 1 0 1 2 3
+
+> 2.5
+> 2.0
+> 1.5
+> 1.0
+> 0.5
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> x
+> w/o SBS-1
+> w/o SBS-2
+> w/o SBS-3
+> w/o SBS-4
+> w/o SBS-5
+> w/ SBS-1
+> w/ SBS-2
+> w/ SBS-3
+> w/ SBS-4
+> w/ SBS-5
+> Initial
+> Terminal
+
+Figure 5: Phase plots, given five random initial states within self-learning space. 
+
+■ Safety-Informed Batch Sampling: To demon-strate the effect of this batch sampling scheme on addressing experience imbalance, we set up an imbalanced learning environment, as shown in Figure 10. We evaluate two DRL-Students in this environment: one learned in Real-DRL with our proposed batch sampling scheme (denoted as ‘w/ SBS’ ), and the other one learned in Real-DRL us-ing a single replay buffer without this scheme (de-noted as ‘w/o SBS’ ). The phase plots in Figure 5 and the rewards in Figure 11 illustrate that, after reaching convergence, the DRL-Student learned in Real-DRL with our batch sampling scheme has significantly enhanced safety assurance in corner-case environment, compared to the one learned from Real-DRL without this scheme. 
+
+■ Teaching-to-Learn Mechanism: To evaluate the effect of this learning mechanism on policy learning, we compare two models: Real-DRL w/ and w/o the teaching-to-learn . The episode-average rewards (defined in Equation (84)) across five random initial states are shown in Figure 6 (a), demonstrating that the teaching-to-learn mechanism significantly improves sample efficiency, enabling faster convergence, more stable learning, and higher reward performance. 
+
+■ Automatic Hierarchy Learning: Finally, we showcase the automatic hierarchy learning. To do so, we disable PHY-Teacher in episodes 5 and 50 and observe system behavior under the control of sole DRL-Student. Intuitively, DRL-Student shall automatically become independent of PHY-Teacher and self-learn for a high-performance action policy. This can be seen from PHY-Teacher’s activation ratio (defined in Equation (85)) in Figure 6 (b), where after episode 50, PHY-Teacher is rarely activated. Meanwhile, Figure 12 of Appendix K illustrates the high mission performance of action policy in episode 50: much more clustering and closer proximity to the mission goal. 0 20 40 60 80 100 
+
+> Episode Numbers
+> 15
+> 10
+> 5
+> 0
+> 5
+> 10
+> Episode-Average Reward  Without Teaching-to-Learn
+> With Teaching-to-Learn
+
+(a) Trajectories of episode-average reward (95% CI). 0 20 40 60 80 100  
+
+> Episode Steps
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> Activation Ratio of PHY-Teacher
+
+(b) PHY-Teacher’s activation ratio over 100 episodes. 
+
+Figure 6: Ablation studies. (a): Teaching-to-learn mechanism, (b): Automatic hierarchy learning. 
+
+## 8 Conclusion and Discussion 
+
+This paper introduces Real-DRL, a framework specifically designed for safety-critical autonomous systems. The Real-DRL consists of three main components: a DRL-Student, a PHY-Teacher, and a Trigger. The DRL-Student engages in a dual self-learning and teaching-to-learn paradigm. The PHY-Teacher serves two primary functions: fostering the teaching-to-learn mechanism for DRL-Student and backing up safety. Real-DRL notably features i) assured safety in the face of unknown unknowns and Sim2Real gap, ii) teaching-to-learn for safety and self-learning for high performance, and iii) safety-informed batch sampling to address the experience imbalance. Experiments conducted on three benchmarks have successfully shown the effectiveness and unique features of Real-DRL. In current Real-DRL, the Trigger continuously monitors the system safety status to manage DRL-Student and PHY-Teacher. To alleviate this monitoring burden, Trigger shall have an early warning function of future safety status. Utilizing reachability techniques [ 2 ] could provide a viable solution. 10 Acknowledgments 
+
+This research was partially funded by the National Science Foundation through Grants CPS-2311084 and CPS-2311085, as well as by the NVIDIA Academic Grant Program. We thank Hongpeng Cao at the Technical University of Munich, Germany, for his assistance with the indoor experiment on the real quadruped robot. 
+
+## References 
+
+[1] Martin S Andersen, Joachim Dahl, Lieven Vandenberghe, et al. CVXOPT: A Python package for convex optimization. https://cvxopt.org. [2] Stanley Bak, Taylor T Johnson, Marco Caccamo, and Lui Sha. Real-time reachability for verified Simplex design. In 2014 IEEE Real-Time Systems Symposium , pages 138–148, 2014. [3] Arko Banerjee, Kia Rahmani, Joydeep Biswas, and Isil Dillig. Dynamic model predictive shielding for provably safe reinforcement learning. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024. [4] Osbert Bastani. Safe reinforcement learning with nonlinear dynamics via model predictive shielding. In 2021 American control conference , pages 3488–3494, 2021. [5] Felix Berkenkamp, Matteo Turchetta, Angela Schoellig, and Andreas Krause. Safe model-based reinforcement learning with stability guarantees. Advances in Neural Information Processing Systems , 30, 2017. [6] Daniel Bogdoll, Jasmin Breitenstein, Florian Heidecker, Maarten Bieshaar, Bernhard Sick, Tim Fingscheidt, and Marius Zöllner. Description of corner cases in automated driving: Goals and challenges. In Proceedings of the IEEE/CVF International Conference on Computer Vision ,pages 1023–1028, 2021. [7] Joshua Bote. Waymo driverless car brings san francisco traffic to a halt during rush hour. https://www.sfgate.com/bayarea/article/waymo-rush-hour-traffic-standstill-17739556.php, 2023. [8] Guillaume Brat and Ganeshmadhav Pai. Runtime assurance of aeronautical products: prelimi-nary recommendations. NTRS - NASA Technical Reports Server , 2023. [9] Greg Brockman, Vicki Cheung, Ludwig Pettersson, Jonas Schneider, John Schulman, Jie Tang, and Wojciech Zaremba. OpenAI Gym. arXiv:1606.01540 , https://arxiv.org/pdf/1606.01540, 2016. [10] Yihao Cai, Yanbing Mao, Hongpeng Cao, Lui Sha, and Marco Caccamo. Runtime learning machine. To appear in ACM Transactions on Cyber Physical Systems (Special Issue on Embodied Artificial Intelligence in Cyber-Physical Systems: Algorithms, Computing Systems, Applications, and Trustworthiness) , https://dl.acm.org/doi/pdf/10.1145/3744351, 2025. [11] Yihao Cai, Yanbing Mao, Lui Sha, Hongpeng Cao, and Marco Caccamo. Runtime learning of quadruped robots in wild environments. arXiv:2503.04794 , https://arxiv.org/abs/2503.04794, 2025. [12] Hongpeng Cao, Yanbing Mao, Lui Sha, and Marco Caccamo. Physics-model-regulated deep reinforcement learning towards safety & stability guarantees. In 62nd IEEE Conference on Decision and Control , pages 8300–8305, 2023. [13] Hongpeng Cao, Yanbing Mao, Lui Sha, and Marco Caccamo. Physics-regulated deep reinforce-ment learning: Invariant embeddings. In The Twelfth International Conference on Learning Representations , 2024. [14] Hongpeng Cao, Mirco Theile, Federico G. Wyrwal, and Marco Caccamo. Cloud-edge training architecture for sim-to-real deep reinforcement learning. In 2022 IEEE/RSJ International Conference on Intelligent Robots and Systems , pages 9363–9370, 2022. 11 [15] Ya-Chien Chang and Sicun Gao. Stabilizing neural control using self-learned almost Lyapunov critics. In 2021 IEEE International Conference on Robotics and Automation , pages 1803–1809, 2021. [16] Shengduo Chen, Yaowei Sun, Dachuan Li, Qiang Wang, Qi Hao, and Joseph Sifakis. Run-time safety assurance for learning-enabled control of autonomous driving vehicles. In 2022 International Conference on Robotics and Automation , pages 8978–8984, 2022. [17] Richard Cheng, Gábor Orosz, Richard M Murray, and Joel W Burdick. End-to-end safe reinforcement learning through barrier functions for safety-critical continuous control tasks. In 
+
+Proceedings of the AAAI conference on artificial intelligence , volume 33, pages 3387–3395, 2019. [18] Richard Cheng, Abhinav Verma, Gabor Orosz, Swarat Chaudhuri, Yisong Yue, and Joel Burdick. Control regularization for reduced variance reinforcement learning. In International Conference on Machine Learning , pages 1141–1150, 2019. [19] Jared Di Carlo, Patrick M Wensing, Benjamin Katz, Gerardo Bledt, and Sangbae Kim. Dynamic locomotion in the MIT Cheetah 3 through convex model-predictive control. In 2018 IEEE/RSJ international conference on intelligent robots and systems , pages 1–9, 2018. [20] Yuqing Du, Olivia Watkins, Trevor Darrell, Pieter Abbeel, and Deepak Pathak. Auto-tuned sim-to-real transfer. In 2021 IEEE International Conference on Robotics and Automation , pages 1290–1296, 2021. [21] Razvan V Florian. Correct equations for the dynamics of the cart-pole system. Center for Cognitive and Neural Studies , https://coneural.org/florian/papers/05_cart_pole.pdf, 2007. [22] Zipeng Fu, Ashish Kumar, Ananye Agarwal, Haozhi Qi, Jitendra Malik, and Deepak Pathak. Coupling vision and proprioception for navigation of legged robots. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 17273–17283, 2022. [23] Scott Fujimoto, Herke Hoof, and David Meger. Addressing function approximation error in actor-critic methods. In International Conference on Machine Learning , pages 1587–1596, 2018. [24] Pascal Gahinet, Arkadii Nemirovskii, Alan J Laub, and Mahmoud Chilali. The LMI control toolbox. In Proceedings of 1994 33rd IEEE conference on decision and control , volume 3, pages 2038–2041, 1994. [25] Yuanzhe Geng, Erwu Liu, Rui Wang, Yiming Liu, Weixiong Rao, Shaojun Feng, Zhao Dong, Zhiren Fu, and Yanfen Chen. Deep reinforcement learning based dynamic route planning for minimizing travel time. In 2021 IEEE International Conference on Communications Workshops ,pages 1–6, 2021. [26] Michael Grant, Stephen Boyd, and Yinyu Ye. CVX users’ guide. https://cvxr.com/cvx/doc/CVX.pdf, 2020. [27] Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, and Sergey Levine. Soft Actor-Critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor. In International conference on machine learning , pages 1861–1870, 2018. [28] Julian Ibarz, Jie Tan, Chelsea Finn, Mrinal Kalakrishnan, Peter Pastor, and Sergey Levine. How to train your robot with deep reinforcement learning: lessons we have learned. The International Journal of Robotics Research , 40(4-5):698–721, 2021. [29] Chieko Sarah Imai, Minghao Zhang, Yuchen Zhang, Marcin Kierebi´ nski, Ruihan Yang, Yuzhe Qin, and Xiaolong Wang. Vision-guided quadrupedal locomotion in the wild with multi-modal delay randomization. In 2022 IEEE/RSJ International Conference on Intelligent Robots and Systems , pages 5556–5563, 2022. [30] Tobias Johannink, Shikhar Bahl, Ashvin Nair, Jianlan Luo, Avinash Kumar, Matthias Loskyll, Juan Aparicio Ojea, Eugen Solowjow, and Sergey Levine. Residual reinforcement learning for robot control. In 2019 International Conference on Robotics and Automation , pages 6023–6029, 2019. 12 [31] Norman L Johnson, Samuel Kotz, and Narayanaswamy Balakrishnan. Continuous univariate distributions, volume 2 , volume 289. John Wiley & Sons, 1995. [32] Alex Kendall, Jeffrey Hawke, David Janz, Przemyslaw Mazur, Daniele Reda, John-Mark Allen, Vinh-Dieu Lam, Alex Bewley, and Amar Shah. Learning to drive in a day. In 2019 International Conference on Robotics and Automation , pages 8248–8254, 2019. [33] B Ravi Kiran, Ibrahim Sobh, Victor Talpaert, Patrick Mannion, Ahmad A Al Sallab, Senthil Yogamani, and Patrick Pérez. Deep reinforcement learning for autonomous driving: A survey. 
+
+IEEE Transactions on Intelligent Transportation Systems , 23(6):4909–4926, 2021. [34] Sergey Levine, Chelsea Finn, Trevor Darrell, and Pieter Abbeel. End-to-end training of deep visuomotor policies. The Journal of Machine Learning Research , 17(1):1334–1373, 2016. [35] Tongxin Li, Ruixiao Yang, Guannan Qu, Yiheng Lin, Steven Low, and Adam Wierman. Equip-ping black-box policies with model-based advice for stable nonlinear control. arXiv:2206.01341 ,https://arxiv.org/pdf/2206.01341.pdf. [36] Timothy P. Lillicrap, Jonathan J. Hunt, Alexander Pritzel, Nicolas Heess, Tom Erez, Yuval Tassa, David Silver, and Daan Wierstra. Continuous control with deep reinforcement learning. In 4th International Conference on Learning Representations , 2016. [37] Yanbing Mao, Yuliang Gu, Naira Hovakimyan, Lui Sha, and Petros Voulgaris. Sl1-simplex: safe velocity regulation of self-driving vehicles in dynamic and unforeseen environments. ACM Transactions on Cyber-Physical Systems , 7(1):1–24, 2023. [38] Anusha Nagabandi, Ignasi Clavera, Simin Liu, Ronald S Fearing, Pieter Abbeel, Sergey Levine, and Chelsea Finn. Learning to adapt in dynamic, real-world environments through meta-reinforcement learning. In International Conference on Learning Representations , 2019. [39] NVIDIA. Isaac Gym - preview release, 2023. https://developer.nvidia.com/isaac-gym. [40] Xue Bin Peng, Marcin Andrychowicz, Wojciech Zaremba, and Pieter Abbeel. Sim-to-real transfer of robotic control with dynamics randomization. In 2018 IEEE International Conference on Robotics and Automation , May 2018. [41] Robert Penicka, Yunlong Song, Elia Kaufmann, and Davide Scaramuzza. Learning minimum-time flight in cluttered environments. IEEE Robotics and Automation Letters , 7(3):7209–7216, 2022. [42] Theodore J Perkins and Andrew G Barto. Lyapunov design for safe reinforcement learning. 
+
+Journal of Machine Learning Research , 3(Dec):803–832, 2002. [43] Dung T Phan, Radu Grosu, Nils Jansen, Nicola Paoletti, Scott A Smolka, and Scott D Stoller. Neural Simplex architecture. In NASA Formal Methods Symposium , pages 97–114. Springer, 2020. [44] Rajesh Rajamani. Vehicle dynamics and control . Springer Science & Business Media, 2011. [45] Krishan Rana, Vibhavari Dasagi, Jesse Haviland, Ben Talbot, Michael Milford, and Niko Sünderhauf. Bayesian controller fusion: Leveraging control priors in deep reinforcement learning for robotics. The International Journal of Robotics Research , 42(3):123–146, 2023. [46] Fereshteh Sadeghi and Sergey Levine. CAD2RL: Real single-image flight without a single real image. arXiv:1611.04201 , https://arxiv.org/pdf/1611.04201, 2017. [47] Remo Sasso, Michelangelo Conserva, and Paulo Rauber. Posterior sampling for deep rein-forcement learning. The Fortieth International Conference on Machine Learning , pages 1–19, 2023. [48] Danbing Seto and Lui Sha. An engineering method for safety region development. CMU Technical Report , 1999. [49] Lui Sha. Using simplicity to control complexity. IEEE Software , 18(4):20–28, 2001. 13 [50] Joseph Sifakis and David Harel. Trustworthy autonomous system development. ACM Transac-tions on Embedded Computing Systems , 22(3):1–24, 2023. [51] Cassandra Smith. State police urge caution as freezing rain leads to several crashes. 
+
+WCIA , https://www.wcia.com/news/state-police-urge-caution-as-freezing-rain-leads-to-several-crashes/, 2020. [52] Jie Tan, Tingnan Zhang, Erwin Coumans, Atil Iscen, Yunfei Bai, Danijar Hafner, Steven Bohez, and Vincent Vanhoucke. Sim-to-real: Learning agile locomotion for quadruped robots. Robotics: Science and Systems , 2018. [53] Stefan Van Aelst and Peter Rousseeuw. Minimum volume ellipsoid. Wiley Interdisciplinary Reviews: Computational Statistics , 1(1):71–82, 2009. [54] Quan Vuong, Sharad Vikram, Hao Su, Sicun Gao, and Henrik I. Christensen. How to pick the domain randomization parameters for sim-to-real transfer of reinforcement learning policies? 
+
+arXiv:1903.11774 , https://arxiv.org/pdf/1903.11774, 2019. [55] Tyler Westenbroek, Fernando Castaneda, Ayush Agrawal, Shankar Sastry, and Koushil Sreenath. Lyapunov design for robust and efficient robotic reinforcement learning. arXiv:2208.06721 ,https://arxiv.org/pdf/2208.06721, 2022. [56] Tsung-Yen Yang, Tingnan Zhang, Linda Luu, Sehoon Ha, Jie Tan, and Wenhao Yu. Safe reinforcement learning for legged locomotion. In 2022 IEEE/RSJ International Conference on Intelligent Robots and Systems , pages 2454–2461, 2022. [57] Yuxiang Yang. GitHub: Quadruped robot simulator. https://github.com/yxyang/locomotion_simulation. [58] Yuxiang Yang, Tingnan Zhang, Erwin Coumans, Jie Tan, and Byron Boots. Fast and efficient locomotion via learned gait transitions. In Conference on Robot Learning , pages 773–783, 2022. [59] Wenhao Yu, Jie Tan, C Karen Liu, and Greg Turk. Preparing for the unknown: Learning a universal policy with online system identification. Robotics: Science and Systems , 2017. [60] Arnold Zachary and Toner Helen. AI Accidents: An emerging threat. Center for Security and Emerging Technology , https://doi.org/10.51593/20200072, 2021. [61] Fuzhen Zhang. The Schur complement and its applications , volume 4. Springer Science & Business Media, 2006. [62] Liqun Zhao, Konstantinos Gatsis, and Antonis Papachristodoulou. Stable and safe reinforcement learning via a Barrier-Lyapunov actor-critic approach. In 62nd IEEE Conference on Decision and Control , pages 1320–1325, 2023. [63] Chris Ziegler. A Google self-driving car caused a crash for the first time. https://www.wired.com/2016/02/googles-self-driving-car-may-caused-first-crash/, 2016. 14 Appendices 
+
+A Auxiliary Lemmas 16 B Pseudocode: Real-DRL Framework 17 C Proof of Theorem 4.1 18 D Proof of Theorem 5.2 19 E Pseudocode: Computation of PHY-Teacher’s Action Policy 24 F Compensation for Large Model Mismatch 25 
+
+F.1 Computation of Compensation Action . . . . . . . . . . . . . . . . . . . . . . . . 25 F.2 Conditional Usage of Compensation Action . . . . . . . . . . . . . . . . . . . . . 25 
+
+G Experimental Evaluation: Python CVXPY v.s. C ECVXCONE 26 H Unknown Unknown: Randomized Beta Distribution 27 I Experiment Design: Real Quadruped Robot: Indoor Environment 28 
+
+I.1 Learning Configurations and Computation Resources . . . . . . . . . . . . . . . . 28 I.2 Safety Conditions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28 I.3 PHY-Teacher Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28 I.4 DRL-Student Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 
+
+J Experiment Design: Quadruped Robot: Wild Environment 31 
+
+J.1 Learning Configurations and Computation Resources . . . . . . . . . . . . . . . . 32 J.2 Safety Conditions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32 J.3 PHY-Teacher Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32 J.4 DRL-Student Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32 J.5 Ablation Experiment . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 33 
+
+K Experiment Design: Cart-Pole System 34 
+
+K.1 Learning Configurations and Computation Resources . . . . . . . . . . . . . . . . 34 K.2 Safety Conditions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34 K.3 PHY-Teacher Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34 K.4 DRL-Student Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35 K.5 Auxiliary Experiment . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35 15 A Auxiliary Lemmas 
+
+In this section, we present auxiliary lemmas that will be used in the proofs of the main results of this article. 
+
+Lemma A.1 (Schur Complement [ 61 ]) . For any symmetric matrix M =
+
+ A BB⊤ C
+
+
+
+, the M ≻ 0
+
+holds if and only if the C ≻ 0 and A − B · C−1 · B⊤ ≻ 0 hold. 
+
+Lemma A.2. [ 48 ] We define two state sets: S ≜  s ∈ Rn| C · s < 1m and Ω ≜ { s ∈ Rn | s⊤ ·
+
+Q−1 · s < 1, Q ≻ 0 }. We have the Ω ⊆ S, if the Im − C · Q · C⊤ ≻ 0 holds. 
+
+Lemma A.3. [ 13 ] We define two action sets: A ≜  a ∈ Rm| D · a < 1p and Ξ ≜
+
+ a ∈ Rm| a⊤ · T−1 · a < 1, T ≻ 0 . We have the Ξ ⊆ A, if the Ip − D · T · D⊤ ≻ 0 holds. 
+
+Lemma A.4. For two vectors x ∈ Rn, y ∈ Rn, and a matrix P ≻ 0, we have 
+
+2 · x⊤ · P · y ≤ ϕ · x⊤ · P · x + 1
+
+ϕ · y⊤ · P · y, with ϕ > 0.
+
+Proof. The proof straightforwardly follows inequality of: 
+
+(pϕ · x− 1
+
+√ϕ · y)⊤ · P · (pϕ · x− 1
+
+√ϕ · y) = ϕ · x⊤ · P · x+ 1
+
+ϕ · y⊤ · P · y−2 · x⊤ · P · y ≥ 0,
+
+which is due to P ≻ 0 and ϕ > 0.
+
+Lemma A.5. Given any λ > 0 and matrix X ∈ Rm×n, the matrix X · X⊤ + λ · Im is invertible. Proof. The proof is straightforward by letting y = X⊤ · x. For any non-zero vector x, we have 
+
+x⊤ · (X · X⊤ + λ · Im) · x = ∥y∥22 + λ · ∥ x∥22 > 0, where ∥·∥ 2 denotes the L2-norm of a vector. So, 
+
+X · X⊤ + λ · Im is a positive definite matrix, thus always invertible. 16 B Pseudocode: Real-DRL Framework 
+
+Algorithm 1 Real-DRL Algorithm 
+
+1: Real plant operates from the safe self-learning space L initially, i.e., s(t) ∈ L at initial time t = 1 ;2: DRL-Student’s real-time actor-network outputs the action astudent (t) given the input s(t);3: DRL-Student applies astudent (t) to real plan to have the state s(t + 1) ;4: Update time index: k ← t + 1 ;5: if s(t + 1) /∈ L then 
+
+6: PHY-Teacher uses the real-time state s(k) to update physics-model knowledge (A(s(k)) , B(s(k)) ;7: PHY-Teacher uses the real-time state s(k) to update control goal s∗ 
+
+> k
+
+in Equation (16); 8: PHY-Teacher computes Rk and Qk from inequalities in Equations (20) and (21); 9: PHY-Teacher computes action policy, denoted by Fk , according to Equation (19); 10: PHY-Teacher computes action ateacher (t + 1) according to Equation (18), given real-time state s(t + 1) ;11: PHY-Teacher applies ateacher (t + 1) to real plan to back up safety and have s(t + 2) ;12: PHY-Teacher computes R(s(t + 1) , ateacher (t + 1) , s(t + 2)) ;13: PHY-Teacher compiles the teaching-to-learn experience data as described in Equation (11); 14: PHY-Teacher stores the teaching-to-learn experience data (11) into teaching-to-learning replay buffer; 15: Generate batch samples according to the safety-informed batch sampling mechanism (14); 16: Apply off-policy algorithms to update critic and actor networks, using the generated batch samples; 17: if s(t + 2) /∈ L then 
+
+18: Update time index: t + 1 ← t + 2 ;19: Go to Line 10; 20: else 
+
+21: Update time index: t ← t + 2 ;22: Go to Line 2; 23: end if 
+
+24: else 
+
+25: DRL-Student computes the reward R(s(t), astudent (t), s(t + 1)) ;26: DRL-Student compiles the self-learning experience data as described in Equation (10); 27: DRL-Student stores the self-learning experience data (10) into self-learning replay buffer; 28: Generate batch samples according to the safety-informed batch sampling mechanism (14); 29: Apply off-policy algorithm to update critic and actor networks, using the generated batch samples; 30: Update time index: t ← t + 1 ;31: Go to Line 2; 32: end if 
+
+The working mechanism of our proposed Real-DRL is explained in Algorithm 1. Below, we provide additional clarifications. The actions of the activated DRL-Student and PHY-Teacher are highlighted in the yellow and green blocks, respectively. As indicated in Line 1 and Line 5, when the triggering condition described by (6) is met, the PHY-Teacher is activated to back up the safety of the real plant (as detailed in Lines 6 to 11) and to foster the teaching-to-learn paradigm (as described in Lines 12 to 16). Furthermore, Lines 17 to 23 outlines the process in which, once the PHY-Teacher has guided the real plant back to the self-learning space, control is returned to the DRL-Student. At that point, the DRL-Student is activated while the PHY-Teacher is deactivated. The Lines 15 and 16 in the yellow block (i.e., the activation period of the PHY-Teacher) and Lines 28 and 29 in the green block (i.e., the activation period of the DRL-Student) indicate that during the activation period of either the DRL-Student or the PHY-Teacher, the critic and actor networks continue to update through off-policy algorithms. The generated batch samples are based on safety-informed batch sampling, which includes samples drawn from both the teach-to-learn and self-learning replay buffers. Their contribution ratios depend on the real-time safety status, represented as V (s(k)) .Therefore, we can conclude that Real-DRL operates within a dual paradigm of self-learning and teaching-to-learn during its runtime operation. 17 C Proof of Theorem 4.1 
+
+The overall proof consists of the following two steps. 
+
+Step 1: Conclude: Set { s ∈ Rn | V (s) < 1} ⊆ S.
+
+The safety set defined in Equation (2) can be transformed into an equivalent representation as follows: 
+
+S =  s ∈ Rn| (C · diag −1{c}) · s ≤ 1p . (23) Meanwhile, letting Q = P−1, the conditions (i.e., Ip −(C·diag −1{c})· eP−1 ·(C·diag −1{c})⊤ ≻ 0
+
+and eP ≻ 0) included in Equation (13) imply that 
+
+Ip − (C · diag −1{c}) · P−1 · (C · diag −1{c})⊤ ≻ 0 and Q ≻ 0. (24) Then, by applying Lemma A.2 from Appendix A and taking into account the V (s) defined in Equation (12), we conclude from Equations (23) and (24) that: 
+
+{ s ∈ Rn | s⊤ · Q−1 · s ≤ 1} = { s ∈ Rn | s⊤ · P · s ≤ 1} = { s ∈ Rn | V (s) ≤ 1} ⊆ S (25) 
+
+Step 2: Proof of maximum volume. 
+
+We recall that the volume of an ellipsoid, defined by the set { s ∈ Rn | s⊤ · P · s ≤ 1} =
+
+{ s ∈ Rn | V (s) ≤ 1}, is proportional to pdet( P−1) [48 , 53 ]. Therefore, maximizing the vol-ume is equivalent to minimizing the determinant: det( P−1). This leads to the optimal problem outlined in Equation (13). As a result, the ellipsoid set { s ∈ Rn | V (s) ≤ 1} achieves the maximum volume. Thus, the proof is completed. 18 D Proof of Theorem 5.2 
+
+According to Definition 2.3, to prove the PHY-Teacher – designed by Theorem 5.2 – has assured safety, we shall prove the PHY-Teacher’s real-time actions and the resulted system states simultaneously satisfy three requirements. They are when s(k) ∈ ∂L, then i) the s(t) ∈ S holds for any time t ∈ Tk,ii) ateacher (t) = πteacher (s(t)) ∈ A holds for any time t ∈ Tk, and iii) there exists a τk ∈ N, such that 
+
+s(k + τk) ∈ L. The overall proof will separated into seven steps to conclude the three conditions i)–iii) hold in Steps 4, 5, and 7 , respectively. These steps are detailed below. 
+
+Step 1: Derivations from the first inequality in Equation (21). 
+
+Recalling the Schur Complement in Lemma A.1 of Appendix A, and considering that Qk ≻ 0, we conclude that the first inequality in Equation (21) is equivalent to 
+
+α · Qk − (1+ ϕ) · (Qk ·A⊤(s(k)) + R⊤ 
+
+> k
+
+·B⊤(s(k))) · Q−1 
+
+> k
+
+· (A(s(k)) ·Qk + B(s(k)) ·Rk) ≻ 0,
+
+multiplying both the left-hand side and the right-hand side of which by Q−1 
+
+> k
+
+yields: 
+
+α · Q−1 
+
+> k
+
+− (1+ ϕ) · (A⊤(s(k)) + Q−1 
+
+> k
+
+· R⊤ 
+
+> k
+
+· B⊤(s(k))) · Q−1 
+
+> k
+
+· (A(s(k)) + B(s(k)) · Rk · Q−1 
+
+> k
+
+)
+
+≻ 0,
+
+substituting the definitions in Equation (19) into which, we obtain: 
+
+α · Pk − (1 + ϕ) · (A⊤(s(k)) + F⊤ 
+
+> k
+
+· B⊤(s(k))) · Pk · (A(s(k)) + B(s(k)) · Fk) ≻ 0, (26) which is equivalent to 
+
+α · Pk − (1 + ϕ) · A⊤(s(k)) · Pk · A(s(k)) ≻ 0, (27) where we define: 
+
+A(s(k)) ∆
+
+= A(s(k)) + B(s(k)) · Fk. (28) 
+
+Step 2: Derivations from the first inequality in Equation (20). 
+
+We define the set: 
+
+Ωk ≜ { s | (s − s∗
+
+> k
+
+)⊤ · Q−1 
+
+> k
+
+· (s − s∗
+
+> k
+
+) < 1, Qk ≻ 0 }. (29) Considering the definition e(t) ≜ s(t) − s∗ 
+
+> k
+
+and the transformation C ≜ C · diag −1{θ · c}, the patch defined in Equation (15) can be equivalently expressed as Pk =  s ∈ Rn| C · (s − s∗
+
+> k
+
+) < 1 . Mean-while, by considering the first inequality in Equation (20) and applying Lemma A.2 of Appendix A, we conclude: 
+
+Ωk ⊆ Pk because Ip − C · Qk · C⊤ ≻ 0. (30) We note that the patch in Equation (15) can also be rewritten as follows: 
+
+Pk = { s ∈ Rn| − θ · c + C · s∗ 
+
+> k
+
+< C · s < θ · c + C · s∗
+
+> k
+
+} . (31) From Equations (4), (6) and (16), we obtain that C · s∗ 
+
+> k
+
+= χ · C · s(k) = χ · η · c or −χ · η · c.Substituting this into Equation (31) yields: 
+
+Pk = { s ∈ Rn| − (θ − χ · η) · c < C · s < (θ + χ · η) · c}
+
+or { s ∈ Rn| − (θ + χ · η) · c < C · s < (θ − χ · η) · c} . (32) The first item in Equation (22) shows that θ + χ · η < 1, which is equivalent to −θ − χ · η > −1. Since both θ > 0 and χ · η > 0, we can also deduce that θ − χ · η < 1 and −θ + χ · η > −1. Therefore, we conclude from Equations (4) and (32) that Pk ⊆ S. This, in combination with Equation (30), leads to the following result: 
+
+Ωk ⊆ Pk ⊆ S. (33) 19 Step 3: Derivations from the third inequality in Equation (20). 
+
+The vector s(k) can have zero entries, for which we define: 
+
+[s(k, δ )] i ≜
+
+[s(k)] i + δ, if [s(k)] i = 0 [s(k)] i, otherwise , i = 1 , 2, . . . , n, 
+
+where δ̸ = 0 and [s(k)] i represents the i-th entry of the vector s(k). Thus, the vector s(k) contains no zero entries. We therefore conclude: 
+
+lim  
+
+> δ→0
+
+s(k, δ ) = s(k), (34) in light of which and the third inequality in Equation (20), we can conclude the following: 
+
+lim 
+
+> δ→0
+
+{Qk − n · diag 2(s(k, δ )) } = Qk − n · diag 2(s(k)) ≻ 0. (35) The lim δ→0{Qk − n · diag 2(s(k, δ )) } ≻ 0 is equivalent to Qk − lim δ→0{n · diag 2(s(k, δ )) } ≻ 
+
+0. Given that s(k, δ ) does not have zero entries and the Qk ≻ 0, we can further conclude that 
+
+lim δ→0{n−1 · diag −2(s(k, δ )) } − Q−1 
+
+> k
+
+≻ 0, which means 
+
+n−1 · In − lim 
+
+> δ→0
+
+{diag (s(k, δ )) · Q−1 
+
+> k
+
+· diag (s(k, δ )) } ≻ 0,
+
+from which, the diag (s(k)) · 1n = s(k), and the Q−1 
+
+> k
+
+= Pk, we have: 
+
+lim 
+
+> δ→0
+
+{1⊤ 
+
+> n
+
+· diag (s(k, δ )) · Q−1 
+
+> k
+
+· diag (s(k, δ )) · 1n = s⊤(k, δ ) · Pk · s(k, δ )} < n −1 · 1⊤ 
+
+> n
+
+· 1n = 1 .
+
+In conjunction with Equation (34), this leads to the following conclusion: 
+
+s⊤(k) · Pk · s(k) = lim 
+
+> δ→0
+
+{s⊤(k, δ ) · Pk · s(k, δ )} < 1. (36) 
+
+Step 4: Conclude: s(t) ∈ S, ∀t ∈ Tk.
+
+Considering the dynamics outlined in Equation (17), the action policy described in Equation (18), and the definition provided in Equation (28), we obtain: 
+
+e⊤ (t + 1) · Pk · e (t + 1) − α · e⊤ (t) · Pk · e (t)= e⊤ (t) ·
+
+
+
+A⊤(s(k)) · Pk · A(s(k)) − α · Pk
+
+
+
+· e (t) + h⊤ (e (t)) · Pk · h (e (t)) + 2 · e⊤ (t) · A⊤(s(k)) · Pk · h (e (t)) , t ∈ Tk. (37) In light of Lemma A.4 of Appendix A, we have: 
+
+2 · e⊤ (t) · A⊤(s(k)) · Pk · h (e (t)) ≤ ϕ · e⊤ (t) · A⊤(s(k)) · Pk · A(s(k)) · e (t)+ 1
+
+ϕ · h⊤ (e (t)) · Pk · h (e (t)) . (38) We note that Assumption 5.1 means: 
+
+h⊤(e (t)) · Pk · h(e (t)) ≤ κ, ∀ e (t) ∈ Pk. (39) Substituting inequalities in Equations (38) and (39) into Equation (37) yields: 
+
+e⊤ (t + 1) · Pk · e (t + 1) − α · e⊤ (t) · Pk · e (t)
+
+≤ e⊤ (t) ·
+
+
+
+(1 + ϕ) · A⊤(s(k)) · Pk · A(s(k)) − α · Pk
+
+
+
+· e (t) + (ϕ + 1) · κϕ , t ∈ Tk. (40) We now are able to conclude from Equations (27) and (40) that 
+
+e⊤ (t + 1) · Pk · e (t + 1) < α · e⊤ (t) · Pk · e (t) + (ϕ + 1) · κϕ , t ∈ Tk. (41) 20 The left-hand inequality in the first item of Equation (22) is equivalent to (1 − χ) · η < θ . Given that 
+
+0 < χ < 1, this leads to the conclusion that (1 −χ)2·η2 
+
+> θ2
+
+< 1. Considering this, we can derive from the second item in Equation (22) that (ϕ+1) ·κ 
+
+> (1 −α)·ϕ
+
+< 1, which can be rewritten as α + (ϕ+1) ·κϕ < 1. From this inequality and Equation (36), we obtain: 
+
+e⊤ (t + 1) · Pk · e (t + 1) < 1, for any e⊤ (t) · Pk · e (t) < 1. (42) Additionally, recalling Equation (16), we have: e(k) = s(k) − s∗ 
+
+> k
+
+= s(k) − χ · s(k) = (1 − χ) · s(k),where 0 < χ < 1 This expression, along with Equation (36), leads to the result: e⊤ (k)·Pk ·e (k) < 1
+
+Combining this with Equation (41) and considering the process of iteration, we can draw the following conclusion: 
+
+e⊤ (t) · Pk · e (t) ≤ 1, ∀t ∈ Tk. (43) Furthermore, referring to e(t) ≜ s(t) − s∗ 
+
+> k
+
+and Equation (29) with Q−1 
+
+> k
+
+= Pk, the result in Equation (43) means that s (t) ∈ Ωk, ∀t ∈ Tk. Finally, considering Equation (33), we reach the final conclusion: 
+
+s (t) ∈ Ωk ⊆ Pk ⊆ S, ∀t ∈ Tk. (44) 
+
+Step 5: Conclude: ateacher (t) ∈ A, ∀t ∈ Tk.
+
+According to Lemma A.1 in Appendix A, the second inequality in (21) implies the following: 
+
+Qk − R⊤ 
+
+> k
+
+· T−1 
+
+> k
+
+· Rk ≻ 0. (45) By substituting Fk · Qk = Rk into Equation (45), we obtain: 
+
+Qk − (Fk · Qk)⊤ · T−1 
+
+> k
+
+· (Fk · Qk) ≻ 0. (46) multiplying both left-hand and right-hand sides of which by Q−1 
+
+> k
+
+yields: 
+
+Q−1 
+
+> k
+
+− F⊤ 
+
+> k
+
+· T−1 
+
+> k
+
+· Fk ≻ 0,
+
+from which and Equation (18) we thus have 
+
+e⊤(t) · Q−1 
+
+> k
+
+· e(t) − e⊤(t) · F⊤ 
+
+> k
+
+· T−1 
+
+> k
+
+· Fk · e(t) = e⊤(t) · Q−1 
+
+> k
+
+· e(t)
+
+− a⊤
+
+> teacher
+
+(t) · T−1 
+
+> k
+
+· ateacher (t) > 0. (47) We observe that the patch set in Equation (29) can be expressed in an equivalent form as follows: 
+
+Ωk ≜ { e | e⊤ · Q−1 
+
+> k
+
+· e < 1, where Qk ≻ 0 and e ≜ s − s∗ 
+
+> k
+
+}, (48) from which, we conclude that e (t) ∈ Ωk means e⊤(t) · Q−1 
+
+> k
+
+· e(t) < 1. So, we can obtain from Equation (47) that 
+
+a⊤
+
+> teacher
+
+(t) · T−1 
+
+> k
+
+· ateacher (t) < e⊤(t) · Q−1 
+
+> k
+
+· e(t) < 1, for e (t) ∈ Ωk. (49) Additionally, based on Equation (48), the conclusion in Equation (44) indicates that e (t) ∈ Ωk, ∀t ∈
+
+Tk. This, in light of Equation (49), results in 
+
+a⊤
+
+> teacher
+
+(t) · T−1 
+
+> k
+
+· ateacher (t) < 1, ∀t ∈ Tk. (50) We define a set: Ξk ≜  a ∈ Rm| a⊤ · T−1 
+
+> k
+
+· a < 1, Tk ≻ 0 . In light of Equation (50), we obtain: 
+
+ateacher (t) ∈ Ξk, ∀t ∈ Tk. (51) Noting D = D · diag −1{d}, the definition of action set A in Equation (3) can be equivalently expressed as A ≜  a ∈ Rm| D · a ≤ 1 . Besides, recalling the second inequality (i.e., Iq − D · Tk ·
+
+D⊤ ≻ 0) from Equation (20) and applying Lemma A.3 with consideration of Equation (51), we can conclude that: 
+
+ateacher (t) ∈ Ξk ⊆ A, ∀t ∈ Tk. (52) 21 Step 6: Further derivations from the first inequality in Equation (20). 
+
+Referring to Equation (15), we define an auxiliary real-time set as follows: 
+
+Gk ≜ { s ∈ Rn| − γ · c ≤ C · (s − s∗
+
+> k
+
+) ≤ γ · c, with γ = (1 − χ) · η < θ } , (53) where χ is given in Equation (16), η is given in Equation (4), and η is given in Equation (15). The 
+
+Gk in Equation (53) can be equivalently expressed as 
+
+Gk = { s ∈ Rn| C · s∗ 
+
+> k
+
+− γ · c ≤ C · s ≤ C · s∗ 
+
+> k
+
++ γ · c, with γ = (1 − χ) · η < θ } . (54) We recall from Equation (6) that s(k) denotes a system state that approaches the boundary of safe self-learning space L defined in Equation (4). Hereto, by considering s∗ 
+
+> k
+
+= χ · s(k) and Equation (15), we have −χ · η · c ≤ C · s∗ 
+
+> k
+
+≤ χ · η · c, substituting which into (54) yields: 
+
+Gk = { s ∈ Rn| (χ · η − γ) · c < C · s < (χ · η + γ) · c, with γ = (1 − χ) · η < θ } . (55) We note that the relationship γ = (1 − χ) · η is equivalent to the equation χ · η + γ = η. This implies that χ · η − γ > −η, considering that χ · η > 0. In summary, we establish both χ · η + γ = η and 
+
+χ · η − γ > −η. Considering them, we can derive result from Equations (4) and (55) as follows: 
+
+Gk ⊂ L. (56) Considering that Pk = Q−1 
+
+> k
+
+and the patch defined in Equation (15), we can derive from Equa-tions (29) and (30) that: 
+
+{ s ∈ Rn | (s − s∗
+
+> k
+
+)⊤ · Pk · (s − s∗
+
+> k
+
+) ≤ 1} ⊆ { s ∈ Rn| − θ · c ≤ C · (s − s∗
+
+> k
+
+) ≤ θ · c} ,
+
+if Ip − C · P−1 
+
+> k
+
+· C⊤ ≻ 0 (57) where C ≜ C · diag −1{θ · c}. Letting bC ≜ C · diag −1{γ · c} and considering γ > 0, we can obtain from Equation (57) that 
+
+{ s ∈ Rn | (s − s∗
+
+> k
+
+)⊤ · ( θ2
+
+γ2 · Pk) · (s − s∗
+
+> k
+
+) ≤ 1} ⊆ { s ∈ Rn| − γ · c ≤ C · (s − s∗
+
+> k
+
+) ≤ γ · c} ,
+
+if Ip − bC · ( γ2
+
+θ2 · P−1 
+
+> k
+
+) · bC⊤ ≻ 0. (58) Moreover, it is straightforward to verify from C ≜ C · diag −1{θ · c} and bC ≜ C · diag −1{γ · c} that 
+
+bC · ( γ2 
+
+> θ2
+
+· P−1 
+
+> k
+
+) · bC⊤ = C · P−1 
+
+> k
+
+· C⊤. So, with the consideration of Equation (53), we can further conclude from Equations (57) and (58) that: 
+
+{ s ∈ Rn | (s − s∗
+
+> k
+
+)⊤ · Pk · (s − s∗
+
+> k
+
+)⊤ ≤ γ2
+
+θ2 } ⊆ Gk, if Ip − C · P−1 
+
+> k
+
+· C⊤ ≻ 0. (59) Furthermore, recalling the first inequality (i.e., Ip − C · Qk · C⊤ ≻ 0) from Equation (20), we arrive at the conclusion { s ∈ Rn | (s − s∗
+
+> k
+
+)⊤ · Pk · (s − s∗
+
+> k
+
+) ≤ γ2 
+
+> θ2
+
+} ⊆ Gk. This, combined with Equation (56), leads to the following result: 
+
+{ s ∈ Rn | (s − s∗
+
+> k
+
+)⊤ · Pk · (s − s∗
+
+> k
+
+) ≤ γ2
+
+θ2 } ⊂ L,
+
+substituting γ = (1 − χ) · η into which yields: 
+
+{ s ∈ Rn | (s − s∗
+
+> k
+
+)⊤ · Pk · (s − s∗
+
+> k
+
+) ≤ (1 − χ)2 · η2
+
+θ2 } ⊂ L. (60) 22 Step 7: Conclude: s(k + τk) ∈ L for a τk ∈ N.
+
+We can derive from (41) that 
+
+e⊤ (k + τ ) · Pk · e (k + τ ) ≤ ατ · e⊤ (k) · Pk · e (k) + (ϕ + 1) · κϕ · 1 − ατ −1
+
+1 − α ,
+
+where 0 < α < 1. This leads to the following result: 
+
+e⊤ (∞) · Pk · e (∞) ≤ (ϕ + 1) · κ
+
+(1 − α) · ϕ ,
+
+which with the second item in Equation (22) leads to 
+
+e⊤ (∞) · Pk · e (∞) ≤ (ϕ + 1) · κ
+
+(1 − α) · ϕ < (1 − χ)2 · η2
+
+θ2 . (61) Given that e(t) ≜ s(t) − s∗
+
+> k
+
+, we can equivalently express the result in Equation (61) as: 
+
+(s (∞) − s∗
+
+> k
+
+)⊤ · Pk · (s (∞) − s∗
+
+> k
+
+) ≤ (ϕ + 1) · κ
+
+(1 − α) · ϕ < (1 − χ)2 · η2
+
+θ2 . (62) Finally, we can conclude from Equations (60) and (62) that s (∞) ∈ L. This indicates that there exists a τk ∈ N such that s (k + τk) ∈ L. Thus, the proof is completed. 23 E Pseudocode: Computation of PHY-Teacher’s Action Policy 
+
+Referring to Equation (18), the computation of the PHY-Teacher’s action policy involves calculating 
+
+Fk based on the inequalities presented in Equations (20) and (21). To compute Fk, we can utilize the Python CVXPY toolbox [ 26 ] or the Matlab LMI toolbox [ 24 ], as described in Algorithm 2 and Algorithm 3, respectively. In both Algorithm 2 and Algorithm 3, the A, B, s, C, D, and F correspond to A(s(k)) , B(s(k)) , s(k), C, D, and Fk, respectively. Finally, we recall that the ECVXCONE toolbox described in Section 6 can solve the LMIs using C 
+
+Algorithm 2 Python CVXPY Toolbox for Computing Fk from Equations (20) and (21)  
+
+> 1:
+
+Input: A, B, s, C, D, m, n, p, q, and 0 < α < 1 and ϕ > 0 satisfying conditions in Equation (22).  
+
+> 2:
+
+Q = cp.Variable((n, n), PSD=True);  
+
+> 3:
+
+T = cp.Variable((m, m), PSD=True);  
+
+> 4:
+
+R = cp.Variable((m, n));  
+
+> 5:
+
+constraints = [cp.bmat([[ α * Q, Q @ A.T + R.T @ B.T], [A @ Q + B @ R, Q / (1 + ϕ)]]) » 0;  
+
+> 6:
+
+Q - n * np.diag( s) @ np.diag( s) » 0;  
+
+> 7:
+
+np.identity(p) - C @ T @ C.T» 0;  
+
+> 8:
+
+np.identity(q) - D @ Q @ D.T » 0;  
+
+> 9:
+
+problem = cp.Problem(cp.Minimize(0), constraints);  
+
+> 10:
+
+problem.solve(solver=cp.CVXOPT);  
+
+> 11:
+
+optimal −Q = Q.value;  
+
+> 12:
+
+optimal −R = R.value;  
+
+> 13:
+
+P = np.linalg.inv(optimal −Q);  
+
+> 14:
+
+F = optimal −R @ P. 
+
+Algorithm 3 Matlab LMI Toolbox for Computing Fk from Equations (20) and (21)  
+
+> 1:
+
+Input: A, B, s, C, D, m, n, p, q, and 0 < α < 1 and ϕ > 0 satisfying conditions in Equation (22).  
+
+> 2:
+
+setlmis([]) ;  
+
+> 3:
+
+Q = lmivar(1,[n 1]);  
+
+> 4:
+
+T = lmivar(1,[m 1]);  
+
+> 5:
+
+R = lmivar(2,[m n]);  
+
+> 6:
+
+lmiterm([-1 1 1 Q],1, α);  
+
+> 7:
+
+lmiterm([-1 2 1 Q],A,1);  
+
+> 8:
+
+lmiterm([-1 2 1 R],B,1);  
+
+> 9:
+
+lmiterm([-1 2 2 Q],1,1/(1 + ϕ));  
+
+> 10:
+
+lmiterm([-2 1 1 Q],1,1);  
+
+> 11:
+
+lmiterm([-2 2 1 R],1,1);  
+
+> 12:
+
+lmiterm([-2 2 2 T],1,1);  
+
+> 13:
+
+lmiterm([-3 1 1 Q],1,1);  
+
+> 14:
+
+lmiterm([-3 1 1 0],-n*np.diag( s)*np.diag( s));  
+
+> 15:
+
+lmiterm([-4 1 1 Q],-D,D’);  
+
+> 16:
+
+lmiterm([-4 1 1 0],eye(p));  
+
+> 17:
+
+lmiterm([-5 1 1 T],-C,C’);  
+
+> 18:
+
+lmiterm([-5 1 1 0],eye(q));  
+
+> 19:
+
+mylmi = getlmis;  
+
+> 20:
+
+[tmin, psol] = feasp(mylmi);  
+
+> 21:
+
+Q = dec2mat(mylmi, psol, Q);  
+
+> 22:
+
+R = dec2mat(mylmi, psol, R);  
+
+> 23:
+
+P = inv(Q)  
+
+> 24:
+
+F = R * P. 
+
+Remark E.1. We observed that the computation time for the methods described in Algorithm 2 and Algorithm 3 is quite short, ranging from 0.01 to 0.04 seconds (see evaluation in Table 2); therefore, its impact can be considered negligible. However, we found that the default CVX solver, SCS, demonstrated instability and inconsistent accuracy across different computing platforms. As a result, we opted to use the CVXOPT solver [ 1] in our experiments to achieve more stable and accurate results. This issue, however, does not arise when using the Matlab LMI toolbox. 
+
+24 F Compensation for Large Model Mismatch 
+
+When the actual dynamics described by Equation (17) experiences significant model mismatch, the physics-model knowledge (A(s(k)) , B(s(k)) may be inadequate. In such situations, the PHY-Teacher should implement a strategy to address this considerable model mismatch. This section outlines the technique used to compensate for the discrepancies in the model. 
+
+F.1 Computation of Compensation Action 
+
+Given the state sample at the current time step t (denoted as e(t)), we can obtain the current control command ateacher (t), calculated according to the method described in Equation (18). In addition to this information, we also have the previous state e(t − 1) and the physics-model knowledge represented by (A(s(k)) , B(s(k)) . We can use the dynamics outlined in Equation (17) to predict the current state as follows: 
+
+be(t) = A(s(k)) · e(t − 1) + B(s(k)) · ateacher (t), (63) where be(t) denotes the predicted state at time t.In the context of compensating for model mismatch, the dynamics at the current time, as described in (17), can be expressed in an equivalent manner: 
+
+e(t) = A(s(k)) · e(t − 1) + B(s(k)) · (ateacher (t) + acompensation (t)) + eh(e(t)) , (64) where the term acompensation (t) signifies the real-time actions taken to address the model mismatch 
+
+eh(e(t)) .We can further derive from Equations (63) and (64) that 
+
+B(s(k)) · acompensation (t)) + eh(e(t) = e(t) − be(t), (65) where e(t) and be(t) are known. From Equation (65), we find that if the compensation action meets the condition outlined in Equation (66), the model mismatch eh(e(t)) in Equation (64) can be effectively compensated by acompensation (t)) (i.e., eh(e(t) = 0n). 
+
+B(s(k)) · acompensation (t)) = e(t) − be(t), (66) We next explain how to calculate the compensation action, denoted as acompensation (t), based on the conditions outlined in Equation (66). By multiplying the left-hand side of Equation (66) by B⊤(s(k)) , we obtain 
+
+(B⊤(s(k)) · B(s(k))) · acompensation (t) = B⊤(s(k)) · (e(t) − be(t)) . (67) By incorporating a sufficiently small value of λ > 0 in Equation (67), we achieve the following outcome: 
+
+(B⊤(s(k)) · B(s(k)) + λ · Im) · acompensation (t) ≈ B⊤(s(k)) · (e(t) − be(t)) ,
+
+which, in light of Lemma A.5 in Appendix A, the solution for acompensation (t) is yielded as follows: 
+
+acompensation (t) ≈ (B⊤(s(k)) · B(s(k)) + λ · Im)−1 · B⊤(s(k)) · (e(t) − be(t)) . (68) 
+
+F.2 Conditional Usage of Compensation Action 
+
+At the current time t, we possess the following information: the current state e(t), the previ-ous state e(t − 1) , the previous action a(t − 1) , and the physics model knowledge denoted by 
+
+(A(s(k)) , B(s(k))) . With this data, we can estimate the real-time value of model mismatch at time t
+
+using the dynamics described in Equation (17). The estimation of model mismatch can be expressed as follows: 
+
+h(e(t)) ≈ h(e(t − 1)) = e(t) − A(s(k)) · e(t − 1) + B(s(k)) · ateacher (t − 1) ,
+
+where h(e(t)) ≈ h(e(t − 1)) holds true due to the sufficiently small sampling period of sensors. Given the estimated model mismatch, we can carry out a real-time evaluation of Assumption 5.1 to decide whether to implement the compensation action. The process is outlined as follows: 
+
+ateacher (t) ←
+
+ateacher (t) + acompensation (t), if h⊤(e) · Pk · h(e) > κ, 
+
+ateacher (t), if h⊤(e) · Pk · h(e) ≤ κ. 
+
+25 G Experimental Evaluation: Python CVXPY v.s. C ECVXCONE 
+
+Table 2: Python CVXPY v.s. C ECVXCONE 
+
+Hardware Platforms CPU Configurations Runtime Memory Usage LMIs Solve Time Arch Core Frequency CVXPY ECVXCONE CVXPY ECVXCONE 
+
+Dell XPS 8960 Desktop x86/64 32 5.4 GHz 485 MB 9.87 MB 49.15 ms 13.81 ms Intel GEEKOM XT 13 Pro Mini x86/64 20 4.7 GHz 443 MB 7.32 MB 61.76 ms 33.26 ms NVIDIA Jetson AGX Orin ARM64 12 2.2 GHz 423 MB 8.16 MB 137.54 ms 35.73 ms Raspberry Pi 4 Model B ARM64 4 1.5 GHz 436 MB 8.21 MB 509.41 ms 149.87 ms We summarize the experimental evaluation comparing Python CVXPY and C ECVXCONE regarding computational resource usage across four platforms with varying CPU frequencies in Table 2. Both CVXPY and ECVXCONE solve the same LMIs for the experiment ‘Quadruped Robot in NVIDIA Isaac Gym: Wild Environment’ in Section 7.2. 26 H Unknown Unknown: Randomized Beta Distribution 
+
+In the real world, plants can encounter a multitude of unknown variables, each with unique char-acteristics. To tackle this challenge, we propose utilizing a variant of the Beta distribution [ 31 ]to effectively model one type of these unknowns. This approach holds promise in mathematically defining and addressing these uncertainties. 
+
+Definition H.1 (Randomized Beta Distribution) . The disturbance, noise, or fault, denoted by d(k),is considered to be a bounded unknown if (i) d(k) ∼ Beta (α(k), β (k), c, a ), and (ii) α(k) and β(k)
+
+are random parameters. In other words, the disturbance d(k) is within the range of [a, c], and its probability density function (pdf) is given by 
+
+f (d(k); α(k), β (k), a, c ) = (d(k) − a)α−1(c − d(k)) α(k)−1Γ ( α(k) + β(k)) (c − a)α(k)+ β(k)−1Γ ( α(k)) Γ ( β(k)) , (69) 
+
+where Γ ( α(k)) = R ∞ 
+
+> 0
+
+tα(k)−1e−tdt, Re ( α(k)) > 0, α(k) and β(k) are randomly given at every k.
+
+The randomized Beta distribution, as defined in Definition H.1, is essential for describing a particular type of unknown unknown. This is important for two main reasons. First, the nature of unknown unknowns is characterized by a lack of historical data, making them highly unpredictable in terms of time and distribution. As a result, existing models for scientific discoveries and understanding are often insufficient. Second, as the examples shown in Figure 7, the parameters α and β directly influence the probability density function (pdf) of the distribution, and consequently, the mean and variance. Suppose α
+
+and β are randomized (expressed as α(k) and β(k)). In that case, the distribution of d(k) can take the form of a uniform distribution, exponential distribution, truncated Gaussian distribution, or a combination of these. However, the specific distribution is unknown. Therefore, the randomized α(k)
+
+and β(k), which result in a randomized Beta distribution, can effectively capture the characteristics of "unavailable model" and "unforeseen" traits associated with unknown unknowns in both time and distribution. Furthermore, the randomized Beta distributions are bounded, with the bounds denoted as 
+
+a and c. This is motivated by the fact that, in general, there are no probabilistic solutions for handling unbounded unknowns, such as earthquakes and volcanic eruptions. 0 0.2 0.4 0.6 0.8 1
+
+# d(k) 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+> f(d(k); ,(k), -(k),c,a)
+
+# c = 0, a = 1 
+
+,(k) = -(k) = 0.15 
+
+,(k) = -(k) = 1 
+
+,(k) = -(k) = 11 
+
+,(k) = 5, -(k) = 1 
+
+,(k) = 1, -(k) = 3 
+
+,(k) = 2, -(k) = 7 
+
+Figure 7: α(k) and β(k) control the probability density function of the distribution. 27 I Experiment Design: Real Quadruped Robot: Indoor Environment 
+
+In our real quadruped robot experiment, we used a Python-based framework developed for the Unitree A1 robot, which was released on GitHub by [ 57 ]. This framework includes a PyBullet-based simulator, an interface for direct simulation-to-real transfer, and an implementation of the Convex Model Predictive Controller for essential motion control. 
+
+I.1 Learning Configurations and Computation Resources 
+
+The runtime learning machine and Phy-DRL are designed to accomplish the safe mission detailed in Section 7.2. The policy observation consists of a 10-dimensional tracking error vector that represents the difference between the robot’s state vector and the mission vector. Both systems utilize off-policy algorithm DDPG. The actor and critic networks are implemented as MLPs with four fully connected layers. The output dimensions for the critic network are 256, 128, 64, and 1, while those for the actor network are 256, 128, 64, and 6. The input to the critic network comprises the tracking error vector and the action vector, while the input to the actor network is solely the tracking error vector. The activation functions for the first three layers of the neural networks are ReLU, while the output layer of the actor network uses the Tanh function and the critic network uses a Linear function. Additionally, the discount factor 
+
+γ is set to 0.9, and the learning rates for both the critic and actor networks are set at 0.0003. Finally, the batch size is configured to 512. For computation resources, we utilized a desktop running Ubuntu 22.04, equipped with a 12th Gen Intel(R) Core(TM) i9-12900K 16-core processor, 64 GB of RAM, and an NVIDIA GeForce GTX 3090 GPU. The algorithm was implemented in Python, utilizing the TensorFlow framework alongside the Python CVXPY toolbox for solving real-time patches. 
+
+I.2 Safety Conditions 
+
+The robot’s learning process involves controlling its center of mass (CoM) height, CoM x-velocity, and other states in order to track the commands rvx , rh, and zeros, respectively, while maintaining system states within a safety set, denoted as S. This safety set is defined as: 
+
+S = { s | | CoM x-velocity − rvx | ≤ 0.6 m/s , |CoM z-height − rh| ≤ 0.12 m}. Additionally, PHY-Teacher’s action space is defined as: A =  a ∈ R6 |a| ≤ [10 , 10 , 10 , 20 , 20 , 20] ⊤ . This ensures that the robot operates within specified limits for safety and performance. 
+
+I.3 PHY-Teacher Design 
+
+The robot’s physics-model knowledge used in the design relies on its dynamics, which focuses on a single rigid body subject to forces at the contact points [ 19 ]. Our model of the robot’s dynamics includes several key parameters: the CoM height (h), the CoM velocity ( v), represented as a 3D vector [CoM x-velocity, CoM y-velocity, CoM z-velocity] ⊤, the Euler angles ( ee), described as a 3D vector [roll, pitch, yaw] ⊤, and the angular velocity in world coordinates. According to [ 19 ], this model below effectively characterizes the dynamics of quadruped robots. 
+
+ddt
+
+
+
+h
+
+eevw
+
+| {z } 
+
+> ≜bs
+
+=
+
+
+
+O1×1 O1×5 1 O1×3
+
+O3×3 O3×3 O3×3 R(ϕ, θ, ψ )
+
+O3×3 O3×3 O3×3 O3×3
+
+O3×3 O3×3 O3×3 O3×3
+
+| {z } 
+
+> ≜bA(ϕ,θ,ψ )
+
+·
+
+
+
+h
+
+eevw
+
+ + bB · ba +
+
+
+
+0
+
+O3×1
+
+O3×1
+
+eg
+
+
+
++ f (bs), (70) where eg = [0 , 0, −g]⊤ ∈ R3, with g being the gravitational acceleration. f (bs) denotes unknown model mismatch, eB = [ O6×4, I6]⊤, and R(ϕ, θ, ψ ) = Rz (ψ) · Ry (θ) · Rx(ϕ) ∈ R3×3 is the rotation matrix, with 
+
+Rx(ϕ) = 
+
+" 1 0 00 cos ϕ − sin ϕ
+
+0 sin ϕ cos ϕ
+
+#
+
+, Ry (θ) = 
+
+" cos θ 0 sin θ
+
+0 1 0
+
+− sin θ 0 cos θ
+
+#
+
+, Rz (ψ) = 
+
+" cos ψ − sin ψ 0sin ψ cos ψ 00 0 1
+
+#
+
+.
+
+28 I.3.1 Physics-Model Knowledge 
+
+Given the equilibrium point (control goal) s∗, we define s ≜ es − s∗. From this, we can obtain the following state-space model derived from the dynamics model in Equation (70). 
+
+ddt 
+
+
+
+h
+
+eevw
+
+| {z }
+
+> s
+
+=
+
+
+
+O1×1 O1×3 1 O1×5
+
+O3×1 O3×3 O3×3 R(ϕ, θ, ψ )
+
+O3×1 O3×3 O3×3 O3×3
+
+O3×1 O3×3 O3×3 O3×3
+
+| {z }
+
+> bA(s)
+
+·
+
+
+
+h
+
+eevw
+
+
+
++
+
+
+
+O1×3 O1×3 O1×3 O1×3
+
+O3×3 O3×3 O3 O3×3
+
+O3×3 O3×3 I3 O3×3
+
+O3×3 O3×3 O3 I3
+
+| {z }
+
+> bB(s)
+
+·a + g(s), (71) where g(s) represents the model mismatch in the updated model. The sampling technique changes the continuous-time dynamics model in Equation (71) into a discrete-time model: 
+
+s(k + 1) = ( I10 + T · bA(s)) · s(k) + T · bB(s) · a(k) + T · g(s),
+
+from which we obtain the knowledge of A(s(k)) and B(s(k)) in Equation (17) as follows: 
+
+A(s(k)) = I10 + T · bA(s(k)) and B(s(k)) = T · bB(s(k)) , (72) where T = 130 second, i.e., the sampling frequency is 30 Hz. 
+
+I.3.2 Parameters for Real-Time Patch Computing 
+
+Given that T = 130 seconds, to satisfy Assumption 5.1, we let κ = 0 .01 . For other parameters, we let 
+
+χ = 0 .3, α = 0 .9, η = 0 .6, θ = 0 .3, and ϕ = 0 .15 . This ensures that the inequalities presented in Equation (22) are satisfied. 
+
+I.4 DRL-Student Design 
+
+In this experiment, our DRL-Students build upon two state-of-the-art safe DRLs: CLF-DRL, as proposed in [ 55 ], and Phy-DRL outlined in [ 13 , 12 ]. A critical difference is CLF-DRL has purely data-driven action policy, while Phy-DRL has a residual action policy: 
+
+astudent (k) = adrl (k)
+
+| {z } 
+
+> data-driven
+
++ aphy (k) (= F · s(k)) 
+
+| {z }
+
+> model-based
+
+,
+
+where 
+
+F =
+
+
+
+0 0 0 0 −23 .65 0 0 0 0 00 0 0 0 0 −20 0 0 0 0
+
+−63 .11 0 0 0 0 0 −20 0 0 00 −32 .51 0 0 0 0 0 −21 .88 0 00 0 −32 .51 0 0 0 0 0 −21 .88 00 0 0 −30 .95 0 0 0 0 0 −22 .28 
+
+
+
+. (73) A comparison of these models will be conducted, with all other configurations remaining the same. In all models, the parameter for defining DRL-Student’s self-learning space in Equation (4) is the same as η = 0 .3. Both CLF-DRL and Phy-DRL adopt the safety-embedded reward: 
+
+R (s(t), astudent (t)) = s⊤(t) · P · s(t) − s⊤(t + 1) · P · s(t + 1) , (74) 29 where 
+
+P =
+
+
+
+122 .1647861 0 0 0 2.487166 0 00 1.5e − 5 0 0 0 0 00 0 1.5e − 5 0 0 0 00 0 0 480 .6210753 0 0 02.487166 0 0 0 3.2176033 0 00 0 0 0 0 1.3e − 6 00 0 0 0 0 0 1.2e − 60 9e − 5 0 0 0 0 00 0 9e − 5 0 −0 0 00 0 0 155 .2954559 0 00 0 09e − 5 0 00 9e − 5 00 0 155 .2954559 0 0 00 0 00 0 07e − 5 0 00 7e − 5 00 0 −0, 156 .3068079 
+
+
+
+. (75) 30 J Experiment Design: Quadruped Robot: Wild Environment 
+
+Figure 8: An overview of wild environments. The quadruped robot navigates to its destination by follow-ing waypoints with minimal costs through runtime learn-ing. The next waypoint is highlighted in blue, while the remaining waypoints are marked in red. We utilize NVIDIA Isaac Gym [ 39 ] and the Unitree Go2 robot to evaluate our Real-DRL approach. In Isaac Gym, we create dynamic wild environments that include various natural elements, such as unstruc-tured terrain, movable stones, and obsta-cles like trees and large rocks. These en-vironments are further complicated by un-expected patches of ice that result in low friction. We can conclude that the Go2 robot operates in non-stationary and unpre-dictable conditions. Additionally, we arrange multiple way-points at reasonable intervals across the ter-rain to simulate real-world tasks for the robot, such as outdoor exploration and search-and-rescue operations. The goal is to guide the robot to its destination by se-quentially following these waypoints while minimizing traversal costs and adhering to safety constraints. The established wild environments are detailed in Figure 8. Our Real-DRL must integrate perception and planning to complete tasks safely in real-time wild environments. The integrated Real-DRL framework is illustrated in Figure 9, where the perception and planning components form the navigation module. BEV Map Navigation 
+
+> ⋮⋮⋮
+> Critic
+> Proprioception
+> Exteroception
+
+Sensing 
+
+> DRL-Student
+> Cost Map
+> Occupancy
+> Map
+> Actor
+> ⋮⋮
+> PHY-Teacher: Theorem 5.2
+> Trigger:
+> Eq. (6)
+> Mission 2: Back Up
+> Safety
+> Mission 1: Foster Teaching-to-Learn
+> astudent (k)
+
+Real-DRL for Locomotion Learning and Control 
+
+> Locomotion cotrol
+> commands
+> Planned Motions
+> BEV Map
+> ateacher (k)
+> Replay Buffer
+> Self-Learning
+> Safety-Informed
+> Batch Sampling:
+> Eq. (14)
+> Replay Buffer
+> Teaching-to-Learn
+
+Figure 9: Integration of Real-DRL with Navigation : A seamless integration of perception, planning, learning, and control is essential for robotic operation in complex environments. The sensing 
+
+module collects both proprioceptive and exteroceptive data from the robot as it navigates challenging surroundings. The navigation module constructs a Bird’s Eye View (BEV) map by filtering Regions of Interest, generates an occupancy map using height thresholding, and computes a cost map with the Fast Marching method. Using this cost map, a planner generates planned motions for the locomotion controller. In the locomotion learning and control module, the trigger facilitates interaction between the PHY-Teacher and the DRL-Student to ensure the robot’s safety. This setup allows the DRL-Student to learn from the PHY-Teacher, while also engaging in self-learning to develop a safe and high-performance locomotion policy. 31 J.1 Learning Configurations and Computation Resources 
+
+The observation space is defined as o = [ z, s]⊤, where z represents the exteroceptive observation and 
+
+s indicates the proprioceptive tracking-error vector. A waypoint is considered successfully reached when the Euclidean distance between the robot’s center of mass and the target waypoint is less than 0.3 meters. The actor and critic networks are implemented as Multi-Layer Perceptrons with four fully connected layers. The output dimensions are structured as follows: the critic network has output sizes of 256, 128, 64, and 1, while the actor network has output sizes of 256, 128, 64, and 6. The input for the critic network consists of both the observation vector and the action vector, while the actor network takes only the observation vector as input. The activation functions used in the first three layers of both networks are ReLU, while the output layer of the actor network employs the Tanh function, and the critic network uses a linear activation function. Additionally, the discount factor γ is set to 0.9, and both the critic and actor networks have learning rates of 0.0003. Finally, the batch size is configured to be 512. For the computational resources, we utilized a desktop running Ubuntu 22.04, equipped with a 13th Gen Intel® Core™ i9-13900K 16-core processor, 64 GB of RAM, and an NVIDIA GeForce GTX 4090 GPU. The algorithm was implemented in Python using the PyTorch framework, and the MATLAB LMI toolbox was employed for solving real-time patches. 
+
+J.2 Safety Conditions 
+
+The Real-DRL is designed to track the planned movements generated by the navigation mod-ule while ensuring that the system’s states remain within a predefined safety set. This is cru-cial for avoiding falls and collisions with obstacles. The safety set is defined as follows: S =
+
+{s ∈ R10 | | CoM x-velocity − rvx | ≤ 1.5 m/s , |CoM z-height − rz | ≤ 0.6 m, |raw − rraw | ≤ 
+
+0.8 rad , |pitch − rpitch | ≤ 1 rad }. The action space is defined as: A = {a ∈ R6 | |a| ≤
+
+[25 , 25 , 25 , 50 , 50 , 50] ⊤}. These formulations ensure that the system operates within safe parameters while effectively following the intended navigation paths. 
+
+J.3 PHY-Teacher Design 
+
+The physics model knowledge (A(s(k)) , B(s(k)) used for the design of PHY-Teacher is described in Equation (72). Given sampling period T = 130 second, we set κ = 0 .0008 to satisfy the conditions outlined in Assumption 5.1. Additionally, the following parameters are defined: χ = 0 .15 , α = 0 .9,
+
+η = 0 .6, θ = 0 .3, and ϕ = 0 .2, ensuring that the inequalities in Equation (22) are upheld. 
+
+J.4 DRL-Student Design 
+
+In this experiment, our DRL-Students build upon two state-of-the-art safe DRLs: CLF-DRL, as proposed in [ 55 ], and Phy-DRL, outlined in [ 13 , 12 ]. A critical difference is CLF-DRL has purely data-driven action policy, while Phy-DRL has a residual action policy: 
+
+astudent (k) = adrl (k)
+
+| {z } 
+
+> data-driven
+
++ aphy (k) (= F · s(k)) 
+
+| {z }
+
+> model-based
+
+,
+
+where F is given in Equation (73). A comparison of these models will be conducted, with all other configurations remaining the same, as detailed below. 
+
+J.4.1 Reward 
+
+The reward for the DRL-Student primarily focuses on three key aspects: robot safety, travel time, and energy efficiency. 
+
+■ Safety . We consider a Control-Lyapunov-like reward in [ 55 ], which incorporates both safety and stability considerations: 
+
+Rsafety = e⊤(t) · P · e(t) − e⊤(t + 1) · P · e(t + 1) , (76) where P is given in Equation (75). 32 ■ Travel Cost . The Euclidean distance between the robot and the waypoint is defined as: 
+
+d(t) = ∥ˆxb(t) − ˆpwp ∥2 (77) where ˆpwp is the location of next waypoint, and ˆxb is the position of the robot base in the world frame. Inspired by [25] and [41], the navigation reward is defined as: 
+
+Rnavigation = c1 · ˆrdis (t) + c2 · ˆrwp + ˆ robs (78) where ˆrdis (t) = d(t) − d(t − 1) is the reward for forwarding the waypoint. ˆrwp = e−λ·Treach rewards the robot as it reaches the waypoint. λ ∈ (0 , 1) is a time decay factor and Treach denotes the time step when the waypoint is reached. The ˆrobs serves as a penalty when the quadruped collides with the obstacles. c1 and c2 are used hyperparamters. This reward structure incentivizes the robot to achieve an efficient and collision-free navigation through the waypoints. 
+
+■ Energy Consumption . Power efficiency remains a major challenge for robots in outdoor settings. We model the motor as a non-regenerative braking system [58]: 
+
+pmotor = max { τm · ωm
+
+| {z }
+
+> output power
+
++ Lcopper · τ 2
+
+> m
+
+| {z }
+
+> heat dissipation
+
+, 0} (79) where τm and ωm are motor’s torque and angular velocity respectively. Lcopper is copper loss coefficient. Taking cm as a hyperparameter, we define the energy consumption reward: 
+
+Renergy = −cm · pmotor (80) The ultimate reward function, designed to guide the DRL-Student in learning a safe and high-performance policy as defined in Equation (9), is given by integrating the components from above Equations (76), (78) and (80), i.e., R (s(t), astudent (t)) = Rsafety + Rnavigation + Renergy + bc · R auxiliary ,where Rauxiliary denotes the auxiliary reward for tracking velocity and orientation, with a small coefficient bc to promote smooth locomotion. In experiment, we choose c1 = 5 , c 2 = 10 , c m = 0 .02 
+
+and bc = 0 .5.
+
+J.4.2 Self-Learning Space 
+
+The parameter used to define the self-learning space for DRL-Student, as mentioned in Equation (4), is set at η = 0 .6.
+
+J.4.3 Safety-Informed Batch Sampling 
+
+For the safety-informed batch sampling in Equation (14), we let ρ1 = 0 .01 and ρ2 = 0 .05 
+
+J.5 Ablation Experiment 
+
+We recall that the model knowledge of PHY-Teacher, along with its resulting action policy and control goal, is dynamic and responsive to complex and dynamic operating environments in real-time. In contrast, the physics or dynamics models used in fault-tolerant DRLs, such as neural Simplex [43], runtime assurance [8, 50, 16], and model predictive shielding [4, 3], are static. This difference suggests that current fault-tolerant DRLs struggle to guarantee safety in complex and highly dynamic environments. To illustrate this point, we compare the PHY-Teachers with dynamic (real-time) and static models in an unstructured terrain filled with random stones. The comparison video can be found at https://www.youtube.com/shorts/Ct_xXlohSiM. This video demonstrates that when using the static model, the PHY-Teacher cannot guarantee safety in the environment. In contrast, with the real-time dynamic model, our PHY-Teacher can not only guarantee safety but also withstand unexpected sudden kicks. 33 K Experiment Design: Cart-Pole System 
+
+We use the cart-pole simulator available in OpenAI Gym [ 9] to emulate the real system, allowing the deployed Real-DRL to learn from scratch. The unknown unknowns introduced in this scenario consist of disturbances that affect the DRL-Student’s action commands and the friction force. These disturbances are generated using a randomized Beta distribution. In Appendix H, we explain why the randomized Beta distribution serves as a form of unknown unknown. 
+
+K.1 Learning Configurations and Computation Resources 
+
+The actor and critic networks are designed as Multi-Layer Perceptrons consisting of four fully connected layers. The output dimensions for the critic and actor networks are 256, 128, 64, and 1, respectively. The activation functions for the first three layers are ReLU, while the final layer of the actor network uses the Tanh function and the critic network employs a linear activation function. The input to the critic network is [s; a], which combines the state and action, while the actor network takes only the state s as its input. We have set the discount factor γ to 0.9, and both the critic and actor networks have the same learning rate of 0.0003. The batch size is L = 512 , and each episode consists of 1,000 steps, with a sampling frequency of 50 Hz. For the computational resources, we utilized a desktop equipped with Ubuntu 22.04, a 12th Gen Intel® Core™ i9-12900K 16-core processor, 64 GB of RAM, and an NVIDIA GeForce GTX 3090 GPU. The algorithm was implemented in Python using the TensorFlow framework, and we employed the Matlab LMI toolbox for solving real-time patches. 
+
+K.2 Safety Conditions 
+
+The objective of Real-DRL is to stabilize the system at the equilibrium point s∗ = [0 , 0, 0, 0] ⊤ while ensuring that the system states remain within the safety set S =  s ∈ R4 |x| ≤ 1, |θ| < 1.0 . The action space is defined as A = { a ∈ R| | a| ≤ 50 }.
+
+K.3 PHY-Teacher Design 
+
+The physics-model knowledge about the dynamics of cart-pole systems for the design of PHY-Teacher is from the following dynamics model presented in [21]: 
+
+¨θ =
+
+g sin θ + cos θ
+
+ −F −mpl ˙θ2 sin θmc+mp
+
+
+
+l
+
+ 43 − mp cos 2 θmc+mp
+
+ , (81a) 
+
+¨x =
+
+F + mpl
+
+ ˙θ2 sin θ − ¨θ cos θ
+
+
+
+mc + mp
+
+, (81b) whose physical representations of the model parameters can be found in following Table 3. Table 3: Notation table Notation Value Unit 
+
+mc mass of cart 0.94 kg mp mass of pole 0.23 kg g gravitational acceleration 9.8 m · s−2
+
+l half length of pole 0.32 mF actuator input [-50, 50] Nx position of cart [-1, 1] m
+
+˙x velocity of cart [-3, 3] m · s−1
+
+θ angle of pole [-1, 1] rad 
+
+˙θ angular velocity of pole [-4.5, 4.5] rad · s−1
+
+34 K.3.1 Physics-Model Knowledge 
+
+The PHY-Teacher converts the dynamics model (81) into a state-space model as follows: 
+
+ddt 
+
+
+
+x
+
+˙xθ
+
+˙θ
+
+| {z } 
+
+> s
+
+=
+
+
+
+0 1 0 00 0 −mpg sin θ cos θθ[ 43 (mc+mp)−mpcos 2θ]     
+
+> 43mplsin θ˙θ
+> 43(mc+mp)−mpcos 2θ
+
+0 0 0 10 0 g sin θ(mc+mp)        
+
+> lθ [43(mc+mp)−mpcos 2θ]
+> −mpsin θcos θ˙θ
+> 43(mc+mp)−mpcos 2θ
+
+| {z }
+
+> bA(s)
+
+·
+
+
+
+x
+
+˙xθ
+
+˙θ
+
+
+
++
+
+
+
+0 
+
+> 4343(mc+mp)−mpcos 2θ
+
+0    
+
+> −cos θl[43(mc+mp)−mpcos 2θ]
+
+| {z }
+
+> bB(s)
+
+· F|{z} 
+
+> a
+
+, (82) where bA(s) and bB(s) are known to the PHY-Teacher. The sampling technique transforms the continuous-time dynamics model (82) to the discrete-time one: 
+
+s(k + 1) = ( I4 + T · bA(s)) · s(k) + T · bB(s) · a(k),
+
+from which we obtain the model knowledge A(s(k)) and B(s(k)) in Equation (17) as 
+
+A(s(k)) = I4 + T · bA(s(k)) , B(s(k)) = T · bB(s(k)) , (83) where T = 150 second, i.e., the sampling frequency is 50 Hz. 
+
+K.3.2 Parameters for Real-Time Patch Computing 
+
+Given that T = 150 second, to satisfy Assumption 5.1, we let κ = 0 .0008 . Additionally, the parameters are defined as follows: χ = 0 .3, α = 0 .9, η = 0 .7, θ = 0 .5, and ϕ = 0 .01 . These values are chosen to ensure that the inequalities stated in Equation (22) hold true. 
+
+K.4 DRL-Student Design 
+
+In the ablation studies, the DRL-Student builds on the CLF-DRL proposed in [ 55 ]. Its CLF reward in this experiment is 
+
+R(s(k), astudent (k)) = ( s⊤(k) · P · s(k) − s⊤(k + 1) · P · s(k + 1)) · γ1 − a2
+
+> student
+
+(k) · γ2,
+
+where we let γ1 = 1 , γ2 = 0 .015 , and 
+
+P =
+
+
+
+54 .1134178606985 26 .2600592637275 61 .7975412804215 12 .9959418258126 26 .2600592637275 14 .3613985149923 34 .6710819094179 7.27321583818861 61 .7975412804215 34 .6710819094179 88 .7394386456256 18 .0856894519164 12 .9959418258126 7.27321583818861 18 .0856894519164 3.83961074325448 
+
+ .
+
+The parameter for defining DRL-Student’s self-learning space in Equation (4) is η = 0 .7.The ablation studies involve experimental comparisons of our Real-DRL models with and without the teaching-to-learn mechanism. When the teaching-to-learn mechanism is used, the DRL-Student utilizes both a self-learning replay buffer and a teaching-to-learn replay buffer, with each buffer con-figured to hold a maximum of 100,000 instances. Conversely, when the teaching-to-learn mechanism is not employed, the DRL-Student relies on a single replay buffer to store self-learning experience data. To ensure a fair comparison, the size of this single buffer is set to match the combined capacity of the two buffers, totaling 200,000. 
+
+K.5 Auxiliary Experiment 
+
+This section provides additional experimental results that complement the main ablation study findings. 35 Runtime Learning Environment  
+
+> Testing Environment
+> : Friction coefficient of cart -road: 40 : Friction coefficient of cart -road: 10
+
+Figure 10: Learning and testing environments. The learning environment has a corner case (pink area), which is also the testing environments. 
+
+K.5.1 Safety-Informed Batch Sampling 
+
+For the safety-informed batch sampling in Equation (14), we let ρ1 = 10 and ρ2 = 0 .1. To demon-strate the proposed safety-informed batch sampling method for addressing experience imbalance, we create a learning environment characterized by this imbalance, as shown in Figure 10. Specifically, the brown area closely resembles the pre-training environment of the DRL-Student, representing the majority of the continual learning environment for Real-DRL, accounting for 90% of the cases. In contrast, the gray area indicates a corner case that significantly differs from the DRL-Student’s pre-training conditions, comprising only 10% of the total runtime learning cases. This corner-case environment also serves as the testing environment for the DRL-Student after it has completed continual learning. 0 20 40 60 80 100 120 140 
+
+## Episode Number 
+
+## 500 
+
+## 400 
+
+## 300 
+
+## 200 
+
+## 100 
+
+## 0
+
+> Return
+
+## w/o SBS w/ SBS 
+
+Figure 11: Return trajectories of DRL-Student. Figure 11 shows the return trajectories of the DRL-Student, which were learned using the Real-DRL framework. It compares the results obtained with our proposed safety-informed batch sampling method (referred to as ’w/ SBS’) to those obtained without this method (denoted as ’w/o SBS’), which utilizes only a single united reply buffer. Figure 11 clearly shows that the tested DRL-Students, which were obtained by disabling PHY-Teacher, are selected from both Real-DRL models once their learning processes have reached convergence. This can ensure fair comparisons. 36 K.5.2 Teaching-to-Learn Paradigm 
+
+To evaluate the effect of the teaching-to-learn paradigm on policy learning, we introduce the metric of DRL-Student’s episode-average reward, defined below. Episode-Average Reward = Return (i.e., cumulative reward) in one episode DRL-Student’s total activation time in one episode . (84) 
+
+K.5.3 Automatic Hierarchy Learning 
+
+To further demonstrate PHY-Teacher’s contributions to the claimed automatic hierarchy learning mechanism, we define the metric of PHY-Teacher’s activation ratio as follows. PHY-Teacher’s activation ratio = PHY-Teacher’s total activation times in one episode one episode length , (85) which has a value range of [0 , 1] . A ratio of 0 means PHY-Teacher is never activated throughout the entire episode of learning, while a ratio of 1 means PHY-Teacher completely dominates DRL-Student for the entire episode. Given five random initial conditions, the phase plots, each running for 1000 steps, are displayed in Figure Figure 12. Observing Figure 12, we conclude that the DRL-Student has successfully learned from the DRL-Teacher how to ensure safety in episode 5: its action policy effectively confines the system states to the safety set (indicated by the red area). In episode 50, the PHY-Teacher is rarely activated by the condition in Equation (6), as illustrated in Figure Figure 6 (b). Meanwhile, the action policy of the DRL-Student demonstrates improved mission performance, achieving faster clustering and a much closer proximity to the mission goal, which is located at the center of the safety set. 1.00 0.75 0.50 0.25 0.00 0.25 0.50 0.75 1.00 
+
+# 2.0 
+
+# 1.5 
+
+# 1.0 
+
+# 0.5 
+
+# 0.0 
+
+# 0.5 
+
+# 1.0 
+
+> x
+
+# Initial State 
+
+# Terminal State: Episode 5 
+
+# Terminal State: Episode 50 
+
+# Mission Goal 
+
+Figure 12: Demonstrating automatic hierarchy learning by phase plots, running over five random initial states within the safety set. 37 NeurIPS Paper Checklist 
+
+1. Claims 
+
+Question: Do the main claims made in the abstract and introduction accurately reflect the paper’s contributions and scope? Answer: [Yes] Justification: All claims accurately reflect the contributions and scope of the paper, as demonstrated in the Experiment Section. Guidelines: • The answer NA means that the abstract and introduction do not include the claims made in the paper. • The abstract and/or introduction should clearly state the claims made, including the contributions made in the paper and important assumptions and limitations. A No or NA answer to this question will not be perceived well by the reviewers. • The claims made should match theoretical and experimental results, and reflect how much the results can be expected to generalize to other settings. • It is fine to include aspirational goals as motivation as long as it is clear that these goals are not attained by the paper. 2. Limitations 
+
+Question: Does the paper discuss the limitations of the work performed by the authors? Answer: [Yes] Justification: The limitations are discussed in Remarks 5.3 and E.1 and Section 8. Mean-while, the proposed and potential solutions are provided therein. Guidelines: • The answer NA means that the paper has no limitation while the answer No means that the paper has limitations, but those are not discussed in the paper. • The authors are encouraged to create a separate "Limitations" section in their paper. • The paper should point out any strong assumptions and how robust the results are to violations of these assumptions (e.g., independence assumptions, noiseless settings, model well-specification, asymptotic approximations only holding locally). The authors should reflect on how these assumptions might be violated in practice and what the implications would be. • The authors should reflect on the scope of the claims made, e.g., if the approach was only tested on a few datasets or with a few runs. In general, empirical results often depend on implicit assumptions, which should be articulated. • The authors should reflect on the factors that influence the performance of the approach. For example, a facial recognition algorithm may perform poorly when image resolution is low or images are taken in low lighting. Or a speech-to-text system might not be used reliably to provide closed captions for online lectures because it fails to handle technical jargon. • The authors should discuss the computational efficiency of the proposed algorithms and how they scale with dataset size. • If applicable, the authors should discuss possible limitations of their approach to address problems of privacy and fairness. • While the authors might fear that complete honesty about limitations might be used by reviewers as grounds for rejection, a worse outcome might be that reviewers discover limitations that aren’t acknowledged in the paper. The authors should use their best judgment and recognize that individual actions in favor of transparency play an impor-tant role in developing norms that preserve the integrity of the community. Reviewers will be specifically instructed to not penalize honesty concerning limitations. 3. Theory assumptions and proofs 
+
+Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof? 38 Answer: [Yes] Justification: Detailed assumptions and proofs are provided; please refer to Assumption 5.1 and Appendices C and D for more information. Guidelines: • The answer NA means that the paper does not include theoretical results. • All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced. • All assumptions should be clearly stated or referenced in the statement of any theorems. • The proofs can either appear in the main paper or the supplemental material, but if they appear in the supplemental material, the authors are encouraged to provide a short proof sketch to provide intuition. • Inversely, any informal proof provided in the core of the paper should be complemented by formal proofs provided in appendix or supplemental material. • Theorems and Lemmas that the proof relies upon should be properly referenced. 4. Experimental result reproducibility 
+
+Question: Does the paper fully disclose all the information needed to reproduce the main ex-perimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)? Answer: [Yes] Justification: Appendices I to K present detailed experimental designs that can be used to replicate the results of the experiments. Appendices B and E includes the detailed pesudo-codes for implementation. Guidelines: • The answer NA means that the paper does not include experiments. • If the paper includes experiments, a No answer to this question will not be perceived well by the reviewers: Making the paper reproducible is important, regardless of whether the code and data are provided or not. • If the contribution is a dataset and/or model, the authors should describe the steps taken to make their results reproducible or verifiable. • Depending on the contribution, reproducibility can be accomplished in various ways. For example, if the contribution is a novel architecture, describing the architecture fully might suffice, or if the contribution is a specific model and empirical evaluation, it may be necessary to either make it possible for others to replicate the model with the same dataset, or provide access to the model. In general. releasing code and data is often one good way to accomplish this, but reproducibility can also be provided via detailed instructions for how to replicate the results, access to a hosted model (e.g., in the case of a large language model), releasing of a model checkpoint, or other means that are appropriate to the research performed. • While NeurIPS does not require releasing code, the conference does require all submis-sions to provide some reasonable avenue for reproducibility, which may depend on the nature of the contribution. For example (a) If the contribution is primarily a new algorithm, the paper should make it clear how to reproduce that algorithm. (b) If the contribution is primarily a new model architecture, the paper should describe the architecture clearly and fully. (c) If the contribution is a new model (e.g., a large language model), then there should either be a way to access this model for reproducing the results or a way to reproduce the model (e.g., with an open-source dataset or instructions for how to construct the dataset). (d) We recognize that reproducibility may be tricky in some cases, in which case authors are welcome to describe the particular way they provide for reproducibility. In the case of closed-source models, it may be that access to the model is limited in some way (e.g., to registered users), but it should be possible for other researchers to have some path to reproducing or verifying the results. 39 5. Open access to data and code 
+
+Question: Does the paper provide open access to the data and code, with sufficient instruc-tions to faithfully reproduce the main experimental results, as described in supplemental material? Answer: [Yes] Justification: The source code has been submitted as supplemental material and will be disclosed to the public via GitHub. Besides, Appendices I to K present detailed experimental designs that can be used to replicate the experimental results, and Appendices B and E include the detailed pesudo-codes for implementation. Guidelines: • The answer NA means that paper does not include experiments requiring code. • Please see the NeurIPS code and data submission guidelines (https://nips.cc/public/gui des/CodeSubmissionPolicy) for more details. • While we encourage the release of code and data, we understand that this might not be possible, so “No” is an acceptable answer. Papers cannot be rejected simply for not including code, unless this is central to the contribution (e.g., for a new open-source benchmark). • The instructions should contain the exact command and environment needed to run to reproduce the results. See the NeurIPS code and data submission guidelines (https: //nips.cc/public/guides/CodeSubmissionPolicy) for more details. • The authors should provide instructions on data access and preparation, including how to access the raw data, preprocessed data, intermediate data, and generated data, etc. • The authors should provide scripts to reproduce all experimental results for the new proposed method and baselines. If only a subset of experiments are reproducible, they should state which ones are omitted from the script and why. • At submission time, to preserve anonymity, the authors should release anonymized versions (if applicable). • Providing as much information as possible in supplemental material (appended to the paper) is recommended, but including URLs to data and code is permitted. 6. Experimental setting/details 
+
+Question: Does the paper specify all the training and test details (e.g., data splits, hyper-parameters, how they were chosen, type of optimizer, etc.) necessary to understand the results? Answer: [Yes] Justification: Appendices I to K include essential and detailed information. Guidelines: • The answer NA means that the paper does not include experiments. • The experimental setting should be presented in the core of the paper to a level of detail that is necessary to appreciate the results and make sense of them. • The full details can be provided either with the code, in appendix, or as supplemental material. 7. Experiment statistical significance 
+
+Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments? Answer: [Yes] Justification: See Figures 4 and 6 and Table 1 for the statistical result. Guidelines: • The answer NA means that the paper does not include experiments. • The authors should answer "Yes" if the results are accompanied by error bars, confi-dence intervals, or statistical significance tests, at least for the experiments that support the main claims of the paper. 40 • The factors of variability that the error bars are capturing should be clearly stated (for example, train/test split, initialization, random drawing of some parameter, or overall run with given experimental conditions). • The method for calculating the error bars should be explained (closed form formula, call to a library function, bootstrap, etc.) • The assumptions made should be given (e.g., Normally distributed errors). • It should be clear whether the error bar is the standard deviation or the standard error of the mean. • It is OK to report 1-sigma error bars, but one should state it. The authors should preferably report a 2-sigma error bar than state that they have a 96% CI, if the hypothesis of Normality of errors is not verified. • For asymmetric distributions, the authors should be careful not to show in tables or figures symmetric error bars that would yield results that are out of range (e.g. negative error rates). • If error bars are reported in tables or plots, The authors should explain in the text how they were calculated and reference the corresponding figures or tables in the text. 8. Experiments compute resources 
+
+Question: For each experiment, does the paper provide sufficient information on the com-puter resources (type of compute workers, memory, time of execution) needed to reproduce the experiments? Answer: [Yes] Justification: See Appendices I.1, J.1 and K.1 for the detailed information. Guidelines: • The answer NA means that the paper does not include experiments. • The paper should indicate the type of compute workers CPU or GPU, internal cluster, or cloud provider, including relevant memory and storage. • The paper should provide the amount of compute required for each of the individual experimental runs as well as estimate the total compute. • The paper should disclose whether the full research project required more compute than the experiments reported in the paper (e.g., preliminary or failed experiments that didn’t make it into the paper). 9. Code of ethics 
+
+Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines? Answer: [Yes] Justification: Completely conform with the NeurIPS Code of Ethics. Guidelines: • The answer NA means that the authors have not reviewed the NeurIPS Code of Ethics. • If the authors answer No, they should explain the special circumstances that require a deviation from the Code of Ethics. • The authors should make sure to preserve anonymity (e.g., if there is a special consid-eration due to laws or regulations in their jurisdiction). 10. Broader impacts 
+
+Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed? Answer: [NA] Justification: This paper has no such issue, as it does not involve human subjects, animals, privacy, or social security. Guidelines: • The answer NA means that there is no societal impact of the work performed. 41 • If the authors answer NA or No, they should explain why their work has no societal impact or why the paper does not address societal impact. • Examples of negative societal impacts include potential malicious or unintended uses (e.g., disinformation, generating fake profiles, surveillance), fairness considerations (e.g., deployment of technologies that could make decisions that unfairly impact specific groups), privacy considerations, and security considerations. • The conference expects that many papers will be foundational research and not tied to particular applications, let alone deployments. However, if there is a direct path to any negative applications, the authors should point it out. For example, it is legitimate to point out that an improvement in the quality of generative models could be used to generate deepfakes for disinformation. On the other hand, it is not needed to point out that a generic algorithm for optimizing neural networks could enable people to train models that generate Deepfakes faster. • The authors should consider possible harms that could arise when the technology is being used as intended and functioning correctly, harms that could arise when the technology is being used as intended but gives incorrect results, and harms following from (intentional or unintentional) misuse of the technology. • If there are negative societal impacts, the authors could also discuss possible mitigation strategies (e.g., gated release of models, providing defenses in addition to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system learns from feedback over time, improving the efficiency and accessibility of ML). 11. Safeguards 
+
+Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pretrained language models, image generators, or scraped datasets)? Answer: [NA] Justification: The paper presents no such risks, as its application domain is learning-enabled autonomous systems, and the "models" used are well-validated physics models. Guidelines: • The answer NA means that the paper poses no such risks. • Released models that have a high risk for misuse or dual-use should be released with necessary safeguards to allow for controlled use of the model, for example by requiring that users adhere to usage guidelines or restrictions to access the model or implementing safety filters. • Datasets that have been scraped from the Internet could pose safety risks. The authors should describe how they avoided releasing unsafe images. • We recognize that providing effective safeguards is challenging, and many papers do not require this, but we encourage authors to take this into account and make a best faith effort. 12. Licenses for existing assets 
+
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected? Answer: [Yes] Justification: The developed Real-DRL system is based on three frameworks: DDPG, Phy-DRL, and CLF-DRL. For the quadruped robot experiments, we utilize a Python-based framework with the real Unitree A1 robot, as well as NVIDIA Isaac Gym for the Unitree Go2 robot. Additionally, experiments on the cart-pole system are conducted using OpenAI Gym. All sources are explicitly and properly cited. Guidelines: • The answer NA means that the paper does not use existing assets. • The authors should cite the original paper that produced the code package or dataset. • The authors should state which version of the asset is used and, if possible, include a URL. 42 • The name of the license (e.g., CC-BY 4.0) should be included for each asset. • For scraped data from a particular source (e.g., website), the copyright and terms of service of that source should be provided. • If assets are released, the license, copyright information, and terms of use in the package should be provided. For popular datasets, paperswithcode.com/datasets has curated licenses for some datasets. Their licensing guide can help determine the license of a dataset. • For existing datasets that are re-packaged, both the original license and the license of the derived asset (if it has changed) should be provided. • If this information is not available online, the authors are encouraged to reach out to the asset’s creators. 13. New assets 
+
+Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets? Answer: [Yes] Justification: All new assets are well documented and submitted as supplemental material. Guidelines: • The answer NA means that the paper does not release new assets. • Researchers should communicate the details of the dataset/code/model as part of their submissions via structured templates. This includes details about training, license, limitations, etc. • The paper should discuss whether and how consent was obtained from people whose asset is used. • At submission time, remember to anonymize your assets (if applicable). You can either create an anonymized URL or include an anonymized zip file. 14. Crowdsourcing and research with human subjects 
+
+Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)? Answer: [NA] Justification: This paper does not involve human subjects and animals. The applications are the learning-enabled autonomous systems. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Including this information in the supplemental material is fine, but if the main contribu-tion of the paper involves human subjects, then as much detail as possible should be included in the main paper. • According to the NeurIPS Code of Ethics, workers involved in data collection, curation, or other labor should be paid at least the minimum wage in the country of the data collector. 15. Institutional review board (IRB) approvals or equivalent for research with human subjects 
+
+Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained? Answer: [NA] Justification: This paper does not involve human subjects and animals. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. 43 • Depending on the country in which research is conducted, IRB approval (or equivalent) may be required for any human subjects research. If you obtained IRB approval, you should clearly state this in the paper. • We recognize that the procedures for this may vary significantly between institutions and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the guidelines for their institution. • For initial submissions, do not include any information that would break anonymity (if applicable), such as the institution conducting the review. 16. Declaration of LLM usage 
+
+Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does not impact the core methodology, scientific rigorousness, or originality of the research, declaration is not required. Answer: [NA] Justification: The paper does not involve any use of LLMs. Guidelines: • The answer NA means that the core method development in this research does not involve LLMs as any important, original, or non-standard components. • Please refer to our LLM policy (https://neurips.cc/Conferences/2025/LLM) for what should or should not be described. 44

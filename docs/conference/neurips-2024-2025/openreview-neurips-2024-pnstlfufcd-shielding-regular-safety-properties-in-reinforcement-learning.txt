@@ -1,0 +1,5463 @@
+Title: 15393_Shielding_Regular_Safety.pdf
+
+URL Source: https://openreview.net/pdf?id=PnSTlFUfcd
+
+Number of Pages: 51
+
+Markdown Content:
+# Shielding Regular Safety Properties in Reinforcement Learning 
+
+Anonymous Author(s) 
+
+Affiliation Address 
+
+email 
+
+## Abstract 
+
+To deploy reinforcement learning (RL) systems in real-world scenarios we need 1
+
+to consider requirements such as safety and constraint compliance, rather than 2
+
+blindly maximizing for reward. In this paper we study RL with regular safety 3
+
+properties. We present a constrained problem based on the satisfaction of regular 4
+
+safety properties with high probability and we compare our setup to the some 5
+
+common constrained Markov decision processes (CMDP) settings. We also present 6
+
+a meta-algorithm with provable safety-guarantees, that can be used to shield the 7
+
+agent from violating the regular safety property during training and deployment. 8
+
+We demonstrate the effectiveness and scalability of our framework by evaluating 9
+
+our meta-algorithm in both the tabular and deep RL setting. 10 
+
+## 1 Introduction 11 
+
+Figure 1: Diagrammatic repre-sentation of runtime verifica-tion and shielding. The field of safe reinforcement learning (RL) [ 6, 28 ] has gained in-12 
+
+creasing interest, as practitioners begin to understand the challenges 13 
+
+of applying RL in the real world [ 26 ]. There exist several dis-14 
+
+tinct paradigms in the literature, including constrained optimization 15 
+
+[ 2, 20 , 49 , 58 , 62 , 74 ], logical constraint satisfaction [ 17 , 24 , 36 –16 
+
+38 , 66 ], safety-critical control [ 15 , 19 , 53 ], all of which are unified 17 
+
+by prioritizing safety- and risk-awareness during the decision making 18 
+
+process. 19 
+
+Constrained Markov decision processes (CMDP) [4] have emerged 20 
+
+as a popular framework for modelling safe RL, or RL with con-21 
+
+straints. Typically, the goal is to obtain a policy that maximizes 22 
+
+reward while simultaneously ensuring that the expected cumulative cost remains below a pre-defined 23 
+
+threshold. A key limitation of this setting is that constraint violations are enforced in expectation 24 
+
+rather than with high probability, the constraint thresholds also have limited semantic meaning, can 25 
+
+be very challenging to tune and in some cases inappropriate for highly safety-critical scenarios 26 
+
+[66]. Furthermore, the cost function in the CMDP is typically Markovian and thus fails to capture a 27 
+
+significantly expressive class of safety properties and constraints. 28 
+
+Regular safety properties [ 9] are interesting because for all but the simplest properties the correspond-29 
+
+ing cost function is non-Markovian. Our problem setup consists of the standard RL objective with 30 
+
+regular safety properties as constraints, we note that there has been a significant body of work that 31 
+
+combines temporal logic constraints with RL [ 17 , 24 , 36 – 38 , 66 ], although many of these do not 32 
+
+explicitly separate reward and safety in the same way that we do. 33 
+
+Our approach relies on shielding [ 3], which is a safe exploration strategy that ensures the satisfaction 34 
+
+of temporal logic constraints by deploying the learned policy in conjunction with a reactive system 35 
+
+Submitted to 38th Conference on Neural Information Processing Systems (NeurIPS 2024). Do not distribute. that overrides any unsafe actions. Most shielding approaches typically make highly restrictive 36 
+
+assumptions, such as full knowledge of the environment dynamics [ 3], or access to a simulator [ 29 ], 37 
+
+although there has been recent work to deal with these restrictions [ 30 , 39 , 73 ]. In this paper, we 38 
+
+opt for the most permissive setting, where the dynamics of the environment are unknown, runtime 39 
+
+verification of the agent is realized by finite horizon model checking with a learned approximation of 40 
+
+the environment dynamics. However, in principle our framework is flexible enough to accommodate 41 
+
+more standard model checking procedures as long as certain assumptions are met. 42 
+
+Our approach can be summarised as an online shielding approach (see Fig. 1), that dynamically 43 
+
+identifies unsafe actions during training and deployment, and deploys a safe ‘backup policy’ when 44 
+
+necessary. We summarise the main contributions of our paper as follows: 45 
+
+(1) We state a constrained RL problem based on the satisfaction of regular safety properties with high 46 
+
+probability, and we identify the conditions whereby our setup generalizes several CMDP settings, 47 
+
+including expected and probabilistic cumulative cost constraints. 48 
+
+(2) We present several model checking algorithms that can verify the finite-horizon satisfaction 49 
+
+probability of regular safety properties, this includes statistical model checking procedures that can 50 
+
+be used if either the transition probabilities are unavailable or if the state space is too large. 51 
+
+(3) We develop a set of sample complexity results for the statistical model checking procedures 52 
+
+introduced in point (2), which are then used to develop a shielding meta-algorithm with provable 53 
+
+safety guarantees, even in the most permissive setting (i.e., no access to the transition probabilities). 54 
+
+(4) We empirically demonstrate the effectiveness of our framework on a variety of regular safety 55 
+
+properties in both a tabular and deep RL settings. 56 
+
+## 2 Related Work 57 
+
+Safety Paradigms in Reinforcement Learning. There exist many safety paradigms in RL, the most 58 
+
+popular being constrained MDPs. For CMDPs several constrained optimization algorithms have 59 
+
+been developed, most are gradient-based methods built upon Lagrange relaxations of the constrained 60 
+
+problem [ 20 , 49 , 58 , 62 ] or projection-based local policy search [ 2, 74 ]. Model-based approaches to 61 
+
+CMDP [ 7 , 11 , 41 , 64 ] have also gathered recent interest as they enjoy better sample complexity than 62 
+
+their model-free counterparts, which can be imperative for safe learning [44]. 63 
+
+Linear Temporal Logic (LTL) constraints [ 17 , 24 , 36 – 38 , 66 ] for RL have been developed as an 64 
+
+alternative to CMDPs to specify stricter and more expressive constraints. The LTL formula is typically 65 
+
+treated as the entire task specification, although some works have aimed to separate LTL satisfaction 66 
+
+and reward into two distinct objectives [ 66 ]. The typical procedure in this setting is to identify end 67 
+
+components of the MDP that satisfy the LTL constraint and construct a corresponding reward function 68 
+
+such that the optimal policy satisfies the LTL constraint with maximal probability. Formal PAC-style 69 
+
+guarantees have been developed for this setting [ 27 , 36 , 66 , 71 ] although they typically rely on 70 
+
+non-trivial assumptions. We note that LTL constraints can capture regular safety properties, although 71 
+
+we explicitly separate reward and safety, making the work in this paper distinct from previous work. 72 
+
+More rigorous safety-guarantees can be obtained by using safety filters [ 3], control barrier functions 73 
+
+(CBF) [ 5], and model predictive safety certification (MPSC) [ 67 , 68 ]. To achieve zero-violation 74 
+
+training these methods typically assume that the dynamics of the system are known and thus they 75 
+
+are typically restricted to low-dimensional systems. While these methods come from safety-critical 76 
+
+control, they are closely related to safe reinforcement learning [15]. 77 
+
+Learning Over Regular Structures. RL and regular properties have been studied in conjunction 78 
+
+before, perhaps most famously as ‘Reward Machines’ [ 42 , 43 ] – a type of finite state automaton that 79 
+
+specifies a different reward function at each automaton state. Reward machines do not explicitly 80 
+
+deal with safety, rather non-Markovian reward functions that depend on histories distinguished by 81 
+
+regular languages. Several methods have been developed to exploit the structure of these automata 82 
+
+and dramatically speed up learning [42, 43, 55, 61], e.g., counter factual experiences .83 
+
+Regular decision processes (RDP) [ 13 ] are a specific class non-Markovian DPs [ 8 ] that have also 84 
+
+been studied in several works [ 13 , 22 , 51 , 59 , 65 ]. Most of these works are theoretical and slightly 85 
+
+out-of-scope for this paper, as the RDP setting does not explicitly handle safety and encompasses 86 
+
+both non-Markovian rewards and transition probabilities. 87 
+
+2Shielding. From formal methods, shielding for safe RL [ 3] forces hard constraints on policies, using 88 
+
+a reactive system that ‘shields’ the agent from taking unsafe actions. Synthesising a correct-by-89 
+
+construction reactive ‘shield’ typically requires access to the environment dynamics and can be 90 
+
+computationally demanding when the state or action space is large. Several recent works have aimed 91 
+
+to scale the concept of shielding to more general settings, relaxing the prerequisite assumptions for 92 
+
+shielding, by either only assuming access to a ‘black box’ model for planning [ 29 ], or learning a world 93 
+
+model from scratch [ 30 , 39 , 73 ]. Other notable works that can be viewed as shielding include, MASE 94 
+
+[ 69 ] – a safe exploration algorithm with access to an ‘emergency reset button’, and Recovery-RL 95 
+
+[ 63 ] – which has access to a ‘recovery policy’ that is activated when the probability of reaching an 96 
+
+unsafe state is too high. A simple form of shielding with LTL specifications has also been considered 97 
+
+[37, 54], but experimentally these methods have only been tested in quite simple settings. 98 
+
+## 3 Preliminaries 99 
+
+For a finite set S, let P ow (S) denote the power set of S. Also, let Dist (S) denote the set of 100 
+
+distributions over S, where a distribution μ : S → [0, 1] is a function such that P 
+
+> s∈S
+
+μ(s) = 1 . Let 101 
+
+S∗ and Sω denote the set of finite and infinite sequences over S respectively. The set of all finite and 102 
+
+infinite sequences is denoted S∞ = S∗ ∪ S ω . We denote as |ρ| the length of a sequence ρ ∈ S ∞,103 
+
+where |ρ| = ∞ if ρ ∈ S ω . We also denote as ρ[i] the i + 1 -th element of a sequence, when i < |ρ|,104 
+
+and we denote as ρ↓ = ρ[|ρ| − 1] the last element of a sequence, when ρ ∈ S ∗. A sequence ρ1 is a 105 
+
+prefix of ρ2, denoted ρ1 ⪯ ρ2, if |ρ1| ≤ | ρ2| and ρ1[i] = ρ2[i] for all 0 ≤ i ≤ | ρ1|. A sequence ρ1 is 106 
+
+a proper prefix of ρ2, denoted ρ1 ≺ ρ2, if ρ1 ⪯ ρ2 and ρ1̸ = ρ2.107 
+
+Labelled MDPs and Markov Chains. An MDP is a tuple M = ( S, A, P, P0, R, AP , L), where 108 
+
+S and A are finite sets of states and actions resp.; P : S × A → Dist (S) is the transition 109 
+
+function ; P0 ∈ Dist (S) is the initial state distribution ; R : S × A → [0, 1] is the reward function ;110 
+
+AP is a set of atomic propositions , where Σ = P ow (AP ) is the alphabet over AP ; and L :111 
+
+S → Σ is a labelling function , where L(s) denotes the set of atoms that hold in a given state 112 
+
+s ∈ S . A memory-less (stochastic) policy is a function π : S → Dist (A) and its value function ,113 
+
+denoted Vπ : S → R is defined as the expected reward from a given state under policy π, i.e., 114 
+
+Vπ (s) = Eπ [PTt=0 R(st, at)|s0 = s], where T is a fixed episode length. Furthermore, denote as 115 
+
+Mπ = ( S, Pπ , P0, AP , L) the Markov chain induced by a fixed policy π, where the transition 116 
+
+function is such that Pπ (s′|s) = P 
+
+> a∈A
+
+P(s′|s, a)π(a|s). A path ρ ∈ S ∞ through Mπ is a finite (or 117 
+
+infinite) sequence of states. Using standard results from measure theory it can be shown that the set 118 
+
+of all paths {ρ ∈ S ω | ρpref ⪯ ρ} with a common prefix ρpref is measurable [9]. 119 
+
+Probabilistic CTL. (PCTL) [ 9] is a branching-time temporal logic for specifying properties of 120 
+
+stochastic systems. A well-formed PCTL property can be constructed with the following grammar, 121 
+
+Φ ::= true | a | ¬ Φ | Φ ∧ Φ | P▷◁ p [φ]
+
+φ ::= XΦ | ΦU Φ | ΦU ≤nΦ
+
+where a ∈ AP , ▷◁ ∈ { <, >, ≤, ≥} is a binary comparison operator, and p ∈ [0, 1] is a probability. 122 
+
+Negation ¬ and conjunction ∧ are the familiar logical operators from propositional logic, and next X,123 
+
+until U and bounded until U ≤n are the temporal operators from CTL [ 9 ]. We make the distinction 124 
+
+here between state formula Φ and path formula φ. The satisfaction relation for state formula Φ is 125 
+
+defined in the standard way for Boolean connectives. For probabilistic quantification we say that 126 
+
+s |= P▷◁ p [φ] iff Pr( s |= φ) := Pr( ρ ∈ Sω | ρ[0] = s, ρ |= φ) ▷◁ p . Let Pr M(s |= φ) be the 127 
+
+probability w.r.t. the Markov chain M. For path formula φ the satisfaction relation is as follows, 128 
+
+ρ |= XΦ iff ρ[1] |= Φ 
+
+ρ |= Φ 1U Φ2 iff ∃ j ≥ 0 s.t. ( ρ[j] |= Φ 2 ∧ ∀ 0 ≤ i < j , ρ[i] |= Φ 1)
+
+ρ |= Φ 1U ≤nΦ2 iff ∃ 0 ≤ j ≤ n s .t. ( ρ[j] |= Φ 2 ∧ ∀ 0 ≤ i < j , ρ[i] |= Φ 1)
+
+From the standard operators of propositional logic we may derive disjunction ∨, implication → and 129 
+
+coimplication ↔. We also note that the common temporal operators ‘eventually’ ♢ and ’always’ □,130 
+
+and their bounded counterparts ♢≤n and □≤n can be derived in a familiar way, i.e., ♢ Φ ::= true U Φ,131 
+
+□ Φ ::= ¬♢¬Φ, resp. ♢≤n Φ ::= true U ≤nΦ, □≤n Φ ::= ¬♢≤n¬Φ.132 
+
+Regular Safety Property. A linear time property Psafe ⊆ Σω over the alphabet Σ is a safety property 133 
+
+if for all words w ∈ Σω \ Psafe , there exists a finite prefix wpref of w such that Psafe ∩ { w′ ∈ Σω |134 
+
+3wpref ⪯ w′} = ∅. Any such sequence wpref is called a bad prefix for Psafe , a bad prefix wpref 135 
+
+is called minimal iff there does not exist w′′ ≺ wpref such that w′′ is a bad prefix for Psafe . Let 136 
+
+BadPref (Psafe ) and MinBadPref (Psafe ) denote the set of of bad and minimal bad prefixes resp. 137 
+
+A safety property Psafe ∈ Σω is regular if the set BadPref (Psafe ) constitutes a regular language. That 138 
+
+is, there exists some deterministic finite automata (DFA) that accepts the bad prefixes for Psafe [ 9], 139 
+
+that is, a path ρ ∈ S ω is ‘unsafe’ if the trace trace (ρ) = L(ρ[0]), L(ρ[1]), . . . ∈ Σω is accepted by 140 
+
+the corresponding DFA. 141 
+
+Definition 3.1 (DFA) . A deterministic finite automata is a tuple D = ( Q, Σ, ∆, Q0, F), where Q142 
+
+is a finite set of states, Σ is a finite alphabet, ∆ : Q × Σ → Q is the transition function, Q0 is the 143 
+
+initial state, and F ⊆ Q is the set of accepting states. The extended transition function ∆∗ is the 144 
+
+total function ∆∗ : Q × Σ∗ → Q defined recursively as ∆∗(q, w) = ∆(∆ ∗(q, w \ w↓), w↓). The 145 
+
+language accepted by DFA D is denoted L(D) = {w ∈ Σ∗ | ∆∗(Q0, w) ∈ F} .146 
+
+Furthermore, we denote as P H 
+
+> safe
+
+⊆ Σω the corresponding finite-horizon safety property for H ∈ Z+,147 
+
+where for all words w ∈ Σω \ P H 
+
+> safe
+
+there exists wpref ⪯ w such that |wpref | ≤ H and wpref ∈148 
+
+BadPref (Psafe ). We model check regular safety properties by synchronizing the DFA and Markov 149 
+
+chain in a standard way – by computing the product Markov chain. 150 
+
+Definition 3.2 (Product Markov Chain) . Let M = ( S, P, P0, AP , L) be a Markov chain and D =151 
+
+(Q, Σ, ∆, Q0, F) be a DFA. The product Markov chain is M ⊗ D = ( S × Q , P′, P′
+
+> 0
+
+, {accept }, L′),152 
+
+where L′(⟨s, q⟩) = {accept } if q ∈ F and L′(⟨s, q⟩) = ∅ o/w, P′
+
+> 0
+
+(⟨s, q⟩) = P0(s) if q =153 
+
+∆( Q0, L(s)) and 0 o/w, and P′(⟨s′, q′⟩|⟨ s, q⟩) = P(s′|s) if q′ = ∆( q, L(s′)) and 0 o/w. 154 
+
+To compute the satisfaction probability of Psafe for a given state s ∈ S we consider the set of paths 155 
+
+ρ ∈ S ω from s and the corresponding trace in the DFA. We provide the following definition. 156 
+
+Definition 3.3 (Satisfaction probability for Psafe ). Let M = ( S, P, P0, AP , L) be a Markov chain 157 
+
+and let D = ( Q, Σ, ∆, Q0, F) be the DFA such that L(D) = BadP ref (Psafe ). For a path ρ ∈ S ω
+
+> 158
+
+in the Markov chain, let trace (ρ) = L(ρ[0]), L(ρ[1]), . . . ∈ Σω be the corresponding word over 159 
+
+Σ = P ow (AP ). From a given state s ∈ S the satisfaction probability for Psafe is defined as follows, 160 
+
+Pr M(s |= Psafe ) := Pr M(ρ ∈ S ω | ρ[0] = s, trace (ρ)̸ ∈ L (D)) 
+
+Perhaps more importantly, we note that this satisfaction probability can be written as the following 161 
+
+reachability probability in the product Markov chain, 162 
+
+Pr M(s |= Psafe ) = Pr M⊗D (⟨s, qs⟩̸ | = ♢accept )
+
+where qs = ∆( Q0, L(s)) and ♢accept is a PCTL path formula that reads, ‘eventually accept ’ [ 9]. 163 
+
+For the corresponding finite-horizon safety property P H 
+
+> safe
+
+we state the following result. 164 
+
+Proposition 3.4 (Satisfaction probability for P H
+
+> safe
+
+). Let M and D be the MDP and DFA in Defn. 3.3. 165 
+
+For a path ρ ∈ S ω in the Markov chain, let trace H (ρ) = L(ρ[0]), L(ρ[1]) . . . , L(ρ[H]) be the 166 
+
+corresponding finite word over Σ = P ow (AP ). For a given state s ∈ S the finite horizon satisfaction 167 
+
+probability for Psafe is defined as follows, 168 
+
+Pr M(s |= P H
+
+> safe
+
+) := Pr M(ρ ∈ S ω | ρ[0] = s, trace H (ρ)̸ ∈ L (D)) 
+
+where H ∈ Z+ is some fixed model checking horizon. Similar to before, we show that the finite 169 
+
+horizon satisfaction probability can be written as the following bounded reachability probability, 170 
+
+Pr M(s |= P H
+
+> safe
+
+) = Pr M⊗D (⟨s, qs⟩̸ | = ♢≤H accept )
+
+where qs = ∆( Q0, L(s)) is as before and ♢≤H accept is the corresponding step-bounded PCTL path 171 
+
+formula that reads, ‘eventually accept in H timesteps’. 172 
+
+The unbounded reachability probability can be computed by solving a system of linear equations, the 173 
+
+bounded reachability probability can be computed with O(H) matrix multiplications, in both cases 174 
+
+the time complexity of the procedure is a polynomial in the size of the product Markov chain [9]. 175 
+
+44 Problem Setup 176 
+
+In this paper, we are interested in the quantitative model checking of regular safety properties for 177 
+
+a fixed finite horizon H and in the context of episodic RL, i.e., where the length of the episode T178 
+
+is fixed. In particular, at every timestep we constrain the (step-bounded) reachability probability 179 
+
+Pr( ⟨s, q⟩̸ | = ♢≤H accept ) in the product Markov chain Mπ ⊗ D . We assume that H is chosen so as 180 
+
+to avoid any irrecoverable states [ 35 , 64 ], i.e., those that lead to a violation of the safety property no 181 
+
+matter the sequence of actions taken, the precise details of this notion are presented in Section 6. We 182 
+
+specify the following constrained problem, 183 
+
+Problem 4.1 (Step-wise bounded regular safety property constraint) . Let Psafe be a regular safety 184 
+
+property, D be the DFA such that L(D) = BadPref (Psafe ) and M be the MDP; 185 
+
+max  
+
+> π
+
+Vπ subject to Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t ∈ [0, T ]
+
+where all probability is taken under the product Markov Chain Mπ ⊗ D , p1 ∈ [0, 1] is a probability 186 
+
+threshold, H is the model checking horizon and T is the fixed episode length. 187 
+
+The hyperparameter p1 is be directly used to trade-off safety and exploration in a semantically 188 
+
+meaningful way; p1 prescribes the probability of satisfying the finite-horizon safety property P H 
+
+> safe
+
+at 189 
+
+each timestep. In particular, if p1 is sufficiently small then we can guarantee (with high-probability) 190 
+
+that the regular safety property Psafe is satisfied for the entire episode length T .191 
+
+Proposition 4.2. Let P T 
+
+> safe
+
+denote the (episodic) regular safety property for a fixed episode length 192 
+
+T . Then satisfying Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 for all t ∈ [0, T ] guarantees that Pr( s0 |=193 
+
+P T
+
+> safe
+
+) ≥ 1 − p1 · ⌈ T /H ⌉, where s0 ∼ P 0 is the initial state. 194 
+
+Comparison to CMDP. In the remainder of this section, we compare our problem setup to various 195 
+
+CMDP settings [ 4], with the aim of unifying different perspectives from safe RL. The purpose of this 196 
+
+is to show that our proposed method for solving Problem 4.1 can also be used to satisfy other more 197 
+
+common CMDP constraints. First, we define the following cost function that prescribes a scalar cost 198 
+
+C > 0 when the regular safety property Psafe is violated and 0 otherwise. 199 
+
+Definition 4.3 (Cost function) . Let Psafe be a regular safety property and let D be the DFA such 200 
+
+that L(D) = BadP ref (Psafe ), modified such that for all q ∈ F , q → Q 0. The cost function is then 201 
+
+defined as, 202 
+
+C(⟨s, q⟩) = 
+
+C if accept ∈ L′(⟨s, q⟩)0 otherwise where C > 0 is some generic scalar cost and L′ is the labelling function defined in Def. 3.2. 203 
+
+Resetting the DFA. Rather than reset the environment, the DFA is reset once it reaches an accepting 204 
+
+state, so as to measure the rate of constraint satisfaction over a fixed episode length T . This can easily 205 
+
+be realized by replacing any outgoing transitions from the accepting states with transitions back to 206 
+
+the initial state, i.e., for all q ∈ F , q → Q 0.207 
+
+Non-Markovian costs. The cost function is Markov on the product states ⟨s, q⟩ ∈ S × Q . However, 208 
+
+in most cases the cost function is non-Markovian in the original state space S, since the automaton 209 
+
+state q ∈ Q could depend on some arbitrary history of states. Thus our problem setup generalizes the 210 
+
+standard CMDP framework with non-Markovian safety constraints. 211 
+
+Invariant properties. Invariant properties Pinv (Φ) , also written □Φ (‘always Φ’), where Φ is a 212 
+
+propositional state formula, are the simplest type of safety properties where the cost function is still 213 
+
+Markov in the original state space. In this case we are operating in the standard CMDP framework, 214 
+
+we also note that checking invariant properties with a fixed model checking horizon has been studied 215 
+
+in previous works, as bounded safety [29, 30] and safety for a finite horizon [45]. 216 
+
+The most common type of CMDP constraints are expected cumulative (cost) constraints , which 217 
+
+constrain the expected cost below a given threshold. 218 
+
+Problem 4.4 (Expected cumulative constraint [4, 58]) .
+
+max  
+
+> π
+
+Vπ subject to E⟨st,qt⟩∼M π ⊗D 
+
+hPTt=0 C(⟨st, qt⟩)
+
+i
+
+≤ d1
+
+where d1 ∈ R+ is the cost threshold and T is the fixed episode length. 219 
+
+5Probabilistic cumulative (cost) constraints , are a stricter class of constraints that constrain the 220 
+
+cumulative cost with high probability, rather than in expectation. 221 
+
+Problem 4.5 (Probabilistic cumulative constraint [18, 56]) .
+
+max  
+
+> π
+
+Vπ subject to P⟨st,qt⟩∼M π ⊗D 
+
+hPTt=0 C(⟨st, qt⟩) ≤ d2
+
+i
+
+≥ 1 − δ2
+
+where d2 ∈ R+ is the cost threshold, δ2 is a tolerance parameter, and T is the fixed episode length. 222 
+
+We also consider instantaneous constraints , which bound the cost ‘almost surely’ at each timestep 223 
+
+t ∈ [0, T ]. These are an even stricter type of constraint for highly safety-critical applications. 224 
+
+Problem 4.6 (Instantaneous constraint [23, 60, 69]) .
+
+max  
+
+> π
+
+Vπ subject to P⟨st,qt⟩∼M π ⊗D 
+
+C(⟨st, qt⟩) ≤ d3
+
+ = 1 ∀t ∈ [0, T ]
+
+where d3 ∈ R+ is the cost threshold and T is the fixed episode length. 225 
+
+In particular, these problems define a constrained set of feasible policies Π. We make the distinction 226 
+
+here between a feasible policy and a solution to the problem, the former being any policy satisfying 227 
+
+the constraints of the problem and the later being the optimal policy within the feasible set Π.228 
+
+Theorem 4.7. A feasible policy for Problem 4.1 is also a feasible policy for Problems 4.4, 4.5 and 229 
+
+4.6 under specific parameter settings for p1, d1, d2 and δ2, and d3.230 
+
+In Appendix G we provide a full set of statements that outline the relationships between the con-231 
+
+strained problems presented in this section. The significance of these results is that they demonstrate 232 
+
+by solving Problem 4.1 with our proposed method we can obtain feasible policies for Problems 4.4, 233 
+
+4.5 and 4.6, although for most of these problems there is no direct relationship between our problem 234 
+
+setup, in particular we can say little about whether the optimal policy for one problem is necessarily 235 
+
+optimal for another. Nevertheless, we find it interesting to explore the relationships between our setup 236 
+
+and other perhaps more common constrained RL problems. 237 
+
+## 5 Model checking 238 
+
+In this section we outline several procedures for checking the finite-horizon satisfaction probability 239 
+
+of regular safety properties and we summarise the settings in which they can be used. 240 
+
+Assumption 5.1. We are given access to the ‘true’ transition probabilities P.241 
+
+Assumption 5.2. We are given access to a ‘black box’ model that perfectly simulates the ‘true’ 242 
+
+transition probabilities P.243 
+
+Assumption 5.3. We are given access to an approximate dynamic model bP ≈ P , where the total 244 
+
+variation (TV) distance DT V (Pπ (· | s), bPπ (· | s)) ≤ ϵ/H , for all s ∈ S .1
+
+> 245
+
+Exact model checking. Under Assumption 5.1 we can precisely compute the (finite horizon) 246 
+
+satisfaction probability of Psafe , in the Markov chain Mπ induced by the fixed policy π in time 247 
+
+O(poly (size (Mπ ⊗ D )) · H) [ 9], where D is the DFA such that L(D) = BadP ref (Psafe ) and H248 
+
+is the model checking horizon. H should not be too large and so the complexity of exact model 249 
+
+checking ultimately depends on the size of the product Mπ ⊗ D , and so if the size of either the MDP 250 
+
+or DFA is too large then exact model checking may be infeasible. 251 
+
+Monte-Carlo model checking. To address the limitations of exact model checking, we can drop 252 
+
+Assumption 5.1. Rather, under Assumption 5.2, we can sample sufficiently many paths from a 253 
+
+‘black box’ model of the environment dynamics and estimate the reachability probability Pr( ⟨s, q⟩ | =254 
+
+♢≤H accept ) in the product Markov chain Mπ ⊗ D , by computing the proportion of accepting paths. 255 
+
+Using statistical bounds, such as Hoeffding’s inequality [ 40 ] or Bernstein-type bounds [ 52 ], we can 256 
+
+bound the error of this estimate, with high probability. 257 
+
+Proposition 5.4. Let ϵ > 0, δ > 0, s ∈ S and H ≥ 1 be given. Under Assumption 5.2, we can 258 
+
+obtain an ϵ-approximate estimate for the probability Pr( ⟨s, q⟩ | = ♢≤H accept ) with probability at 259 
+
+least 1 − δ, by sampling m ≥ 12ϵ2 log   2
+
+> δ
+
+ paths from the ‘black box’ model. 260 
+
+> 1
+
+For two discrete probability distributions μ1 and μ2 over the same space X the TV distance is defined as: 
+
+DT V (μ1(·), μ2(·)) = 12
+
+P 
+
+> x∈X
+
+|μ1(x) − μ2(x)|
+
+6We note that the time complexity of these statistical methods does not depend in the size of the 261 
+
+product MDP or DFA, since the product states ⟨s, q⟩ ∈ S × Q can be computed on-the-fly , rather the 262 
+
+time complexity depends on the horizon H, the desired level of accuracy ϵ, failure probability δ.263 
+
+Model checking with approximate models. In most realistic cases neither the ‘true’ transition 264 
+
+probabilities nor a perfect ‘black box’ model is available to us before-hand. Under Assumption 265 
+
+5.3 we can model check with an ‘approximate’ model of the MDP dynamics, which can either be 266 
+
+constructed ahead of time (offline) or learned from experience, with maximum likelihood (or similar). 267 
+
+We can then either exact model check in with the ‘approximate’ probabilities, or if the MDP is too 268 
+
+large, we can leverage statistical model checking by sampling paths from the ’approximate’ model. 269 
+
+Proposition 5.5. Let ϵ > 0, δ > 0, s ∈ S and H ≥ 1 be given. Under Assumption 5.3 we can make 270 
+
+the following two statements: 271 
+
+(1) We can obtain an ϵ-approximate estimate for Pr( ⟨s, q⟩ | = ♢≤H accept ) with probability 1 by 272 
+
+exact model checking with the transition probabilities of bPπ in time O(poly (size (Mπ ⊗ D )) · H).273 
+
+(2) We can obtain an ϵ-approximate estimate for Pr( ⟨s, q⟩ | = ♢≤H accept ) with probability at least 274 
+
+1 − δ, by sampling m ≥ 2 
+
+> ϵ2
+
+log   2
+
+> δ
+
+ paths from the ‘approximate’ dynamics model bPπ .275 
+
+## 6 Shielding the policy 276 
+
+Algorithm 1 Shielding (with runtime verification of regular safety properties) 
+
+Input: model checking parameters ( ϵ, δ, p, H), labelling function L, DFA D = ( Q, Σ, ∆, Q0, F).
+
+Optional: probabilities P, ‘backup policy’ πsafe .
+
+Initialize: ‘task policy’ πtask , ‘backup policy’ πsafe 
+
+and (approximate) probabilities bP.
+
+for each episode do 
+
+Observe s0, L(s0) and q0 ← ∆( Q0, L(s0)) 
+
+for t = 0, . . . , T do ▷ Fixed episode length Sample action a ∼ πtask (· | st)
+
+if Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1 then 
+
+// Use the proposed action 
+
+at ← a
+
+else 
+
+// Override the action 
+
+at ∼ πsafe (· | st, qt)
+
+Play at and observe st+1 , L(st+1 ), rt
+
+qt+1 ← ∆( qt, L(st+1 )) ,
+
+ct ← 1[ qt+1 ∈ F ]
+
+Update πtask with (st, at, st+1 , rt)
+
+Update πsafe with (st, qt, at, st+1 , qt+1 , ct)
+
+Update bP with (st, at, st+1 )
+
+At a high-level, the shielding meta-algorithm 277 
+
+works by switching between the ‘task policy’ 278 
+
+trained with RL to maximize rewards and a 279 
+
+‘backup policy’, which typically constitutes a 280 
+
+low-reward, possibly rule-based policy that is 281 
+
+guaranteed to be safe. In some cases this 282 
+
+‘backup policy’ may be available to us before 283 
+
+training, although in most realistic cases it will 284 
+
+need to be learned. In our case we switch 285 
+
+from the ‘task policy’ to the ‘backup policy’ 286 
+
+when the reachability probability Pr( ⟨s, q⟩ | =287 
+
+♢≤H accept ) exceeds the probability threshold 288 
+
+p1. To check this we can use any of the model 289 
+
+checking procedures presented earlier. The 290 
+
+‘backup policy’ is used when the reachability 291 
+
+probability exceeds p1. Intuitively if the ‘backup 292 
+
+policy’ is guaranteed to be safe, then our system 293 
+
+should satisfy the constraints of Problem 4.1, 294 
+
+independent of the ‘task policy’. 295 
+
+Backup policy. In general we assume no knowl-296 
+
+edge of the safety dynamics before training and 297 
+
+so the ‘backup policy’ needs to be learned. In 298 
+
+particular, we can use the cost function defined 299 
+
+in Defn. 4.3 and train the ‘backup policy’ with 300 
+
+RL to minimize the expected discounted cost 301 
+
+(Eπ [PTt=0 γtC(st, qt)] ). Importantly, we note that the cost function is defined on the product state 302 
+
+space S × Q and so the ‘backup policy’ must also operate on this state space, possibly leading 303 
+
+to slower convergence. However, we can eliminate this issue entirely by training the ‘backup pol-304 
+
+icy’ with counterfactual experiences [42 , 43 ] – a method originally used for reward machines that 305 
+
+generates additional synthetic data for the policy, by simulating experience from each automaton 306 
+
+state. 307 
+
+Meta Algorithm. We now present the structure of the shielding meta-algorithm (see Algorithm 308 
+
+1). The precise realization of this algorithm can vary depending on problem setting, tabular, deep 309 
+
+RL, etc., however the main structure of the algorithm remains the same. In particular, during 310 
+
+interaction with the environment we shield the agent by checking that the reachability probability 311 
+
+Pr( ⟨s, q⟩ | = ♢≤H accept ) does not exceed threshold p1. Then, with the new accumulated experience 312 
+
+we update the ‘task policy’ denoted πtask and the ‘backup policy’ denoted πsafe with RL, and if need be 313 
+
+7we update our (approximate) dynamics model accordingly. In principle, the underlying RL algorithm 314 
+
+used to train either ‘task policy’ or ‘backup policy’ can differ, and the dynamics model can be a 315 
+
+simple maximum likelihood estimate or something more complex, e.g., Gaussian Process model 316 
+
+[25, 70], ensemble of parametric neural networks [21, 44] or a world model [32, 33]. 317 
+
+Global Safety Guarantees. In the tabular setting we can guarantee the safety of the system described 318 
+
+in Algorithm 1 under various assumptions, even when doing Monte-Carlo model checking on an 319 
+
+‘approximate’ model of the environment dynamics. First, we provide the following definitions. 320 
+
+Definition 6.1 (Non-critical state) . A product state ⟨s, q⟩ ∈ S × Q is said to be non-critical for a 321 
+
+given model checking horizon H if for all policies π we have Pr( ⟨s, q⟩ | = ♢≤H accept ) = 0 .322 
+
+Definition 6.2 (Irrecoverable) . A critical state ⟨s, q⟩ ∈ S × Q is said to be irrecoverable with 323 
+
+probability p1 if for all policies π we have Pr( ⟨s, q⟩ | = ♢accept ) ≥ p1. In other words, for any 324 
+
+sequence of actions a0, a1, . . . the minimum probability Pr min (⟨s, q⟩ | = ♢accept ) of reaching an 325 
+
+accepting state is p1, where Pr min (⟨s, q⟩ | = ♢accept ) = inf π Pr Mπ ⊗D (⟨s, q⟩ | = ♢accept )326 
+
+The safety-guarantees for Algorithm 1 rely on the following assumptions. 327 
+
+Assumption 6.3. We assume H is sufficiently large so that it is not possible to transition from any 328 
+
+non-critical state to an irrecoverable state. Furthermore we assume that there exists some H∗ < H 329 
+
+such that if Pr min (⟨s, q⟩ | = ♢accept ) = p1 then Pr min (⟨s, q⟩ | = ♢≤H∗
+
+accept ) = p1.330 
+
+Assumption 6.4. The initial state ⟨s0, L(s0)⟩ is non-critical and for any state ⟨s, q⟩ ∈ S × Q that is 331 
+
+not irrecoverable, the ‘backup policy’ πsafe is satisfies Pr MπC ⊗D (⟨s, q⟩ | = ♢≤H accept ) ≤ p1332 
+
+Theorem 6.5. Under Assumption 6.3 and 6.4, and provided that every state action pair (s, a) ∈ S ×A 333 
+
+has been visited at least O
+
+ H2|S| 2 
+
+> ϵ2
+
+log 
+
+ |A||S| 2
+
+> δ
+
+ 
+
+times. Then with probability 1 − δ the system 334 
+
+satisfies the constraints of Problem 4.1, independent of the ‘task policy’. 335 
+
+The theory is quite conservative here due to the strong dependence on |S|, in practice we can replace 336 
+
+the outer |S|2 by the maximum number of successor states from any given state. With regards to our 337 
+
+assumptions, both are not overly restrictive. Assumption 6.3 essentially states that any irrecoverable 338 
+
+states, will reach the accepting state with some probability > g within a fixed horizon H∗. Similar 339 
+
+statements have been considered in prior work [ 35 , 64 ]. Assumption 6.4 states that the ‘backup 340 
+
+policy’ satisfies Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1 if possible, we would expect this to be the case when 341 
+
+training the ‘backup policy’ with RL to minimize cost. The analysis for Theorem 6.5 then follows 342 
+
+by showing that the system can be recovered to a non-critical state after entering a critical but not 343 
+
+irrecoverable state. 344 
+
+## 7 Empirical Evaluation 345 
+
+We implemented two separate realizations of Algorithm 1, the first adapted to tabular environments 346 
+
+which implements both exact or statistical model checking over the learned transition probabilities, the 347 
+
+second is adapted to (visual) deep RL, making use of world models [32 , 33 ], specifically DreamerV3 348 
+
+[34], to learn a latent dynamics model for model checking and policy optimization. 349 
+
+Table 1: Safety properties property Psafe 
+
+(1) □¬green 
+
+(2) □goal → ♢≤10 blue 
+
+(3) □goal → ♢≤10 □≤5purple 
+
+Tabular RL. We conduct experiments on a simple ‘colour’ grid-350 
+
+world environment, with regular safety properties of increasing 351 
+
+difficulty. In short, the goal is to navigate from a starting state 352 
+
+to a goal position as frequently as possible, while respecting a 353 
+
+given regular safety property during training. The environment is 354 
+
+stochastic – with some probability p the agent’s action is ignored 355 
+
+and another action is chosen uniformly instead. For smaller p val-356 
+
+ues the environment becomes more deterministic and the safety property typically becomes easier to 357 
+
+satisfy with higher probability, we refer the reader to Appendix D.1 for more details. Table 1 outlines 358 
+
+the three safety properties used for our environments. We use PCTL-like notation to describe the 359 
+
+safety properties, although strictly speaking (2) and (3) are actually PCTL ∗ path formula. Regardless 360 
+
+of this slight technical detail, properties (1)-(3) are valid regular safety properties, as we can come up 361 
+
+with a DFA that accepts the bad prefixes for them. 362 
+
+We compare our approach to Q-learning (without any penalties), and Q-learning on the product 363 
+
+state space, with penalties provided by the cost function (Defn. 4.3) and trained with counterfactual 364 
+
+8experiences [ 43 ]. In all cases, by separating reward and safety into two distinct policies, we are able 365 
+
+to effectively trade-off the two objectives. Q-learning simply finds the best policy ignoring the costs, 366 
+
+and Q-learning with penalties is able to find a safe policy, but struggles to meaningfully balance both 367 
+
+objectives (see Fig. 2). Hyperparameter settings for all experiments are detailed in Appendix E. In 368 
+
+addition, we provide an extensive series of ablation studies in Appendix F for these experiments. For 369 
+
+example, we show that we don’t loose much by using Monte Carlo model checking as opposed to 370 
+
+exact model checking with the ‘true’ probabilities. We also show that tuning the cost coefficient C371 
+
+offers no meaningful way to trade-off reward and the probability of constraint satisfaction. 372 
+
+Figure 2: Episode reward and cost for tabular RL ‘colour’ gridworld environment. 
+
+Figure 3: Episode reward and violation rate for deep RL Atari Seaquest. 
+
+Deep RL. We deploy our version of Algo-373 
+
+rithm 1 built on DreamerV3 [ 34 ] on Atari 374 
+
+Seaquest, provided as part of the Arcade Learn-375 
+
+ing Environment (ALE)[ 10 , 50 ]. We experi-376 
+
+ment with two different regular safety proper-377 
+
+ties: (1) (□¬surface → □(surface → diver )) ∧378 
+
+(□¬out-of-oxygen ) ∧ (□¬hit ) and (2) □diver ∧379 
+
+¬surface → ♢≤30 surface . We compare our ap-380 
+
+proach to the base DreamerV3 algorithm and 381 
+
+a version of DreamerV3 that implements the 382 
+
+augmented Lagrangian penalty framework, sim-383 
+
+ilarly to [ 7, 41 ], for additional details see Ap-384 
+
+pendix B.1. 385 
+
+Again our approach is able to effectively trade-386 
+
+off both objectives, while (base) DreamerV3 ig-387 
+
+nores the cost, the Lagrangian approach appears 388 
+
+to learn a safe policy that is not always efficient 389 
+
+in terms of reward (see Fig. 3). We refer the 390 
+
+reader to Appendix D.2 for more details of the 391 
+
+environment and an extended discussion. 392 
+
+Separating Reward and Safety. The separa-393 
+
+tion of reward and safety objectives into two dis-394 
+
+tinct policies has been demonstrated as an effec-395 
+
+tive strategy towards safety-aware decision mak-396 
+
+ing [ 3, 30 , 46 , 63 ], in many cases the safety ob-397 
+
+jective is simpler and can be more quickly learnt 398 
+
+[ 46 ]. In our experiments it is clear that when 399 
+
+the system enters a critical state, the ‘backup 400 
+
+policy’ is able to efficiently guide the system 401 
+
+back to a non-critical state where the task policy 402 
+
+can continue collecting reward. However, there 403 
+
+is evidence that the complete separation of poli-404 
+
+cies is not always appropriate [ 31 ] and penalties 405 
+
+or a slight coupling of the policies is required 406 
+
+to stop the ‘task’ and ‘backup policy’ fighting 407 
+
+for control of the system. Furthermore, by separating reward and safety, we typically loose any 408 
+
+asymptotic convergence guarantees, similar to the situation faced for hierarchical RL [ 61 ], although 409 
+
+there has been recent work to develop convergence guarantees for shielding [75]. 410 
+
+## 8 Conclusion 411 
+
+In this paper we propose a shielding meta-algorithm for the runtime verification of regular safety 412 
+
+properties, given as a probabilistic constraint on the system. We provide a thorough theoretical 413 
+
+examination of the problem and develop probabilistic safety guarantees for the meta-algorithm, 414 
+
+which hold under reasonable assumptions. Empirically, we demonstrate that shielding is able to 415 
+
+effectively balance both reward and safety, in both the tabular and deep RL setting. A more thorough 416 
+
+theoretical and empirical examinations of the conditions for when shielding is appropriate would be 417 
+
+an interesting direction for future work. 418 
+
+9References 419 
+
+[1] Pieter Abbeel and Andrew Y Ng. 2005. Exploration and apprenticeship learning in reinforcement 420 
+
+learning. In Proceedings of the 22nd international conference on Machine learning . 1–8. 421 
+
+[2] Joshua Achiam, David Held, Aviv Tamar, and Pieter Abbeel. 2017. Constrained policy opti-422 
+
+mization. In International conference on machine learning . PMLR, 22–31. 423 
+
+[3] Mohammed Alshiekh, Roderick Bloem, Rüdiger Ehlers, Bettina Könighofer, Scott Niekum, 424 
+
+and Ufuk Topcu. 2018. Safe reinforcement learning via shielding. In Proceedings of the AAAI 425 
+
+Conference on Artificial Intelligence , Vol. 32. 426 
+
+[4] Eitan Altman. 1999. Constrained Markov decision processes: stochastic modeling . Routledge. 427 
+
+[5] Aaron D Ames, Samuel Coogan, Magnus Egerstedt, Gennaro Notomista, Koushil Sreenath, 428 
+
+and Paulo Tabuada. 2019. Control barrier functions: Theory and applications. In 2019 18th 429 
+
+European control conference (ECC) . IEEE, 3420–3431. 430 
+
+[6] Dario Amodei, Chris Olah, Jacob Steinhardt, Paul Christiano, John Schulman, and Dan Mané. 431 
+
+2016. Concrete problems in AI safety. arXiv preprint arXiv:1606.06565 (2016). 432 
+
+[7] Yarden As, Ilnura Usmanova, Sebastian Curi, and Andreas Krause. 2022. Constrained policy 433 
+
+optimization via bayesian world models. arXiv preprint arXiv:2201.09802 (2022). 434 
+
+[8] Fahiem Bacchus, Craig Boutilier, and Adam Grove. 1996. Rewarding behaviors. In Proceedings 435 
+
+of the National Conference on Artificial Intelligence . 1160–1167. 436 
+
+[9] Christel Baier and Joost-Pieter Katoen. 2008. Principles of model checking . MIT press. 437 
+
+[10] M. G. Bellemare, Y. Naddaf, J. Veness, and M. Bowling. 2013. The Arcade Learning Environ-438 
+
+ment: An Evaluation Platform for General Agents. Journal of Artificial Intelligence Research 439 
+
+47 (jun 2013), 253–279. 440 
+
+[11] Felix Berkenkamp, Matteo Turchetta, Angela Schoellig, and Andreas Krause. 2017. Safe 441 
+
+model-based reinforcement learning with stability guarantees. Advances in neural information 442 
+
+processing systems 30 (2017). 443 
+
+[12] James Bradbury, Roy Frostig, Peter Hawkins, Matthew James Johnson, Chris Leary, Dougal 444 
+
+Maclaurin, George Necula, Adam Paszke, Jake VanderPlas, Skye Wanderman-Milne, and 445 
+
+Qiao Zhang. 2018. JAX: composable transformations of Python+NumPy programs . http: 446 
+
+//github.com/google/jax 447 
+
+[13] Ronen I Brafman, Giuseppe De Giacomo, et al . 2019. Regular Decision Processes: A Model 448 
+
+for Non-Markovian Domains.. In IJCAI . 5516–5522. 449 
+
+[14] Greg Brockman, Vicki Cheung, Ludwig Pettersson, Jonas Schneider, John Schulman, Jie Tang, 450 
+
+and Wojciech Zaremba. 2016. Openai gym. arXiv preprint arXiv:1606.01540 (2016). 451 
+
+[15] Lukas Brunke, Melissa Greeff, Adam W Hall, Zhaocong Yuan, Siqi Zhou, Jacopo Panerati, 452 
+
+and Angela P Schoellig. 2022. Safe learning in robotics: From learning-based control to safe 453 
+
+reinforcement learning. Annual Review of Control, Robotics, and Autonomous Systems 5 (2022), 454 
+
+411–444. 455 
+
+[16] Emma Brunskill, Bethany R Leffler, Lihong Li, Michael L Littman, and Nicholas Roy. 2009. 456 
+
+Provably efficient learning with typed parametric models. (2009). 457 
+
+[17] Mingyu Cai, Shaoping Xiao, Zhijun Li, and Zhen Kan. 2021. Optimal probabilistic motion 458 
+
+planning with potential infeasible LTL constraints. IEEE transactions on automatic control 68, 459 
+
+1 (2021), 301–316. 460 
+
+[18] Weiqin Chen, Dharmashankar Subramanian, and Santiago Paternain. 2024. Probabilistic 461 
+
+constraint for safety-critical reinforcement learning. IEEE Trans. Automat. Control (2024). 462 
+
+[19] Richard Cheng, Gábor Orosz, Richard M Murray, and Joel W Burdick. 2019. End-to-end safe 463 
+
+reinforcement learning through barrier functions for safety-critical continuous control tasks. In 464 
+
+Proceedings of the AAAI conference on artificial intelligence , Vol. 33. 3387–3395. 465 
+
+10 [20] Yinlam Chow, Mohammad Ghavamzadeh, Lucas Janson, and Marco Pavone. 2018. Risk-466 
+
+constrained reinforcement learning with percentile risk criteria. Journal of Machine Learning 467 
+
+Research 18, 167 (2018), 1–51. 468 
+
+[21] Kurtland Chua, Roberto Calandra, Rowan McAllister, and Sergey Levine. 2018. Deep rein-469 
+
+forcement learning in a handful of trials using probabilistic dynamics models. Advances in 470 
+
+neural information processing systems 31 (2018). 471 
+
+[22] Roberto Cipollone, Anders Jonsson, Alessandro Ronca, and Mohammad Sadegh Talebi. 2024. 472 
+
+Provably Efficient Offline Reinforcement Learning in Regular Decision Processes. Advances in 473 
+
+Neural Information Processing Systems 36 (2024). 474 
+
+[23] Gal Dalal, Krishnamurthy Dvijotham, Matej Vecerik, Todd Hester, Cosmin Paduraru, and Yuval 475 
+
+Tassa. 2018. Safe exploration in continuous action spaces. arXiv preprint arXiv:1801.08757 476 
+
+(2018). 477 
+
+[24] Giuseppe De Giacomo, Luca Iocchi, Marco Favorito, and Fabio Patrizi. 2020. Restraining 478 
+
+bolts for reinforcement learning agents. In Proceedings of the AAAI Conference on Artificial 479 
+
+Intelligence , Vol. 34. 13659–13662. 480 
+
+[25] Marc Deisenroth and Carl E Rasmussen. 2011. PILCO: A model-based and data-efficient 481 
+
+approach to policy search. In Proceedings of the 28th International Conference on machine 482 
+
+learning (ICML-11) . 465–472. 483 
+
+[26] Gabriel Dulac-Arnold, Daniel Mankowitz, and Todd Hester. 2019. Challenges of real-world 484 
+
+reinforcement learning. arXiv preprint arXiv:1904.12901 (2019). 485 
+
+[27] Jie Fu and Ufuk Topcu. 2014. Probably approximately correct MDP learning and control with 486 
+
+temporal logic constraints. arXiv preprint arXiv:1404.7073 (2014). 487 
+
+[28] Javier Garcıa and Fernando Fernández. 2015. A comprehensive survey on safe reinforcement 488 
+
+learning. Journal of Machine Learning Research 16, 1 (2015), 1437–1480. 489 
+
+[29] M Giacobbe, Mohammadhosein Hasanbeig, Daniel Kroening, and Hjalmar Wijk. 2021. Shield-490 
+
+ing atari games with bounded prescience. In Proceedings of the International Joint Conference 491 
+
+on Autonomous Agents and Multiagent Systems, AAMAS .492 
+
+[30] Alexander W Goodall and Francesco Belardinelli. 2023. Approximate Model-Based Shielding 493 
+
+for Safe Reinforcement Learning. arXiv preprint arXiv:2308.00707 (2023). 494 
+
+[31] Alexander W Goodall and Francesco Belardinelli. 2024. Leveraging Approximate Model-based 495 
+
+Shielding for Probabilistic Safety Guarantees in Continuous Environments. arXiv preprint 496 
+
+arXiv:2402.00816 (2024). 497 
+
+[32] David Ha and Jürgen Schmidhuber. 2018. Recurrent World Models Facilitate Policy Evo-498 
+
+lution. In Advances in Neural Information Processing Systems , S. Bengio, H. Wallach, 499 
+
+H. Larochelle, K. Grauman, N. Cesa-Bianchi, and R. Garnett (Eds.), Vol. 31. Curran As-500 
+
+sociates, Inc. https://proceedings.neurips.cc/paper_files/paper/2018/file/ 501 
+
+2de5d16682c3c35007e4e92982f1a2ba-Paper.pdf 502 
+
+[33] Danijar Hafner, Timothy Lillicrap, Ian Fischer, Ruben Villegas, David Ha, Honglak Lee, and 503 
+
+James Davidson. 2019. Learning latent dynamics for planning from pixels. In International 504 
+
+conference on machine learning . PMLR, 2555–2565. 505 
+
+[34] Danijar Hafner, Jurgis Pasukonis, Jimmy Ba, and Timothy Lillicrap. 2023. Mastering diverse 506 
+
+domains through world models. arXiv preprint arXiv:2301.04104 (2023). 507 
+
+[35] Alexander Hans, Daniel Schneegass, Anton Schäfer, and Steffen Udluft. 2008. Safe Exploration 508 
+
+for Reinforcement Learning. 143–148. 509 
+
+[36] Mohammadhosein Hasanbeig, Alessandro Abate, and Daniel Kroening. 2018. Logically-510 
+
+constrained reinforcement learning. arXiv preprint arXiv:1801.08099 (2018). 511 
+
+[37] Mohammadhosein Hasanbeig, Alessandro Abate, and Daniel Kroening. 2020. Cautious rein-512 
+
+forcement learning with logical constraints. arXiv preprint arXiv:2002.12156 (2020). 513 
+
+11 [38] Mohammadhosein Hasanbeig, Daniel Kroening, and Alessandro Abate. 2020. Deep reinforce-514 
+
+ment learning with temporal logics. In Formal Modeling and Analysis of Timed Systems: 18th 515 
+
+International Conference, FORMATS 2020, Vienna, Austria, September 1–3, 2020, Proceedings 516 
+
+18 . Springer, 1–22. 517 
+
+[39] Chloe He, Borja G León, and Francesco Belardinelli. [n.d.]. Do androids dream of electric 518 
+
+fences? Safety-aware reinforcement learning with latent shielding. CEUR Workshop Proceed-519 
+
+ings. https://ceur-ws.org/Vol-3087/paper_50.pdf 520 
+
+[40] Wassily Hoeffding. 1963. Probability Inequalities for Sums of Bounded Random Variables. J. 521 
+
+Amer. Statist. Assoc. 58, 301 (1963), 13–30. 522 
+
+[41] Weidong Huang, Jiaming Ji, Borong Zhang, Chunhe Xia, and Yaodong Yang. 2023. Safe Dream-523 
+
+erV3: Safe Reinforcement Learning with World Models. arXiv preprint arXiv:2307.07176 524 
+
+(2023). 525 
+
+[42] Rodrigo Toro Icarte, Toryn Klassen, Richard Valenzano, and Sheila McIlraith. 2018. Using 526 
+
+reward machines for high-level task specification and decomposition in reinforcement learning. 527 
+
+In International Conference on Machine Learning . PMLR, 2107–2116. 528 
+
+[43] Rodrigo Toro Icarte, Toryn Q Klassen, Richard Valenzano, and Sheila A McIlraith. 2022. 529 
+
+Reward machines: Exploiting reward function structure in reinforcement learning. Journal of 530 
+
+Artificial Intelligence Research 73 (2022), 173–208. 531 
+
+[44] Michael Janner, Justin Fu, Marvin Zhang, and Sergey Levine. 2019. When to trust your model: 532 
+
+Model-based policy optimization. Advances in neural information processing systems 32 533 
+
+(2019). 534 
+
+[45] Nils Jansen, Bettina Könighofer, Sebastian Junges, Alex Serban, and Roderick Bloem. 2020. 535 
+
+Safe reinforcement learning using probabilistic shields. In 31st International Conference on 536 
+
+Concurrency Theory (CONCUR 2020) . Schloss-Dagstuhl-Leibniz Zentrum für Informatik. 537 
+
+[46] Nils Jansen, Bettina Könighofer, Sebastian Junges, Alexandru C Serban, and Roderick Bloem. 538 
+
+2018. Safe reinforcement learning via probabilistic shields. arXiv preprint arXiv:1807.06096 539 
+
+(2018). 540 
+
+[47] Sham Kakade, Michael J Kearns, and John Langford. 2003. Exploration in metric state spaces. In 541 
+
+Proceedings of the 20th International Conference on Machine Learning (ICML-03) . 306–312. 542 
+
+[48] Michael Kearns and Satinder Singh. 2002. Near-optimal reinforcement learning in polynomial 543 
+
+time. Machine learning 49 (2002), 209–232. 544 
+
+[49] Qingkai Liang, Fanyu Que, and Eytan Modiano. 2018. Accelerated primal-dual policy opti-545 
+
+mization for safe reinforcement learning. arXiv preprint arXiv:1802.06480 (2018). 546 
+
+[50] Marlos C. Machado, Marc G. Bellemare, Erik Talvitie, Joel Veness, Matthew J. Hausknecht, and 547 
+
+Michael Bowling. 2018. Revisiting the Arcade Learning Environment: Evaluation Protocols 548 
+
+and Open Problems for General Agents. Journal of Artificial Intelligence Research 61 (2018), 549 
+
+523–562. 550 
+
+[51] Sultan Javed Majeed, Marcus Hutter, et al . 2018. On Q-learning Convergence for Non-Markov 551 
+
+Decision Processes.. In IJCAI , Vol. 18. 2546–2552. 552 
+
+[52] Andreas Maurer and Massimiliano Pontil. 2009. Empirical bernstein bounds and sample 553 
+
+variance penalization. arXiv preprint arXiv:0907.3740 (2009). 554 
+
+[53] Stephen McIlvanna, Nhat Nguyen Minh, Yuzhu Sun, Mien Van, and Wasif Naeem. 2022. 555 
+
+Reinforcement learning-enhanced control barrier functions for robot manipulators. arXiv 556 
+
+preprint arXiv:2211.11391 (2022). 557 
+
+[54] Rohan Mitta, Hosein Hasanbeig, Jun Wang, Daniel Kroening, Yiannis Kantaros, and Alessandro 558 
+
+Abate. 2024. Safeguarded Progress in Reinforcement Learning: Safe Bayesian Exploration 559 
+
+for Control Policy Synthesis. In Proceedings of the AAAI Conference on Artificial Intelligence ,560 
+
+Vol. 38. 21412–21419. 561 
+
+12 [55] Andrew Y Ng, Daishi Harada, and Stuart Russell. 1999. Policy invariance under reward 562 
+
+transformations: Theory and application to reward shaping. In Icml , Vol. 99. 278–287. 563 
+
+[56] Santiago Paternain, Miguel Calvo-Fullana, Luiz FO Chamon, and Alejandro Ribeiro. 2022. Safe 564 
+
+policies for reinforcement learning via primal-dual methods. IEEE Trans. Automat. Control 68, 565 
+
+3 (2022), 1321–1336. 566 
+
+[57] Aravind Rajeswaran, Igor Mordatch, and Vikash Kumar. 2020. A game theoretic framework for 567 
+
+model based reinforcement learning. In International conference on machine learning . PMLR, 568 
+
+7953–7963. 569 
+
+[58] Alex Ray, Joshua Achiam, and Dario Amodei. 2019. Benchmarking safe exploration in deep 570 
+
+reinforcement learning. arXiv preprint arXiv:1910.01708 7, 1 (2019), 2. 571 
+
+[59] Alessandro Ronca and Giuseppe De Giacomo. 2021. Efficient PAC reinforcement learning in 572 
+
+regular decision processes. arXiv preprint arXiv:2105.06784 (2021). 573 
+
+[60] Yanan Sui, Alkis Gotovos, Joel Burdick, and Andreas Krause. 2015. Safe exploration for 574 
+
+optimization with Gaussian processes. In International conference on machine learning . PMLR, 575 
+
+997–1005. 576 
+
+[61] Richard S Sutton, Doina Precup, and Satinder Singh. 1999. Between MDPs and semi-MDPs: A 577 
+
+framework for temporal abstraction in reinforcement learning. Artificial intelligence 112, 1-2 578 
+
+(1999), 181–211. 579 
+
+[62] Chen Tessler, Daniel J Mankowitz, and Shie Mannor. 2018. Reward constrained policy opti-580 
+
+mization. arXiv preprint arXiv:1805.11074 (2018). 581 
+
+[63] Brijen Thananjeyan, Ashwin Balakrishna, Suraj Nair, Michael Luo, Krishnan Srinivasan, Minho 582 
+
+Hwang, Joseph E Gonzalez, Julian Ibarz, Chelsea Finn, and Ken Goldberg. 2021. Recovery 583 
+
+rl: Safe reinforcement learning with learned recovery zones. IEEE Robotics and Automation 584 
+
+Letters 6, 3 (2021), 4915–4922. 585 
+
+[64] Garrett Thomas, Yuping Luo, and Tengyu Ma. 2021. Safe reinforcement learning by imagining 586 
+
+the near future. Advances in Neural Information Processing Systems 34 (2021), 13859–13869. 587 
+
+[65] Rodrigo Toro Icarte, Ethan Waldie, Toryn Klassen, Rick Valenzano, Margarita Castro, and 588 
+
+Sheila McIlraith. 2019. Learning reward machines for partially observable reinforcement 589 
+
+learning. Advances in neural information processing systems 32 (2019). 590 
+
+[66] Cameron Voloshin, Hoang Le, Swarat Chaudhuri, and Yisong Yue. 2022. Policy optimization 591 
+
+with linear temporal logic constraints. Advances in Neural Information Processing Systems 35 592 
+
+(2022), 17690–17702. 593 
+
+[67] Kim P Wabersich and Melanie N Zeilinger. 2018. Linear model predictive safety certification 594 
+
+for learning-based control. In 2018 IEEE Conference on Decision and Control (CDC) . IEEE, 595 
+
+7130–7135. 596 
+
+[68] Kim Peter Wabersich and Melanie N Zeilinger. 2021. A predictive safety filter for learning-based 597 
+
+control of constrained nonlinear dynamical systems. Automatica 129 (2021), 109597. 598 
+
+[69] Akifumi Wachi, Yanan Sui, Yisong Yue, and Masahiro Ono. 2018. Safe exploration and opti-599 
+
+mization of constrained mdps using gaussian processes. In Proceedings of the AAAI Conference 600 
+
+on Artificial Intelligence , Vol. 32. 601 
+
+[70] Christopher KI Williams and Carl Edward Rasmussen. 2006. Gaussian processes for machine 602 
+
+learning . Vol. 2. MIT press Cambridge, MA. 603 
+
+[71] Eric M Wolff, Ufuk Topcu, and Richard M Murray. 2012. Robust control of uncertain Markov 604 
+
+decision processes with temporal logic specifications. In 2012 IEEE 51st IEEE Conference on 605 
+
+decision and control (CDC) . IEEE, 3372–3379. 606 
+
+[72] Jorge Nocedal Stephen J Wright. 2006. Numerical optimization. 607 
+
+13 [73] Wenli Xiao, Yiwei Lyu, and John Dolan. 2023. Model-based Dynamic Shielding for Safe 608 
+
+and Efficient Multi-agent Reinforcement Learning. In Proceedings of the 2023 International 609 
+
+Conference on Autonomous Agents and Multiagent Systems . 1587–1596. 610 
+
+[74] Tsung-Yen Yang, Justinian Rosca, Karthik Narasimhan, and Peter J Ramadge. 2020. Projection-611 
+
+based constrained policy optimization. arXiv preprint arXiv:2010.03152 (2020). 612 
+
+[75] Wen-Chi Yang, Giuseppe Marra, Gavin Rens, and Luc De Raedt. 2023. Safe reinforcement 613 
+
+learning via probabilistic logic shields. arXiv preprint arXiv:2303.03226 (2023). 614 
+
+14 A Algorithms 615 
+
+Algorithm 2 Exact Model Checking [9] 
+
+Input: model checking parameters ( p, H), current state ⟨s, q⟩, current action a, product MC 
+
+Mπ ⊗ D = ( S × Q , P′, P′
+
+> 0
+
+, {accept }, L′)
+
+Output: true if Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1
+
+Initialize zero vector x(0) ← 0 with size |S| × |Q| 
+
+Initialize probability matrix A ← (P′(s, t)) s,t̸∈accept (ignoring accepting states) Initialize probability vector b ← (P′(s, accept )) s̸∈accept (going to accepting states) 
+
+// Iterate over the model checking horizon 
+
+for i = 1, . . . , H do 
+
+Compute x(i) = Ax (i−1) + b
+
+// Get the corresponding probability 
+
+Let X ← x⟨s,q⟩
+
+If X < p return true else return false 
+
+Algorithm 3 Monte-Carlo Model Checking 
+
+Input: model checking parameters ( ϵ, δ, p, H), current state ⟨s, q⟩, current action a, policy π,labelling function L, DFA D = ( Q, Σ, ∆, Q0, F) and (approximate) transition probabilities P
+
+Output: true if Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1
+
+Choose m ≥ 2/(ϵ2) log(2 /δ )
+
+for i = 1, . . . , m do 
+
+Set s0 ← s, q0 ← q and a0 ← a
+
+// Sample a path through the model 
+
+for j = 1, . . . , H do 
+
+Sample next state sj ∼ P (· | sj−1, aj−1),Compute qj ← ∆( qj−1, L(sj )) ,Sample action aj ∼ π(· | sj )
+
+// Check if the path is accepting 
+
+Let Xi ← 1 [ qH ∈ F ]
+
+// Construct probability estimate 
+
+Let eX ← 1
+
+> m
+
+Pmi=1 Xi
+
+If eX < p − ϵ return true else return false 
+
+Algorithm 4 Tabular Q-learning (Regular Safety Property) with Counter Factual Experiences [65] 
+
+Input: MDP M = ( S, A, P, P0, R, AP , L), DFA D = ( Q, Σ, ∆, Q0, F), discount factor γ ∈
+
+(0, 1] , learning rate α ∈ (0, 1] , temperature τ > 0, cost coefficient C and fixed episode length T
+
+Initialize: (Q-table) ˆQ(s, q, a) ← 0 ∀s ∈ S , q ∈ Q , a ∈ A 
+
+for each episode do 
+
+Observe s0, L(s0) and q0 ← ∆( Q0, L(s0)) 
+
+for t = 0, . . . , T do 
+
+Sample action at from ⟨st, qt⟩ using the Boltzmann policy derived from ˆQ with temp. τ
+
+Play action at and observe st+1 , L(st+1 ) and rt (reward is optional). 
+
+// Generate synthetic data by simulating all automaton transitions 
+
+for ¯q ∈ Q do 
+
+Compute ¯q′ ← ∆( q′, L(st+1 )) 
+
+Compute cost ¯c′ ← C · 1[¯ q′ ∈ F ]
+
+Compute done ← 1[¯ q′ ∈ F ]
+
+// Q-learning step 
+
+ˆQ(st, ¯ q, at) ← (1 − α) · ˆQ(st, ¯ q, at) + α · (rt + ¯ c′ + γ · done · max a′∈A ˆQ(st+1 , ¯ q′, a′)
+
+Compute qt+1 ← ∆( qt, L(st+1 )) and continue 15 Algorithm 5 DreamerV3 [34] with Shielding (Regular Safety Property) 
+
+Initialize: replay buffer D with S random episodes, world model parameters θ, ‘task policy’ πtask 
+
+and ‘backup policy’ πsafe randomly. 
+
+for each episode do 
+
+Observe o0, L(s0) and q0 ← ∆( Q0, L(s0)) 
+
+for t = 1, . . . , T do 
+
+Sample action a ∼ πtask from the task policy 
+
+// Estimate the reachability probability using the world model pθ
+
+if Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1 then 
+
+Use proposed action 
+
+at ← a
+
+else 
+
+// Override action 
+
+at ∼ πsafe 
+
+Play action at and observe ot+1 , L(st+1 ) and rt
+
+Compute qt+1 ← ∆( qt, L(st+1 )) ,Compute cost ct ← 1[ qt+1 ∈ F ]
+
+Append (ot, at, rt, ct, ot+1 ) to the replay buffer D
+
+if update then 
+
+// World model learning 
+
+Sample a batch B of transition sequences {(ot′ , at′ , rt′ , ct′ , ot′+1 )} ∼ D .Update the world model parameters θ with maximum likelihood. 
+
+// Task policy optimization 
+
+‘Imagine’ sequences {ˆot′:t′+H , ˆ rt′:t′+H , ˆ ct′:t′+H } with the ‘task policy’ πtask 
+
+Update the ‘task policy’ πtask with RL (to maximize reward). Update the corresponding value critics with maximum likelihood 
+
+// Backup policy optimization 
+
+‘Imagine’ sequences {ˆot′:t′+H , ˆ rt′:t′+H , ˆ ct′:t′+H } with the ‘backup policy’ πsafe 
+
+Update the ‘backup policy’ πsafe with RL (to minimize cost) Update the corresponding value critics with maximum likelihood 
+
+## B Technical Details 616 
+
+B.1 Augmented Lagrangian 617 
+
+We first define the following objective functions, 618 
+
+JR(π) = Eπ
+
+" TX
+
+> t=0
+
+R(st, at)
+
+#
+
+(1) 
+
+JC (π) = Eπ
+
+" TX
+
+> t=0
+
+C(st, at)
+
+#
+
+(2) (3) The augmented Lagrangian [ 72 ] is an adaptive penalty-based technique for the following constrained 619 
+
+optimization problem, 620 
+
+max  
+
+> π
+
+JR(π) subject to JC (π) ≤ d (4) where d is some cost threshold. The corresponding Lagrangian is given by, 621 
+
+max  
+
+> π
+
+min 
+
+> λ≥0
+
+JR(π) − λ (JC (π) − d)  = max 
+
+> π
+
+JR(π) if JC (π) < d 
+
+−∞ otherwise (5) The LHS is an equivalent form for the constrained optimization problem (RHS), since if π is feasible, 622 
+
+i.e. JC (π) < d then the maximum value for λ is λ = 0 . If π is not feasible then λ can be arbitrarily 623 
+
+large to solve this equation. Unfortunately this form of the objective function is non-smooth when 624 
+
+moving from feasible to infeasible policies, thus we introduce a proximal relaxation of the augmented 625 
+
+16 Lagrangian [72], 626 
+
+max  
+
+> π
+
+min 
+
+> λ≥0
+
+
+
+JR(π) − λ (JC (π) − d) + 1
+
+μk
+
+(λ − λk)2
+
+
+
+(6) where μk is a non-decreasing penalty multiplier dependent on the gradient step k. The new term 627 
+
+that has been introduced here encourages the λ to stay close to the previous value λk, resulting in a 628 
+
+smooth and differentiable function. The derivative w.r.t λ gives us the following gradient update step, 629 
+
+λk+1 =
+
+λk + μk(JC (π) − d) if λk + μk(JC (π) − d) ≥ 00 otherwise (7) At each gradient step, the penalty multiplier μk is updated in a non-decreasing way by using some 630 
+
+small fixed (power) parameter σ,631 
+
+μk+1 = max {(μk)1+ σ , 1 } (8) The policy π is then updated by taking gradient steps of the following unconstrained objective, 632 
+
+˜J(π, λk, μk) = JR(π) − ΨC (π, λk, μk)
+
+where, 633 
+
+ΨC (π, λk, μk) = 
+
+(λk(JC (π) − d) + μk 
+
+> 2
+
+(JC (π) − d)2 if λk + μk(JC (π) − d) ≥ 0
+
+− (λk )2 
+
+> 2μk
+
+otherwise 
+
+## C Technical Proofs 634 
+
+C.1 Proof of Proposition 3.4 635 
+
+Proposition 3.4 (restated) (Satisfaction probability for P H
+
+> safe
+
+). Let M and D be the MDP and 636 
+
+DFA from before (Defn. 3.3). For a path ρ ∈ Sω in the Markov chain, let trace H (ρ) =637 
+
+L(ρ[0]), L(ρ[1]) . . . , L(ρ[H]) be the corresponding finite word over Σ = P ow (AP ). For a given 638 
+
+state s ∈ S the finite horizon satisfaction probability for Psafe is defined as follows, 639 
+
+Pr M(s |= P H
+
+> safe
+
+) := Pr M(ρ ∈ S ω | ρ[0] = s, trace H (ρ)̸ ∈ L (D)) 
+
+where H ∈ Z+ is some fixed model checking horizon. Similar to before, we show that the finite 640 
+
+horizon satisfaction probability can be written as the following bounded reachability probability, 641 
+
+Pr M(s |= P H
+
+> safe
+
+) = Pr M⊗D (⟨s, qs⟩̸ | = ♢≤H accept )
+
+where qs = ∆( Q0, L(s)) is as before and ♢≤H accept is the corresponding step-bounded PCTL path 642 
+
+formula that reads, ‘eventually accept in H timesteps’. 643 
+
+Proof. Let Psafe be a regular safety property and let D = ( Q, Σ, ∆, Q0, F) be the DFA such that 644 
+
+L(D) = BadP ref (Psafe ). We provide a formal definition for Psafe and the corresponding finite 645 
+
+horizon property P H
+
+> safe
+
+, respectively: 646 
+
+Psafe = {w ∈ Σω | ∀ wpref ∈ Σω s.t. wpref ⪯ w, wpref ̸ ∈ L (D)} (9) 
+
+P H 
+
+> safe
+
+= {w ∈ Σω | ∀ wpref ∈ Σω s.t. wpref ⪯ w ∧ | wpref | ≤ H + 1, wpref ̸ ∈ L (D)} (10) Let M = ( S, P, P0, AP , L) be a Markov chain and consider the product Markov chain M ⊗ D 647 
+
+from Defn. 3.2. For any path ρ = s0, s1, s2, . . . , there exists a unique run q0, q1, q2, . . . for the trace 648 
+
+trace (ρ) = L(s0), L(s1), L(s2) . . . , and denote, 649 
+
+ρ+ = ⟨s0, q0⟩, ⟨s1, q1⟩, ⟨s2, q2⟩ . . . (11) where start state is ⟨s0, ∆( Q0, L(s0)) ⟩. Before we deal with probabilities let’s just consider a 650 
+
+fixed path ρ ∈ S ω , the finite trace trace H (ρ) = L(ρ[0]), L(ρ[1]) . . . , L(ρ[H]) , the unique run 651 
+
+q0, q1, q2, . . . , qH and the path ρ+ ∈ Σω × Q ω in the product Markov chain. We prove the following 652 
+
+statement, 653 
+
+ρ̸ |= P H 
+
+> safe
+
+if and only if ρ+ |= ♢accept ≤H (12) 17 We start with the ( →) direction, in particular, ρ̸ |= P H 
+
+> safe
+
+if and only if trace H (ρ) ∈ L (D). Recall 654 
+
+that by definition L(D) = {w ∈ Σ∗ | ∆∗(Q0, w) ∈ F} , and so trace H (ρ) ∈ L (D) implies that 655 
+
+qH = ∆ ∗(Q0, trace H (ρ)) ∈ F , which by construction implies that ρ+ |= ♢accept ≤H .656 
+
+The opposite direction ( ←) is a little more involved, in particular, ρ+ |= ♢accept ≤H implies that 657 
+
+for the unique run q0, q1, q2, . . . , qH there exists t ≤ H such that qt ∈ F . We notice that since 658 
+
+L(D) = BadPref (Psafe ) then once the DFA reaches an accepting state it will remain in an accepting 659 
+
+state for the rest of the run. Therefore, qt ∈ F for t ≤ H implies that qH ∈ F . Then by definition 660 
+
+the trace trace H (ρ) that determined the unique run q0, q1, q2, . . . , qH must be in the language L(D),661 
+
+which again by definition implies that ρ̸ |= P H
+
+> safe
+
+.662 
+
+We now deal with the probabilities. First we note that the DFA D does not affect the probabilities of 663 
+
+the product Markov chain – it can be shown that for every measurable set P of paths in M,664 
+
+Pr M(P ) = Pr M⊗A (ρ+ | ρ ∈ P ) (13) see [ 9 ]. It now remains to construct this set P in the proper way. In particular, if P is the set of paths 665 
+
+starting in some state s ∈ S and that refute Psafe in the next H timesteps, i.e., 666 
+
+P = {ρ ∈ S ω | ρ[0] = s, {w′ ∈ Σ∗ | wpref ⪯ trace (ρ) ∧ | wpref | ≤ H + 1 } ∩ L (D)̸ = ∅} (14) and P + is defined as the set of paths starting from the corresponding state ⟨s, qs⟩ (where qs =667 
+
+∆( Q0, L(s)) ) in M ⊗ D that eventually reach an accepting state of D in the next H steps, i.e. 668 
+
+P + = {ρ+ ∈ (S × Q )ω | ρ+[0] = ⟨s, qs⟩ ∧ ρ+ |= ♢≤H accept } (15) Then by construction we have, 669 
+
+Pr M(P ) = Pr M⊗D (ρ+ | ρ[0] = s, ρ ∈ P ) = Pr M⊗D (P +) (16) Finally the probability Pr M(P ) and Pr M(s |= P H
+
+> safe
+
+) are related as follows, 670 
+
+Pr M(s |= P H
+
+> safe
+
+) = 1 − Pr M(P ) (17) 
+
+= 1 − Pr M⊗D (P +) (18) 
+
+= 1 − Pr M⊗D (⟨s, qs⟩ | = ♢≤H accept ) (19) 
+
+= Pr M⊗D (⟨s, qs⟩̸ | = ♢≤H accept ) (20) 
+
+> 671
+
+C.2 Proof of Proposition 4.2 672 
+
+Proposition 4.2 (restated). Let P T 
+
+> safe
+
+denote the (episodic) regular safety property for a fixed episode 673 
+
+length T . Then satisfying Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 for all t ∈ [0, T ] guarantees that 674 
+
+Pr( s0 |= P T
+
+> safe
+
+) ≥ 1 − p1 · ⌈ T /H ⌉, where s0 ∼ P 0 is the initial state. 675 
+
+Proof. Consider splitting up the episode in to ⌈T /H ⌉ chunks with length at most H. Let 676 
+
+X0, X1, . . . X ⌈T /H ⌉− 1 be the indicator random variables defined as follows, 677 
+
+Xi =
+
+1 if ⟨si·H , qi·H ⟩ | = ♢≤H accept 
+
+0 otherwise (21) Since Pr( ⟨st, qt⟩ | = ♢≤H accept ) ≤ p1 for all t ∈ [0, T ] then the probability Pr( Xi = 1) ≤ p1. By 678 
+
+construction we have, 679 
+
+if 
+
+> ⌈T /H ⌉− 1
+
+\
+
+> i=0
+
+Xi = 0 then s0 |= P T 
+
+> safe
+
+(22) 18 Intuitively we satisfy Psafe for the entire episode length if we never enter an accepting state in each of 680 
+
+the ⌈T /H ⌉ chunks. The final result is then obtained by taking a union bound as follows, 681 
+
+Pr( s0 |= P T
+
+> safe
+
+) ≥ Pr 
+
+
+
+> ⌈T /H ⌉− 1
+
+\
+
+> i=0
+
+Xi = 0 
+
+ (23) 
+
+= 1 − Pr 
+
+
+
+> ⌈T /H ⌉− 1
+
+[
+
+> i=0
+
+Xi = 1 
+
+ (24) 
+
+≥ 1 −
+
+> ⌈T /H ⌉− 1
+
+X
+
+> i=0
+
+Pr( Xi = 1) (25) 
+
+≥ 1 − p1 · ⌈ T /H ⌉ (26) (27) 
+
+> 682
+
+C.3 Proof of Proposition 5.4 683 
+
+Proposition 5.4 (restated). Let ϵ > 0, δ > 0, s ∈ S be given. Under Assumption 5.2, we can obtain 684 
+
+an ϵ-approximate estimate for Pr( ⟨s, q⟩ | = ♢≤H accept ) with probability at least 1 − δ, by sampling 685 
+
+m ≥ 12ϵ2 log   2
+
+> δ
+
+ paths from the ‘black box’ model. 686 
+
+Proof. In words, we estimate Pr( ⟨s, q⟩ | = ♢≤H accept ) by sampling m paths from a ‘black box’ 687 
+
+model of the environment dynamics. We label each path as satisfying or not and return the proportion 688 
+
+of satisfying traces as an estimate for Pr( ⟨s, q⟩ | = ♢≤H accept ). We proceed as follows, let ρ1, . . . ρ m689 
+
+be a sequence of paths sampled from the ‘black box’ model and let trace (ρ1), . . . trace (ρm) be the 690 
+
+corresponding traces. Furthermore, let X1, . . . , Xm be indicator r.v.s such that, 691 
+
+Xi =
+
+1 if trace (ρ1) |= ♢≤H accept ,
+
+0 otherwise (28) Recall that trace (ρ1) |= ♢≤H accept can be checked in time O(poly (H)) . Now let, 692 
+
+X = 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+Xi where E[X] = Pr( ⟨s, q⟩ | = ♢≤H accept ) (29) then by Hoeffding’s inequality [40], 693 
+
+P |X − E[X]| ≥ ϵ ≤ 2 exp  −2mϵ 2 (30) Bounding the RHS from above by δ and rearranging gives the desired result. 694 
+
+C.4 Proof of Proposition 5.5 695 
+
+We start by introducing the following lemma. 696 
+
+Lemma C.1 (Error amplification for trace distributions) . Let bP ≈ P be such that, 697 
+
+DT V 
+
+
+
+P(· | s), bP(· | s)
+
+
+
+≤ α ∀s ∈ S (31) 
+
+Let the start state s0 ∈ S be given, and let Pt(·) and bPt(·) denote the path distribution (at time t) for 698 
+
+the two transition probabilities P and bP respectively. Then the total variation distance between the 699 
+
+two path distributions (at time t) are bounded as follows, 700 
+
+DT V 
+
+
+
+Pt(·), bPt(·)
+
+
+
+≤ αt ∀t (32) 19 Proof. We will prove this fact by doing an induction on t. We recall that Pt(·) and bPt(·) denote the 701 
+
+path distribution (at time t) for the two transition probabilities P and bP respectively. Formally we 702 
+
+define them as follows, 703 
+
+Pt(ρ) = Pr( s0, . . . , st ⪯ ρ | s0 = s, P) (33) 
+
+bPt(ρ) = Pr( s0, . . . , st ⪯ ρ | s0 = s, bP) (34) These probabilities read as follows, ‘the probability of the sequence s0, . . . , st ⪯ ρ at time t’, or 704 
+
+similarly ‘the probability that the sequence s0, . . . , st is a prefix of ρ at time t’ Since the start state 705 
+
+s0 ∈ S is given we note that, 706 
+
+P0(·) = bP0(·) (35) Before we continue with the induction on t we make the following observation, for any path ρ ∈ S ω
+
+> 707
+
+we have by the triangle inequality, 708 
+
+Pt(ρ) − bPt(ρ) = P(st | st−1)Pt−1(ρ) − bP(st | st−1) bPt−1(ρ) (36) 
+
+≤ P t−1(ρ) P(st | st−1) − bP(st | st−1) + bP(st | st−1) Pt−1(ρ) − bPt−1(ρ)
+
+(37) Now we continue with the induction on t,709 
+
+2DT V (Pt(·), bPt(·)) = X
+
+> ρ∈S ω
+
+Pt(ρ) − bPt(ρ) (38) 
+
+≤ X
+
+> ρ∈S ω
+
+Pt−1(ρ) P(st | st−1) − bP(st | st−1)
+
++ X
+
+> ρ∈S ω
+
+bP(st | st−1) Pt−1(ρ) − bPt−1(ρ)
+
+(39) 
+
+≤ X
+
+> ρ∈S ω
+
+Pt−1(ρ) · (2 α) + X
+
+> ρ∈S ω
+
+Pt−1(ρ) − bPt−1(ρ) (40) 
+
+= 2 α + 2 DT V (Pt−1(·), bPt−1(·)) (41) 
+
+≤ 2αt (42) The final result is obtained by an induction on t where the base case comes from P0(·) = bP0(·).710 
+
+Proposition 5.5 (restated). Let ϵ > 0, δ > 0, s ∈ S and horizon H ≥ 1 be given. Under Assumption 711 
+
+5.3 we can make the following two statements: 712 
+
+(1) We can obtain an ϵ-approximate estimate for Pr( ⟨s, q⟩ | = ♢≤H accept ) with probability 1 by 713 
+
+exact model checking with the transition probabilities of bPπ in time O(poly (size (Mπ ⊗ D )) · H).714 
+
+(2) We can obtain an ϵ-approximate estimate for Pr( ⟨s, q⟩ | = ♢≤H accept ) with probability at least 715 
+
+1 − δ, by sampling m ≥ 2 
+
+> ϵ2
+
+log   2
+
+> δ
+
+ paths from the ‘approximate’ dynamics model bPπ .716 
+
+Proof. We start by proving statement (1) and then statement (2) will follow quickly. First let 717 
+
+Pr( ⟨s, q⟩ | = ♢≤H accept ) and cPr( ⟨s, q⟩ | = ♢≤H accept ) denote the acceptance probabilities for the 718 
+
+two transition probabilities P and bP respectively. We also let g(·) and bg(·) denote the average trace 719 
+
+distribution (over the next H timesteps) for the two transition probabilities P and bP respectively, 720 
+
+where, 721 
+
+g(ρ) = 1
+
+H
+
+> H
+
+X
+
+> t=1
+
+Pt(ρ) (43) 
+
+bg(ρ) = 1
+
+H
+
+> H
+
+X
+
+> t=1
+
+bPt(ρ) (44) Before we continue with the proof of (1) we make the following observations, 722 
+
+20 • max  
+
+> ⟨s,q⟩
+
+Pr( ⟨s, q⟩ | = ♢≤H accept ) − cPr( ⟨s, q⟩ | = ♢≤H accept ) ≤ 1723 
+
+• Let f (x) : x ∈ X → [0, 1] be a real-valued function. Let P1(·) and P2(·) be probability 724 
+
+distributions over the space X , then. 725 
+
+Ex∼P 1(·)[f (x)] − Ex∼P 2(·)[f (x)] ≤ DT V (P1(·), P2(·)) 
+
+We continue by showing the following, 726 
+
+Pr( ⟨s, q⟩ | =♢≤H accept ) − cPr( ⟨s, q⟩ | = ♢≤H accept ) (45) 
+
+= Eρ∼g
+
+1 ⟨s, q⟩ | = ♢≤H accept  − Eρ∼bg
+
+1 ⟨s, q⟩ | = ♢≤H accept  (46) 
+
+≤ DT V (g(·), bg(·)) (47) 
+
+= 12
+
+X
+
+> ρ∈S ω
+
+|g(ρ) − bg(ρ)| (48) 
+
+= 12H
+
+X
+
+> ρ∈S ω
+> H
+
+X
+
+> t=1
+
+Pt(ρ) − bPt(ρ) (49) 
+
+≤ 12H
+
+> H
+
+X
+
+> t=1
+
+X
+
+> ρ∈S ω
+
+Pt(ρ) − bPt(ρ) (50) 
+
+≤ 12H
+
+> H
+
+X
+
+> t=1
+
+H(ϵ/H ) (51) 
+
+= ϵ/ 2 (52) (53) The first inequality (Eq. 47) comes from our earlier observations. The second inequality (Eq. 50) is 727 
+
+straightforward and the final inequality (Eq. 51) is obtained by applying Lemma C.1 and Assumption 728 
+
+5.3. We note that this result is similar to the simulation lemma [ 48 ], which has been proved many 729 
+
+times for several different settings [1, 16, 47, 57]. 730 
+
+This concludes the proof of statement (1), since we have shown that cPr( ⟨s, q⟩ | = ♢≤H accept ) is an 731 
+
+ϵ/ 2-approximate estimate of Pr( ⟨s, q⟩ | = ♢≤H accept ), under the Assumption 5.3. 732 
+
+The proof of statement (2) follows quickly. We have established that, 733 
+
+Pr( ⟨s, q⟩ | = ♢≤H accept ) − cPr( ⟨s, q⟩ | = ♢≤H accept ) ≤ ϵ/ 2 (54) It remains to obtain an ϵ/ 2-approximate estimate of cPr( ⟨s, q⟩ | = ♢≤H accept ). By using the 734 
+
+same reasoning as in the proof of Proposition 5.4. We can obtain an ϵ/ 2-approximate estimate 735 
+
+of cPr( ⟨s, q⟩ | = ♢≤H accept ) by sampling m paths, ρ1, . . . ρ m, from the approximate dynamics model 736 
+
+bP. Then provided, 737 
+
+m ≥ 2
+
+ϵ2 log 
+
+ 2
+
+δ
+
+
+
+(55) with probability 1 − δ we can obtain ϵ/ 2-approximate estimate of cPr( ⟨s, q⟩ | = ♢≤H accept ) and by 738 
+
+extension an ϵ-approximate estimate of Pr( ⟨s, q⟩ | = ♢≤H accept ). This concludes the proof. 739 
+
+C.5 Proof of Theorem 6.5 740 
+
+Theorem 6.5 (restated). Under Assumption 6.3 and 6.4, and provided that every state action pair 741 
+
+(s, a) ∈ S × A has been visited at least O
+
+ H2|S| 2 
+
+> ϵ2
+
+log 
+
+ |A||S| 2
+
+> δ
+
+ 
+
+times. Then with probability 1 − δ742 
+
+the system satisfies the constraints of Problem 4.1, independent of the ‘task policy’. 743 
+
+Proof. We split the proof up in to three parts, (1) , (2) and (3) . In part (1) we show that the given 744 
+
+sample complexity bound gives us an approximate model of the environment dynamics with high 745 
+
+21 probability. In part (2) we use our assumptions to reason about the probabilistic recoverability 746 
+
+of the system when it enters a critical state. In part (3) we put everything together and deal with 747 
+
+approximation error ϵ the remaining failure probability that are both unavoidable for the statistical 748 
+
+model checking procedures used to shield the system. 749 
+
+(1) We show that the following holds with probability 1 − δ/ 2,750 
+
+DT V 
+
+
+
+Pπ (· | s), bPπ (· | s)
+
+
+
+≤ ϵ/H ∀s ∈ S (56) when every state action pair (s, a) ∈ S × A has been visited at least, 751 
+
+O
+
+ H2|S| 2
+
+ϵ2 log 
+
+ |A||S| 2
+
+δ
+
+ 
+
+times. First we let #( s, a) denote the total number of times that (s, a) has been observed, similarly 752 
+
+we let #( s′, s, a) denote the total number of times that (s′, s, a) has been observed. The maximum 753 
+
+likelihood estimate for the unknown probability P(s′ |, s, a) is bP(s′ | s, a) = #( s′, s, a)/#( s, a).754 
+
+Let us fix some (s, a) ∈ S × A , and s′ ∈ S , we let ps′ = P(s′ | s, a) denote the true probability of 755 
+
+transitioning to s′ from (s, a) and we let ˆps′ = #( s′, s, a)/#( s, a) denote our estimate. We note that 756 
+
+E[ˆ ps′ ] = ps′ , i.e. ˆps′ is an unbiased estimator for ps′ . Let m = #( s, a) also be the number of times 757 
+
+that (s, a) has been observed, then by Hoeffding’s inequality [40] we have, 758 
+
+P
+
+
+
+|ps′ − ˆps′ | ≥ ϵH|S| 
+
+
+
+≤ 2 exp 
+
+
+
+−2m ϵ2
+
+H2|S| 2
+
+
+
+(57) Bounding the LHS from above by 1 − δ/ 2( |A||S| 2) and rearranging gives the following lower bound 759 
+
+for m,760 
+
+m ≥ H2|S| 2
+
+2ϵ2 log 
+
+ 4|A||S| 2
+
+δ
+
+
+
+(58) Taking a union bound over all (s′, s, a) ∈ S × S × A , then for all state action pairs (s, a) ∈ S × A 761 
+
+we have the following with probability at least 1 − δ.762 
+
+2DT V 
+
+
+
+P(· | s, a), bP(· | , s, a)
+
+
+
+= X
+
+> s′∈S
+
+|ps′ − ˆps′ | ≤ X
+
+> s′∈S
+
+ϵH|S| ≤ ϵ/H (59) Now fix some s ∈ S and we observe the following, 763 
+
+2DT V 
+
+
+
+Pπ (· | s), bPπ (· | s)
+
+
+
+= X
+
+> s′∈S
+
+|P π (s′ | s) − bPπ (s′ | s)| (60) 
+
+= X
+
+> s′∈S
+
+X
+
+> a∈A
+
+|P (s′ | s, a)π(a | s) − bP(s′ | s, a)π(a | s)| (61) 
+
+= X
+
+> a∈A
+
+π(a | s) X
+
+> s′∈S
+
+|P (s′ | s, a) − bP(s′ | s, a)| (62) 
+
+= X
+
+> a∈A
+
+π(a | s)2 DT V 
+
+
+
+P(· | s, a), bP(· | , s, a)
+
+
+
+(63) 
+
+≤ ϵ/H (64) Thus with probability at least 1 − δ/ 2 we have for all s ∈ S that, 764 
+
+DT V 
+
+
+
+Pπ (· | s), bPπ (· | s)
+
+
+
+≤ ϵ/H (65) 
+
+(2) Using Assumption 6.3 and 6.4 we can argue about the safety of the system. Suppose firstly, 765 
+
+that we can check the condition Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1, precisely and without any failure 766 
+
+probability (we will deal with statistical model checking in part (3) ). From any non-critical state we 767 
+
+can transition arbitrarily to a critical state, although under Assumption 6.3 this critical state is not 768 
+
+irrecoverable with probability ≥ p1. We now consider the following two cases: 769 
+
+(i) Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1 under the ‘task’ policy. 770 
+
+22 (ii) Pr( ⟨s, q⟩ | = ♢≤H accept ) > p 1 under the ‘task’ policy. 771 
+
+For case (i) we can safely use the ‘task’ policy and return to a non-critical state within H timesteps 772 
+
+with probability at least 1 − p1. For case (ii) we deploy the ‘safe’ policy and under Assumption 6.4 773 
+
+we can return to a non-critical state within H timesteps with probability at least 1 − p1. We have now 774 
+
+established an invariant, since from every non-critical state we can return to a non-critical state with 775 
+
+probability 1 − p1 and thus satisfy Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1 at every timestep t ∈ [0, T ].776 
+
+(3) We now make a similar argument but for the statistical model checking procedure where we 777 
+
+can only obtain an ϵ-approximate estimate for the probability Pr( ⟨s, q⟩ | = ♢≤H accept ) with high 778 
+
+probability. Let us denote our ϵ-approximate estimate cPr( ⟨s, q⟩ | = ♢≤H accept ), rather than check 779 
+
+the condition Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1, we can check condition cPr( ⟨s, q⟩ | = ♢≤H accept ) ≤780 
+
+p1 − ϵ, and if cPr( ⟨s, q⟩ | = ♢≤H accept ) is indeed an ϵ-approximate estimate then this guarantees 781 
+
+Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1. Consider the following two cases: 782 
+
+(i) Our estimate cPr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1 − ϵ783 
+
+(ii) Our estimate cPr( ⟨s, q⟩ | = ♢≤H accept ) > p 1 − ϵ784 
+
+For case (i) we can safely use the ‘task’ policy and return to a non-critical state within H timesteps 785 
+
+with probability at least 1 − p1. For case (ii) we deploy the ‘safe’ policy and under Assumption 6.4 786 
+
+we can return to a non-critical state within H timesteps with probability at least 1 − p1. Again we 787 
+
+have established an invariant, since from every non-critical state we can return to a non-critical state 788 
+
+with probability 1 − p1 and thus satisfy Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1 at every timestep t ∈ [0, T ].789 
+
+We still need to deal with the failure probability of the statistical model checking procedure at 790 
+
+each timestep, by choosing failure probability 1 − δ/ 2T we can guarantee (by a union bound) an 791 
+
+ϵ-approximate estimate for each timestep with probability 1 − δ/ 2. Finally, taking a union bound 792 
+
+over part (1) and (2) gives the desired total failure probability 1 − δ.793 794 
+
+## D Environment Details 795 
+
+D.1 Colour Gridworld 796 
+
+Figure 4: Colour gridworld en-vironment. Top left hand cor-ner ( agent ) is the start posi-tion. The agent must navigate to the goal position in the bot-tom right hand corner of grid-world. The coloured states la-belled blue , green and purple 
+
+correspondingly. The colour gridworld environment is a simple 9 × 9 grid, with 797 
+
+state space |S| = 81 and action space |A| = 5 , where each action 798 
+
+corresponds to the following movements: Left ,Right , Up , Down , Stay .799 
+
+The objective is to navigate from the start state in one corner of the 800 
+
+grid, to the goal state in the other corner, after reaching the goal state 801 
+
+the agent is then sent back to the start state. The agent must navigate 802 
+
+to the goal state as many times as possible in a fixed episode length 803 
+
+of T = 1000 . The reward function is a sparse reward that gives the 804 
+
+agent +1 reward for reaching the goal and 0 otherwise. When the 805 
+
+environment is fully deterministic the maximum achievable reward 806 
+
+is 58 .807 
+
+In addition to the goal state, there are three other distinct states, 808 
+
+green , blue and purple , each labelled with their corresponding 809 
+
+colours, see Fig. 4. The set of atomic propositions is thus AP =810 
+
+{green , blue , purple , goal }, the safety properties are specified over 811 
+
+the set AP , in particular we conduct experiments with 3 different 812 
+
+safety properties of increasing complexity: 813 
+
+• (1) □¬green 814 
+
+• (2) □goal → ♢≤10 blue 815 
+
+• (3) □goal → ♢≤10 □≤5purple 816 
+
+Property (1) is a simple invariant property Pinv (¬green ) that states the green state must always be 817 
+
+avoided. Property (2) and (3) are more complex safety properties that interfere with the goal state. In 818 
+
+23 particular, property (2) states that once the goal state is reached then the blue state must be reached 819 
+
+within 10 steps, this actually has no direct consequences on the maximum reward achievable but may 820 
+
+interfere with convergence as the goal state seemingly leads to a high penalty if the blue state is not 821 
+
+reached. 822 
+
+Property (3) states that once the goal state is reached then the purple state must be reached within 10 823 
+
+steps and then purple must hold for the next 5 timesteps. In safety property both interferes with the 824 
+
+goal and has direct consequences on the maximum achievable reward as staying in purple for 5 steps 825 
+
+does not lead to progress towards the goal state. In terms of the size of the DFA |Q| , property (1) is 826 
+
+an invariant so the cost function is Markov and the size of the DFA is 2, for property (2) and (3) the 827 
+
+size of the DFA is 12 and 62 respectively. 828 
+
+Table 2: Safety properties and p value property rand. act. p
+
+(1) □¬green 0.25 
+
+(2) □goal → ♢≤10 blue 0.25 
+
+(3) □goal → ♢≤10 □≤5purple 0.1 
+
+Each of the safety properties are tested with the cor-829 
+
+responding p value for the environment, detailed in 830 
+
+Table 1, which is repeated here for reference. The p831 
+
+value corresponds to the level of stochasticity in the 832 
+
+environment. In particular, if p = 0.25 then there is 833 
+
+a 25% chance of the agents action being overridden 834 
+
+with another random action chosen uniformly. Given 835 
+
+the environment is stochastic then it is difficult to satisfy the safety properties with probability 1.836 
+
+Through preliminary statistical analysis we computed the maximum satisfaction probabilities for 837 
+
+each property, to help inform an appropriate p value to test with. With p = 0.25 , property (1) can be 838 
+
+satisfies with very high probability close to 1, while still achieving maximum reward. With p = 0.25 839 
+
+property (2) can be satisfied with probability ≈ 0.93 while still achieving maximum reward. With 840 
+
+p = 0.1 property (3) can be satisfied with probability ≈ 0.75 while still achieving good reward. 841 
+
+Hyperparameter settings. We discuss some of the hyperparameter settings for our shielding 842 
+
+approach that are not detailed in Table 5. 843 
+
+Property (1): we use a model checking horizon of H = 3 , and probability threshold p1 = 1.0 , with 844 
+
+the number of samples m = 4096 , we can obtain a roughly ϵ = 0.05 approximate estimate of the 845 
+
+finite horizon satisfaction probability with failure probability δ = 0.01 .846 
+
+Property (2): we use a model checking horizon of H = 10 , and probability threshold p1 = 0.9 , with 847 
+
+the number of samples m = 8192 , we can obtain a roughly ϵ = 0.05 approximate estimate of the 848 
+
+finite horizon satisfaction probability with a smaller failure probability δ = 0.001 .849 
+
+Property (3): again we use a model checking horizon of H = 10 , and probability threshold p1 = 0.6 ,850 
+
+with the number of samples m = 1024 , we can obtain roughly a ϵ = 0.1 approximate estimate of the 851 
+
+finite horizon satisfaction probability with failure probability δ = 0.01 .852 
+
+Extended discussion of results. First we provide slightly larger figures that than provided in the 853 
+
+main paper, see Figure 5. 854 
+
+In general we observe that our shielding method is able to effectively trade-off reward and safety, in 855 
+
+all cases converging to a system that obtains superior or comparable performance with the baseline. 856 
+
+For property (1) we might expect our method to be able to recover the optimal policy that avoids the 857 
+
+green state, it is clear in this case that the shielding procedure has harmed convergence and perhaps 858 
+
+further investigation and hyperparameter tuning will encourage improvements. For property (2) and 859 
+
+(3) the results are what we expect – we can recover the best policy that satisfies the step-wise bounded 860 
+
+safety property with the desired probability p1.861 
+
+The intuitive reason for why simply penalising Q-learning doesn’t work, is that tuning the cost 862 
+
+coefficient C is challenging for stochastic environments, where safety cannot be enforced ‘almost 863 
+
+surely’ (with probability 1), and the precise value of C offers little to no semantic meaning. For 864 
+
+different levels of stochasticity p values it is hard to know what desired level of safety we can achieve 865 
+
+while still converging to a high reward policy, making tuning C even harder without knowing more 866 
+
+about the structure of the environment. In Appendix F we study more closely the effect of C and 867 
+
+p. Furthermore, we note te sensitivity of our method to the chosen model checking horizon H. In 868 
+
+particular, if H is too large we might expect the system to be overly conservative, we also address 869 
+
+this in more detail in Appendix F. 870 
+
+24 Figure 5: Episode reward and cost for tabular RL ‘colour’ gridworld environment. 
+
+D.2 Atari Seaquest 871 
+
+Figure 6: Atari Seaquest environment [ 10 , 50 ]. The goal is to rescue divers (small blue people ), while shooting en-emy sharks and submarines .Our DreamerV3 [ 34 ] based shielding procedure is tested 872 
+
+on Atari Seaquest, provided as part of the Arcade Learn-873 
+
+ing Environment (ALE)[ 10 , 50 ]. Seaquest is a partially 874 
+
+observable environment meaning we do not have direct 875 
+
+access to the underlying state space S, we are however 876 
+
+provided with observations o ∈ O as pixel images which 877 
+
+correspond to 64 × 64 × 3 tensors. Fortunately Dream-878 
+
+erV3 is specifically designed to operate in visual settings 879 
+
+and is able to effectively learn a predictive world model 880 
+
+that closely approximate the environment dynamics. The 881 
+
+action space of Seaquest is finite, specifically |A| = 18 ,882 
+
+where each action corresponds to a joystick movement and fire button interaction. Rewards are 883 
+
+obtained by ‘shooting’ an enemy shark or submarine, or by rescuing divers and returning them to the 884 
+
+surface. In addition, the agent must manage its oxygen resources and avoid being hit by sharks and 885 
+
+the enemy submarines which fire back, see Fig. 6. The environment is also made stochastic by using 886 
+
+‘sticky actions’ [50], where the agents previous action is repeated with probability p = 0.25 .887 
+
+In terms of safety properties we experiment with the following two properties, 888 
+
+• (1) (□¬surface → □(surface → diver )) ∧ (□¬out-of-oxygen ) ∧ (□¬hit )889 
+
+• (2) □diver ∧ ¬ surface → ♢≤30 surface 890 
+
+Property (1) states that after diving (i.e. not surface ), the agent must only surface with a diver on 891 
+
+board, and never run out-of-oxygen and never get hit by an enemy. The size of the DFA for this 892 
+
+property is |D| = 4 . Property (2) states that once a diver is on board the agent must surface within 30 893 
+
+timesteps (i.e. rescue the diver). 894 
+
+25 Hyperparameter settings. For our shielding approach almost all the hyperparameters are specified 895 
+
+in Appendix E. The only hyperparameter that varies is the model checking horizon H. For property 896 
+
+(1) we use H = 30 , empirically this seems adequate enough to avoid running out-of-oxygen and 897 
+
+begin surfacing in enough time. For property (2) we use H = 50 , this is to avoid picking up a diver 898 
+
+at the bottom of the ocean where it may not be possible to return to the surface in 30 timesteps. 899 
+
+Extended discussion of results. First we provide slightly larger figures that than provided in the 900 
+
+main paper, see Figure 7 901 
+
+Figure 7: Episode reward and violation rate for deep RL Atari Seaquest. For both safety properties DreamerV3 with shielding obtains comparative performance in terms of 902 
+
+reward with the unmodified DreamerV3 baseline. Of course this baseline entirely ignores the safety 903 
+
+properties and simply maximizes reward. We remark on the differences between the safety properties 904 
+
+themselves, property (1) in particular specifies the natural safety properties of the environment, since 905 
+
+violating property (1) results in a death , the agent only start with 4 lives (and can gain one more ever 906 
+
+10000 points) and so satisfying property (1) is beneficial for long term reward, short the behaviour 907 
+
+satisfying property (1) is correlated with higher reward and we might expect the globally optimal 908 
+
+policy in the environment to never violated property (1). Property (2) specifies that once a diver is 909 
+
+recovered the submarine must return to the surface in 30 timesteps, we would not expect that the 910 
+
+globally optimal policy satisfies this property (2) rather we would expect to converge to a locally 911 
+
+optimal policy satisfying property (2) while still obtaining good reward. 912 
+
+With respect to the baseline DreamerV3 (LAG) which has access to the cost function, we see that in 913 
+
+both cases it fails to reliable learn a safe policy that simultaneously maximizes reward. For property 914 
+
+(2) DreamerV3 (LAG) appear to do slightly better in terms of safety, however when qualitatively 915 
+
+inspecting the runs for property (2) we see the DreamerV3 (LAG) agent intentionally get hit by 916 
+
+enemy submarines/sharks to re-spawn on the surface without actually having to navigate there. This 917 
+
+may be a more effective way to satisfy the safety property with high probability but it clearly leads to 918 
+
+worse long term reward. 919 
+
+## E Hyperparameters & Implementation Details 920 
+
+E.1 Access to Code 921 
+
+To maintain a high standard of anonymity we provide code for the experiments run on ‘colour’ 922 
+
+gridworld as supplementary material, rather than through GitHub. The colour gridworld environment 923 
+
+is implemented with the Gym [ 14 ] interface. Tabular Q-learning is implemented with numpy in Python ,924 
+
+the model checking procedures (both exact and Monte Carlo) are implemented with JAX [ 12 ] which 925 
+
+supports vectorized computation on GPU and CPU. The code for the Atari Seaquest experiments 926 
+
+26 are not currently available, although our code base was heavily derived from the code base for 927 
+
+Approximate Model-based Shielding (AMBS) [ 30 ], see https://github.com/sacktock/AMBS 928 
+
+(MIT License). 929 
+
+Training details. For collecting both sets of experiments we has access to 2 Nvidia Tesla A30 930 
+
+(24GB RAM) GPU and a 24-core/48 thread Intel Xeon CPU each with 32GB RAM. For the ‘colour’ 931 
+
+gridworld experiments each run can take several minutes up to a day depending on which property is 932 
+
+being tested, for example one run for property (3) can take roughly 1.5 days as the product state space 933 
+
+is fairly large. For the Atari Seaquest experiments each run can take 8 hours to 1 day depending on 934 
+
+the precise configuration of DreamerV3, in general we see a slow down of ×2 when using shielding 935 
+
+compared to the unmodified DreamerV3 baseline. Memory requirements may differ depending on 936 
+
+the DreamerV3 configuration used, for the xlarge DreamerV3 configuration 32GB of GPU memory 937 
+
+should suffice. 938 
+
+Statistical significance. Error bars are provided for each of our experiments. In particular, we report 939 
+
+5 random initializations (seeds) for each experiment, the error bars are non-parametric (bootstrap) 95% 940 
+
+confidence intervals, provided by seaborn.lineplot with default parameters: errorbar=(‘ci’, 941 
+
+95), n_boot=1000 . The error bars capture the randomness in the initialization of the DreamerV3 942 
+
+world model and policy parameters, the randomness of the environment and any randomness in the 943 
+
+batch sampling. 944 
+
+27 E.2 Colour Gridworld 945 
+
+Table 3: Q-learning Name Symbol value Learning rate α 0.1 
+
+Discount factor γ 0.95 
+
+Exploration type - Boltzmann Temperature τ 0.05 
+
+Table 4: Q-learning with counter factual experiences [43] Name Symbol value Learning rate α 0.1 
+
+Discount factor γ 0.95 
+
+Exploration type - Boltzmann Temperature τ 0.05 
+
+Cost coefficient C 10.0 
+
+Table 5: Q-learning with shielding (Algorithm 1) Name Symbol value Model checking type - Monte-Carlo 
+
+Approximate model - True 
+
+Shielding - Task 
+
+Number of samples m varies Approximation error ϵ varies Failure probability δ varies Model checking horizon H varies Satisfaction prob. p varies Prior - uninformative 
+
+‘Task policy’ πtask 
+
+See Q-learning (Table 3) ... ‘Backup policy’ πsafe 
+
+See Q-learning with counter factual experiences (Table 4) ... 28 E.3 Atari Seaquest 946 
+
+Table 6: DreamerV3 [34] Name Symbol value General Replay capacity |D| 10 6
+
+Batch size |B| 16 Batch length - 64 Number of envs - 8Train ratio - 64 Number of MLP layers - 5Number of MLP units - 1024 Activation - LayerNorm + SiLU World Model Configuration size - medium Number of latents - 32 Classes per latent - 32 Number of layers - 3Number of hidden units - 640 Number of recurrent units - 1024 CNN depth - 48 RSSM loss scales βpred , βdyn , βrep 1.0, 0.5, 0.1 Predictor loss scales βo, βr , βc, βγ 1.0, 1.0, 1.0, 1.0 Learning rate - 10 −4
+
+Adam epsilon ϵadam 10 −8
+
+Gradient clipping - 1000 Actor Critic Imagination horizon H 15 Discount factor γ 0.997 TD lambda λ 0.95 Critic EMA decay - 0.98 Critic EMA regularizer - 1Return norm. scale Sreward Per (R, 95) − Per (R, 5) 
+
+Return norm. limit Lreward 1Return norm. decay - 0.99 Actor entropy scale ηactor 3 · 10 −4
+
+Learning rate - 3 · 10 −5
+
+Adam epsilon ϵadam 10 −5
+
+Gradient clipping - 100 29 Table 7: Augmented Lagrangian [7, 41, 72] Name Symbol value Augmented Lagrangian Penalty multiplier μk 5 · 10 −9
+
+Initial Lagrange multiplier λk 0.01 
+
+Penalty power σ 10 −6
+
+Cost coefficient C 1.0 Cost threshold d 1.0 
+
+Penalty Critic See ‘Actor Critic’ in Table 6 ... Table 8: DreamerV3 with Shielding (Algorithm 5) Name Symbol value Shielding Approximation error ϵ 0.09 Number of samples m 512 Failure probability δ 0.01 Look-ahead/shielding horizon H varies Satisfaction prob. p 0.9 Cost coefficient C 10 ‘Task policy’ See ‘Actor Critic’ in Table 6 ... ‘Backup policy’ See ‘Actor Critic’ in Table 6 ... 30 F Ablation Studies 947 
+
+In this section we provide several ablation studies for the ‘colour’ gridworld environment. We test the 948 
+
+most significant hyperparameters and algorithmic components of our method including the baseline 949 
+
+(Q-learning with penalties). In particular we demonstrate the counter factual experiences is crucial 950 
+
+for learning the safety properties of the environment when the size of the corresponding DFA is non 951 
+
+trivial. We also experiment with using exact model checking – demonstrating that we don’t loose 952 
+
+much by using statistical model checking procedures. Furthermore, we experiment with the cost 953 
+
+coefficient C, the model checking horizon H and the level of stochasticity p.954 
+
+F.1 Counter factual experiences 955 
+
+We run our method and the baseline (Q-learning with penalties) without counterfactual experiences 956 
+
+to train the ‘backup policy’ or penalized task policy (baseline). 957 
+
+Figure 8: Episode reward and cost for Q-learning (Shield) and Q-learning (COST-CF) with and with-out counterfactual experiences (CF). 
+
+Figure 9: Episode reward and cost for Shield (Exact-True) – exact model checking with the ‘true’ probabilities, Shield (Exact-Approx) - exact model checking with the learning transition probabilities, and Shield (MC-Approx) – from the main paper. For property (2) and (3) we see a significant 958 
+
+drop in safety performance, since learning to 959 
+
+respect the safety property over the much larger 960 
+
+product state space will require much more ex-961 
+
+perience and without exploiting the structure of 962 
+
+the DFA (using counter factual experiences) to 963 
+
+generate synthetic data the task behaviour will 964 
+
+be much more quickly learnt. For property (1), 965 
+
+the invariant property, we observe identical per-966 
+
+formance as the DFA is trivial (only 2 states), 967 
+
+and so counter factual experiences is essentially 968 
+
+redundant in this case. 969 
+
+F.2 Exact model checking 970 
+
+We run our method (Shielding) with two differ-971 
+
+ent configurations: exact model checking with 972 
+
+the ‘approximate’ transition probabilities (learn-973 
+
+ing from experience) and exact model check-974 
+
+ing with the ‘true’ transition probabilities. We 975 
+
+compare these two methods to the configuration 976 
+
+used in the main paper: Monte Carlo (statisti-977 
+
+cal) model checking with the learned transition 978 
+
+probabilities. 979 
+
+In all cases we see that Shield (MC-Approx) 980 
+
+obtains almost identical performance to Shield 981 
+
+(Exact-True), which demonstrates that we don’t 982 
+
+loose much by statistical model checking with 983 
+
+the learned probabilities, when for example we 984 
+
+don’t have access to the transition probabilities 985 
+
+ahead of time, or the MDP is too large to ex-986 
+
+act model check. We see some variance with 987 
+
+Shield (Exact-Approx), which can be explained 988 
+
+by sub-optimal convergence in terms of reward, 989 
+
+although note that the safety performance is con-990 
+
+sistent with the other configurations. Perhaps ex-991 
+
+act model checking with an inaccurate model of 992 
+
+the transition probabilities restricts exploration 993 
+
+to areas of the state space that are actually safe. 994 
+
+31 F.3 Cost coefficient C995 
+
+We experiment with different values for the cost coefficient C used for our baseline (Q-learning with 996 
+
+penalties). In particular, we use C ∈ { 0.1, 1.0, 10.0, 100.0 }, we expect that a larger cost coefficient 997 
+
+will penalize unsafe behaviour more harshly and result in ‘safer’ behaviour (i.e., fewer safety-property 998 
+
+violations). 999 
+
+Figure 10: Episode reward and cost for Q-learning (COST-CF) – baseline from the main paper, with different cost coefficients C.Unsurprisingly, across the board, by increasing 1000 
+
+the cost coefficient C we obtain a policy that has 1001 
+
+fewer safety-property violations. The improved 1002 
+
+‘safety performance’ is of course at the expense 1003 
+
+of reward or task performance, this is a trade-off 1004 
+
+we would expect. In particular for C = 100.0 1005 
+
+we see that the learned policy essentially avoids 1006 
+
+the goal state (achieving zero reward) all but 1007 
+
+guaranteeing safety (no safety-violations). The 1008 
+
+purpose of this ablation study is to demonstrate 1009 
+
+that while we can achieve any desired level of 1010 
+
+safety by tuning the cost coefficient C, the actual 1011 
+
+value of C offers little to no semantic meaning 1012 
+
+for the probability of violating the safety prop-1013 
+
+erty. 1014 
+
+F.4 Model checking horizon H1015 
+
+As was alluded to in the main paper, our method 1016 
+
+can be very sensitive to the model checking hori-1017 
+
+zon (hyperparameter) H. In particular, if H is 1018 
+
+too large then we might expect the system to 1019 
+
+exhibit overly conservative behaviour. As a rule of thumb we suggest that H should be set to roughly 1020 
+
+the shortest path in the DFA from the initial state to an accepting state – this can easily be computed 1021 
+
+by using Dijkstra’s (shortest-path) algorithm. In this ablation we experiment with much larger H1022 
+
+than recommended. This significantly impacts the performance of our proposed approach. However, 1023 
+
+we do propose a solution, Q-learning (Shield-Rec) which in short, checks that the action proposed by 1024 
+
+the ‘task policy’ is recoverable with the ‘backup policy’, or in other words by playing with the action 1025 
+
+a ∼ πtask proposed by the ‘task policy’ We can still satisfy Pr( ⟨s, q⟩ | = ♢≤H accept ) ≤ p1 by using 1026 
+
+the ‘backup policy’ after playing a.1027 
+
+Figure 11: Episode reward and cost for Q-learning (Shield) - from the main paper, Q-learning (Shield) with bigger H and Q-learning (Shield-Rec) with bigger H.In general we observe that when H is too large 1028 
+
+our original method (Shield) is overly conser-1029 
+
+vative, sacrificing reward or task performance 1030 
+
+for safety guarantees. Our proposed solution 1031 
+
+(Shield-Rec) is alleviates this issue partly, pro-1032 
+
+viding reasonable safety performance and com-1033 
+
+parable task performance. We note that this 1034 
+
+solution is clearly not perfect as is it appears 1035 
+
+to be slightly more permissive allowing more 1036 
+
+safety-violations than necessary. More investi-1037 
+
+gation into this framework would be interesting 1038 
+
+future work, and perhaps more hyperparameter 1039 
+
+tuning, specifically by tuning p1, could improve 1040 
+
+this method. The goal would be to obtain an al-1041 
+
+gorithm that is not overly sensitive to H, and as 1042 
+
+long as H is sufficiently big to guarantee safety 1043 
+
+we don’t see much performance degradation by 1044 
+
+further increasing H.1045 
+
+32 F.5 Level of stochasticity p1046 
+
+Finally we investigate the effect of the level of stochasticity of the environment. Specifically, the value 1047 
+
+p corresponding the the probability that the agent’s action is ignored and another action is chosen 1048 
+
+(uniformly at random) from the action space and played instead. For example, of p = 0.25 and the 1049 
+
+agent chooses the action Right , there is a 75% chance that the agent goes right and a 25% chance 1050 
+
+the agent goes a different direction. If p = 0.0 (deterministic environment) then achieving complete 1051 
+
+safety (zero-violations) becomes easier as the agent has complete control of the environment through 1052 
+
+their actions. 1053 
+
+Figure 12: Episode reward and cost for Q-learning, Q-learning (COST-CF) and Q-learning (Shield) – all from the main paper. With smaller levels of stochasticity p
+
+We experiment with the following p values: p =1054 
+
+0.1 for property (1), p = 0.1 for property (2) 1055 
+
+and p = 0.05 for property (3). For these smaller 1056 
+
+p values we would expect it to be easier for 1057 
+
+our methods including the baseline to achieve 1058 
+
+a higher-rate of safety and possibly complete 1059 
+
+safety in some cases. 1060 
+
+We see a similar situation as in the main paper, 1061 
+
+Q-learning (without penalties) simply finds the 1062 
+
+best policy ignoring costs. However, Q-learning 1063 
+
+(with penalties) is able to obtain the same perfor-1064 
+
+mance now as our method Q-learning (Shield), 1065 
+
+both in terms of reward and cost. With a smaller 1066 
+
+p value the safety-property can be satisfied with 1067 
+
+higher probability while still visiting the goal 1068 
+
+state frequently and obtaining high reward. In 1069 
+
+particular, these p values are chosen such that 1070 
+
+each of the safety properties can be satisfies with 1071 
+
+probability at least 0.9 from the goal state, thus 1072 
+
+penalizing safety-violations with C = 10.0 ap-1073 
+
+pears to be enough to guarantee safety above 1074 
+
+0.9 at each timestep while still achieving high 1075 
+
+reward. For different values of C we might expect the baseline to have a different performance 1076 
+
+profile. 1077 
+
+## G Comparison to CMDP 1078 
+
+In this additional section we analyze the relationships between our problem setup and other common 1079 
+
+CMDP settings, for both the finite horizon and corresponding (discounted) infinite horizon problems. 1080 
+
+G.1 Finite Horizon 1081 
+
+For reference we restate Problem 4.1 here. 1082 
+
+Problem 4.1 (restated) (Step-wise bounded regular safety property constraint) . Let Psafe be a regular 1083 
+
+safety property, D be the DFA such that L(D) = BadPref (Psafe ) and M be the MDP; 1084 
+
+max  
+
+> π
+
+Vπ subject to Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t ∈ [0, T ]
+
+where all probability is taken under the product Markov Chain Mπ ⊗ D , p1 ∈ [0, 1] is a probability 1085 
+
+threshold, H is the model checking horizon and T is the fixed episode length. 1086 
+
+G.1.1 Expected Cumulative Constraint 1087 
+
+First we restate Problem 4.4. 1088 
+
+Problem 4.4 (restated) (Expected cumulative constraint [4, 58]) .
+
+max  
+
+> π
+
+Vπ subject to E⟨st,qt⟩∼M π ⊗D 
+
+hPTt=0 C(⟨st, qt⟩)
+
+i
+
+≤ d1
+
+where d1 ∈ R+ is the cost threshold and T is the fixed episode length. 1089 
+
+33 Proposition G.1. A feasible policy π for Problem 4.1 with parameters p1 ∈ [0, 1] is also a feasible 1090 
+
+policy for Problem 4.4 with parameter d1 ∈ R+, provided that d1 ≥ (T + 1) · p1.1091 
+
+Proof. For t ∈ [0, T ] we define, the following random variables, X0, . . . , XT , where 1092 
+
+Xt = C(⟨st, qt⟩) = 1 [ accept ∈ L′(⟨st, qt⟩)] (66) where, 1093 
+
+E [Xt] = E [1 [ accept ∈ L′(⟨st, qt⟩)]] (67) 
+
+= Pr ( accept ∈ L′(⟨st, qt⟩)) (68) 
+
+≤ p1 (69) The argument is straightforward if at every timestep t ∈ [0, T ] we have Pr( ⟨st, qt⟩ | = ♢≤H accept ) ≤1094 
+
+p1 then with probability ≤ p1 we have accept ∈ L(⟨st, qt⟩). Then, under mild assumptions 1095 
+
+(i.e. C(⟨st, qt⟩) < ∞) we consider the following decomposition of the expected cumulative cost, 1096 
+
+Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+= Eπ
+
+" TX
+
+> t=0
+
+Xt
+
+#
+
+(70) 
+
+= Es0∼P 0(·) [X0] + Es1∼P 1(·) [X1] + . . . + EsT ∼P T (·) [XT ] (71) 
+
+= Eπ [X0] + Eπ [X1] + . . . + Eπ [XT ] (72) We replace the subscript ‘ ⟨st, qt⟩ ∼ M π ⊗ D ’ here for brevity. Clearly by linearity of expectations 1097 
+
+this statement holds. Although it is worth noting that each expectation is taken under a different 1098 
+
+marginal state distribution (i.e. Pt(·)), which depends on π (apart from the initial state distribution 1099 
+
+P0(·)). From now on we will write this is implicitly (i.e. Eq. 72), rather than writing the marginal 1100 
+
+state distribution (at time t) for each expectation. Using our earlier observations we can now bound 1101 
+
+the expected cumulative cost from above as follows, 1102 
+
+Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+= Eπ [X0] + Eπ [X1] + . . . + Eπ [XT −1] + Eπ [XT ] (73) 
+
+≤ (T + 1) · p1 (74) 
+
+> 1103
+
+Proposition G.2. The converse is not strictly true, since there may be a feasible policy π for Problem 1104 
+
+4.4 with threshold d1 ≤ (T + 1) · p1 which does not satisfy the constraints of Problem 4.1. 1105 
+
+Proof. We want to prove the following statement, a policy π satisfying, 1106 
+
+Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≤ (T + 1) · p1 (75) does not imply that, 1107 
+
+Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t ∈ [0, T ] (76) To prove this we will show that there may be some policy π that satisfies Eq. 75, but does not satisfy 1108 
+
+Eq. 76 at some timestep t. For simplicity we consider the first timestep (i.e. t = 0 ). First we assume 1109 
+
+π is such that Eq. 75 holds, assuming H ≤ T then clearly we have, 1110 
+
+Eπ
+
+" HX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≤ Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≤ (T + 1) · p1 (77) Let Pr( ⟨s0, q0⟩ | = ♢≤H accept ) denote the proportion of accepting paths from the initial state 1111 
+
+s0 ∼ P 0(·) and automaton state q0 = ∆( Q0, L(s0)) . Suppose π is such that Pr( ⟨s0, q0⟩ | =1112 
+
+♢≤H accept ) > p 1. We note that for each path ρ ∈ S ω and corresponding trace (ρ) ∈ Σω such that 1113 
+
+trace (ρ) |= ♢≤H accept the sum PHt=0 C(⟨st, qt⟩) ≥ 1, and now we have, 1114 
+
+(T + 1) · p1 ≥ Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≥ Eπ
+
+" HX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+> p 1 (78) 34 Now clearly for all p1 ∈ [0, 1] and T ∈ Z+ the following holds, 1115 
+
+p1 < (T + 1) · p1 (79) This implies that there may exist some π satisfying Eq. 75 and such that Pr( ⟨s0, q0⟩ |=1116 
+
+♢≤H accept ) > p 1, i.e. does not satisfy Eq. 76 at timestep t = 0 .1117 
+
+Proposition G.3. A feasible policy π for Problem 4.4 with threshold d1 ≤ p1, satisfies Pr( ⟨st, qt⟩ | =1118 
+
+♢≤H accept ) ≤ p1 for all t ∈ [0, T ]. This bound is tight. 1119 
+
+Proof. Firstly, a feasible policy π for Problem 4.4 with threshold d1 ≤ p1 clearly satisfies, 1120 
+
+Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≤ p1 (80) Assuming H ≤ T , then this implies that for all t′ ∈ [0, T − H] we have, 1121 
+
+Eπ
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+C(⟨st, qt⟩)
+
+ ≤ Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≤ p1 (81) Let Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) denote the proportion of accepting paths at timestep t′, where st′ ∼1122 
+
+Pt′ (·). Here Pt′ (·) denotes the marginal state distribution at time t′. Recall that for each path ρ ∈ S ω
+
+> 1123
+
+and corresponding trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept the sum Pt′+Ht=t′ C(⟨st, qt⟩) ≥ 1.1124 
+
+Without loss of generality fix some t′ ∈ [0, T − H] and suppose that Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) >1125 
+
+p1. This implies that, 1126 
+
+Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≥ Eπ
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+C(⟨st, qt⟩)
+
+ > p 1 (82) Which is a contradiction. Therefore, it must be the case that when Eq. 80 is satisfied then so is 1127 
+
+Pr( ⟨st, qt⟩ | = ♢≤H accept ]) ≤ p1 for all t ∈ [0, T − H]. For the remaining t′ ∈ [T − H, T ] a similar 1128 
+
+argument can be made, the only detail is to ensure the sum in Eq. 81 is up to T rather than t′ + H.1129 
+
+To prove that this bound is tight we can again show the possible existence of a counter example. In 1130 
+
+particular, we want to prove the following statement, a policy π satisfying, 1131 
+
+Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≤ p1 + c (83) for some constant c > 0, does not imply that, 1132 
+
+Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t ∈ [0, T ] (84) We will show that there may exist some policy π that satisfies Eq. 83 but does not satisfy Eq. 84 at 1133 
+
+some timestep t. Firstly, we assume π is such that Eq. 83 holds, this implies that for all t′ ∈ [0, T −H]1134 
+
+we have, 1135 
+
+Eπ
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+C(⟨st, qt⟩)
+
+ ≤ Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≤ p1 + c (85) Fix some t′ ∈ [0, T − H] and once again let Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) denote the proportion of 1136 
+
+accepting paths at timestep t′. Suppose π is such that Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) > p 1. Again recall 1137 
+
+that for each path ρ ∈ S ω and corresponding trace trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept 1138 
+
+the sum Pt′+Ht=t′ C(⟨st, qt⟩) ≥ 1, and so, 1139 
+
+p1 + c ≥ Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+≥ Eπ
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+C(⟨st, qt⟩)
+
+ > p 1 (86) Now clearly for all p1 ∈ [0, 1] and c > 0, the following holds, 1140 
+
+p1 < p 1 + c (87) This implies that there may exist some π satisfying Eq. 83 and such that Pr( ⟨st′ , qt′ ⟩ |=1141 
+
+♢≤H accept ) > p 1, i.e. does not satisfy Eq. 84 at timestep t = t′.1142 
+
+35 G.1.2 Probabilistic Cumulative Constraint 1143 
+
+First we restate Problem 4.5. 1144 
+
+Problem 4.5 (restated) (Probabilistic cumulative constraint [18, 56]) .
+
+max  
+
+> π
+
+Vπ subject to P⟨st,qt⟩∼M π ⊗D 
+
+hPTt=0 C(⟨st, qt⟩) ≤ d2
+
+i
+
+≥ 1 − δ2
+
+where d2 ∈ R+ is the cost threshold, δ2 is a tolerance parameter and T is the fixed episode length. 1145 
+
+Proposition G.4. A feasible policy π for Problem 4.1 with parameters p1 ∈ [0, 1] is also a 1146 
+
+feasible policy for Problem 4.5 with parameters d2 ∈ R+ and δ2 ∈ (0, 1] , provided that, 1147 
+
+d2 ≥ p(T + 1) /2 · log(1 /δ 2) + ( T + 1) · p1.1148 
+
+Proof. For t ∈ [0, T ] we define the following random variables, X0, . . . , XT , where, 1149 
+
+Xt = C(⟨st, qt⟩) = 1 [ accept ∈ L′(⟨st, qt⟩)] (88) and we make the same following observation, 1150 
+
+E [Xt] = E [1 [ accept ∈ L′(⟨st, qt⟩)]] (89) 
+
+= Pr ( accept ∈ L′(⟨st, qt⟩)) (90) 
+
+≤ p1 · δ (91) See the proof of Prop. G.1 for details, the argument is identical. Once again, under mild assumptions 1151 
+
+(i.e. C(⟨st, qt⟩) < ∞) we consider the following decomposition of the expected cumulative cost, 1152 
+
+Eπ
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩)
+
+#
+
+= Eπ [X0] + Eπ [X1] + . . . + Eπ [XT ] (92) 
+
+≤ (T + 1) · p1 (93) Again we replace the subscript ‘ ⟨st, qt⟩ ∼ M π ⊗D ’ here for brevity, see the proof of Prop. G.1 for the 1153 
+
+full details. Before we proceed we must first deal with the dependence between the random variables 1154 
+
+X0, . . . , XT . Strictly speaking it is not the case that Pr( Xt = 1 | Xt−1, . . . , X0) = Pr( Xt = 1) .1155 
+
+However, we have already established that Pr( Xt = 1) ≤ p1, as such we can simulate X0, . . . , XT1156 
+
+as a sequence of independent coin flips Y0, . . . , YT with probability p1, it is then the case that 1157 
+
+P[PTt=0 Xt > d 2] ≤ P[PTt=0 Yt > d 2]. We can now continue by bounding the probability we care 1158 
+
+about, 1159 
+
+1 − P
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩) ≤ d2
+
+#
+
+= P
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩) > d 2
+
+#
+
+(94) 
+
+= P
+
+" TX
+
+> t=0
+
+Xt > d 2
+
+#
+
+(95) 
+
+≤ P
+
+" TX
+
+> t=0
+
+Yt > d 2
+
+#
+
+(96) 
+
+= P
+
+" TX
+
+> t=0
+
+Yt > (T + 1) · p1 + d2 − (T + 1) · p1
+
+#
+
+(97) 
+
+= P
+
+" TX
+
+> t=0
+
+Yt > E
+
+" TX
+
+> t=0
+
+Yt
+
+#
+
++ d2 − (T + 1) · p1
+
+#
+
+(98) 
+
+≤ exp − 2 · (d2 − (T + 1) · p1)2
+
+PTt=0 (max {Yi} − min {Yi})2
+
+!
+
+(99) 
+
+= exp 
+
+
+
+− 2 · (d2 − (T + 1) · p1)2
+
+(T + 1) 
+
+
+
+(100) The first inequality (Eq. 96) comes from our earlier construction and the second (Eq. 99) is obtained 1160 
+
+from Hoeffding’s inequality [ 40 ] for bounded random variables. Finally, bounding the final expression 1161 
+
+from above by δ2 and rearranging gives the desired result. 1162 
+
+36 Proposition G.5. A feasible policy π for Problem 4.5 with parameters δ2 ≤ p1 and d2 < 1, satisfies 1163 
+
+Pr( ⟨st, qt⟩ | = ♢≤H accept ) ≤ p1 for all t ∈ [0, T ]. This bound is tight. 1164 
+
+Proof. A feasible policy π for Problem 4.5 with parameters δ2 ≤ p1 and d2 < 1 clearly implies that, 1165 
+
+P
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩) < 1
+
+#
+
+≥ 1 − p1 (101) Assuming H ≤ T , then this implies that for all t′ ∈ [0, T − H] we have, 1166 
+
+P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+C(⟨st, qt⟩) < 1
+
+ ≥ P
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩) < 1
+
+#
+
+≥ 1 − p1 (102) Let Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) denote the proportion of accepting paths at timestep t′, where st′ ∼1167 
+
+Pt′ (·). Again Pt′ (·) denotes the marginal state distribution at time t′. Recall that for each path ρ ∈ S ω
+
+> 1168
+
+and corresponding trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept the sum Pt′+Ht=t′ C(⟨st, qt⟩) ≥ 1.1169 
+
+Without loss of generality fix some t′ ∈ [0, T − H] and suppose that Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) >1170 
+
+p1. This implies that, 1171 
+
+P
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩) ≥ 1
+
+#
+
+≥ P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+C(⟨st, qt⟩) ≥ 1
+
+ > p 1 (103) Which is a contradiction. Therefore, it must be the case that when Eq. 101 is satisfied then so is 1172 
+
+Pr( ⟨st, qt⟩ | = ♢≤H accept ]) ≤ p1 for all t ∈ [0, T − H]. For the remaining t′ ∈ [T − H, T ] a similar 1173 
+
+argument can be made, the only detail is to ensure the sum in Eq. 102 is up to T rather than t′ + H. To 1174 
+
+prove that this bound is tight we can show the possible existence of a counter example. In particular, 1175 
+
+we want to prove the following statement, a policy π satisfying, 1176 
+
+P
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩) < 1
+
+#
+
+≥ 1 − (p1 + c) (104) for some constant c > 0 does not imply that, 1177 
+
+Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t ∈ [0, T ] (105) We will show that there may exist some policy π that satisfies Eq. 104 but does not satisfy Eq. 105 1178 
+
+at some timestep t. Firstly, we assume π is such that Eq. 104 holds, this implies that for all 1179 
+
+t′ ∈ [0, T − H] we have, 1180 
+
+P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+C(⟨st, qt⟩) < 1
+
+ ≥ P
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩) < 1
+
+#
+
+≥ 1 − (p1 + c) (106) Fix some t′ ∈ [0, T − H] and let Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) denote the proportion of accepting 1181 
+
+paths at timestep t′. Suppose that π is such that Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) > p 1. Again recall that 1182 
+
+for each path ρ ∈ S ω and corresponding trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept the sum 1183 
+
+Pt′+Ht=t′ C(⟨st, qt⟩) ≥ 1, and so, 1184 
+
+p1 + c ≥ P
+
+" TX
+
+> t=0
+
+C(⟨st, qt⟩) ≥ 1
+
+#
+
+≥ P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+C(⟨st, qt⟩) ≥ 1
+
+ > p 1 (107) Now clearly for all p1 ∈ [0, 1] and c > 0, the following holds, 1185 
+
+p1 < p 1 + c (108) This implies that there may exist some π satisfying Eq. 104 and such that Pr( ⟨st′ , qt′ ⟩ |=1186 
+
+♢≤H accept ) > p 1, i.e. does not satisfy Eq. 105 at timestep t = t′.1187 
+
+37 G.1.3 Instantaneous constraint 1188 
+
+First we restate Problem 4.6. 1189 
+
+Problem 4.6 (restated) (Instantaneous constraint [23, 60, 69]) .
+
+max  
+
+> π
+
+Vπ subject to P⟨st,qt⟩∼M π ⊗D 
+
+C(⟨st, qt⟩) ≤ d3
+
+ = 1 ∀t ∈ [0, T ]
+
+Proposition G.6. A feasible policy π for Problem 4.6 with threshold d3 < 1 (otherwise the problem 1190 
+
+is trivial) is a feasible policy for Problem 4.1 if and only if p1 = 0 .1191 
+
+Proof. We start by proving the 4.6 ⇒ 4.1 direction. A feasible policy π for Problem 4.6 with d3 < 11192 
+
+satisfies, 1193 
+
+Pr ( C(⟨st, qt⟩) < 1) = 1 ∀t ∈ [0, T ] (109) which implies that, 1194 
+
+Pr ( C(⟨st, qt⟩) = 0) = 1 ∀t ∈ [0, T ] (110) and by Defn. 4.3, 1195 
+
+Pr ( accept ̸ ∈ L′(⟨st, qt⟩)) = 1 ∀t ∈ [0, T ] (111) Then if for all t ∈ [0, T ], accept ̸ ∈ L′(⟨st, qt⟩) then we have Pr( ⟨s0, q0⟩̸ | = ♢accept ) = 1 , where 1196 
+
+q0 = ∆( Q0, L(s0)) and by extension we have Pr( ⟨st, qt⟩̸ | = ♢accept ≤H ) = 1 for all t ∈ [0, T ].1197 
+
+This completes the proof of this direction. 1198 
+
+Now we prove the 4.1 ⇒ 4.6 direction. A policy π satisfying Pr( ⟨st, qt⟩ | = ♢accept ≤H )) = 0 for all 1199 
+
+t ∈ [0, T ] implies that Pr( ⟨st, qt⟩̸ | = ♢accept ≤H ) = 1 for all t ∈ [0, T ] which implies the following, 1200 
+
+Pr ( accept ̸ ∈ L′(⟨st, qt⟩)) = 1 ∀t ∈ [0, T ] (112) and by Defn. 4.3, 1201 
+
+Pr [ C(⟨st, qt⟩) = 0] = 1 ∀t ∈ [0, T ] (113) which implies that, 1202 
+
+Pr [ C(⟨st, qt⟩) < 1] = 1 ∀t ∈ [0, T ] (114) which concludes the proof. 1203 
+
+G.2 Infinite Horizon 1204 
+
+While in this paper we only consider finite horizon problems with a fixed episode length T , we note 1205 
+
+that we can also make a set of similar statements for the infinite horizon (discounted) setting. In this 1206 
+
+section we provide the corresponding statements and proofs for the infinite horizon setting. Firstly, 1207 
+
+we consider the following infinite horizon problem. 1208 
+
+Problem G.7 (Step-wise bounded regular safety property constraint) . Let Psafe be a regular safety 1209 
+
+property, D be the DFA such that L(D) = BadPref (Psafe ) and M be the MDP; 1210 
+
+max  
+
+> π
+
+Vπ subject to Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t = 0, 1, 2, . . . 
+
+where all probability is taken under the product Markov chain Mπ ⊗ D , p1 ∈ [0, 1] is a probability 1211 
+
+threshold H is the model checking horizon . 1212 
+
+G.2.1 Expected Cumulative Constraint 1213 
+
+Problem G.8 (Expected cumulative constraint) .
+
+max  
+
+> π
+
+Vπ subject to E⟨st,qt⟩∼M π ⊗D 
+
+h P∞ 
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+i
+
+≤ d1
+
+where d1 ∈ R+ is the cost threshold and γ ∈ [0, 1) is the discount factor. 1214 
+
+Proposition G.9. A feasible policy π for Problem G.7 with parameters p1 ∈ [0, 1] , is also a feasible 1215 
+
+policy for Problem G.8 with parameter d1 ∈ R+, provided that d1 ≥ T · p1, where T = 1 /(1 − γ) is 1216 
+
+the effective horizon. 1217 
+
+38 Proof. For t = 0, 1, 2, . . . we define, the following random variables, X0, X1, X2, . . . , where, 1218 
+
+Xt = C(⟨st, qt⟩) = 1 [ accept ∈ L′(⟨st, qt⟩)] (115) where, 1219 
+
+E [Xt] = E [1 [ accept ∈ L′(⟨st, qt⟩)]] (116) 
+
+= Pr ( accept ∈ L′(⟨st, qt⟩)) (117) 
+
+≤ p1 (118) The argument for this is straightforward. If at every timestep t = 0, 1, 2, . . . we have Pr( ⟨st, qt⟩ | =1220 
+
+♢≤H accept ) ≤ p1 then with probability ≤ p1 we have accept ∈ L(⟨st, qt⟩). Let T = 1 /(1 − γ)1221 
+
+be the effective horizon, then under mild assumptions (i.e. C(⟨st, qt⟩) < ∞) we can consider the 1222 
+
+following decomposition of the expected cumulative cost, 1223 
+
+Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+= Eπ
+
+" ∞X
+
+> t=0
+
+γtXt
+
+#
+
+(119) 
+
+= Es0∼P 0(·) [X0] + γ · Es1∼P 1(·) [X1] + . . . 
+
++ γT · EsT ∼P T (·) [XT ] + . . . (120) 
+
+= Eπ [X0] + γ · Eπ [X1] + . . . + γT · Eπ [XT ] + . . . (121) We replace the subscript ‘ ⟨st, qt⟩ ∼ M π ⊗ D ’ here for brevity. Clearly by linearty of expectations 1224 
+
+this statement holds. Although it is worth noting that each expectation is taken under a different 1225 
+
+marginal state distribution (i.e. Pt(·)), which depends on π (apart from the initial state distribution 1226 
+
+P0(·)). From now on we will write this is implicitly (i.e. Eq. 121), rather than writing the marginal 1227 
+
+state distribution (at time t) for each expectation. Using our earlier observations we can now bound 1228 
+
+the expected cumulative cost from above as follows, 1229 
+
+Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+= Eπ [X0] + γ · Eπ [X1] + . . . + γT · Eπ [XT ] + . . . (122) 
+
+≤ p1 + γ · p1 + . . . + γT −1 · p1 + γT · p1 + . . . (123) 
+
+= p1 ·
+
+> ∞
+
+X
+
+> t=0
+
+γt = p1 · (1 /(1 − γ)) = T · p1 (124) 
+
+> 1230
+
+Proposition G.10. The converse is not strictly true, since there may be a feasible policy π for 1231 
+
+Problem G.8 with threshold d1 ≤ T · p1 which does not satisfy the constraints of Problem G.7 1232 
+
+We want to prove the following statement, a policy π satisfying, 1233 
+
+Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≤ T · p1 (125) does not imply that, 1234 
+
+Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t = 0, 1, 2, . . . (126) 
+
+Proof. To prove this we will show that there may be some policy π that satisfies Eq. 125, but does 1235 
+
+not satisfy Eq. 126 at some timestep t. For simplicity we consider the first timestep (i.e. t = 0 ). First 1236 
+
+we assume π is such that Eq. 125 holds, then clearly we have, 1237 
+
+Eπ
+
+" HX
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≤ Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≤ T · p1 (127) Let Pr( ⟨s0, q0⟩ | = ♢≤H accept ) denote the proportion of accepting paths from the initial state s0 ∼1238 
+
+P0(·). Suppose π is such that Pr( ⟨s0, q0⟩ | = ♢≤H accept ) > p 1. We note that for each path ρ ∈ S ω
+
+> 1239
+
+39 and corresponding trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept the sum PHt=0 γtC(⟨st, qt⟩) ≥1240 
+
+γH , and so, 1241 
+
+T · p1 ≥ Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≥ Eπ
+
+" HX
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+> p 1 · γH (128) Now clearly for all p1 ∈ [0, 1] , γ ∈ [0, 1) , H ∈ Z+ and T = 1 /(1 − γ) the following holds, 1242 
+
+p1 · γH < T · p1 (129) This implies that there may exist some π satisfying Eq. 125 and such that Pr( ⟨s0, q0⟩ |=1243 
+
+♢≤H accept ) > p 1, i.e. does not satisfy Eq. 126 at timestep t = 0 .1244 
+
+Proposition G.11. A feasible policy π for Problem 4.4 with threshold d1 ≤ p1 · γT +H satisfies 1245 
+
+Pr( ⟨st, qt⟩ | = ♢≤H accept ) ≤ p1 up to the effective horizon T = 1 /(1 − γ). This bound is tight. 1246 
+
+Proof. Let T = 1 /(1 −γ) be the effective horizon. A feasible policy π for Problem 4.4 with threshold 1247 
+
+d1 ≤ p1 · γT +H clearly satisfies, 1248 
+
+Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≤ p1 · γT +H (130) which implies that for all t′ ∈ [0, T ] we have, 1249 
+
+p1 · γT +H ≥ Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≥ Eπ
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γtC(⟨st, qt⟩)
+
+ (131) 
+
+= Eπ
+
+γt′
+
+> t′+H
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩)
+
+ (132) 
+
+= γt′
+
+· Eπ
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩)
+
+ (133) Let Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) denote the proportion of accepting paths at timestep t′, where 1250 
+
+st′ ∼ Pt′ (·). Here Pt′ (·) denotes the marginal state distribution at time t′. Recall that for 1251 
+
+each path ρ ∈ S ω and corresponding trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept the sum 1252 
+
+Pt′+Ht=t′ γt−t′
+
+C(⟨st, qt⟩) ≥ γH . Without loss of generality fix some t′ ∈ [0, T ] and suppose that 1253 
+
+Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) > p 1. This implies that, 1254 
+
+Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≥ γt′
+
+· Eπ
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩)
+
+ (134) 
+
+> p 1 · γH · γt′
+
+≥ p1 · γT +H (135) Which is a contradiction. Therefore, it must be the case that when Eq. 130 is satisfied then so is 1255 
+
+Pr( ⟨st, qt⟩ | = ♢≤H accept ]) ≤ p1 for all t ∈ [0, T ]. To prove that this bound is tight we can again 1256 
+
+show the possible existence of a counter example. In particular, we want to prove the following 1257 
+
+statement, a policy π satisfying, 1258 
+
+Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≤ p1 · γT +H + c (136) for some constant c > 0, does not imply that, 1259 
+
+Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t ∈ [0, T ] (137) We will show that there may exist some policy π that satisfies Eq. 136 but does not satisfy Eq. 137 at 1260 
+
+some timestep t. For simplicity we consider timestep t = T , although we note that with a little extra 1261 
+
+40 work we could come up with a proof for any t ∈ [0, T ]. Firstly, we assume π is such that Eq. 136 1262 
+
+holds, then we have, 1263 
+
+p1 · γT +H + c ≥ Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+≥ Eπ
+
+"T +HX
+
+> t=T
+
+γtC(⟨st, qt⟩)
+
+#
+
+(138) Let Pr( ⟨sT , qT ⟩ | = ♢≤H accept ) denote the proportion of accepting paths at timestep T . Suppose π1264 
+
+is such that Pr( ⟨sT , qT ⟩ | = ♢≤H accept ) > p 1. We note that for each path ρ ∈ S ω and corresponding 1265 
+
+trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept the sum PT +Ht=T γtC(⟨st, qt⟩) ≥ γT +H , and so, 1266 
+
+p1 · γT +H + c ≥ Eπ
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩)
+
+#
+
+(139) 
+
+≥ Eπ
+
+"T +HX
+
+> t=T
+
+γtC(⟨st, qt⟩)
+
+#
+
+(140) 
+
+> p 1 · γT +H (141) Now clearly for all p1 ∈ [0, 1] , γ ∈ [0, 1) , c > 0, H ∈ Z+ and T = 1 /(1 − γ), the following holds, 1267 
+
+p1 · γT +H < p 1 · γT +H + c (142) This implies that there may exist some π satisfying Eq. 136 and such that Pr( ⟨sT , qT ⟩ |=1268 
+
+♢≤H accept ) > p 1, i.e. does not satisfy Eq. 137 at timestep t = T .1269 
+
+G.3 Probabilistic Cumulative Constraint 1270 
+
+Problem G.12 (Probabilistic cumulative constraint) .
+
+max  
+
+> π
+
+Vπ subject to P⟨st,qt⟩∼M π ⊗D 
+
+h P∞ 
+
+> t=0
+
+γtC(⟨st, qt⟩) ≤ d2
+
+i
+
+≥ 1 − δ2
+
+where d2 ∈ R+ is the cost threshold, δ2 is a tolerance parameter and γ ∈ [0, 1) is the discount factor. 1271 1272 
+
+Proposition G.13. A feasible policy π for Problem G.7 with parameters p1 ∈ [0, 1] , is also a 1273 
+
+feasible policy for Problem G.12 with parameters d2 ∈ R+ and δ2 ∈ (0, 1] , provided that, d2 ≥1274 p(⌈log( T )⌉ · T )/2 · log(1 /δ 2) + ⌈log( T )⌉ · T · p1 + 1 , where T = 1 /(1 − γ) is the effective horizon. 1275 1276 
+
+Proof. Again t = 0, 1, 2, . . . we define the following random variables, X0, X1, X2, . . . , where, 1277 
+
+Xt = C(⟨st, qt⟩) = 1 [ accept ∈ L′(⟨st, qt⟩)] (143) and we make the following observation, 1278 
+
+E [Xt] = E [1 [ accept ∈ L′(⟨st, qt⟩)]] (144) 
+
+= Pr ( accept ∈ L′(⟨st, qt⟩)) (145) 
+
+≤ p1 (146) See the proof of Prop. G.9, the argument is identical. Under mild assumptions (i.e. C(⟨st, qt⟩) < ∞)1279 
+
+we consider the following decomposition of the (undiscounted) expected cumulative cost up to 1280 
+
+timestep ⌈log( T )⌉ · T − 1,1281 
+
+Eπ
+
+  
+
+> ⌈log( T)⌉· T−1
+
+X
+
+> t=0
+
+C(⟨st, qt⟩)
+
+ = Eπ [X0] + Eπ [X1] + . . . + Eπ
+
+X⌈log( T )⌉· T −1
+
+ (147) 
+
+≤ ⌈ log( T )⌉ · T · p1 (148) Again we replace the subscript ‘ ⟨st, qt⟩ ∼ M π ⊗ D ’ here for brevity, see the proof of Prop. G.9 for 1282 
+
+more details. Before we proceed we must first deal with the dependence between the random variables 1283 
+
+X0, . . . X ⌈log( T )⌉· T −1. Strictly speaking it is not the case that Pr( Xt = 1 | Xt−1, . . . , X0) = 1284 
+
+41 Pr( Xt = 1) . However, we have already established that Pr( Xt = 1) ≤ p1, as such we can simulate 1285 
+
+X0, . . . , X⌈log( T )⌉· T −1 as a sequence of independent coin flips Y0, . . . , Y⌈log( T )⌉· T −1 with probability 1286 
+
+p1, it is then the case that P[P⌈log( T )⌉· T −1 
+
+> t=0
+
+Xt > d 2] ≤ P[P⌈log( T )⌉· T −1 
+
+> t=0
+
+Yt > d 2]. Now we can 1287 
+
+bound the probability that we care about, 1288 
+
+1 − P
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩) ≤ d2
+
+#
+
+= P
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩) > d 2
+
+#
+
+(149) 
+
+= P
+
+" ∞X
+
+> t=0
+
+γtXt > d 2
+
+#
+
+(150) 
+
+= P
+
+  
+
+> ⌈log( T)⌉· T−1
+
+X
+
+> t=0
+
+γtXt +
+
+> ∞
+
+X 
+
+> t=⌈log( T)⌉· T
+
+γtXt > d 2
+
+ (151) 
+
+≤ P
+
+  
+
+> ⌈log( T)⌉· T−1
+
+X
+
+> t=0
+
+Xt + 1 > d 2
+
+ (152) 
+
+≤ P
+
+  
+
+> ⌈log( T)⌉· T−1
+
+X
+
+> t=0
+
+Yt + 1 > d 2
+
+ (153) 
+
+= P
+
+  
+
+> ⌈log( T)⌉· T−1
+
+X
+
+> t=0
+
+Yt > ⌈log( T )⌉ · T · p1 + d2 − ⌈ log( T )⌉ · T · p1 − 1
+
+
+
+(154) 
+
+= P
+
+  
+
+> ⌈log( T)⌉· T−1
+
+X
+
+> t=0
+
+Yt > E
+
+  
+
+> ⌈log( T)⌉· T−1
+
+X
+
+> t=0
+
+Yt
+
+ + d2 − ⌈ log( T )⌉ · T · p1 − 1
+
+
+
+(155) 
+
+≤ exp − 2 · (d2 − ⌈ log( T )⌉ · T · p1 − 1) 2
+
+P⌈log( T )⌉· T −1 
+
+> t=0
+
+(max {Yi} − min {Yi})2
+
+!
+
+(156) 
+
+= exp 
+
+
+
+− 2 · (d2 − ⌈ log( T )⌉ · T · p1 − 1) 2
+
+⌈log( T )⌉ · T
+
+
+
+(157) Here the first inequality (Eq. 152) comes from the following two facts, certainly 1289 P⌈log( T )⌉· T −1 
+
+> t=0
+
+γtXt ≤ P⌈log( T )⌉· T −1 
+
+> t=0
+
+Xt and we have that P∞  
+
+> t=⌈log( T)⌉· T
+
+γtXt ≤ 1. The sec-1290 
+
+ond fact is a little harder to see, first we note that lim γ→1 γT = 1 /e , where T = 1 /(1 − γ) is the 1291 
+
+effective horizon. Then we can rewrite, 1292 
+
+> ∞
+
+X 
+
+> t=⌈log( T)⌉· T
+
+γtXt =
+
+
+
+γ⌈log( T )⌉· T 
+
+·
+
+
+
+> ∞
+
+X 
+
+> t=⌈log( T)⌉· T
+
+γt−⌈ log( T )⌉· T Xt
+
+ (158) 
+
+=
+
+
+
+(γT )⌈log( T )⌉
+
+·
+
+
+
+> ∞
+
+X 
+
+> t=⌈log( T)⌉· T
+
+γt−⌈ log( T )⌉· T Xt
+
+ (159) 
+
+≤ 1
+
+e 
+
+> ⌈log( T)⌉
+
+!
+
+·
+
+ 11 − γ
+
+
+
+≤ 1
+
+e 
+
+> log( T)
+
+!
+
+· T = 1
+
+T · T = 1 (160) The second inequality (Eq. 153) comes from our earlier construction. The final inequality (Eq. 156) 1293 
+
+is obtained from Hoeffding’s inequality [ 40 ] for bounded random variables. Finally, by bounding the 1294 
+
+final expression (Eq. 157) from above by δ2 and rearranging gives the desired result. 1295 
+
+Proposition G.14. A feasible policy π for Problem G.12 with parameters δ2 ≤ p1 and d2 < γ T +H ,1296 
+
+satisfies Pr( ⟨st, qt⟩ | = ♢≤H accept ) ≤ p1 up to the effective horizon T = 1 /(1 − γ). This bound is 1297 
+
+tight. 1298 
+
+42 Proof. A feasible policy π for Problem G.12 with parameters δ2 ≤ p1 and d2 < γ T +H clearly 1299 
+
+implies that, 1300 
+
+P
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩) < γ T +H
+
+#
+
+≥ 1 − p1 (161) and certainly for all t′ ∈ [0, T ] we have that, 1301 
+
+1 − p1 ≤ P
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩) < γ T +H
+
+#
+
+(162) 
+
+≤ P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γtC(⟨st, qt⟩) < γ T +H
+
+ (163) 
+
+= P
+
+γt′
+
+> t′+H
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩) < γ T +H
+
+ (164) 
+
+= P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩) < (γT +H /γ t′
+
+)
+
+ (165) 
+
+≤ P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩) < γ H
+
+ (166) Let Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) denote the proportion of accepting paths at timestep t′, where 1302 
+
+st′ ∼ Pt′ (·). Here Pt′ (·) denotes the marginal state distribution at time t′. Recall that for 1303 
+
+each path ρ ∈ S ω and corresponding trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept the sum 1304 
+
+Pt′+Ht=t′ γt−t′
+
+C(⟨st, qt⟩) ≥ γH . Without loss of generality fix some t′ ∈ [0, T ] and suppose that 1305 
+
+Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) > p 1. This implies that, 1306 
+
+P
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩) ≥ γT +H
+
+#
+
+≥ P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩) ≥ γH
+
+ > p 1 (167) Which is a contradiction. Therefore, it must be the case that when Eq. 161 is satisfied then so is 1307 
+
+Pr( ⟨st, qt⟩ | = ♢≤H accept ]) ≤ p1 for all t ∈ [0, T ]. To prove that this bound is tight we can show 1308 
+
+the possible existence of a counter example. In particular, we want to prove the following statement, 1309 
+
+a policy π satisfying, 1310 
+
+P
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩) < γ T +H
+
+#
+
+≥ 1 − (p1 + c) (168) for some constant c > 0 does not imply that, 1311 
+
+Pr  ⟨st, qt⟩ | = ♢≤H accept  ≤ p1 ∀t ∈ [0, T ] (169) We will show that there may exist some policy π that satisfies Eq. 168 but does not satisfy Eq. 169 at 1312 
+
+some timestep t. Firstly, we assume π is such that Eq. 168 holds, this implies that for all t′ ∈ [0, T ]1313 
+
+we have, 1314 
+
+1 − (p1 + c) ≤ P
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩) < γ T +H
+
+#
+
+(170) 
+
+≤ P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γtC(⟨st, qt⟩) < γ T +H
+
+ (171) 
+
+≤ P
+
+
+
+> t′+H
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩) < γ H
+
+ (172) 43 Fix some t′ ∈ [0, T ] and let Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) denote the proportion of accepting paths 1315 
+
+at timestep t′. Suppose that π is such that Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) > p 1. Again recall that 1316 
+
+for each path ρ ∈ S ω and corresponding trace (ρ) ∈ Σω such that trace (ρ) |= ♢≤H accept the sum 1317 
+
+Pt′+Ht=t′ γt−t′
+
+C(⟨st, qt⟩) ≥ γH , and so, 1318 
+
+p1 + c ≥ P
+
+" ∞X
+
+> t=0
+
+γtC(⟨st, qt⟩) ≥ γT +H
+
+#
+
+(173) 
+
+≥ P
+
+
+
+> t′+b
+
+X
+
+> t=t′
+
+γt−t′
+
+C(⟨st, qt⟩) ≥ γH
+
+ > p 1 (174) Now clearly for all p1 ∈ [0, 1] , and c > 0, the following holds, 1319 
+
+p1 < p 1 + c (175) This implies that there may exist some π satisfying Eq. 168 such that Pr( ⟨st′ , qt′ ⟩ | = ♢≤H accept ) >1320 
+
+p1, i.e. does not satisfy Eq. 169 at timestep t = t′.1321 
+
+44 NeurIPS Paper Checklist 1322 
+
+1. Claims 1323 
+
+Question: Do the main claims made in the abstract and introduction accurately reflect the 1324 
+
+paper’s contributions and scope? 1325 
+
+Answer: [Yes] 1326 
+
+Justification: The proof of safety guarantees (Theorem 6.5) is provided in Appendix C.5. 1327 
+
+Furthermore, we provide experimental results demonstrating the scalability of our approach 1328 
+
+in Section 7. 1329 
+
+Guidelines: 1330 
+
+• The answer NA means that the abstract and introduction do not include the claims 1331 
+
+made in the paper. 1332 
+
+• The abstract and/or introduction should clearly state the claims made, including the 1333 
+
+contributions made in the paper and important assumptions and limitations. A No or 1334 
+
+NA answer to this question will not be perceived well by the reviewers. 1335 
+
+• The claims made should match theoretical and experimental results, and reflect how 1336 
+
+much the results can be expected to generalize to other settings. 1337 
+
+• It is fine to include aspirational goals as motivation as long as it is clear that these goals 1338 
+
+are not attained by the paper. 1339 
+
+2. Limitations 1340 
+
+Question: Does the paper discuss the limitations of the work performed by the authors? 1341 
+
+Answer: [Yes] 1342 
+
+Justification: The limitations of our framework are discussed under in Section 7 in the 1343 
+
+paragraph Separating Reward and Safety , furthermore the limitations of our proposed 1344 
+
+method are also discussed and explored in Appendix F. 1345 
+
+Guidelines: 1346 
+
+• The answer NA means that the paper has no limitation while the answer No means that 1347 
+
+the paper has limitations, but those are not discussed in the paper. 1348 
+
+• The authors are encouraged to create a separate "Limitations" section in their paper. 1349 
+
+• The paper should point out any strong assumptions and how robust the results are to 1350 
+
+violations of these assumptions (e.g., independence assumptions, noiseless settings, 1351 
+
+model well-specification, asymptotic approximations only holding locally). The authors 1352 
+
+should reflect on how these assumptions might be violated in practice and what the 1353 
+
+implications would be. 1354 
+
+• The authors should reflect on the scope of the claims made, e.g., if the approach was 1355 
+
+only tested on a few datasets or with a few runs. In general, empirical results often 1356 
+
+depend on implicit assumptions, which should be articulated. 1357 
+
+• The authors should reflect on the factors that influence the performance of the approach. 1358 
+
+For example, a facial recognition algorithm may perform poorly when image resolution 1359 
+
+is low or images are taken in low lighting. Or a speech-to-text system might not be 1360 
+
+used reliably to provide closed captions for online lectures because it fails to handle 1361 
+
+technical jargon. 1362 
+
+• The authors should discuss the computational efficiency of the proposed algorithms 1363 
+
+and how they scale with dataset size. 1364 
+
+• If applicable, the authors should discuss possible limitations of their approach to 1365 
+
+address problems of privacy and fairness. 1366 
+
+• While the authors might fear that complete honesty about limitations might be used by 1367 
+
+reviewers as grounds for rejection, a worse outcome might be that reviewers discover 1368 
+
+limitations that aren’t acknowledged in the paper. The authors should use their best 1369 
+
+judgment and recognize that individual actions in favor of transparency play an impor-1370 
+
+tant role in developing norms that preserve the integrity of the community. Reviewers 1371 
+
+will be specifically instructed to not penalize honesty concerning limitations. 1372 
+
+3. Theory Assumptions and Proofs 1373 
+
+45 Question: For each theoretical result, does the paper provide the full set of assumptions and 1374 
+
+a complete (and correct) proof? 1375 
+
+Answer: [Yes] 1376 
+
+Justification: For the key proofs in the main paper we explicitly provide the assumptions 1377 
+
+used, the proofs of each theoretical result from the main paper can also be found in Appendix 1378 
+
+C. 1379 
+
+Guidelines: 1380 
+
+• The answer NA means that the paper does not include theoretical results. 1381 
+
+• All the theorems, formulas, and proofs in the paper should be numbered and cross-1382 
+
+referenced. 1383 
+
+• All assumptions should be clearly stated or referenced in the statement of any theorems. 1384 
+
+• The proofs can either appear in the main paper or the supplemental material, but if 1385 
+
+they appear in the supplemental material, the authors are encouraged to provide a short 1386 
+
+proof sketch to provide intuition. 1387 
+
+• Inversely, any informal proof provided in the core of the paper should be complemented 1388 
+
+by formal proofs provided in appendix or supplemental material. 1389 
+
+• Theorems and Lemmas that the proof relies upon should be properly referenced. 1390 
+
+4. Experimental Result Reproducibility 1391 
+
+Question: Does the paper fully disclose all the information needed to reproduce the main ex-1392 
+
+perimental results of the paper to the extent that it affects the main claims and/or conclusions 1393 
+
+of the paper (regardless of whether the code and data are provided or not)? 1394 
+
+Answer: [Yes] 1395 
+
+Justification: other than access to code, we provide pseudo-code for the algorithms used in 1396 
+
+our experiments (see Appendix A) 1397 
+
+Guidelines: 1398 
+
+• The answer NA means that the paper does not include experiments. 1399 
+
+• If the paper includes experiments, a No answer to this question will not be perceived 1400 
+
+well by the reviewers: Making the paper reproducible is important, regardless of 1401 
+
+whether the code and data are provided or not. 1402 
+
+• If the contribution is a dataset and/or model, the authors should describe the steps taken 1403 
+
+to make their results reproducible or verifiable. 1404 
+
+• Depending on the contribution, reproducibility can be accomplished in various ways. 1405 
+
+For example, if the contribution is a novel architecture, describing the architecture fully 1406 
+
+might suffice, or if the contribution is a specific model and empirical evaluation, it may 1407 
+
+be necessary to either make it possible for others to replicate the model with the same 1408 
+
+dataset, or provide access to the model. In general. releasing code and data is often 1409 
+
+one good way to accomplish this, but reproducibility can also be provided via detailed 1410 
+
+instructions for how to replicate the results, access to a hosted model (e.g., in the case 1411 
+
+of a large language model), releasing of a model checkpoint, or other means that are 1412 
+
+appropriate to the research performed. 1413 
+
+• While NeurIPS does not require releasing code, the conference does require all submis-1414 
+
+sions to provide some reasonable avenue for reproducibility, which may depend on the 1415 
+
+nature of the contribution. For example 1416 
+
+(a) If the contribution is primarily a new algorithm, the paper should make it clear how 1417 
+
+to reproduce that algorithm. 1418 
+
+(b) If the contribution is primarily a new model architecture, the paper should describe 1419 
+
+the architecture clearly and fully. 1420 
+
+(c) If the contribution is a new model (e.g., a large language model), then there should 1421 
+
+either be a way to access this model for reproducing the results or a way to reproduce 1422 
+
+the model (e.g., with an open-source dataset or instructions for how to construct 1423 
+
+the dataset). 1424 
+
+(d) We recognize that reproducibility may be tricky in some cases, in which case 1425 
+
+authors are welcome to describe the particular way they provide for reproducibility. 1426 
+
+In the case of closed-source models, it may be that access to the model is limited in 1427 
+
+46 some way (e.g., to registered users), but it should be possible for other researchers 1428 
+
+to have some path to reproducing or verifying the results. 1429 
+
+5. Open access to data and code 1430 
+
+Question: Does the paper provide open access to the data and code, with sufficient instruc-1431 
+
+tions to faithfully reproduce the main experimental results, as described in supplemental 1432 
+
+material? 1433 
+
+Answer: [Yes] 1434 
+
+Justification: We provide access to the code for our first set of experiments in the supple-1435 
+
+mentary material, with a corresponding script to reproduce the results in the main paper. For 1436 
+
+the second set of experiments we provide directions to the code base that we adapted and 1437 
+
+throughout the paper and appendices we provide sufficient details to reproduce these results 1438 
+
+without too much difficulty. 1439 
+
+Guidelines: 1440 
+
+• The answer NA means that paper does not include experiments requiring code. 1441 
+
+• Please see the NeurIPS code and data submission guidelines ( https://nips.cc/ 1442 
+
+public/guides/CodeSubmissionPolicy ) for more details. 1443 
+
+• While we encourage the release of code and data, we understand that this might not be 1444 
+
+possible, so “No” is an acceptable answer. Papers cannot be rejected simply for not 1445 
+
+including code, unless this is central to the contribution (e.g., for a new open-source 1446 
+
+benchmark). 1447 
+
+• The instructions should contain the exact command and environment needed to run to 1448 
+
+reproduce the results. See the NeurIPS code and data submission guidelines ( https: 1449 
+
+//nips.cc/public/guides/CodeSubmissionPolicy ) for more details. 1450 
+
+• The authors should provide instructions on data access and preparation, including how 1451 
+
+to access the raw data, preprocessed data, intermediate data, and generated data, etc. 1452 
+
+• The authors should provide scripts to reproduce all experimental results for the new 1453 
+
+proposed method and baselines. If only a subset of experiments are reproducible, they 1454 
+
+should state which ones are omitted from the script and why. 1455 
+
+• At submission time, to preserve anonymity, the authors should release anonymized 1456 
+
+versions (if applicable). 1457 
+
+• Providing as much information as possible in supplemental material (appended to the 1458 
+
+paper) is recommended, but including URLs to data and code is permitted. 1459 
+
+6. Experimental Setting/Details 1460 
+
+Question: Does the paper specify all the training and test details (e.g., data splits, hyper-1461 
+
+parameters, how they were chosen, type of optimizer, etc.) necessary to understand the 1462 
+
+results? 1463 
+
+Answer: [Yes] 1464 
+
+Justification: We provide a thorough description of the environmental settings in Appendix 1465 
+
+D.1 and D.2, furthermore, hyperparameters and details with regards to access to the code 1466 
+
+are provided in Appendix E. 1467 
+
+Guidelines: 1468 
+
+• The answer NA means that the paper does not include experiments. 1469 
+
+• The experimental setting should be presented in the core of the paper to a level of detail 1470 
+
+that is necessary to appreciate the results and make sense of them. 1471 
+
+• The full details can be provided either with the code, in appendix, or as supplemental 1472 
+
+material. 1473 
+
+7. Experiment Statistical Significance 1474 
+
+Question: Does the paper report error bars suitably and correctly defined or other appropriate 1475 
+
+information about the statistical significance of the experiments? 1476 
+
+Answer: [Yes] , 1477 
+
+Justification: We provide error bars for all of our experiments, over 5 random initializations 1478 
+
+(seeds), provided by seaborn.lineplot , see Appendix E for details. 1479 
+
+47 Guidelines: 1480 
+
+• The answer NA means that the paper does not include experiments. 1481 
+
+• The authors should answer "Yes" if the results are accompanied by error bars, confi-1482 
+
+dence intervals, or statistical significance tests, at least for the experiments that support 1483 
+
+the main claims of the paper. 1484 
+
+• The factors of variability that the error bars are capturing should be clearly stated (for 1485 
+
+example, train/test split, initialization, random drawing of some parameter, or overall 1486 
+
+run with given experimental conditions). 1487 
+
+• The method for calculating the error bars should be explained (closed form formula, 1488 
+
+call to a library function, bootstrap, etc.) 1489 
+
+• The assumptions made should be given (e.g., Normally distributed errors). 1490 
+
+• It should be clear whether the error bar is the standard deviation or the standard error 1491 
+
+of the mean. 1492 
+
+• It is OK to report 1-sigma error bars, but one should state it. The authors should 1493 
+
+preferably report a 2-sigma error bar than state that they have a 96% CI, if the hypothesis 1494 
+
+of Normality of errors is not verified. 1495 
+
+• For asymmetric distributions, the authors should be careful not to show in tables or 1496 
+
+figures symmetric error bars that would yield results that are out of range (e.g. negative 1497 
+
+error rates). 1498 
+
+• If error bars are reported in tables or plots, The authors should explain in the text how 1499 
+
+they were calculated and reference the corresponding figures or tables in the text. 1500 
+
+8. Experiments Compute Resources 1501 
+
+Question: For each experiment, does the paper provide sufficient information on the com-1502 
+
+puter resources (type of compute workers, memory, time of execution) needed to reproduce 1503 
+
+the experiments? 1504 
+
+Answer: [Yes] 1505 
+
+Justification: We provide details the compute resources used for our experiments in Appendix 1506 
+
+E and the expected time and memory requirements for an individual run. 1507 
+
+Guidelines: 1508 
+
+• The answer NA means that the paper does not include experiments. 1509 
+
+• The paper should indicate the type of compute workers CPU or GPU, internal cluster, 1510 
+
+or cloud provider, including relevant memory and storage. 1511 
+
+• The paper should provide the amount of compute required for each of the individual 1512 
+
+experimental runs as well as estimate the total compute. 1513 
+
+• The paper should disclose whether the full research project required more compute 1514 
+
+than the experiments reported in the paper (e.g., preliminary or failed experiments that 1515 
+
+didn’t make it into the paper). 1516 
+
+9. Code Of Ethics 1517 
+
+Question: Does the research conducted in the paper conform, in every respect, with the 1518 
+
+NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines ?1519 
+
+Answer: [Yes] 1520 
+
+Justification: We have reviewed the NeurIPS Code of Ethics and we do not think the research 1521 
+
+in this paper has any particular ethical concerns, to the best of our ability we have tried to 1522 
+
+maintain anonymity. 1523 
+
+Guidelines: 1524 
+
+• The answer NA means that the authors have not reviewed the NeurIPS Code of Ethics. 1525 
+
+• If the authors answer No, they should explain the special circumstances that require a 1526 
+
+deviation from the Code of Ethics. 1527 
+
+• The authors should make sure to preserve anonymity (e.g., if there is a special consid-1528 
+
+eration due to laws or regulations in their jurisdiction). 1529 
+
+10. Broader Impacts 1530 
+
+48 Question: Does the paper discuss both potential positive societal impacts and negative 1531 
+
+societal impacts of the work performed? 1532 
+
+Answer: [NA] . 1533 
+
+Justification: As our paper is mostly foundational we do not foresee any immediate positive 1534 
+
+or negative societal impact of this research. 1535 
+
+Guidelines: 1536 
+
+• The answer NA means that there is no societal impact of the work performed. 1537 
+
+• If the authors answer NA or No, they should explain why their work has no societal 1538 
+
+impact or why the paper does not address societal impact. 1539 
+
+• Examples of negative societal impacts include potential malicious or unintended uses 1540 
+
+(e.g., disinformation, generating fake profiles, surveillance), fairness considerations 1541 
+
+(e.g., deployment of technologies that could make decisions that unfairly impact specific 1542 
+
+groups), privacy considerations, and security considerations. 1543 
+
+• The conference expects that many papers will be foundational research and not tied 1544 
+
+to particular applications, let alone deployments. However, if there is a direct path to 1545 
+
+any negative applications, the authors should point it out. For example, it is legitimate 1546 
+
+to point out that an improvement in the quality of generative models could be used to 1547 
+
+generate deepfakes for disinformation. On the other hand, it is not needed to point out 1548 
+
+that a generic algorithm for optimizing neural networks could enable people to train 1549 
+
+models that generate Deepfakes faster. 1550 
+
+• The authors should consider possible harms that could arise when the technology is 1551 
+
+being used as intended and functioning correctly, harms that could arise when the 1552 
+
+technology is being used as intended but gives incorrect results, and harms following 1553 
+
+from (intentional or unintentional) misuse of the technology. 1554 
+
+• If there are negative societal impacts, the authors could also discuss possible mitigation 1555 
+
+strategies (e.g., gated release of models, providing defenses in addition to attacks, 1556 
+
+mechanisms for monitoring misuse, mechanisms to monitor how a system learns from 1557 
+
+feedback over time, improving the efficiency and accessibility of ML). 1558 
+
+11. Safeguards 1559 
+
+Question: Does the paper describe safeguards that have been put in place for responsible 1560 
+
+release of data or models that have a high risk for misuse (e.g., pretrained language models, 1561 
+
+image generators, or scraped datasets)? 1562 
+
+Answer: [NA] . 1563 
+
+Justification: We do not believe that the new assets provided in the paper pose any such 1564 
+
+risks. 1565 
+
+Guidelines: 1566 
+
+• The answer NA means that the paper poses no such risks. 1567 
+
+• Released models that have a high risk for misuse or dual-use should be released with 1568 
+
+necessary safeguards to allow for controlled use of the model, for example by requiring 1569 
+
+that users adhere to usage guidelines or restrictions to access the model or implementing 1570 
+
+safety filters. 1571 
+
+• Datasets that have been scraped from the Internet could pose safety risks. The authors 1572 
+
+should describe how they avoided releasing unsafe images. 1573 
+
+• We recognize that providing effective safeguards is challenging, and many papers do 1574 
+
+not require this, but we encourage authors to take this into account and make a best 1575 
+
+faith effort. 1576 
+
+12. Licenses for existing assets 1577 
+
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in 1578 
+
+the paper, properly credited and are the license and terms of use explicitly mentioned and 1579 
+
+properly respected? 1580 
+
+Answer: [Yes] 1581 
+
+49 Justification: We are the original creators/owners of the code used for the first set of 1582 
+
+experiments, for the second set of experiments we explicitly cite the paper and provide the 1583 
+
+URL for the code that we have adapted in this paper, which is available under the MIT 1584 
+
+License as stated in Appendix E. 1585 
+
+Guidelines: 1586 
+
+• The answer NA means that the paper does not use existing assets. 1587 
+
+• The authors should cite the original paper that produced the code package or dataset. 1588 
+
+• The authors should state which version of the asset is used and, if possible, include a 1589 
+
+URL. 1590 
+
+• The name of the license (e.g., CC-BY 4.0) should be included for each asset. 1591 
+
+• For scraped data from a particular source (e.g., website), the copyright and terms of 1592 
+
+service of that source should be provided. 1593 
+
+• If assets are released, the license, copyright information, and terms of use in the 1594 
+
+package should be provided. For popular datasets, paperswithcode.com/datasets 1595 
+
+has curated licenses for some datasets. Their licensing guide can help determine the 1596 
+
+license of a dataset. 1597 
+
+• For existing datasets that are re-packaged, both the original license and the license of 1598 
+
+the derived asset (if it has changed) should be provided. 1599 
+
+• If this information is not available online, the authors are encouraged to reach out to 1600 
+
+the asset’s creators. 1601 
+
+13. New Assets 1602 
+
+Question: Are new assets introduced in the paper well documented and is the documentation 1603 
+
+provided alongside the assets? 1604 
+
+Answer: [Yes] 1605 
+
+Justification: We provide 1606 
+
+Guidelines: 1607 
+
+• The answer NA means that the paper does not release new assets. 1608 
+
+• Researchers should communicate the details of the dataset/code/model as part of their 1609 
+
+submissions via structured templates. This includes details about training, license, 1610 
+
+limitations, etc. 1611 
+
+• The paper should discuss whether and how consent was obtained from people whose 1612 
+
+asset is used. 1613 
+
+• At submission time, remember to anonymize your assets (if applicable). You can either 1614 
+
+create an anonymized URL or include an anonymized zip file. 1615 
+
+14. Crowdsourcing and Research with Human Subjects 1616 
+
+Question: For crowdsourcing experiments and research with human subjects, does the paper 1617 
+
+include the full text of instructions given to participants and screenshots, if applicable, as 1618 
+
+well as details about compensation (if any)? 1619 
+
+Answer: [NA] . 1620 
+
+Justification: The paper does not involve crowdsourcing nor research with human subjects. 1621 
+
+Guidelines: 1622 
+
+• The answer NA means that the paper does not involve crowdsourcing nor research with 1623 
+
+human subjects. 1624 
+
+• Including this information in the supplemental material is fine, but if the main contribu-1625 
+
+tion of the paper involves human subjects, then as much detail as possible should be 1626 
+
+included in the main paper. 1627 
+
+• According to the NeurIPS Code of Ethics, workers involved in data collection, curation, 1628 
+
+or other labor should be paid at least the minimum wage in the country of the data 1629 
+
+collector. 1630 
+
+15. Institutional Review Board (IRB) Approvals or Equivalent for Research with Human 1631 
+
+Subjects 1632 
+
+50 Question: Does the paper describe potential risks incurred by study participants, whether 1633 
+
+such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) 1634 
+
+approvals (or an equivalent approval/review based on the requirements of your country or 1635 
+
+institution) were obtained? 1636 
+
+Answer: [NA] . 1637 
+
+Justification: The paper does not involve crowdsourcing nor research with human subjects. 1638 
+
+Guidelines: 1639 
+
+• The answer NA means that the paper does not involve crowdsourcing nor research with 1640 
+
+human subjects. 1641 
+
+• Depending on the country in which research is conducted, IRB approval (or equivalent) 1642 
+
+may be required for any human subjects research. If you obtained IRB approval, you 1643 
+
+should clearly state this in the paper. 1644 
+
+• We recognize that the procedures for this may vary significantly between institutions 1645 
+
+and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the 1646 
+
+guidelines for their institution. 1647 
+
+• For initial submissions, do not include any information that would break anonymity (if 1648 
+
+applicable), such as the institution conducting the review. 1649 
+
+51

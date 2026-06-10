@@ -1,0 +1,8556 @@
+Title: 8141_Provably_Efficient_RL_und.pdf
+
+URL Source: https://openreview.net/pdf?id=rgoSyTCTkn
+
+Number of Pages: 50
+
+Markdown Content:
+# Provably Efficient RL under Episode-Wise Safety in Constrained MDPs with Linear Function Approximation 
+
+Toshinori Kitamura 
+
+The University of Tokyo Tokyo, Japan 
+
+toshinori-k@weblab.t.u-tokyo.ac.jp 
+
+Arnob Ghosh 
+
+New Jersey Institute of Technology New Jersey, USA 
+
+Tadashi Kozuno 
+
+OMRON SINIC X, NexaScience Tokyo, Japan 
+
+Wataru Kumagai 
+
+OMRON SINIC X, NexaScience Tokyo, Japan 
+
+Kazumi Kasaura 
+
+OMRON SINIC X Tokyo, Japan 
+
+Kenta Hoshino ∗
+
+Kyoto University Kyoto, Japan 
+
+Yohei Hosoe 
+
+Kyoto University Kyoto, Japan 
+
+Yutaka Matsuo 
+
+The University of Tokyo Tokyo, Japan 
+
+## Abstract 
+
+We study the reinforcement learning (RL) problem in a constrained Markov deci-sion process (CMDP), where an agent explores the environment to maximize the expected cumulative reward while satisfying a single constraint on the expected total utility value in every episode. While this problem is well understood in the tabular setting, theoretical results for function approximation remain scarce. This paper closes the gap by proposing an RL algorithm for linear CMDPs that achieves 
+
+eO(√K) regret with an episode-wise zero-violation guarantee. Furthermore, our method is computationally efficient, scaling polynomially with problem-dependent parameters while remaining independent of the state space size. Our results sig-nificantly improve upon recent linear CMDP algorithms, which either violate the constraint or incur exponential computational costs. 
+
+## 1 Introduction 
+
+Safe decision-making is essential in real-world applications such as plant control and finance [ 19 ]. Constrained Markov decision process (CMDP) is a mathematical framework for developing decision-making algorithms with formal safety guarantees [2]. This paper studies the reinforcement learning (RL) problem in finite-horizon CMDPs, where an agent explores the environment to maximize the expected cumulative rewards while satisfying a single constraint on the expected total utility value. Safe exploration has been established in the tabular CMDP settings. Several works [ 27 , 8, 47 ]achieve episode-wise zero-violation RL with eO(√K) regret for K number of episodes, ensuring constraint satisfaction in every episode. Their approach consists of two phases: deploying a known strictly safe policy πsf and then updating policies via linear programs (LPs), which optimizes an optimistic objective while satisfying a pessimistic constraint. Deploying πsf is necessary to ensure feasible solutions for the LPs once enough environmental information is collected. 
+
+> ∗
+
+Current affiliation: Institute of Science Tokyo, Tokyo, Japan, and DENSO IT Laboratory, Tokyo, Japan. 39th Conference on Neural Information Processing Systems (NeurIPS 2025). Table 1: Representative CMDP results with K-dependent regrets. See Section 3 for CMDP notations. Paper Epi.-Wise Safe? Comp. Efficient? Regret Tabular Yu et al. [47] Yes |S| dependent eO(ξ−1p|S| 2|A| H5K)
+
+Linear Ghosh et al. [18] No No eO(√d3H4K)
+
+Roknilamouki et al. [36] Instantaneous Yes eO(ξ−1√d3H4K)
+
+OPSE-LCMDP (Ours) Yes Yes eO(ξ−1√d5H8K)
+
+Bandit lower bound [32] Yes N/A eΩ(max {p|A| K, ξ −2})*                           
+
+> * The regrets of [ 47 ] and ours include an additional eO(ξ−2)constant. We omit them from the table due to space limitations. [ 36 ,32 ,4]avoid the constant by assuming access to a safe action vector, but they are limited to instantaneous constraints (see Section 2.1). Including ours, existing safe algorithms [ 27 ,8,47 ,36 ,3,32 ,22 ] incur eO(ξ−1√K)regret. Whether this can be improved to eO(√K)remains open.
+
+While safe exploration is well-established in tabular CMDPs, extending it to large-scale CMDPs remains a major challenge. LP-based methods are impractical at scale due to their state-dependent computational cost. 2 As a result, even in linear CMDPs, where value functions have linear structure, episode-wise safe RL has not been achieved. The state-of-the-art linear CMDP algorithm [ 18 ], which achieves the eO(√K) violation regret, 3 incurs an exponential computational cost of KH , where H
+
+is the horizon. Several studies achieve safe RL under instantaneous constraints [ 4 , 36 ], 4 a special sub-class of the episode-wise safety that can be overly conservative (e.g., in drone control, temporary high energy consumption is tolerable, but full battery depletion is not). Table 1 summarizes representative algorithms, with additional literature in Appendix B. In short, a fundamental open question remains: 
+
+Can we develop a computationally efficient 5 linear CMDP algorithm with sublinear regret and zero episode-wise constraint violation? 
+
+Contributions. We propose Optimistic-Pessimistic Softmax Exploration for Linear CMDP (OPSE-LCMDP), the first algorithm for linear CMDPs that achieves eO(√K)-regret and episode-wise safety . Our approach builds on the optimistic-pessimistic exploration framework with two key innovations for large-scale state-space problems: ( i) a new deployment rule for πsf , and ( ii ) a 
+
+computationally efficient method to implement optimism for the objective and pessimism for the constraint within the softmax policy framework [16, 18]. Section 2 first analyzes the linear constrained bandit problem as a “warm-up” for linear CMDPs (H = 1 with an expected instantaneous constraint), highlighting the key role of the πsf deployment rule in avoiding linear regret. Previous instantaneous constraint literature limits πsf deployments by representing the safe action as a vector asf ∈ Rd [32 , 33 , 22 , 3 , 4]. However, extending this approach to episode-wise safety is non-trivial, as the constraint is imposed on policies rather than actions, and policies may be nonlinear functions (e.g., softmax mapping from value functions) rather than single vectors. We overcome this challenge by showing that if πsf is deployed only when the agent is less confident in πsf ’s safety , the number of deployments is logarithmically bounded (Theorem 1). Section 3 then extends the bandit result to RL in CMDPs. To enable optimistic-pessimistic exploration in linear CMDPs, OPSE-LCMDP employs the composite softmax policy (Definition 3), which adjusts optimism and pessimism by controlling a variable λ. OPSE-LCMDP efficiently searches for the best λ through bisection search , achieving a polynomial computational cost in problem parameters, independent of state-space cardinality (Remark 2). Overall, our techniques—the novel πsf deployment rule and softmax-based optimistic-pessimistic exploration—achieve the first episode-wise safe RL with sublinear regret and computational efficiency in linear CMDPs. 
+
+Mathematical notations. The set of probability distributions over a set S is denoted by P(S).For integers a ≤ b, let Ja, b K := {a, . . . , b }, and Ja, b K := ∅ if a > b . For x ∈ RN , its n-th element is xn or x(n). The clipping function clip {x, a, b } returns x′ with x′ 
+
+> i
+
+= min {max {xi, a }, b } for each i. We define 0 := (0 , . . . , 0) ⊤ and 1 := (1 , . . . , 1) ⊤, with dimensions inferred from the context. For a positive definite matrix A ∈ Rd×d and x ∈ Rd, we denote ∥x∥A = √x⊤Ax . For positive sequences {an} and {bn} with n = 1 , 2, . . . , we write an = O (bn) if there exist C > 0 and N ∈ N
+
+> 2
+
+While some works (e.g., 30 ) proposed LP methods for unconstrained linear MDPs, they remain unsuitable for our exploration setting or still incur state-dependent computational costs (see Appendix B). 
+
+> 3
+
+Violation regret denotes the total amount of constraint violation during exploration. 
+
+> 4
+
+Inst. constraint requires uh(s(k) 
+
+> h
+
+, a (k) 
+
+> h
+
+) ≥ b ∀h, k ∈ J1, H K × J1, K K (see Section 3 for notations). 
+
+> 5
+
+An algorithm is comp. efficient if its cost is polynomial with problem parameters, excluding the state space. 
+
+2such that an ≤ Cb n for all n ≥ N , and an = Ω( bn) for the reverse inequality. We use eO(·) and eΩ( ·)
+
+to further hide the polylogarithmic factors. Finally, for x ∈ Rd, we denote its softmax distribution as SoftMax( x) ∈ P(J1, d K) with its i-th component SoftMax( x)i = exp( xi)/(P 
+
+> i
+
+exp( xi)) .
+
+## 2 Warm Up: Safe Exploration in Linear Constrained Bandit 
+
+To better illustrate the core ideas of our CMDP algorithm, this section introduces a contextual linear bandit variant based on Pacchiano et al. [32] . All the proofs in this section are provided in Appendix D. Let A ⊂ Rd be the action space, a compact set of bounded d-dimensional vectors. Without loss of generality, we assume ∥a∥2 ≤ 1 for any a ∈ A . At each round k, the agent selects a policy π(k) ∈
+
+P(A), samples an action a(k) ∼ π(k), and observes the reward r(k) = θ⊤ 
+
+> r
+
+a(k) + ε(k) 
+
+> r
+
+and utility 
+
+u(k) = θ⊤ 
+
+> u
+
+a(k) +ε(k) 
+
+> u
+
+. Here, θr , θu ∈ Rd are vectors unknown to the agent such that ∥θr ∥2, ∥θu∥2 ≤
+
+B, and ε(k) 
+
+> r
+
+, ε (k) 
+
+> u
+
+are R-sub-Gaussian random noises. For any policy π and g ∈ { r, u }, let gπ := 
+
+Ea∼π [⟨θg , a⟩]. We consider a constraint such that the expected utility must be above the threshold 
+
+b ∈ R. Formally, let Πsf := {π | uπ ≥ b} denote the set of safe policies. The agent’s goal is to achieve sublinear regret while satisfying the expected instantaneous constraints defined as follows: 
+
+Regret( K) := PKk=1 rπ⋆ − rπ(k) = o(K) such that π(k) ∈ Πsf ∀k ∈ J1, K K , (1) where π⋆ ∈ arg max π∈Πsf rπ . A sublinear regret exploration is efficient, as its averaged reward approaches the optimal value, i.e., lim K→∞ 1 
+
+> K
+
+rπ(K) → rπ⋆ . Finally, we assume access to a strictly safe policy in Πsf , as deploying arbitrary policies without this assumption risks violating constraints 6.
+
+Assumption 1 (Safe policy) . We have access to πsf ∈ Πsf and ξ > 0 such that uπsf − b ≥ ξ .
+
+2.1 Technical Challenge: Zero-Violation with a Safe Policy 
+
+The key to efficient and safe exploration is the optimistic-pessimistic exploration, which constructs an optimistic reward r(k) 
+
+> π
+
+≥ rπ and a pessimistic utility u(k) 
+
+> π
+
+≤ uπ , and then computes a policy by: 
+
+max π∈P(A) r(k) 
+
+> π
+
+such that u(k) 
+
+> π
+
+≥ b . (2) Here, r(k) 
+
+> π
+
+and u(k) 
+
+> π
+
+are designed to quickly approach rπ and uπ as data accumulates for efficient exploration [ 1]. However, although Equation (2) can have feasible solutions when uπ ≈ uπ , the pessimistic constraint may not have any feasible solution in the early stages of exploration. To ensure that (2) always has a solution, a common bandit approach assumes access to a safe action 
+
+asf ∈ A such that θ⊤ 
+
+> u
+
+asf ≥ b + ξ, and then ensures the feasibility of (2) by leveraging the vector representation of asf ∈ Rd. For example, [ 32 , 33 , 3 ] designed u(k) 
+
+> π
+
+using the orthogonal direction 
+
+ asf ⊥ := asf − asf / asf 
+
+> 2
+
+, while [ 22 ] assume asf = 0 ∈ A with a negative constraint threshold 
+
+b < 0. Both approaches ensure that a policy playing asf with probability 1 is always feasible in (2). However, extending this safe action technique to episode-wise safe RL is non-trivial, as the episode-wise constraint is imposed on policies rather than actions, and policies in linear CMDPs may be nonlinear functions (e.g., softmax mappings from value functions) rather than single vectors. To ad-dress this challenge, we first develop a safe bandit algorithm without relying on safe action techniques. 
+
+2.2 Algorithm and Analysis 
+
+We summarize the proposed Optimistic-Pessimistic Linear Bandit with Safe Policy (OPLB-SP) in Algorithm 1, which follows the standard linear bandit framework (see Abbasi-Yadkori et al. [1] ). Throughout this section, we analyze Algorithm 1 under the parameters listed in its Input line. Let bθ(k) 
+
+> r
+
+:= ( Λ(k))−1 Pk−1 
+
+> i=1
+
+a(i)r(i) and bθ(k) 
+
+> u
+
+:= ( Λ(k))−1 Pk−1 
+
+> i=1
+
+a(i)u(i) denote the regularized least-squares estimates of θr and θu, respectively, where Λ(k) := ρI + Pk−1 
+
+> i=1
+
+a(i)(a(i))⊤. Let 
+
+br(k) 
+
+> π
+
+:= Ea∼π [a⊤bθ(k) 
+
+> r
+
+] and bu(k) 
+
+> π
+
+:= Ea∼π [a⊤bθ(k) 
+
+> u
+
+] be the estimated reward and utility functions. 
+
+> 6
+
+The knowledge of ξ is for simplicity. If unknown, we can estimate it by deploying πsf with a little overhead. 
+
+3Algorithm 1: Optimistic-Pessimistic Linear Bandit with Safe Policy 
+
+Input: Regression coefficient ρ = 1 , bonus scalers Cu = B + R√d ln 4 Kδ −1 and 
+
+Cr = Cu(1 + 2 Bξ −1), safe policy πsf , and iteration length K ∈ N 
+
+> 1
+
+for k = 1 , . . . , K do  
+
+> 2
+
+Let β(k) 
+
+> π
+
+, br(k) 
+
+> π
+
+, and bu(k) 
+
+> π
+
+be bonus, estimated reward and utility, respectively (see Section 2.2)  
+
+> 3
+
+if Cuβ(k) 
+
+> πsf
+
+> ξ 
+
+> 2
+
+then π(k) := πsf /* Deploy πsf if πsf is unconfident */  
+
+> 4
+
+else π(k) ∈ arg max π∈P(A) br(k) 
+
+> π
+
++ Cr β(k) 
+
+> π
+
+such that bu(k) 
+
+> π
+
+− Cuβ(k) 
+
+> π
+
+≥ b 
+
+> 5
+
+Sample an action a(k) ∼ π(k) and observe reward r(k) and utility u(k).
+
+Using the bonus function β(k) 
+
+> π
+
+:= Ea∼π ∥a∥(Λ(k))−1 , with the well-established elliptical confidence bound argument for linear bandits [1], the following confidence bounds hold: 
+
+Lemma 1 (Confidence bounds) . For any π and k, with probability (w.p.) at least 1 − δ,
+
+rπ + 2 Cuβ(k) 
+
+> π
+
+≥ br(k) 
+
+> π
+
++ Cuβ(k) 
+
+> π
+
+≥ rπ and uπ ≥ bu(k) 
+
+> π
+
+− Cuβ(k) 
+
+> π
+
+≥ uπ − 2Cuβ(k) 
+
+> π
+
+.
+
+Based on Lemma 1, Algorithm 1 solves the following optimistic-pessimistic (Opt-Pes) problem. The optimistic objective promotes efficient exploration, while the pessimism enforces the constraint satisfaction: 
+
+Opt-Pes (Line 4) π(k) ∈ arg max π∈P(A) br(k) 
+
+> π
+
++ Cr β(k) 
+
+> π
+
+such that bu(k) 
+
+> π
+
+− Cuβ(k) 
+
+> π
+
+≥ b . (3) This is a convex optimization problem when the set A satisfies certain structural assumptions, such as being discrete or ellipsoidal (see, e.g., Section 19.3 of Lattimore and Szepesvari [26] ). To emphasize our approach to the technical challenge in Section 2.1, this section omits the computational details of (3) and focuses instead on the core technique for efficient exploration under episode-wise safety. 
+
+2.2.1 Zero-Violation and Logarithmic Number of πsf Deployments 
+
+Since π(k) is either πsf or the solution to Opt-Pes (if feasible), all deployed policies in Algorithm 1 satisfy the constraint with high probability due to the pessimistic constraint. However, as noted in Section 2.1, the pessimistic constraint may render Opt-Pes infeasible, requiring Line 4 to wait until the bonus β(k) 
+
+> π
+
+shrinks sufficiently. Yet, waiting too long overuses the suboptimal πsf , leading to poor regret. Thus, exploration must keep the number of iterations where Equation (2) is infeasible bounded. The core technique of Algorithm 1 lies in the πsf deployment trigger based on the confidence of 
+
+πsf . Specifically, we solve the optimistic-pessimistic optimization whenever β(k) 
+
+> πsf
+
+≤ ξ 
+
+> 2Cu
+
+; otherwise, we correct the data by deploying πsf (see Line 3). Under this trigger, the following Theorem 1 ensures that the number of πsf deployments grows logarithmically with the iteration length K.
+
+Definition 1 (πsf unconfident iterations) . Let U be the set of iterations when Algorithm 1 is unconfi-dent in πsf , i.e., U := {k ∈ J1, K K | β(k) 
+
+> πsf
+
+> ξ/ (2 Cu)}. Let U∁ := J1, K K \ U be its complement. 
+
+Theorem 1 (Logarithmic |U| bound) . It holds w.p. at least 1 − δ that |U| ≤ O  dC 2
+
+> u
+
+ξ−2 ln  Kδ −1 .
+
+The proof utilizes the well-known elliptical potential lemma [ 1]. Intuitively, it ensures that the confidence bounds shrink on average, thereby limiting the number of iterations where the algorithm remains unconfident in πsf . He et al. [21] , Zhang et al. [50] employed a similar technique in linear bandits to ensure the suboptimality of policies after sufficient iterations. Moreover, combined with Lemma 1, the following Lemma 2 ensures that, after logarithmic iterations, 
+
+policies around πsf will become feasible solutions to Opt-Pes and Line 4 .
+
+Lemma 2 (Mixture policy feasibility) . Consider k ∈ U ∁. Let α(k) := ξ−2Cuβ(k) 
+
+> πsf
+> ξ−2Cuβ(k)
+> πsf +2 Cuβ(k)
+> π⋆
+
+. For any 
+
+α ∈ 0, α (k), the mixture policy πα := (1 − α)πsf + απ ⋆ satisfies uπα − 2Cuβ(k) 
+
+> πα
+
+≥ b.
+
+Note that the mixture policy πα is introduced only to ensure the feasibility of Opt-Pes; it does not need to be computed in the algorithm. 4Finally, Lemma 1 and Lemma 2 directly imply the following zero-violation guarantee: 
+
+Corollary 1 (Zero-violation) . W.p. at least 1 − δ, Algorithm 1 satisfies π(k) ∈ Πsf for any k.
+
+2.2.2 Regret Analysis 
+
+The remaining task is to ensure sublinear regret. By Theorem 1 and Lemma 1, the regret is decomposed as: 
+
+Regret( K) ≤ eO dBC 2
+
+> u
+
+ξ−2 + 3 Cr
+
+P 
+
+> k∈U ∁
+
+β(k) 
+
+> π
+
+1 + P
+
+> k∈U ∁
+
+
+
+rπ⋆ − br(k) 
+
+> π(k)
+
+− Cr β(k)
+
+> π
+
+
+
+2 .
+
+Using the elliptical potential lemma [1], we can bound 1 ≤ eO(Cr
+
+√dK ).For the term 2 , when there is no constraint in Opt-Pes, the common strategy is bounding 2 using 
+
+rπ⋆ − br(k) 
+
+> π(k)
+
+− Cr β(k) 
+
+> π
+
+≤ 0, leveraging the optimism due to Lemma 1 with the maximality of π(k) in Opt-Pes (see, e.g., Abbasi-Yadkori et al. [1] ). However, due to the pessimistic constraint in Opt-Pes, 
+
+π⋆ may not be a solution to Opt-Pes, necessitating a modification to this approach. Recall from Lemma 2 that, for k ∈ U ∁, the mixture policy πα(k) := (1 − α(k))πsf + α(k)π⋆ satisfies 
+
+uπα(k) − 2Cuβ(k) 
+
+> πα(k)
+
+≥ b. For this πα(k) , the following optimism with respect to π⋆ holds: 
+
+Lemma 3 (πα(k) optimism) . For any k ∈ U ∁, it holds rπα(k) + (2 BC uξ−1)β(k) 
+
+> πα(k)
+
+≥ rπ⋆ .
+
+Using Lemmas 1 and 3 with Cr = Cu(1 + 2 Bξ −1), we have 2 ≤ P 
+
+> k∈U ∁
+
+brπα(k) + Cr β(k) 
+
+> πα(k)
+
+− br(k) 
+
+> π(k)
+
+− Cr β(k) 
+
+> π(k)
+
+≤ 0 , (4) where the second inequality holds since πα(k) is a feasible solution to Opt-Pes and π(k) is its maximizer. This optimism via a mixture policy technique is adapted from tabular CMDPs [ 27 , 8] to the linear bandit setup. By combining all the results, Algorithm 1 archives the following guarantees: 
+
+Theorem 2. If OPLB-SP is run with the parameters listed in its Input line, w.p. at least 1 − δ,
+
+π(k) ∈ Πsf for any k ∈ J1, K K and Regret( K) ≤ eO(dBC 2
+
+> u
+
+ξ−2 + Cr
+
+√dK ) .
+
+When B = R = 1 , the regret bound simplifies to eO(d2ξ−2 + ξ−1√d3K).
+
+In summary, OPLB-SP relies on three components: ( i) optimistic-pessimistic updates (Opt-Pes), (ii ) a logarithmic number of πsf deployments (Theorem 1), and ( iii ) compensation for the pessimism (Lemma 3). Building on these components, the next section develops a linear CMDP algorithm. 
+
+## 3 Safe Reinforcement Learning in Linear Constrained MDP 
+
+A finite-horizon CMDP is defined as a tuple (S, A, H, P, r, u, b, s 1), where S is the finite but potentially exponentially large state space, A is the finite action space ( |A| = A), 7 H ∈ N is the episode horizon, b ∈ [0 , H ] is the constrained threshold, and s1 is the fixed initial state. The reward and utility functions r, u : J1, H K × S × A → [0 , 1] specify the reward rh(s, a ) and constraint utility 
+
+uh(s, a ) when taking action a at state s in step h. Finally, P·(· | · , ·) : J1, H K × S × A × S → [0 , 1] 
+
+denotes the transition kernel, where Ph(s′ | s, a ) denotes the state transition probability to a new state s′ from a state s when taking an action a in step h. With a slight abuse of notation, for functions 
+
+V : S → R and Ph, we write (PhV )( x, a ) = P 
+
+> y∈S
+
+V (y)Ph(y | x, a ).
+
+Policy and (regularized) value functions. A policy is defined as π·(· | · ) : J1, H K×S ×A → [0 , 1] ,where πh(a | s) gives the probability of taking an action a at state s in step h. The set of all the policies is denoted as Π. With an abuse of notation, for any policy π and Q : S × A → R, let πh
+
+be an operator such that (πhQ)( s) = P 
+
+> a∈A
+
+πh(a | s)Q(s, a ). For a policy π, transition kernel P ,
+
+> 7
+
+While Section 2 permits infinite actions, we here restrict to the finite case. Even then, episode-wise safe exploration in linear CMDP is non-trivial, and infinite actions would further complicate the regret analysis. 
+
+5reward function g : J1, H K × S × A → R, and entropy coefficient κ ≥ 0, let Qπ,g P,h [κ] : S × A → R
+
+and V π,g P,h [κ] : S → R denote the entropy-regularized value functions at step h satisfying: 
+
+Qπ,g P,h [κ] = gh + ( PhV π,g h+1 ,P [κ]) , V π,g P,h [κ] = πh(Qπ,g P,h [κ] − κ ln πh), and V π,g H+1 ,P [κ] = 0 .
+
+For κ = 0 , we omit κ, e.g., Qπ,g P,h := Qπ,g P,h [0] . We denote hκ := h(1 + κ ln A) for h ∈ J1, H K.For h ∈ J1, H K, let wπP,h ∈ ∆( S × A ) denote the occupancy measure of π in P at step h such that 
+
+wπP,h (s, a ) = P(sh = s, a h = a | π, P ) ∀ (h, s, a ) ∈ J1, H K × S × A , (5) where the expectation is taken over all possible trajectories, in which ah ∼ πh(· | sh) and 
+
+sh+1 ∼ Ph(· | sh, a h). With a slight abuse of notation, we write wπP,h (s) = P 
+
+> a∈A
+
+wπP,h (s, a ).
+
+Learning Setup. An agent interacts with the CMDP for K episodes using policies π(1) , . . . , π (K) ∈
+
+Π. Each episode k starts from s1. At step h in episode k, the agent observes a state s(k) 
+
+> h
+
+, selects an action a(k) 
+
+> h
+
+∼ π(k) 
+
+> h
+
+(· | s(k) 
+
+> h
+
+), and transitions to s(k) 
+
+> h+1
+
+∼ Ph(· | s(k) 
+
+> h
+
+, a (k) 
+
+> h
+
+). The algorithm lacks knowledge of the transition kernel P , while r and u are known for simplicity. Extending our setting to unknown stochastic reward and utility is straightforward (see, e.g., Efroni et al. [13]). To handle a potentially large state space, we consider the following linear MDP assumption: 
+
+Assumption 2 (Linear MDP) . We have a known feature map ϕ : S × A → Rd satisfying: there exist unknown d (signed) measures μh := ( μ1
+
+> h
+
+, . . . , μdh) ∈ RS×d such that Ph(s′ | s, a ) = 
+
+μh(s′)⊤ϕ(s, a ), and known vectors θrh, θuh ∈ Rd such that rh(s, a ) = ( θrh)⊤ϕ(s, a ) and uh(s, a ) = (θuh)⊤ϕ(s, a ). We assume sup s,a ∥ϕ(s, a )∥2 ≤ 1 and V ⊤μh 2 ≤ √d for any V ∈ RS such that 
+
+∥V ∥∞ ≤ 1.Let π⋆ ∈ arg max π∈Πsf V π,r P, 1 (s1) be the optimal policy, where Πsf := {π | V π,u P, 1 (s1) ≥ b} is the set of safe policies. The goal is to achieve sublinear regret under episode-wise constraints: 
+
+Regret( K) := PKk=1 V π⋆,r P, 1 (s1) − V π(k),r P, 1 (s1) = o(K) such that π(k) ∈ Πsf ∀k ∈ [K] . (6) Finally, we assume the strictly safe policy similar to Section 2. 
+
+Assumption 3 (Safe policy) . We have access to πsf ∈ Πsf and ξ > 0 such that V πsf ,u P, 1 (s1) − b ≥ ξ .
+
+3.1 Technical Challenge: Optimistic-Pessimistic Optimization in Linear CMDP 
+
+Our linear CMDP algorithm builds on OPLB-SP in Section 2: deploying an optimistic-pessimistic policy when confident in πsf ; otherwise, it uses πsf . We will logarithmically bound the number of 
+
+πsf deployments, similar to Theorem 1, and ensure optimism through a linear mixture of policies, as in Lemma 2. However, computing an optimistic-pessimistic policy in the linear CMDP setting, similar to Opt-Pes, presents a non-trivial challenge. This section outlines the difficulties. Following standard linear MDP algorithm frameworks (e.g., Jin et al. [23] , Lykouris et al. [28] ), for each h, k , let β(k) 
+
+> h
+
+: (s, a ) 7 → ∥ϕ(s, a )∥(Λ(k)  
+
+> h)−1
+
+be the bonus, where Λ(k) 
+
+> h
+
+:= 
+
+ρI + Pk−1 
+
+> i=1
+
+ϕ(s(i) 
+
+> h
+
+, a (i) 
+
+> h
+
+)ϕ(s(i) 
+
+> h
+
+, a (i) 
+
+> h
+
+)⊤ and ρ > 0. For any V : S → R, let bP (k) 
+
+> h
+
+V be the next-step value estimation defined as: ( bP (k) 
+
+> h
+
+V )( s, a ) := ϕ(s, a )⊤(Λ(k) 
+
+> h
+
+)−1 Pk−1 
+
+> i=1
+
+ϕ(s(i) 
+
+> h
+
+, a (i) 
+
+> h
+
+)V (s(i)
+
+> h+1
+
+). We construct the following optimistic and pessimistic value functions for reward and utility, respectively: 
+
+Definition 2 (Clipped value functions) . Let Cr , C u, C †, B † > 0. For each k, h , π, and κ ≥ 0, define 
+
+Qπ,r 
+
+> (k),h
+
+[κ], Q π, †
+
+> (k),h
+
+, Q π,u  
+
+> (k),h
+
+: S × A → R and V π,r 
+
+> (k),h
+
+[κ], V π, †
+
+> (k),h
+
+, V π,u  
+
+> (k),h
+
+: S → R such that: 
+
+Qπ,r 
+
+> (k),h
+
+[κ] := rh + clip {Cr β(k) 
+
+> h
+
++ bP (k) 
+
+> h
+
+V π,r 
+
+> (k),h +1
+
+[κ], 0, H κ − hκ}, V π,r 
+
+> (k),h
+
+[κ] := πh(Qπ,r 
+
+> (k),h
+
+[κ] − κ ln πh) ,Qπ, † 
+
+> (k),h
+
+:= B†β(k) 
+
+> h
+
++ clip {C†β(k) 
+
+> h
+
++ bP (k) 
+
+> h
+
+V π, †
+
+> (k),h +1
+
+, 0, B †(H − h)}, V π, † 
+
+> (k),h
+
+:= πhQπ, † 
+
+> (k),h
+
+,Qπ,u  
+
+> (k),h
+
+:= uh + clip {− Cuβ(k) 
+
+> h
+
++ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+, 0, H − h}, and V π,u  
+
+> (k),h
+
+:= πhQπ,u  
+
+> (k),h
+
+.
+
+We set V π,r 
+
+> (k),H +1
+
+[κ] = V π, † 
+
+> (k),H +1
+
+= V π,u  
+
+> (k),H +1
+
+= 0. For κ = 0 , omit κ, e.g., Qπ,r  
+
+> (k),h
+
+:= Qπ,r 
+
+> (k),h
+
+[0] .6Algorithm 2: Optimistic-Pessimistic Softmax Exploration for Linear CMDP 
+
+Input: Regr. coeff. ρ = 1 , bonus scalers Cr = eO(dH ), Cu = eO(dH ), C† = eO(d2H3ξ−1),
+
+B† = eO dH 2ξ−1, entropy coeff. κ = eΩ ξ3H−4d−1K−0.5, search length T = eO(H),
+
+λ-threshold Cλ = eO dH 4ξ−2, safe policy πsf , and iter. length K ∈ N 
+
+> 1
+
+for k = 1 , . . . , K do  
+
+> 2
+
+Let V π,u  
+
+> (k),h
+
+be value function (Definition 2) and π(k),λ be softmax policy (Definition 3) 
+
+/* πsf trigger is implicitly tied to πsf confidence (Lemma 5) */  
+
+> 3
+
+if V π(k),C λ ,u  
+
+> (k),1
+
+(s1) < b then Set π(k) := πsf  
+
+> 4
+
+else if V π(k),0,u  
+
+> (k),1
+
+(s1) ≥ b then Set π(k) := π(k),0 
+
+> 5
+
+else /* Do bisection-search to find safe π(k),λ with small λ */  
+
+> 6
+
+Set λ(k, 1) := 0 and λ(k, 1) := Cλ. Let λ(k,t ) := ( λ(k,t ) + λ(k,t ))/2 
+
+> 7
+
+for t = 1 , . . . , T do  
+
+> 8
+
+if V π(k),λ (k,t ) ,u  
+
+> (k),1
+
+(s1) ≥ b then λ(k,t +1) := λ(k,t ) and λ(k,t +1) := λ(k,t ) 
+
+> 9
+
+else λ(k,t +1) := λ(k,t ) and λ(k,t +1) := λ(k,t ) 
+
+> 10
+
+Set π(k) := π(k),λ (k,T ) 
+
+> 11
+
+Sample a trajectory (s(k)1 , a (k)1 , . . . , s (k) 
+
+> H
+
+, a (k) 
+
+> H
+
+) by deploying π(k)
+
+We will utilize Qπ, † 
+
+> (k),h
+
+and V π, † 
+
+> (k),h
+
+to compensate for the pessimism, similar to the bandit proof in (4) .8 Entropy regularization in Qπ,r 
+
+> (k),h
+
+[κ] is for the later analysis. The clipping operators are essential to avoid the propagation of unreasonable value estimates [48]. Using these value functions, one might consider extending Opt-Pes to linear CMDPs by solving: 
+
+max π∈Π V π,r 
+
+> (k),1
+
+(s1) + V π, †
+
+> (k),1
+
+(s1) such that V π,u 
+
+> (k),1
+
+(s1) ≥ b . (7) However, solving this (7) is challenging due to ( i) the large state space in the linear CMDP setting (|S| ≫ 1) and ( ii ) the clipping operators in Qπ,r 
+
+> (k),h
+
+, Qπ, †
+
+> (k),h
+
+, and Qπ,u 
+
+> (k),h
+
+.In tabular CMDPs with small |S| , Liu et al. [27] and Bura et al. [8] used linear programming (LP) to solve similar optimistic-pessimistic optimization problems, achieving zero violation. However, the computational cost of LP scales with |S| , making it impractical for linear CMDPs. Another option is the Lagrangian method, which reformulates the constrained optimization as a min-max optimization: min λ≥0 max π∈Π V π,r 
+
+> (k),1
+
+(s1) + V π, †
+
+> (k),1
+
+(s1) + λ(V π,u 
+
+> (k),1
+
+(s1) − b). When the value functions are exact, i.e., V π, † 
+
+> (k),h
+
++ V π,r  
+
+> (k),h
+
++ V π,u  
+
+> (k),h
+
+= V π,r +B†β(k)+λu P,h , this min-max is equivalent to (7) , and the inner maximization reduces to a standard policy optimization [ 2]. Both favorable properties arise due to the linearity of the value function in the occupancy measure (see, e.g., Paternain et al. [34] ). However, due to clipping, the value functions in Definition 2 may not be representable via occupancy measures, making the Lagrangian approach inapplicable. To address this large-scale optimization challenge, instead of directly solving (7) , we realize optimism and pessimism through a novel adaptation of the recent softmax policy technique for linear CMDPs [18, 16], combined with the πsf deployment technique from Section 2. 
+
+3.2 Algorithm and Analysis 
+
+We summarize the proposed OPSE-LCMDP in Algorithm 2 and analyze it under the parameters in its Input line. All formal theorems and proofs in this section are in Appendix E. A key component of our algorithm is the composite softmax policy , which balances optimism and pessimism via λ ≥ 0:
+
+> 8
+
+Increasing Cr and clip-threshold could offer similar compensation, but separated values simplify analysis. 
+
+7Definition 3 (Composite softmax policy) . For λ ≥ 0, κ > 0, let π(k),λ ∈ Π be a policy such that 
+
+π(k),λ h (· | s) = SoftMax 
+
+ 1
+
+κ
+
+
+
+Qπ(k),λ ,† 
+
+> (k),h
+
+(s, ·) + Qπ(k),λ ,r  
+
+> (k),h
+
+[κ]( s, ·) + λQ π(k),λ ,u  
+
+> (k),h
+
+(s, ·)
+
+ 
+
+.
+
+π(k),λ can be computed iteratively in a backward manner for h = H, . . . , 1. For this π(k),λ , using the Lipschitz continuity of SoftMax( ·) (see Ghosh et al. [16]), the following confidence bounds hold: 
+
+Lemma 4 (Confidence bounds) . For any (k, h ), λ ∈ [0 , C λ], π ∈ { π(k),λ , π sf }, w.p. at least 1 − δ,
+
+V π,r P,h ≤ V π,r  
+
+> (k),h
+
+≤ V π,r +2 Cr β(k) 
+
+> P,h
+
+, V π,B †β(k) 
+
+> P,h
+
+≤ V π, † 
+
+> (k),h
+
+≤ V π, (B†+2 C†)β(k) 
+
+> P,h
+
+, V π,u −2Cuβ(k) 
+
+> P,h
+
+≤ V π,u  
+
+> (k),h
+
+≤ V π,u P,h .
+
+Using Lemma 4, analogous to Section 2.2.1, we next establish the zero-violation guarantee. 
+
+3.2.1 Zero-Violation and Logarithmic Number of πsf Deployments 
+
+In the softmax policy (Definition 3), λ balances optimism and pessimism: a small λ promotes exploration, while a large λ prioritizes constraint satisfaction. Building on this, Algorithm 2 conducts a bisection search to find the smallest feasible λ while ensuring the pessimistic constraint holds (Line 4 to Line 10). If a large λ = Cλ fails to satisfy the constraint, the algorithm assumes no feasible pessimistic policy exists and deploys πsf (Line 3). Since the softmax policy is only deployed for λ satisfying V π(k),λ ,u  
+
+> (k),1
+
+(s1) ≥ b, Lemma 4 implies the following zero-violation guarantees: 
+
+Corollary 2 (Zero-violation) . W.p. at least 1 − δ, Algorithm 2 satisfies π(k) ∈ Πsf for any k.
+
+Next, we bound the number of πsf deployments to achieve sublinear regret. To this end, similar to the bandit warm-up (Section 2), we relate πsf deployment to πsf uncertainty level and logarithmically bound the number of uncertain iterations. The following Lemma 5 ensures that, if Algorithm 2 is confident in πsf and runs with appropriate Cλ and κ, then πsf is not deployed. 
+
+Definition 4 (πsf unconfident iterations) . Let U be the iterations when Algorithm 2 is unconfident in 
+
+πsf , i.e., U := {k ∈ J1, K K | V πsf ,β (k) 
+
+> P, 1
+
+(s1) > ξ 
+
+> 4Cu
+
+}. Let U∁ := J1, K K \ U be its complement. 
+
+Lemma 5 (Implicit πsf deployment trigger) . When Cλ ≥ 8H2 
+
+> κ(B†+1)
+> ξ
+
+and κ ≤ ξ2 
+
+> 32 H2
+> κ(B†+1)
+
+, then w.p. at least 1 − δ, it holds that V π(k),C λ ,u  
+
+> (k),1
+
+(s1) ≥ b for all k ∈ U ∁.
+
+Essentially, the proof of Lemma 5 relies on the following monotonic property of the value function for the softmax policy: if the value estimation is exact, increasing λ monotonically improves safety. 
+
+Lemma 6 (Softmax value monotonicity) . For λ ≥ 0, let πλ be a softmax policy such that πλh (· | 
+
+s) = SoftMax( 1 
+
+> κ
+
+(Qπ,r P,h [κ]( s, ·) + λQ π,u P,h (s, ·))) . Then, V πλ,u P, 1 (s1) is monotonically increasing in λ.
+
+While the true value function enjoys this monotonicity, the estimated value V π(k),λ ,u  
+
+> (k),1
+
+(s1) may not, as bP (k) 
+
+> h
+
+V can take negative values even when V is positive. This complicates the proof of Lemma 5. To address this, we leverage Lemma 4, which sandwiches the estimated values by some true values. We prove Lemma 5 by showing that, for sufficiently large Cλ, any sandwiched value satisfies the constraint under pessimism, implying that the estimated value also satisfies it. This novel result enables bisection search to adjust λ, making OPSE-LCMDP more computationally efficient than Ghosh et al. [18]. The detailed proofs of Lemmas 5 and 6 are provided in Appendix E.4.1. Finally, the following theorem ensures that the number of πsf deployment scales logarithmic to K,as in Theorem 1. The proof follows from extending the bandit’s proof of Theorem 1 to CMDPs. 
+
+Theorem 3 (Logarithmic |U| bound) . It holds w.p. at least 1 − δ that |U| ≤ O  d3H4ξ−2 ln KHδ −1.
+
+3.2.2 Regret Analysis 
+
+The remaining task is to ensure sublinear regret. By Theorem 3 and Lemma 4, the regret is decomposed as: 
+
+Regret( K) ≤ eO
+
+ d3H4
+
+ξ2
+
+
+
++ X
+
+> k∈U ∁
+
+V π(k),2Cr β(k) 
+
+> P, 1
+
+(s1)
+
+1
+
++ X
+
+> k∈U ∁
+
+
+
+V π⋆,r P, 1 (s1) − V π(k),r  
+
+> (k),1
+
+[κ]( s1)
+
+
+
+2
+
++ κKH ln A , 
+
+8where the last term arises from the entropy regularization ( V π,r P, 1 (s1)[ κ] − V π,r P, 1 (s1) ≤ κH ln A). Using the elliptical potential lemma for linear MDPs [23], we obtain 1 ≤ eO(Cr H√dK ).We now bound 2 . Note that for any k ∈ U ∁, due to Lemma 5, π(k) is the softmax policy by Line 10. To bound 2 , following a similar approach to Lemma 3 in the bandit, we replace π⋆ with a mixture policy that satisfies the pessimistic constraint. To this end, we utilize the following lemmas. 
+
+Definition 5 (Mixture policy) . For α ∈ [0 , 1] , let πα be a mixture policy such that, for any h,
+
+wπα 
+
+> P,h
+
+= (1 − α)wπsf  
+
+> P,h
+
++ αw π⋆
+
+> P,h
+
+. Such a πα is ensured to exists for any α ∈ [0 , 1] [7]. 
+
+Lemma 7 (Safe and optimistic mixture policy) . Let α(k) := ξξ+2 V π⋆,2Cuβ (k) 
+
+> P, 1(s1)
+
+. If B† ≥ 4CuHξ , then for any k ∈ U ∁, it holds ( i) V πα(k) 
+
+> ,u −2Cuβ(k)
+> P, 1
+
+(s1) ≥ b and ( ii ) V πα(k) 
+
+> ,r +B†β(k)
+> P, 1
+
+(s1) ≥ V π⋆,r P, 1 (s1).
+
+We note that the mixture policy πα(k)
+
+is introduced only for the regret analysis; it is not required in the actual algorithm. Since λ(k,T ) is chosen to satisfy V π(k),u  
+
+> (k),1
+
+(s1) < b and b ≤ V πα(k) 
+
+> ,u −2Cuβ(k)
+> P, 1
+
+(s1)
+
+holds by Lemma 7, 
+
+2 ≤ P
+
+> k∈U ∁
+
+
+
+V πα(k) ,B †β(k) 
+
+> P, 1
+
+(s1) + V πα(k) ,r P, 1 [κ]( s1) + λ(k,T )V πα(k) ,u −2Cuβ(k) 
+
+> P, 1
+
+(s1)
+
+−V π(k),† 
+
+> (k),1
+
+(s1) − V π(k),r  
+
+> (k),1
+
+[κ]( s1) − λ(k,T )V π(k),u  
+
+> (k),1
+
+(s1)
+
+ 3
+
++P 
+
+> k∈U ∁
+
+V π(k),† 
+
+> (k),1
+
+(s1) 4 + Cλ
+
+P
+
+> k∈U ∁
+
+
+
+V π(k),λ (k,T ) ,u  
+
+> (k),1
+
+(s1) − V π(k),λ (k,T ) ,u  
+
+> (k),1
+
+(s1)
+
+
+
+5
+
+.
+
+Using Lemma 4, similar to 1 , we have 4 ≤ eO
+
+
+
+(B† + C†)H√dK 
+
+
+
+. The term 5 is controlled by the bisection search width ( λ(k,T ) − λ(k,T )) and the following sensitivity of V π(k),λ ,u  
+
+> (k),1
+
+(s1) to λ.
+
+Lemma 8. For any k and λ ∈ [0 , C λ], we have V π(k),λ ,u  
+
+> (k),1
+
+(s1) − V π(k),λ +ε,u  
+
+> (k),1
+
+(s1) ≤ O  (KH )H ε
+
+Ghosh et al. [18] also derived a similar exponential bound (see their Appendix C). Due to the update rule of the bisection search, setting the search iteration to T = eO(H) ensures that 5 ≤ eO(1) .For 3 , using a modification of the so-called value-difference lemma [40], we have 3 = P 
+
+> k∈U ∁
+
+V πα(k)  
+
+> ,f 1
+> P, 1
+
+(s1) − V πα(k)  
+
+> ,f 2
+> P, 1
+
+(s1) − λ(k,T )V πα(k) 
+
+> ,2Cuβ(k)
+> P, 1
+
+(s1) , (8) where f 1, f 2 : J1, H K × S × A → R are functions such that, for any h,          
+
+> f1
+> h=
+> 
+> πα(k)
+> h−π(k)
+> h
+> 
+> Qπ(k),†
+> (k),h +Qπ(k),r
+> (k),h [κ]+ λ(k)Qπ(k),u
+> (k),h
+> 
+> −κπ α(k)
+> hln πα(k)
+> h+κπ (k)
+> hln π(k)
+> h
+
+and f 2       
+
+> h=
+> 
+> Qπ(k),r
+> (k),h [κ]−rh−PhVπ(k),r
+> (k),h +1 [κ]
+> 
+> +λ(k,T )
+> 
+> uh+PhVπ(k),u
+> (k),h +1 −Qπ(k),u
+> (k),h
+> 
+> +
+> 
+> Qπ(k),†
+> (k),h −B†β(k)−PhVπ(k),†
+> (k),h +1
+> 
+> .
+
+Our use of the softmax policy with entropy regularization is crucial for bounding 3 . Since the analytical maximizer of the regularized optimization max π∈P(A)
+
+P 
+
+> a∈A
+
+π(a)( x(a) − κ ln π(a)) 
+
+is given by SoftMax   1 
+
+> κ
+
+x(·), it follows that f 1 is non-positive, implying V πα(k)  
+
+> ,f 1
+> P, 1
+
+(s1) ≤ 0.Additionally, applying Lemma 4, we derive f 2 
+
+> h
+
+≥ − λ(k,T )2Cuβ(k) 
+
+> h
+
+, which leads to −V πα(k)  
+
+> ,f 2
+> P, 1
+
+(s1)−
+
+λ(k,T )V πα(k) 
+
+> ,2Cuβ(k)
+> P, 1
+
+(s1) ≤ 0. By substituting these bounds into Equation (8), we obtain 3 ≤ 0.By combining all the results, Algorithm 2 achieves the following guarantees: 
+
+Theorem 4. If OPSE-LCMDP is run with the parameters listed in its Input line, w.p. at least 1 − δ,
+
+π(k) ∈ Πsf ∀k ∈ J1, K K and Regret( K) ≤ eO(H2√d3K) (i) + eO(d3H4ξ−2) (ii) + eO(H4ξ−1√d5K) (iii) .
+
+Notably, Theorem 4 is the first linear CMDP result achieving zero episode-wise constraint violations and sublinear regret. We conclude this section by discussing the regret bound quality and computational cost of OPSE-LCMDP. 9Remark 1 (Can we do better?) . Without the constraint—i.e., removing ( ii ) and ( iii )—our bound matches the eO(H2√d3K) regret of the fundamental LSVI-UCB algorithm [ 23 ]. The ξ−2 term in ( ii )is unavoidable [ 32 ]. The ξ−1 dependence in ( iii ) remains unresolved, yet appears in all the existing safe RL literature [ 27 , 8, 47 , 36 , 3, 32 , 22 ]. These observations suggest that the bound is tight in ξ−1 and K.As for d and H, the term ( iii ) introduces an extra dH 2 factor over ( i). Similar deterioration has been observed in tabular CMDPs [27, 42] and partially mitigated via Bernstein-type bonus analysis [47]. While improvement may be possible, it is unclear whether our √d5H8 dependence is overly loose when compared with existing CMDP regret bounds (e.g., √d3H4 by Ghosh et al. [18] ), since none of the existing results achieve episode-wise safe exploration. In general, regret or sample complexity bounds under different safety requirements are not directly comparable, even if the problem settings appear similar. For example, Vaswani et al. [42] shows that the sample complexity lower bound for tabular CMDPs exhibits a worse dependence on the horizon under a strict safe policy requirement than when small violations are allowed. Establishing a formal regret lower bound for our setting would be necessary to assess the tightness of our result, but this is beyond the scope of the current paper. 
+
+Remark 2 (Computational cost) . Algorithm 2 requires up to T value evaluations (Definition 2) and policy computation (Definition 3). Using the bisection search, we bound T = eO(H), reducing the computational cost per-iteration to eO(H × [value & policy comp.] ). As this cost scales polynomially with A, H, and d [ 28 ], OPSE-LCMDP runs in polynomial time —an improvement over recent Ghosh et al. [18], which achieves eO(√K) violation regret but incurs an exponential KH cost. 
+
+## 4 Conclusion 
+
+This paper proposed OPSE-LCMDP, the first RL algorithm achieving both sublinear regret and episode-wise constraint satisfaction in linear CMDPs (Theorem 4). Our approach builds on optimistic-pessimistic exploration with two key innovations: ( i) a novel deployment rule for πsf and ( ii ) a softmax-based approach for efficiently implementing optimistic-pessimistic policies in linear CMDPs. 
+
+Experiments. We numerically evaluate OPSE-LCMDP on several linear CMDP environments to support our theoretical results. We compare OPSE-LCMDP with the prior state-of-the-art linear CMDP algorithm of Ghosh et al. [18] and the tabular algorithm called DOPE [ 8 ]. Across all environments, OPSE-LCMDP achieves sublinear regret with zero constraint violation, while Ghosh et al. [18] shows positive violation regret. These results empirically validate Theorem 4. While DOPE also achieves zero violation, its use is limited to the tabular settings where S is small. This highlights the computational tractability of our OPSE-LCMDP in large S, which supports Remark 2. All the results and details are deferred to Appendix F. 
+
+Limitation and future work. OPSE-LCMDP achieves computational efficiency by the bisection search over λ ∈ [0 , C λ], which works in the single-constraint setting thanks to the monotonicity in Lemma 6. However, extending our method to the multi-constraint setting is non-trivial, as λ becomes a vector, requiring a vectorized version of the monotonicity lemma. Nonetheless, all theoretical results in Table 1 are also limited to single-constraint settings, meaning our work still advances the state of the art in safety. An efficient and safe algorithm for multi-constraint settings remains open for future work. Another future direction is to extend the analysis to adversarial initial states s1. This extension is non-trivial, as our core techniques rely on the fixed-state assumption. For example, we control the number of safe policy deployments by evaluating the bonus-return function V πsf ,β (k) 
+
+> P, 1
+
+(s1) (Definition 4), which explicitly depends on s1. The bound on the number of πsf deployments (Theorem 3) and the existence of optimistic–pessimistic policies (Lemma 7) also depend on this initial state. Extending these anal-yses to handle adversarial s1 would entail non-trivial technical challenges and is left for future work. 
+
+## Acknowledgments and Disclosure of Funding 
+
+This work is supported by JST Moonshot R&D Program Grant Number JPMJMS2236. AG acknowl-edges NJIT Start-up fund indexed number 172884. 10 References 
+
+[1] Yasin Abbasi-Yadkori, Dávid Pál, and Csaba Szepesvári. Improved Algorithms for Linear Stochastic Bandits. In Advances in Neural Information Processing Systems , 2011. [2] Eitan Altman. Constrained Markov Decision Processes , volume 7. CRC Press, 1999. [3] Sanae Amani, Mahnoosh Alizadeh, and Christos Thrampoulidis. Linear Stochastic Bandits under Safety Constraints. In Advances in Neural Information Processing Systems , 2019. [4] Sanae Amani, Christos Thrampoulidis, and Lin Yang. Safe Reinforcement Learning with Linear Function Approximation. In International Conference on Machine Learning , 2021. [5] Joan Bas-Serrano, Sebastian Curi, Andreas Krause, and Gergely Neu. Logistic Q-Learning. In 
+
+International conference on artificial intelligence and statistics , 2021. [6] Dimitri P Bertsekas. Nonlinear Programming. Journal of the Operational Research Society , 48 (3):334–334, 1997. [7] Vivek S Borkar. A Convex Analytic Approach to Markov Decision Processes. Probability Theory and Related Fields , 78(4):583–602, 1988. [8] Archana Bura, Aria HasanzadeZonuzy, Dileep Kalathil, Srinivas Shakkottai, and Jean-Francois Chamberland. DOPE: Doubly Optimistic and Pessimistic Exploration for Safe Reinforcement Learning. In Advances in Neural Information Processing Systems , 2022. [9] Christoph Dann, Tor Lattimore, and Emma Brunskill. Unifying PAC and Regret: Uniform PAC Bounds for Episodic Reinforcement Learning. In Advances in Neural Information Processing Systems , 2017. [10] Dongsheng Ding, Xiaohan Wei, Zhuoran Yang, Zhaoran Wang, and Mihailo Jovanovic. Provably Efficient Safe Exploration via Primal-Dual Policy Optimization. In International Conference on Artificial Intelligence and Statistics , 2021. [11] Dongsheng Ding, Chen-Yu Wei, Kaiqing Zhang, and Alejandro Ribeiro. Last-Iterate Conver-gent Policy Gradient Primal-Dual Methods for Constrained MDPs. In Advances in Neural Information Processing Systems , 2024. [12] Supriyo Dutta and Shigeru Furuichi. On Log-Sum Inequalities. Linear and Multilinear Algebra ,72(5):812–827, 2024. [13] Yonathan Efroni, Shie Mannor, and Matteo Pirotta. Exploration-Exploitation in Constrained MDPs. arXiv preprint arXiv:2003.02189 , 2020. [14] Germano Gabbianelli, Gergely Neu, Matteo Papini, and Nneka M Okolo. Offline Primal-Dual Reinforcement Learning for Linear Mdps. In International Conference on Artificial Intelligence and Statistics , 2024. [15] Matthieu Geist, Bruno Scherrer, and Olivier Pietquin. A Theory of Regularized Markov Decision Processes. In International Conference on Machine Learning , 2019. [16] Arnob Ghosh, Xingyu Zhou, and Ness Shroff. Provably Efficient Model-Free Constrained RL with Linear Function Approximation. In Advances in Neural Information Processing Systems ,2022. [17] Arnob Ghosh, Xingyu Zhou, and Ness Shroff. Achieving Sub-linear Regret in Infinite Horizon Average Reward Constrained MDP with Linear Function Approximation. In International Conference on Learning Representations , 2023. [18] Arnob Ghosh, Xingyu Zhou, and Ness Shroff. Towards Achieving Sub-linear Regret and Hard Constraint Violation in Model-free RL. In International Conference on Artificial Intelligence and Statistics , 2024. [19] Shangding Gu, Long Yang, Yali Du, Guang Chen, Florian Walter, Jun Wang, Yaodong Yang, and Alois Knoll. A Review of Safe Reinforcement Learning: Methods, Theory and Applications. 
+
+arXiv preprint arXiv:2205.10330 , 2022. 11 [20] Aria HasanzadeZonuzy, Archana Bura, Dileep Kalathil, and Srinivas Shakkottai. Learning with Safety Constraints: Sample Complexity of Reinforcement Learning for Constrained MDPs. In 
+
+AAAI Conference on Artificial Intelligence , 2021. [21] Jiafan He, Dongruo Zhou, and Quanquan Gu. Uniform-PAC Bounds for Reinforcement Learning with Linear Function Approximation. In Advances in Neural Information Processing Systems ,2021. [22] Spencer Hutchinson, Berkay Turan, and Mahnoosh Alizadeh. Directional Optimism for Safe Linear Bandits. In International Conference on Artificial Intelligence and Statistics , 2024. [23] Chi Jin, Zhuoran Yang, Zhaoran Wang, and Michael I Jordan. Provably Efficient Reinforcement Learning with Linear Function Approximation. In Conference on Learning Theory , 2020. [24] Toshinori Kitamura, Tadashi Kozuno, Masahiro Kato, Yuki Ichihara, Soichiro Nishimori, Akiyoshi Sannai, Sho Sonoda, Wataru Kumagai, and Yutaka Matsuo. A Policy Gradient Primal-Dual Algorithm for Constrained MDPs with Uniform PAC Guarantees. arXiv preprint arXiv:2401.17780 , 2024. [25] Chandrashekar Lakshminarayanan, Shalabh Bhatnagar, and Csaba Szepesvári. A Linearly Relaxed Approximate Linear Program for Markov Decision Processes. IEEE Transactions on Automatic control , 63(4):1185–1191, 2017. [26] Tor Lattimore and Csaba Szepesvari. Bandit Algorithms . Cambridge University Press, 1st edition, 2020. [27] Tao Liu, Ruida Zhou, Dileep Kalathil, Panganamala Kumar, and Chao Tian. Learning Policies with Zero or Bounded Constraint Violation for Constrained MDPs. In Advances in Neural Information Processing Systems , 2021. [28] Thodoris Lykouris, Max Simchowitz, Alex Slivkins, and Wen Sun. Corruption-Robust Explo-ration in Episodic Reinforcement Learning. In Conference on Learning Theory , 2021. [29] Adrian Müller, Pragnya Alatur, Volkan Cevher, Giorgia Ramponi, and Niao He. Truly No-Regret Learning in Constrained MDPs. In International Conference on Machine Learning ,2024. [30] Gergely Neu and Nneka Okolo. Efficient Global Planning in Large MDPs via Stochastic Primal-Dual Optimization. In International Conference on Algorithmic Learning Theory , 2023. [31] Gergely Neu and Ciara Pike-Burke. A Unifying View of Optimism in Episodic Reinforcement Learning. In Advances in Neural Information Processing Systems , 2020. [32] Aldo Pacchiano, Mohammad Ghavamzadeh, Peter Bartlett, and Heinrich Jiang. Stochastic Bandits with Linear Constraints. In International Conference on Artificial Intelligence and Statistics , 2021. [33] Aldo Pacchiano, Mohammad Ghavamzadeh, and Peter Bartlett. Contextual Bandits with Stage-wise Constraints. arXiv preprint arXiv:2401.08016 , 2024. [34] Santiago Paternain, Luiz Chamon, Miguel Calvo-Fullana, and Alejandro Ribeiro. Constrained Reinforcement Learning Has Zero Duality Gap. In Advances in Neural Information Processing Systems , 2019. [35] Martin L Puterman. Markov Decision Processes: Discrete Stochastic Dynamic Programming .John Wiley & Sons, Inc., 1994. [36] Amirhossein Roknilamouki, Arnob Ghosh, Ming Shi, Fatemeh Nourzad, Eylem Ekici, and Ness B Shroff. Provably Efficient RL for Linear MDPs under Instantaneous Safety Constraints in Non-Convex Feature Spaces. arXiv preprint arXiv:2502.18655 , 2025. [37] Aviv Rosenberg, Alon Cohen, Yishay Mansour, and Haim Kaplan. Near-Optimal Regret Bounds for Stochastic Shortest Path. In International Conference on Machine Learning , 2020. 12 [38] Igal Sason and Sergio Verdú. f -divergence Inequalities. IEEE Transactions on Information Theory , 62(11):5973–6006, 2016. [39] Shai Shalev-Shwartz and Shai Ben-David. Understanding Machine Learning: From Theory to Algorithms . Cambridge University Press, 2014. [40] Lior Shani, Yonathan Efroni, Aviv Rosenberg, and Shie Mannor. Optimistic Policy Optimization with Bandit Feedback. In International Conference on Machine Learning , 2020. [41] Ming Shi, Yingbin Liang, and Ness Shroff. A Near-Optimal Algorithm for Safe Reinforcement Learning under Instantaneous Hard Constraints. In International Conference on Machine Learning , 2023. [42] Sharan Vaswani, Lin Yang, and Csaba Szepesvári. Near-Optimal Sample Complexity Bounds for Constrained MDPs. In Advances in Neural Information Processing Systems , 2022. [43] Roman Vershynin. Introduction to the Non-Asymptotic Analysis of Random Matrices. arXiv preprint arXiv:1011.3027 , 2010. [44] Honghao Wei, Xin Liu, and Lei Ying. A Provably-Efficient Model-Free Algorithm for Con-strained Markov Decision Processes. arXiv preprint arXiv:2106.01577 , 2021. [45] Honghao Wei, Xin Liu, and Lei Ying. A Provably-Efficient Model-Free Algorithm for Infinite-Horizon Average-Reward Constrained Markov Decision Processes. In AAAI Conference on Artificial Intelligence , 2022. [46] Donghao Ying, Yuhao Ding, and Javad Lavaei. A Dual Approach to Constrained Markov Decision Processes with Entropy Regularization. In International Conference on Artificial Intelligence and Statistics , 2022. [47] Kihyun Yu, Duksang Lee, William Overman, and Dabeen Lee. Improved Regret Bound for Safe Reinforcement Learning via Tighter Cost Pessimism and Reward Optimism. arXiv preprint arXiv:2410.10158 , 2024. [48] Andrea Zanette, David Brandfonbrener, Emma Brunskill, Matteo Pirotta, and Alessandro Lazaric. Frequentist Regret Bounds for Randomized Least-Squares Value Iteration. In Interna-tional Conference on Artificial Intelligence and Statistics , 2020. [49] Sihan Zeng, Thinh T Doan, and Justin Romberg. Finite-Time Complexity of Online Primal-Dual Natural Actor-Critic Algorithm for Constrained Markov Decision Processes. In Conference on Decision and Control , 2022. [50] Weitong Zhang, Jiafan He, Zhiyuan Fan, and Quanquan Gu. On the Interplay Between Misspecification and Sub-Optimality Gap in Linear Contextual Bandits. In International Conference on Machine Learning , 2023. 13 NeurIPS Paper Checklist 
+
+1. Claims 
+
+Question: Do the main claims made in the abstract and introduction accurately reflect the paper’s contributions and scope? Answer: [Yes] Justification: Theorem 4, Table 1, and Remark 2 Guidelines: • The answer NA means that the abstract and introduction do not include the claims made in the paper. • The abstract and/or introduction should clearly state the claims made, including the contributions made in the paper and important assumptions and limitations. A No or NA answer to this question will not be perceived well by the reviewers. • The claims made should match theoretical and experimental results, and reflect how much the results can be expected to generalize to other settings. • It is fine to include aspirational goals as motivation as long as it is clear that these goals are not attained by the paper. 2. Limitations 
+
+Question: Does the paper discuss the limitations of the work performed by the authors? Answer: [Yes] Justification: Section 4 Guidelines: • The answer NA means that the paper has no limitation while the answer No means that the paper has limitations, but those are not discussed in the paper. • The authors are encouraged to create a separate "Limitations" section in their paper. • The paper should point out any strong assumptions and how robust the results are to violations of these assumptions (e.g., independence assumptions, noiseless settings, model well-specification, asymptotic approximations only holding locally). The authors should reflect on how these assumptions might be violated in practice and what the implications would be. • The authors should reflect on the scope of the claims made, e.g., if the approach was only tested on a few datasets or with a few runs. In general, empirical results often depend on implicit assumptions, which should be articulated. • The authors should reflect on the factors that influence the performance of the approach. For example, a facial recognition algorithm may perform poorly when image resolution is low or images are taken in low lighting. Or a speech-to-text system might not be used reliably to provide closed captions for online lectures because it fails to handle technical jargon. • The authors should discuss the computational efficiency of the proposed algorithms and how they scale with dataset size. • If applicable, the authors should discuss possible limitations of their approach to address problems of privacy and fairness. • While the authors might fear that complete honesty about limitations might be used by reviewers as grounds for rejection, a worse outcome might be that reviewers discover limitations that aren’t acknowledged in the paper. The authors should use their best judgment and recognize that individual actions in favor of transparency play an impor-tant role in developing norms that preserve the integrity of the community. Reviewers will be specifically instructed to not penalize honesty concerning limitations. 3. Theory assumptions and proofs 
+
+Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof? Answer: [Yes] 14 Justification: Assumptions 2 and 3 and corresponding proofs in Appendix E Guidelines: • The answer NA means that the paper does not include theoretical results. • All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced. • All assumptions should be clearly stated or referenced in the statement of any theorems. • The proofs can either appear in the main paper or the supplemental material, but if they appear in the supplemental material, the authors are encouraged to provide a short proof sketch to provide intuition. • Inversely, any informal proof provided in the core of the paper should be complemented by formal proofs provided in appendix or supplemental material. • Theorems and Lemmas that the proof relies upon should be properly referenced. 4. Experimental result reproducibility 
+
+Question: Does the paper fully disclose all the information needed to reproduce the main ex-perimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)? Answer: [Yes] Justification: Implementation details in Appendix F and the submitted supplementary code. Guidelines: • The answer NA means that the paper does not include experiments. • If the paper includes experiments, a No answer to this question will not be perceived well by the reviewers: Making the paper reproducible is important, regardless of whether the code and data are provided or not. • If the contribution is a dataset and/or model, the authors should describe the steps taken to make their results reproducible or verifiable. • Depending on the contribution, reproducibility can be accomplished in various ways. For example, if the contribution is a novel architecture, describing the architecture fully might suffice, or if the contribution is a specific model and empirical evaluation, it may be necessary to either make it possible for others to replicate the model with the same dataset, or provide access to the model. In general. releasing code and data is often one good way to accomplish this, but reproducibility can also be provided via detailed instructions for how to replicate the results, access to a hosted model (e.g., in the case of a large language model), releasing of a model checkpoint, or other means that are appropriate to the research performed. • While NeurIPS does not require releasing code, the conference does require all submis-sions to provide some reasonable avenue for reproducibility, which may depend on the nature of the contribution. For example (a) If the contribution is primarily a new algorithm, the paper should make it clear how to reproduce that algorithm. (b) If the contribution is primarily a new model architecture, the paper should describe the architecture clearly and fully. (c) If the contribution is a new model (e.g., a large language model), then there should either be a way to access this model for reproducing the results or a way to reproduce the model (e.g., with an open-source dataset or instructions for how to construct the dataset). (d) We recognize that reproducibility may be tricky in some cases, in which case authors are welcome to describe the particular way they provide for reproducibility. In the case of closed-source models, it may be that access to the model is limited in some way (e.g., to registered users), but it should be possible for other researchers to have some path to reproducing or verifying the results. 5. Open access to data and code 
+
+Question: Does the paper provide open access to the data and code, with sufficient instruc-tions to faithfully reproduce the main experimental results, as described in supplemental material? 15 Answer: [Yes] Justification: We provide the experimental code as supplemental material. Guidelines: • The answer NA means that paper does not include experiments requiring code. • Please see the NeurIPS code and data submission guidelines ( https://nips.cc/ public/guides/CodeSubmissionPolicy ) for more details. • While we encourage the release of code and data, we understand that this might not be possible, so “No” is an acceptable answer. Papers cannot be rejected simply for not including code, unless this is central to the contribution (e.g., for a new open-source benchmark). • The instructions should contain the exact command and environment needed to run to reproduce the results. See the NeurIPS code and data submission guidelines ( https: //nips.cc/public/guides/CodeSubmissionPolicy ) for more details. • The authors should provide instructions on data access and preparation, including how to access the raw data, preprocessed data, intermediate data, and generated data, etc. • The authors should provide scripts to reproduce all experimental results for the new proposed method and baselines. If only a subset of experiments are reproducible, they should state which ones are omitted from the script and why. • At submission time, to preserve anonymity, the authors should release anonymized versions (if applicable). • Providing as much information as possible in supplemental material (appended to the paper) is recommended, but including URLs to data and code is permitted. 6. Experimental setting/details 
+
+Question: Does the paper specify all the training and test details (e.g., data splits, hyper-parameters, how they were chosen, type of optimizer, etc.) necessary to understand the results? Answer: [Yes] Justification: Implementation details in Appendix F. Guidelines: • The answer NA means that the paper does not include experiments. • The experimental setting should be presented in the core of the paper to a level of detail that is necessary to appreciate the results and make sense of them. • The full details can be provided either with the code, in appendix, or as supplemental material. 7. Experiment statistical significance 
+
+Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments? Answer: [Yes] Justification: Figure 1 Guidelines: • The answer NA means that the paper does not include experiments. • The authors should answer "Yes" if the results are accompanied by error bars, confi-dence intervals, or statistical significance tests, at least for the experiments that support the main claims of the paper. • The factors of variability that the error bars are capturing should be clearly stated (for example, train/test split, initialization, random drawing of some parameter, or overall run with given experimental conditions). • The method for calculating the error bars should be explained (closed form formula, call to a library function, bootstrap, etc.) • The assumptions made should be given (e.g., Normally distributed errors). • It should be clear whether the error bar is the standard deviation or the standard error of the mean. 16 • It is OK to report 1-sigma error bars, but one should state it. The authors should preferably report a 2-sigma error bar than state that they have a 96% CI, if the hypothesis of Normality of errors is not verified. • For asymmetric distributions, the authors should be careful not to show in tables or figures symmetric error bars that would yield results that are out of range (e.g. negative error rates). • If error bars are reported in tables or plots, The authors should explain in the text how they were calculated and reference the corresponding figures or tables in the text. 8. Experiments compute resources 
+
+Question: For each experiment, does the paper provide sufficient information on the com-puter resources (type of compute workers, memory, time of execution) needed to reproduce the experiments? Answer: [Yes] Justification: Appendix F Guidelines: • The answer NA means that the paper does not include experiments. • The paper should indicate the type of compute workers CPU or GPU, internal cluster, or cloud provider, including relevant memory and storage. • The paper should provide the amount of compute required for each of the individual experimental runs as well as estimate the total compute. • The paper should disclose whether the full research project required more compute than the experiments reported in the paper (e.g., preliminary or failed experiments that didn’t make it into the paper). 9. Code of ethics 
+
+Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines ?Answer: [Yes] Justification: No NeurIPS code of ethics were violated. Guidelines: • The answer NA means that the authors have not reviewed the NeurIPS Code of Ethics. • If the authors answer No, they should explain the special circumstances that require a deviation from the Code of Ethics. • The authors should make sure to preserve anonymity (e.g., if there is a special consid-eration due to laws or regulations in their jurisdiction). 10. Broader impacts 
+
+Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed? Answer: [NA] Justification: This work is a primarily theoretical study on the safe reinforcement learning. The social impact of this research is not likely to be significant. Guidelines: • The answer NA means that there is no societal impact of the work performed. • If the authors answer NA or No, they should explain why their work has no societal impact or why the paper does not address societal impact. • Examples of negative societal impacts include potential malicious or unintended uses (e.g., disinformation, generating fake profiles, surveillance), fairness considerations (e.g., deployment of technologies that could make decisions that unfairly impact specific groups), privacy considerations, and security considerations. 17 • The conference expects that many papers will be foundational research and not tied to particular applications, let alone deployments. However, if there is a direct path to any negative applications, the authors should point it out. For example, it is legitimate to point out that an improvement in the quality of generative models could be used to generate deepfakes for disinformation. On the other hand, it is not needed to point out that a generic algorithm for optimizing neural networks could enable people to train models that generate Deepfakes faster. • The authors should consider possible harms that could arise when the technology is being used as intended and functioning correctly, harms that could arise when the technology is being used as intended but gives incorrect results, and harms following from (intentional or unintentional) misuse of the technology. • If there are negative societal impacts, the authors could also discuss possible mitigation strategies (e.g., gated release of models, providing defenses in addition to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system learns from feedback over time, improving the efficiency and accessibility of ML). 11. Safeguards 
+
+Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pretrained language models, image generators, or scraped datasets)? Answer: [NA] Justification: No model or data is released. Guidelines: • The answer NA means that the paper poses no such risks. • Released models that have a high risk for misuse or dual-use should be released with necessary safeguards to allow for controlled use of the model, for example by requiring that users adhere to usage guidelines or restrictions to access the model or implementing safety filters. • Datasets that have been scraped from the Internet could pose safety risks. The authors should describe how they avoided releasing unsafe images. • We recognize that providing effective safeguards is challenging, and many papers do not require this, but we encourage authors to take this into account and make a best faith effort. 12. Licenses for existing assets 
+
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected? Answer: [NA] Justification: We do not use any existing code assets, except for standard Python libraries (e.g., NumPy). Guidelines: • The answer NA means that the paper does not use existing assets. • The authors should cite the original paper that produced the code package or dataset. • The authors should state which version of the asset is used and, if possible, include a URL. • The name of the license (e.g., CC-BY 4.0) should be included for each asset. • For scraped data from a particular source (e.g., website), the copyright and terms of service of that source should be provided. • If assets are released, the license, copyright information, and terms of use in the package should be provided. For popular datasets, paperswithcode.com/datasets has curated licenses for some datasets. Their licensing guide can help determine the license of a dataset. • For existing datasets that are re-packaged, both the original license and the license of the derived asset (if it has changed) should be provided. 18 • If this information is not available online, the authors are encouraged to reach out to the asset’s creators. 13. New assets 
+
+Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets? Answer: [NA] Justification: We do not release new assets. Guidelines: • The answer NA means that the paper does not release new assets. • Researchers should communicate the details of the dataset/code/model as part of their submissions via structured templates. This includes details about training, license, limitations, etc. • The paper should discuss whether and how consent was obtained from people whose asset is used. • At submission time, remember to anonymize your assets (if applicable). You can either create an anonymized URL or include an anonymized zip file. 14. Crowdsourcing and research with human subjects 
+
+Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)? Answer: [NA] Justification: No crowdsourcing or research with human subjects. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Including this information in the supplemental material is fine, but if the main contribu-tion of the paper involves human subjects, then as much detail as possible should be included in the main paper. • According to the NeurIPS Code of Ethics, workers involved in data collection, curation, or other labor should be paid at least the minimum wage in the country of the data collector. 15. Institutional review board (IRB) approvals or equivalent for research with human subjects 
+
+Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained? Answer: [NA] Justification: No crowdsourcing or research with human subjects. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Depending on the country in which research is conducted, IRB approval (or equivalent) may be required for any human subjects research. If you obtained IRB approval, you should clearly state this in the paper. • We recognize that the procedures for this may vary significantly between institutions and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the guidelines for their institution. • For initial submissions, do not include any information that would break anonymity (if applicable), such as the institution conducting the review. 16. Declaration of LLM usage 
+
+19 Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does not impact the core methodology, scientific rigorousness, or originality of the research, declaration is not required. Answer: [NA] Justification: The core of this research is unrelated to LLMs. Guidelines: • The answer NA means that the core method development in this research does not involve LLMs as any important, original, or non-standard components. • Please refer to our LLM policy ( https://neurips.cc/Conferences/2025/ LLM ) for what should or should not be described. 20 Contents 
+
+1 Introduction 12 Warm Up: Safe Exploration in Linear Constrained Bandit 3
+
+2.1 Technical Challenge: Zero-Violation with a Safe Policy . . . . . . . . . . . . . . . 32.2 Algorithm and Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32.2.1 Zero-Violation and Logarithmic Number of πsf Deployments . . . . . . . 42.2.2 Regret Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+
+3 Safe Reinforcement Learning in Linear Constrained MDP 5
+
+3.1 Technical Challenge: Optimistic-Pessimistic Optimization in Linear CMDP . . . . 63.2 Algorithm and Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 73.2.1 Zero-Violation and Logarithmic Number of πsf Deployments . . . . . . . 83.2.2 Regret Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+
+4 Conclusion 10 A List of Symbols 22 B Related Work 24 
+
+B.1 Related Algorithms . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 B.2 Related Safety Types . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 
+
+C Useful Lemmas 25 D Regret Analysis (Linear Constrained Bandit) 28 E Regret Analysis (Linear CMDP) 30 
+
+E.1 Definitions and Useful Lemmas . . . . . . . . . . . . . . . . . . . . . . . . . . . 30 E.2 Function Classes and Covering Argument . . . . . . . . . . . . . . . . . . . . . . 32 E.3 Good Events and Value Confidence Bounds for Lemma 4 Proof . . . . . . . . . . 36 E.4 Proofs for Zero-Violation Guarantee (Section 3.2.1) . . . . . . . . . . . . . . . . . 38 E.4.1 Proof of Lemma 5 and Lemma 6 . . . . . . . . . . . . . . . . . . . . . . . 38 E.4.2 Proof of Theorem 3 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 41 E.5 Proofs for Sublinear Regret Guarantee (Section 3.2.2) . . . . . . . . . . . . . . . . 42 E.5.1 Mixture Policy Decomposition . . . . . . . . . . . . . . . . . . . . . . . . 42 E.5.2 Optimistic Bounds . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 43 E.5.3 Bounds for Bisection Search . . . . . . . . . . . . . . . . . . . . . . . . . 44 E.5.4 Proof of Theorem 4 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 46 
+
+F Numerical Experiments 47 
+
+21 A List of Symbols 
+
+The next list describes several symbols used within this paper. 
+
+Mathematical Notations 
+
+P(S) Set of probability distributions over a set S
+
+Ja, b K Set of integers defined by {a, . . . , b }
+
+clip {x, a, b } Clipping function which returns x′ with x′ 
+
+> i
+
+= min {max {xi, a }, b } for each i
+
+0, 1 Vectors such that 0 := (0 , . . . , 0) ⊤ and 1 := (1 , . . . , 1) ⊤
+
+∥x∥A For a positive definite matrix A ∈ Rd×d and x ∈ Rd, we denote ∥x∥A = √x⊤Ax 
+
+an = O (bn) There exist constants C > 0 and N ∈ N such that an ≤ Cb n for all n ≥ N
+
+eO(·) Hide the polylogarithmic factors from O(·)SoftMax( x) Softmax distribution satisfying SoftMax( x)i = exp( xi)/(P 
+
+> i
+
+exp( xi)) dist ∞ Distance metric for two functions Q, Q ′ : S × A → R or V, V ′ : S → R (see Definition 7) 
+
+dist 1 Distance metric for two functions π, π ′ : S → P(A) (see Definition 7) 
+
+Constrained Bandit 
+
+A ⊂ Rd Set of actions 
+
+K Round length of the bandit problem 
+
+r(k), u (k) Reward and utility at k-th round 
+
+θr , θu ∈ Rd Unknown vectors for reward and utility 
+
+εr , ε u R-sub-Gaussian random noises 
+
+rπ , u π gπ = Ea∼π [⟨θg , a⟩] for both g ∈ { r, u }
+
+Πsf Set of safe policies {π | uπ ≥ b}
+
+πsf Safe policy 
+
+ξ > 0 Safety of πsf such that uπsf − b ≥ ξ
+
+Λ(k) Gram matrix defined by Λ(k) := ρI + Pk−1 
+
+> i=1
+
+a(i)(a(i))⊤
+
+bθ(k) 
+
+> r
+
+, bθ(k) 
+
+> u
+
+Estimates of θr and θu
+
+β(k) 
+
+> π
+
+Bonus function 
+
+Cr , C u Bonus scalers for reward and utility, respectively 
+
+U Set of iterations when Algorithm 1 is unconfident in πsf (see Definition 1) 
+
+Constrained MDP 
+
+K Number of episodes of the CMDP problem 
+
+H Horizon 
+
+S, A State space and action spaces 
+
+P Transition kernel 
+
+r, u Reward and utility functions 
+
+s1 Initial state 
+
+V π,g P,h [κ] Regularized state value function for a reward function g with an entropy coefficient κQπ,g P,h [κ] Regularized action value function for a reward function g with an entropy coefficient κhκ Shorthand of h(1 + κ ln A)
+
+wπP,h Occupancy measure of π in P at step h
+
+22 ϕ : S × A → Rd Feature map of the linear CMDP (see Assumption 2) 
+
+μh d-signed measures specifying the transition probabilities (see Assumption 2) 
+
+θrh, θur ∈ Rd Known vectors specifying the reward and utilitiy functions (see Assumption 2) 
+
+Πsf Set of safe policies {π | V π,u P, 1 (s1) ≥ b}
+
+πsf Safe policy 
+
+ξ > 0 Safety of πsf such that V π,u P, 1 (πsf ) − b ≥ ξ
+
+Λ(k) 
+
+> h
+
+Gram matrix defined by Λ(k) 
+
+> h
+
+:= ρI + Pk−1 
+
+> i=1
+
+ϕ(s(i) 
+
+> h
+
+, a (i) 
+
+> h
+
+)ϕ(s(i) 
+
+> h
+
+, a (i) 
+
+> h
+
+)⊤
+
+bP (k) 
+
+> h
+
+V Next value estimation: ( bP (k) 
+
+> h
+
+V )( s, a ) := ϕ(s, a )⊤(Λ(k) 
+
+> h
+
+)−1 Pk−1 
+
+> i=1
+
+ϕ(s(i) 
+
+> h
+
+, a (i) 
+
+> h
+
+)V (s(i)
+
+> h+1
+
+)
+
+Qπ,r 
+
+> (k),h
+
+[κ], Q π,u 
+
+> (k),h
+
+, Q π, † 
+
+> (k),h
+
+Clipped value functions defined in Definition 2 
+
+Cr , C u, C †, B † Bonus scalers used in Definition 2 
+
+Nε ε-cover of a certain set 
+
+U Set of iterations when Algorithm 2 is unconfident in πsf (see Definition 4) 
+
+π(k),λ h Softmax policy with a parameter λ (see Definition 3) 
+
+λ Parameter to balance optimism and pessimism of π(k),λ h (see Definition 3) 
+
+Cλ Maximum value of λ
+
+[λ(k,t ), λ (k,t )] Search space of the bisection search at iteration t in episode k (see Algorithm 2) 
+
+T Iteration length of the bisection search (see Algorithm 2) 
+
+Qr , Qu, Q† Function classes for Q-functions defined in Definition 10 
+
+Q◦ Function class for the composite of Q-functions defined in Definition 11 
+
+eΠ Class for softmax policies defined in Definition 12 
+
+Vr , Vu, V† Function classes for V -functions defined in Definition 13 
+
+δπ,r  
+
+> (k)
+
+, δ π,u  
+
+> (k)
+
+, δ π, † 
+
+> (k)
+
+Discrepancies between the estimated and true Q-functions (see Definition 14) 
+
+∆(k) 
+
+> r
+
+, ∆(k) 
+
+> u
+
+, ∆(k) 
+
+> †
+
+Function classes for δπ,r  
+
+> (k)
+
+, δ π,u  
+
+> (k)
+
+, δ π, † 
+
+> (k)
+
+(see Definition 14) 23 B Related Work 
+
+B.1 Related Algorithms 
+
+Building on the seminal work of Efroni et al. [13] , numerous safe RL algorithms for CMDPs have been developed, broadly categorized into linear programming (LP) approaches and Lagrangian-based approaches. 
+
+Linear programming. LP approaches formulate CMDPs as linear optimization problems [ 2], solving them using an estimated transition kernel. Efroni et al. [13] introduced a basic sublinear regret algorithm, while HasanzadeZonuzy et al. [20] provided (ε, δ )-PAC guarantees, ensuring the algorithm outputs a near-optimal policy. However, these methods permit constraint violations during exploration, making them unsuitable for safety-critical applications. Liu et al. [27] and Bura et al. [8] developed LP-based algorithms that achieve sublinear regret while maintaining episode-wise zero-violation guarantees by incorporating optimistic-pessimistic estimation into the LP formulation. LP-based approaches in tabular settings, however, suffer from computational costs that scale with the size of the state space, making them impractical for linear CMDPs. While several studies propose LP algorithms for linear MDPs [ 31 , 5, 30 , 25 , 14 ], these methods either use occupancy measures as decision variables—which can be exponentially large for large state spaces—or require a set of feature vectors that sufficiently cover the state space, which may not be feasible in our exploration settings. Moreover, as described in Section 3.1, the estimated value functions in linear CMDPs with exploration require clipping operators, further complicating the use of occupancy-measure-based approaches like LP methods in our setting. 
+
+Lagrangian approach. Lagrangian approaches reformulate the constrained optimization 
+
+max π {f (π) | h(π) ≥ 0} as a min-max optimization min λ≥0 max π {f (π) + λh (π)}, and simultane-ously optimize both π and λ. When an algorithm gradually updates π and then adjusts λ incrementally, it is referred to as a primal-dual (PD) algorithm [ 11 ]. In contrast, if λ is updated only after fully optimizing π in the inner maximization, it is known as a dual approach [ 46 ]. Since the inner maximization reduces to standard policy optimization, Lagrangian methods integrate naturally with scalable methods such as policy gradient and value iteration. For the tabular settings, Wei et al. [44] , Müller et al. [29] develop model-free primal-dual algorithms with sublinear regret, while Wei et al. [45] extends this approach to the average-reward setting. Zeng et al. [49] , Kitamura et al. [24] propose (ε, δ )-PAC primal-dual algorithms, and Vaswani et al. [42] achieved the PAC guarantee via dual approach. Beyond tabular settings, Ding et al. [10] propose PD algorithms with linear function approximation, achieving sublinear regret guarantees. Ghosh et al. [17] extend this to the average-reward linear CMDPs. Ghosh et al. [16] take a dual approach, also attaining sublinear regret in the finite-horizon settings. These PD and dual algorithms, however, do not ensure episode-wise zero violation. Intuitively, the key issue lies in their λ-adjustment strategy, which updates λ only incrementally. For example, the basic PD and dual algorithms by Efroni et al. [13] updates λ using λ(k+1) ← λ(k) + α · [violation ],where α is a small learning rate. Since λ controls constraint satisfaction, if the current policy fails to satisfy constraints adequately, λ should be increased sufficiently before the next policy deployment. Following this principle, Ghosh et al. [18] propose a dual approach that searches for an appropriate 
+
+λ within each episode, leading to a tighter violation regret guarantee than Ghosh et al. [16] . However, due to the lack of pessimistic constraint estimation, their method does not ensure episode-wise safety and allows constraint violations. Like Ghosh et al. [18] , our OPSE-LCMDP searches for the best λ in each episode. However, unlike their approach, OPSE-LCMDP controls λ with pessimism, ensuring zero violation, and guarantees the existence of a feasible λ by deploying a sufficient number of πsf .
+
+B.2 Related Safety Types Instantaneous safety. Unlike our episode-wise safety, instantaneous safety defines exploration as safe if it satisfies uh(s(k) 
+
+> h
+
+, a (k) 
+
+> h
+
+) ≥ b for all h and k [ 32 , 33 , 22 , 41 , 4]. In other words, states and actions must belong to predefined safe sets, Ssf × A sf . Instantaneous safety is a special case of the 24 episode-wise constraint. Indeed, by defining uh(s, a ) = −I{(s, a ) /∈ S sf × A sf } and setting b = 0 ,an episode-wise safe algorithm safeties the instantaneous constraint for all h and k.
+
+Cancel Safety. Cancel safety is another common safety measure in CMDP literature Wei et al. [44] , Ghosh et al. [16] . It allows a strict constraint satisfaction in one episode to compensate for a violation in another. Formally, cancel safety ensures that the following cumulative cancel violation regret remains non-positive: 
+
+Vio cancel (K) := 
+
+> K
+
+X
+
+> k=1
+
+b − V π(k),u P, 1 (s1) .
+
+Note that the “hard” violation regret Vio hard (K) := PKk=1 max 
+
+n
+
+b − V π(k),u P, 1 (s1), 0
+
+o
+
+which con-siders violations in each individual episode [ 18 , 13 , 29 ], always upper-bounds the cancel regret. This means cancel regret is a weaker measure. Since episode-wise safety ensures Vio hard = 0 ,our OPSE-LCMDP always satisfies cancel safety, but cancel safety does not necessarily guarantee episode-wise safety. 
+
+## C Useful Lemmas 
+
+Definition 6. For a set of positive values {an}Nn=1 , we write x = polylog ( a1, . . . , a N ) if there exists an absolute constants {bn}Nn=0 > 0 and {cn}Nn=1 > 0 such that x ≤ b0 + b1(ln a1)c1 + · · · +
+
+bN (ln aN )cN .
+
+Definition 7 (Distance metrics) . Let dist ∞ be the distance metric such that, for two functions Q, Q ′ :
+
+S × A → R, dist ∞(Q, Q ′) = sup (s,a )∈S×A |Q(s, a ) − Q′(s, a )|. Similarly, for two functions 
+
+V, V ′ : S → R, dist ∞(V, V ′) = sup s∈S |V (s) − V ′(s)|. Finally, dist 1 denotes the distance metric such that, for two functions π, π ′ : S → P(A), dist 1(π, π ′) = sup s∈S ∥π(· | s) − π′(· | s)∥1.
+
+Definition 8 (ε-cover) . Let Θ = θ ∈ Rd : ∥θ∥2 ≤ R be a ball with radius R. Fix an ε. An ε-net 
+
+Mε ⊂ Θ is a finite set such that for any θ ∈ Θ, there exists a θ′ ∈ M ε such that dist  θ, θ′ ≤ ε for some distance metric dist( ·, ·). The smallest ε-net is called ε-cover and denoted as Nε. The size of the ε-net is called the ε-covering number. 
+
+Lemma 9 (Lemma 5.2 in Vershynin [43]) . The ε-covering number of the ball 
+
+Θ = θ ∈ Rd : ∥θ∥2 ≤ R with the distance metric ∥·∥ 2 is upper bounded by (1 + 2 R/ε )d.
+
+Lemma 10 (Danskin’s Theorem [ 6]) . Let f : Rn × Z → R be a continuous function where Z ∈ Rm
+
+is a compact set and g(x) := max z∈Z f (x, z ).Let Z0(x) := {¯z | f (x, ¯z) = max z∈Z f (x, z )} be the maximizing points of f (x, z ). Assume that 
+
+f (x, z ) is convex in x for every z ∈ Z . Then, g(x) is convex. Furthermore, if Z0(x) consists of a single element ¯z, i.e., Z0(x) = {¯z}, it holds that ∂g (x) 
+
+> ∂x
+
+= ∂f (x, ¯z) 
+
+> ∂x
+
+.
+
+Lemma 11 (Lemma D.4 in Rosenberg et al. [37] ). Let  X(k)∞ 
+
+> k=1
+
+be a sequence of random variables with expectation adapted to the filtration  F(k)∞
+
+> k=0
+
+. Suppose that 0 ≤ X(k) ≤ B almost surely. Then, with probability at least 1 − δ, the following holds for all k ≥ 1 simultaneously: 
+
+> k
+
+X
+
+> i=1
+
+E
+
+h
+
+X(i) | F (i−1) i
+
+≤ 2
+
+> k
+
+X
+
+> i=1
+
+X(i) + 4 B ln 2kδ
+
+Lemma 12 (Lemma 11 in Abbasi-Yadkori et al. [1] ). Let x(k) Kk=1 be a sequence in Rd. Let 
+
+Λ(k) = ρI + Pk−1 
+
+> i=1
+
+x(i) x(i)⊤. If x(k) 
+
+> 2
+
+≤ B for all k,
+
+> K
+
+X
+
+> k=1
+
+min 
+
+
+
+1, x(k) 2
+
+(Λ(k))−1
+
+
+
+≤ 2d ln 
+
+ ρd + KB 2
+
+ρd 
+
+
+
+.
+
+25 Additionally, if x(k) 
+
+> 2
+
+≤ 1 for all k and ρ ≥ 19, we have 
+
+> K
+
+X
+
+> k=1
+
+x(k) 2
+
+(Λ(k))−1 ≤ 2d ln 
+
+ ρd + Kρd 
+
+
+
+.
+
+Lemma 13 (Theorem 2 in Abbasi-Yadkori et al. [1] ). Let F(k) ∞ 
+
+> k=0
+
+be a filtration. Let 
+
+ε(k) ∞ 
+
+> k=1
+
+be a real-valued stochastic process such that ε(k) is F(k)-measurable and ε(k) is con-ditionally R-sub-Gaussian for some R ≥ 0. Let 
+
+n
+
+ϕ(k)o∞
+
+> k=1
+
+be an Rd-valued stochastic pro-cess such that ϕ(k) is F(k−1) measurable and ∥ϕ(k)∥2 ≤ L for all k. For any k ≥ 0, define 
+
+Yk := θ⊤ϕ(k) + εt for some θ ∈ Rd such that ∥θ∥2 ≤ B, Λ(k) := ρI + Pki=1 ϕ(i)
+
+ϕ(i)⊤
+
+, and 
+
+bθ(k)
+
+:= 
+
+
+
+Λ(k)−1 Pki=1 ϕ(i)Y (i). Then for any δ > 0, with probability at least 1 − δ, for all k ≥ 0,we have 
+
+bθ(k)
+
+− θ
+
+> Λ(k)
+
+≤ ρ1/2B + R
+
+s
+
+d ln 
+
+ 1 + kL 2/ρ δ
+
+
+
+.
+
+Lemma 14 (Lemma D.4 in Jin et al. [23] ). Let s(k) ∞ 
+
+> k=1
+
+be a stochastic process on state space S
+
+with corresponding filtration F(k) ∞
+
+> k=0
+
+. Let 
+
+n
+
+ϕ(k)o∞ 
+
+> k=0
+
+be an Rd-valued stochastic process where 
+
+ϕ(k) is F(k−1) -measurable and ϕ(k) ≤ 1. Let Λ(k) = ρI + Pkk=1 ϕ(k)
+
+ϕ(k)⊤
+
+and let V be a class of real-valued function over the state space S such that sup s |V (s)| ≤ B for a B > 0. Let N V
+
+> ε
+
+be the ε-cover of V with respect to the distance dist ∞. Then for any δ > 0, with probability at least 
+
+1 − δ, for all K ≥ 0, and any V ∈ V , we have: 
+
+> K
+
+X
+
+> k=1
+
+ϕ(k)
+
+V
+
+
+
+s(k)
+
+− E
+
+h
+
+V
+
+
+
+s(k)
+
+| F (k−1) i 2
+
+(Λ(k))−1
+
+≤ 4B2
+
+ d
+
+2 ln 
+
+ K + ρρ
+
+
+
++ ln |N V 
+
+> ε
+
+|
+
+δ
+
+
+
++ 8K2ε2
+
+ρ .
+
+Lemma 15 (Lemma A.1 in Shalev-Shwartz and Ben-David [39] ). Let a > 0. Then, x ≥ 2a ln( a)
+
+yields x ≥ a ln( x). It follows that a necessary condition for the inequality x ≤ a ln( x) to hold is that 
+
+x ≤ 2a ln( a).
+
+Lemma 16. For any positive real numbers x1, x 2, . . . , x n, Pni=1 
+
+√xi ≤ √npP ni=1 xi.Proof. Due to the Cauchy-Schwarz inequality, we have 
+
+ Pni=1 
+
+> √xi
+> n
+
+2
+
+≤  
+
+> Pni=1 xi
+> n
+
+. Taking the square root of the inequality proves the claim. 
+
+Lemma 17 (Lemma 1 in Shani et al. [40] ). Let eπ, π be two policies, P be a transition kernel, and g
+
+be a reward function. Let eV πh : S → R be a function such that 
+
+eV πh (s) = X
+
+> a∈A
+
+eπh(a | s) eQh(s, a ) ,
+
+for all h ∈ J1, H K with some function eQh : J1, H K × S × A → R. Then, for any (h, s ) ∈ J1, H K × S 
+
+eV eπh (s) − V π,g P,h (s) = V π,g 1 
+
+> P,h
+
+(s) + V π,g 2 
+
+> P,h
+
+(s) ,
+
+where g1 and g2 are reward functions such that 
+
+g1
+
+> h
+
+(s, a ) = X
+
+> a∈A
+
+(eπh(a | s) − πh(a | s)) eQh(s, a ) and g2
+
+> h
+
+(s, a ) = eQh (s, a ) − gh (s, a ) −
+
+
+
+Ph eV eπh+1 
+
+
+
+(s, a ) .
+
+> 9
+
+The second argument follows since ∥x∥2 
+
+> Λ−1
+
+≤ σmax 
+
+ Λ−1 ∥x∥2 ≤ ρ−1 ≤ 1, where σmax (Λ−1) denotes the maximum eigen value of Λ−1.
+
+26 Lemma 18 (Regularized value difference lemma) . Let κ ≥ 0 be a non-negative value, π, π ′ be two policies, P be a transition kernel, and g be a reward function. Let eV eπh [κ] : S → R be a function such that 
+
+eV eπh [κ]( s) = X
+
+> a∈A
+
+eπh(a | s)
+
+ eQh(s, a ) − κ ln eπh(a | s)
+
+
+
+,
+
+for all h ∈ J1, H K with some function eQh : J1, H K × S × A → R. Then, for any (h, s ) ∈ J1, H K × S 
+
+eV eπh [κ]( s) − V π,g P,h [κ]( s) = V π,f 1 
+
+> P,h
+
+(s) + V π,f 2 
+
+> P,h
+
+(s) ,
+
+where f 1 and f 2 are reward functions such that 
+
+f 1 
+
+> h
+
+(s, a ) = X
+
+> a∈A
+
+eπh(a | s)
+
+ eQh(s, a ) − κ ln eπh(a | s)
+
+
+
+− πh(a | s)
+
+ eQh(s, a ) − κ ln πh(a | s)
+
+
+
+and f 2 
+
+> h
+
+(s, a ) = eQh(s, a ) − gh (s, a ) −
+
+
+
+Ph eV eπh+1 [κ]
+
+
+
+(s, a ) .
+
+Proof. Since 
+
+eV eπh [κ]( s) = X
+
+> a∈A
+
+eπh(a | s)
+
+ eQh(s, a ) − κ ln eπh(a | s)
+
+
+
+and V π,g P,h [κ]( s) = V π,g −κ ln πP,h (s) ,
+
+using Lemma 17, we have 
+
+eV eπ 
+
+> 1
+
+[κ]( s1) − V π,g P, 1 [κ]( s1) = V π,g 1 
+
+> P, 1
+
+(s1) + V π,g 2 
+
+> P, 1
+
+(s1) ,
+
+where g1 and g2 are reward functions such that 
+
+g1
+
+> h
+
+(s, a ) = X
+
+> a∈A
+
+(eπh(a | s) − πh(a | s)) 
+
+ eQh(s, a ) − κ ln eπh(a | s)
+
+
+
+= X
+
+> a∈A
+
+eπh(a | s)
+
+ eQh(s, a ) − κ ln eπh(a | s)
+
+
+
+− πh(a | s)
+
+ eQh(s, a ) − κ ln πh(a | s)
+
+
+
++ X
+
+> a∈A
+
+πh(a | s)( κ ln eπh(a | s) − κ ln πh(a | s)) 
+
+| {z }
+
+> (a)
+
+and g2
+
+> h
+
+(s, a ) = eQh(s, a ) − gh (s, a ) −
+
+
+
+Ph eV eπh+1 [κ]
+
+
+
+(s, a ) −κ ln eπh(a | s) + κ ln πh(a | s)
+
+| {z }
+
+> (b)
+
+.
+
+The claim holds since the terms (a) and (b) are canceled out in V π,g 1 
+
+> P,h
+
+(s) + V π,g 2 
+
+> P,h
+
+(s).
+
+Lemma 19. Let Q, eQ : A → R be two functions. Let κ > 0 be a positive constant. Define two softmax distributions π, eπ ∈ P(A) such that π = SoftMax 
+
+ Qκ
+
+
+
+and eπ = SoftMax 
+
+ eQκ
+
+
+
+. Then, 
+
+∥π − eπ∥1 ≤ 8 
+
+> κ
+
+Q − eQ ∞
+
+.Proof. It holds that 
+
+12 ∥π − eπ∥1
+
+> (a)
+
+≤ 2 X
+
+> a∈A
+
+π(a)|ln π(a) − ln eπ(a)| ≤ 2 max  
+
+> a
+
+|ln π(a) − ln eπ(a)|
+
+= 2 max 
+
+> a
+
+1
+
+κ Q(a) − 1
+
+κ eQ(a) − ln X
+
+> a
+
+exp 
+
+ 1
+
+κ Q(a)
+
+
+
++ ln X
+
+> a
+
+exp 
+
+ 1
+
+κ eQ(a)
+
+
+
+≤ 2 max 
+
+> a
+
+1
+
+κ Q(a) − 1
+
+κ eQ(a) + 2 ln X
+
+> a
+
+exp 
+
+ 1
+
+κ Q(a)
+
+
+
+− ln X
+
+> a
+
+exp 
+
+ 1
+
+κ eQ(a)
+
+
+
+> (b)
+
+≤ 4 max 
+
+> a
+
+1
+
+κ Q(a) − 1
+
+κ eQ(a) ,
+
+where (a) uses Theorem 17 in Sason and Verdú [38] and (b) uses the fact that ln P 
+
+> i
+
+exp( xi) −
+
+ln P 
+
+> i
+
+exp( yi) ≤ max i(xi − yi) (see, e.g., Theorem 1 in Dutta and Furuichi [12] ). This concludes the proof. 27 D Regret Analysis (Linear Constrained Bandit) 
+
+Lemma 20 (Good event 1) . Suppose Algorithm 1 is run with ρ = 1 . Let δ ∈ (0 , 1] . Define E1 as the event where the following inequality holds: 
+
+> K
+
+X
+
+> k=1
+
+Ea∼π(k) ∥a∥2
+
+(Λ(k))−1 ≤ 2
+
+> K
+
+X
+
+> k=1
+
+a(k) 2
+
+(Λ(k))−1 + 4 ln 2Kδ .
+
+Then, P(E1) ≥ 1 − δ.Proof. The claim immediately follows from Lemma 11 with ∥a∥2 ≤ 1 and ρ = 1 .
+
+Lemma 21 (Good event 2) . Define E2 as the event where the following two hold: For any π ∈ Π,
+
+k ∈ J1, K K,
+
+br(k) 
+
+> π
+
+− rπ ≤ Cuβ(k) 
+
+> π
+
+and bu(k) 
+
+> π
+
+− uπ ≤ Cuβ(k) 
+
+> π
+
+.
+
+Then, if Algorithm 1 is run with ρ = 1 and the value of Cu ≥ B + R
+
+q
+
+d ln 4Kδ , it holds that 
+
+P(E2) ≥ 1 − δ.Proof. Using Lemma 13 with ρ = 1 , with probability at least 1 − δ, for any k ∈ J1, K K and for both 
+
+g ∈ { r, u }, we have 
+
+a⊤
+
+bθ(k) 
+
+> g
+
+− θg
+
+
+
+≤ bθ(k) 
+
+> g
+
+− θg
+
+> Λ(k)
+
+∥a∥(Λ(k))−1(a)
+
+≤ B + R
+
+r
+
+d ln 2(1 + K)
+
+δ
+
+!
+
+∥a∥(Λ(k))−1
+
+≤ B + R
+
+r
+
+d ln 4Kδ
+
+!
+
+∥a∥(Λ(k))−1 ,
+
+where (a) uses Lemma 13. The claim holds by bg(k) 
+
+> π
+
+− gπ ≤ Ea∼π a⊤
+
+bθ(k) 
+
+> g
+
+− θg
+
+
+
+for 
+
+g ∈ { r, u }.
+
+Lemma 22 (Cumulative bonus bound) . Suppose E1 holds. Then, PKk=1 β(k) 
+
+> π(k)
+
+≤√K
+
+q
+
+2d ln  1 + Kd
+
+ + 4 ln 2Kδ .Proof. It holds that 
+
+> K
+
+X
+
+> k=1
+
+β(k)
+
+> π(k)(a)
+
+≤
+
+vuutK
+
+> K
+
+X
+
+> k=1
+
+
+
+Ea∼π(k) ∥a∥(Λ(k))−1
+
+2 (b)
+
+≤
+
+vuutK
+
+> K
+
+X
+
+> k=1
+
+Ea∼π(k) ∥a∥2
+
+(Λ(k))−1(c)
+
+≤ √K
+
+vuut2
+
+> K
+
+X
+
+> k=1
+
+a(k) 2
+
+(Λ(k))−1 + 4 ln 2Kδ
+
+> (d)
+
+≤ √K
+
+s
+
+2d ln 
+
+
+
+1 + Kd
+
+
+
++ 4 ln 2Kδ ,
+
+where (a) and (b) use Cauchy–Schwarz inequality, (c) is due to E1, and (d) uses Lemma 12. 
+
+Lemma 23 (Restatement of Lemma 1) . Suppose E2 holds. Then, for any π ∈ Π and k ∈ J1, K K,
+
+rπ + 2 Cuβ(k) 
+
+> π
+
+≥ br(k) 
+
+> π
+
++ Cuβ(k) 
+
+> π
+
+≥ rπ and uπ ≥ bu(k) 
+
+> π
+
+− Cuβ(k) 
+
+> π
+
+≥ uπ − 2Cuβ(k) 
+
+> π
+
+.
+
+Proof. We have 
+
+uπ ≥ bu(k) 
+
+> π
+
+− bu(k) 
+
+> π
+
+− uπ ≥ bu(k) 
+
+> π
+
+− Cuβ(k) 
+
+> π
+
+≥ bu(k) 
+
+> π
+
+− bu(k) 
+
+> π
+
+− uπ − Cuβ(k) 
+
+> π
+
+≥ uπ − 2Cuβ(k) 
+
+> π
+
+.
+
+Similarly, 
+
+rπ + 2 Cuβ(k) 
+
+> π
+
+≥ br(k) 
+
+> π
+
++ br(k) 
+
+> π
+
+− rπ + Cuβ(k) 
+
+> π
+
+≥ br(k) 
+
+> π
+
++ Cuβ(k) 
+
+> π
+
+≥ br(k) 
+
+> π
+
++ br(k) 
+
+> π
+
+− rπ ≥ rπ .
+
+28 Lemma 24 (Restatement of Lemma 2) . Consider k ∈ U ∁. For any α ∈
+
+
+
+0, ξ−2Cuβ(k) 
+
+> πsf
+> ξ−2Cuβ(k)
+> πsf +2 Cuβ(k)
+> π⋆
+
+
+
+, a mixture policy πα := (1 − α)πsf + απ ⋆ satisfies uπα − 2Cuβ(k) 
+
+> πα
+
+≥ b.Proof. For any k and α ∈ [0 , 1] , we have 
+
+uπα − b − 2Cuβ(k) 
+
+> πα
+
+= (1 − α) ( uπsf − b)
+
+| {z }
+
+> ≥ξ
+
++α (uπ⋆ − b)
+
+| {z }
+
+> ≥0
+
+−2Cu(1 − α)β(k) 
+
+> πsf
+
+− 2Cuαβ (k)
+
+> π⋆
+
+≥ (1 − α)
+
+
+
+ξ − 2Cuβ(k)
+
+> πsf
+
+
+
+− 2αC uβ(k) 
+
+> π⋆
+
+.
+
+To make (1 − α)
+
+
+
+ξ − 2Cuβ(k)
+
+> πsf
+
+
+
+− 2αC uβ(k) 
+
+> π⋆
+
+≥ 0, a sufficient condition is 
+
+α ≤ ξ − 2Cuβ(k)
+
+> πsf
+
+ξ − 2Cuβ(k) 
+
+> πsf
+
++ 2 Cuβ(k)
+
+> π⋆
+
+, (9) where the right hand side is non-negative since k ∈ U ∁. This concludes the proof. 
+
+Lemma 25 (Restatement of Theorem 1) . Suppose Algorithm 1 is run with ρ = 1 . Assume the event 
+
+E1 holds. Then, |U| ≤ 32 dC 2
+
+> u
+
+ξ−2 ln  2Kδ −1.Proof. We have 
+
+> K
+
+X
+
+> k=1
+
+Ea∼π(k) ∥a∥2
+
+(Λ(k))−1 ≥ X
+
+> k∈U
+
+Ea∼π(k) ∥a∥2
+
+(Λ(k))−1(a)
+
+≥ X
+
+> k∈U
+
+
+
+Ea∼π(k) ∥a∥(Λ(k))−1
+
+2
+
+| {z }   
+
+> =
+> 
+> β(k)
+> πsf
+> 2
+> since π(k)=πsf (b)
+
+≥ |U| ξ2
+
+4C2
+
+> u
+
+,
+
+where (a) is due to Jensen’s inequality, and (b) is due to Definition 1. Due to E1, we have 
+
+> K
+
+X
+
+> k=1
+
+Ea∼π(k) ∥a∥2
+
+(Λ(k))−1 ≤ 2
+
+> K
+
+X
+
+> k=1
+
+a(k) 2
+
+(Λ(k))−1 + 4 ln 2Kδ .
+
+Using Lemma 12 and since ∥a∥2 ≤ 1 and ρ = 1 , the first term is bounded by: ≤ 2d ln  1 + Kd
+
+ .Thus, 
+
+ξ2
+
+4C2
+
+> u
+
+|U| ≤ 2d ln 
+
+
+
+1 + Kd
+
+| {z }
+
+> ≤2K
+
++4 ln 2Kδ ≤ 8d ln 
+
+ 2Kδ
+
+
+
+.
+
+The claim holds by rearranging the above inequality. 
+
+Lemma 26 (Restatement of Lemma 3) . For any k ∈ U ∁, πα(k) satisfies rπα(k) + 2BC u 
+
+> ξ
+
+β(k) 
+
+> πα(k)
+
+≥ rπ⋆ .Proof. Let α(k) := ξ−2Cuβ(k) 
+
+> πsf
+> ξ−2Cuβ(k)
+> πsf +2 Cuβ(k)
+> π⋆
+
+and C := 2BC u 
+
+> ξ
+
+. Note that α(k) 
+
+> 1−α(k)
+
+= ξ−2Cuβ(k)
+
+> πsf
+> 2Cuβ(k)
+> π⋆
+
+. We have, 
+
+rπα(k) + Cβ (k) 
+
+> πα(k)
+
+= (1 − α(k))rπsf + α(k)rπ⋆ + C(1 − α(k))β(k) 
+
+> πsf
+
++ Cα (k)β(k)
+
+> π⋆
+
+≥ α(k)rπ⋆ + C
+
+ 
+
+1 − α(k)
+
+β(k) 
+
+> πsf
+
++ α(k)β(k)
+
+> π⋆
+
+
+
+.
+
+A sufficient condition to have α(k)rπ⋆ + C
+
+ 1 − α(k)β(k) 
+
+> πsf
+
++ α(k)β(k)
+
+> π⋆
+
+
+
+≥ rπ⋆ is, since rπ⋆ =
+
+Ea∼π⋆ [⟨θ, a⟩] ≤ ∥ θ∥2Ea∼π⋆ ∥a∥2 ≤ B,
+
+B ≤ C
+
+
+
+β(k) 
+
+> πsf
+
++ α(k)
+
+1 − α(k) β(k)
+
+> π⋆
+
+
+
+= C
+
+
+
+β(k) 
+
+> πsf
+
++ 12Cu
+
+ξ − β(k)
+
+> πsf
+
+
+
+≤ C
+
+2Cu
+
+ξ . 
+
+Therefore, when C ≥ 2BC u 
+
+> ξ
+
+, we have rπα(k) + Cβ (k) 
+
+> πα(k)
+
+≥ rπ⋆ .29 Theorem 5 (Restatement of Theorem 2) . Suppose that Algorithm 1 is run with ρ = 1 ,
+
+Cu = B + R
+
+r
+
+d ln 4Kδ , and Cr = Cu
+
+
+
+1 + 2Bξ
+
+
+
+.
+
+Then, with probability at least 1 − 2δ, the following two hold simultaneously: 
+
+• π(k) ∈ Πsf for any k ∈ [K]
+
+• Regret( K) ≤ 64 dBC 2
+
+> u
+
+ξ−2 ln  2Kδ −1 + 4 Cr
+
+√K
+
+q
+
+2d ln  1 + Kd
+
+ + 4 ln 2Kδ
+
+Proof. Suppose the good events E1 ∩ E2 hold. Recall that π(k) is either πsf in k ∈ U or the solution to Opt-Pes in k ∈ U ∁. Since Opt-Pes is ensured to have feasible solutions by Lemma 24 for k ∈ U ∁,the first claim follows immediately. We will prove the second claim. It holds that 
+
+Regret( K) = 
+
+> K
+
+X
+
+> k=1
+
+rπ⋆ − rπ(k) = X
+
+> k∈U
+
+rπ⋆ − rπ(k)
+
+| {z }  
+
+> π(k)=πsf
+
++ X
+
+> k / ∈U
+
+rπ⋆ − rπ(k)
+
+| {z } 
+
+> π(k)is computed by Opt-Pes
+
+≤ 2B|U| + X
+
+> k / ∈U
+
+rπ⋆ − rπ(k)(a)
+
+≤ 64 dBC 2
+
+> u
+
+ξ−2 ln  2Kδ −1 + X
+
+> k / ∈U
+
+
+
+rπ⋆ − br(k) 
+
+> π(k)
+
+− Cr β(k)
+
+> π(k)
+
+| {z }
+
+1
+
++ X
+
+> k / ∈U
+
+br(k) 
+
+> π(k)
+
++ Cr β(k) 
+
+> π(k)
+
+− rπ(k)
+
+| {z }
+
+2
+
+,
+
+where (a) uses the bound of |U| (Lemma 25). Using Lemma 23, the term 2 is bounded by 2 ≤ P 
+
+> k / ∈U
+
+3Cr β(k) 
+
+> π(k)
+
+. On the other hand, 1 is bounded by 1 (a)
+
+≤ X
+
+> k / ∈U
+
+rπα(k) + 2BC u
+
+ξ β(k) 
+
+> πα(k)
+
+− br(k) 
+
+> π(k)
+
+− Cr β(k)
+
+> π(k)(b)
+
+≤ X
+
+> k / ∈U
+
+br(k) 
+
+> πα(k)
+
++ Cuβ(k) 
+
+> πα(k)
+
++ 2BC u
+
+ξ β(k) 
+
+> πα(k)
+
+− br(k) 
+
+> π(k)
+
+− Cr β(k)
+
+> π(k)(c)
+
+≤ 0 ,
+
+where (a) uses the optimism of mixture policy (Lemma 26), (b) uses Lemma 23, and (c) uses 
+
+Cr = (1 + 2 BC uξ−1)Cu and since πα(k) is a feasible solution to Opt-Pes due to Lemma 24. Finally, by combining all the results, we have 
+
+Regret( K) ≤ 64 dBC 2
+
+> u
+
+ξ−2 ln  2Kδ −1 + 3 Cr
+
+X
+
+> k / ∈U
+
+β(k)
+
+> π(k)
+
+≤ 64 dBC 2
+
+> u
+
+ξ−2 ln  2Kδ −1 + 3 Cr
+
+√K
+
+s
+
+2d ln 
+
+
+
+1 + Kd
+
+
+
++ 4 ln 2Kδ
+
+where the second inequality uses Lemma 22. Since the good event E1 ∩ E2 occurs with probability at least 1 − 2δ due to Lemmas 20 and 21, the claim holds. 
+
+## E Regret Analysis (Linear CMDP) 
+
+E.1 Definitions and Useful Lemmas Definition 9 (μ-estimator) . Let e(s) ∈ RS denote a one-hot vector such that only the element at 
+
+s ∈ S is 1 and otherwise 0. In Algorithm 2, for all h and k, define μ(k) 
+
+> h
+
+∈ RS×d and ϵ(k) 
+
+> h
+
+∈ RS such 30 that 
+
+μ(k) 
+
+> h
+
+:= 
+
+> k−1
+
+X
+
+> i=1
+
+e
+
+
+
+s(i)
+
+> h+1
+
+
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
+and ϵ(k) 
+
+> h
+
+:= e
+
+
+
+s(k)
+
+> h+1
+
+
+
+− P
+
+
+
+· s(k) 
+
+> h
+
+, a (k)
+
+> h
+
+
+
+. (10) We remark that 
+
+ bP (k) 
+
+> h
+
+V
+
+
+
+(s, a ) = ϕ(s, a )⊤
+
+
+
+μ(k)
+
+> h
+
+⊤
+
+V for any V ∈ RS .
+
+Lemma 27. For all k and h, it holds that: 
+
+μ(k) 
+
+> h
+
+− μh = −ρμh
+
+
+
+Λ(k)
+
+> h
+
+−1
+
++
+
+> k−1
+
+X
+
+> i=1
+
+ϵ(i) 
+
+> h
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤ 
+
+Λ(k)
+
+> h
+
+−1
+
+Proof. Due to the definition of μ(k) 
+
+> h
+
+, we have 
+
+μ(k) 
+
+> h
+
+=
+
+> k−1
+
+X
+
+> i=1
+
+e
+
+
+
+s(i)
+
+> h+1
+
+
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
+=
+
+> k−1
+
+X
+
+> i=1
+
+
+
+P
+
+
+
+· s(k) 
+
+> h
+
+, a (k)
+
+> h
+
+
+
++ ϵ(k)
+
+> h
+
+
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
+=
+
+> k−1
+
+X
+
+> i=1
+
+
+
+μhϕ
+
+
+
+s(k) 
+
+> h
+
+, a (k)
+
+> h
+
+
+
++ ϵ(k)
+
+> h
+
+
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
+=
+
+> k−1
+
+X
+
+> i=1
+
+μhϕ
+
+
+
+s(k) 
+
+> h
+
+, a (k)
+
+> h
+
+
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
++
+
+> k−1
+
+X
+
+> i=1
+
+ϵ(k) 
+
+> h
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
+= μh
+
+
+
+Λ(k) 
+
+> h
+
+− ρI
+
+ 
+
+Λ(k)
+
+> h
+
+−1
+
++
+
+> k−1
+
+X
+
+> i=1
+
+ϵ(k) 
+
+> h
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
+= μh − ρμh
+
+
+
+Λ(k)
+
+> h
+
+−1
+
++
+
+> k−1
+
+X
+
+> i=1
+
+ϵ(k) 
+
+> h
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
+.
+
+Lemma 28. Let V be a class of real-valued function over the state space S such that sup s |V (s)| ≤ B
+
+for a B > 0. Let Nε be the ε-cover of V with respect to the distance dist ∞. In Algorithm 2, for all 
+
+k, h, s, a , for any V ∈ V , with probability at least 1 − δ, we have 
+
+ bP (k) 
+
+> h
+
+− Ph
+
+
+
+V
+
+
+
+(s, a )
+
+≤∥ ϕ(s, a )∥
+
+> Λ(k)
+> h
+> −1
+
+pdρB + 2 B
+
+s
+
+d
+
+2 ln 
+
+ k + ρρ
+
+
+
++ 2 B
+
+r
+
+ln |N ε|
+
+δ + 4kε 
+
+√ρ
+
+!
+
+.
+
+Proof. Using Lemma 14 and due to the definition of Λ(k) in Algorithm 2, with probability at least 
+
+1 − δ, for all k, h , we have 
+
+> k−1
+
+X
+
+> i=1
+
+ϕ
+
+
+
+s(k) 
+
+> h
+
+, a (k)
+
+> h
+
+  
+
+V ⊤ϵ(i)
+
+> h
+
+
+
+(Λ(k))−1
+
+≤
+
+s
+
+4B2
+
+ d
+
+2 ln 
+
+ k + ρρ
+
+
+
++ ln |N ε|
+
+δ
+
+
+
++ 8k2ε2
+
+ρ
+
+≤ 2B
+
+s
+
+d
+
+2 ln 
+
+ k + ρρ
+
+
+
++ 2 B
+
+r
+
+ln |N ε|
+
+δ + 4kε 
+
+√ρ ,
+
+31 where the second inequality uses √a + b ≤ √a + √b. By inserting this to Definition 9, we have 
+
+ bP (k) 
+
+> h
+
+− Ph
+
+
+
+V
+
+
+
+(s, a )
+
+= ϕ(s, a )⊤
+
+μ(k) 
+
+> h
+
+− μh
+
+⊤
+
+V
+
+= ϕ(s, a )⊤ −ρμh
+
+
+
+Λ(k)
+
+> h
+
+−1
+
++
+
+> k−1
+
+X
+
+> i=1
+
+ϵ(i) 
+
+> h
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤ 
+
+Λ(k)
+
+> h
+
+−1
+
+!⊤
+
+V
+
+≤ρ ϕ(s, a )⊤
+
+Λ(k)
+
+> h
+
+−1
+
+(μh)⊤V + ϕ(s, a )⊤
+
+Λ(k)
+
+> h
+
+−1 k−1X
+
+> i=1
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+  
+
+V ⊤ϵ(i)
+
+> h
+
+
+
+≤ρ∥ϕ(s, a )∥ 
+
+> Λ(k)
+> h
+> −1
+
+(μh)⊤V 
+
+> Λ(k)
+> h
+> −1
+
+| {z }
+
+> ≤B
+
+√d/ρ by Assumption 2 
+
++∥ϕ(s, a )∥
+
+> Λ(k)
+> h
+> −1
+> k−1
+
+X
+
+> i=1
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+  
+
+ϵ(i)
+
+> h
+
+⊤
+
+V 
+
+> Λ(k)
+> h
+> −1
+
+≤∥ ϕ(s, a )∥
+
+> Λ(k)
+> h
+> −1
+
+pdρB + 2 B
+
+s
+
+d
+
+2 ln 
+
+ k + ρρ
+
+
+
++ 2 B
+
+r
+
+ln |N ε|
+
+δ + 4kε 
+
+√ρ
+
+!
+
+.
+
+E.2 Function Classes and Covering Argument Definition 10 (Q function class) . For any h and for a pair of (w, Λ), where w ∈ Rd and Λ ∈ Rd×d,define Q(w,Λ),r h : S × A → R, Q(w,Λ),u h : S × A → R, and Q(w,Λ),† 
+
+> h
+
+: S × A → R such that 
+
+Q(w,Λ),r h (s, a ) = rh(s, a ) + clip Cr ∥ϕ(s, a )∥Λ−1 + w⊤ϕ(s, a ), 0, H κ − hκ
+
+Q(w,Λ),u h (s, a ) = uh(s, a ) + clip −Cu∥ϕ(s, a )∥Λ−1 + w⊤ϕ(s, a ), 0, H − h
+
+Q(w,Λ),† 
+
+> h
+
+(s, a ) = B†∥ϕ(s, a )∥Λ−1 + clip C†∥ϕ(s, a )∥Λ−1 + w⊤ϕ(s, a ), 0, B †(H − h) ,
+
+where κ, C r , C u, B †, C † ≥ 0. We denoted hκ := h(1 + κ ln A) for h ∈ J1, H K. Let Qrh, Quh, Q†
+
+> h
+
+denote function classes such that 
+
+Qrh := 
+
+n
+
+Q(w,Λ),r h ∥w∥2 ≤ KH κ, σ min (Λ) ≥ 1
+
+o
+
+,
+
+Quh := 
+
+n
+
+Q(w,Λ),u h ∥w∥2 ≤ KH, σ min (Λ) ≥ 1
+
+o
+
+,
+
+and Q† 
+
+> h
+
+:= 
+
+n
+
+Q(w,Λ),† 
+
+> h
+
+∥w∥2 ≤ KHB †, σ min (Λ) ≥ 1
+
+o
+
+.
+
+We let N Qrh 
+
+> ε
+
+, N Quh 
+
+> ε
+
+, and N Q† 
+
+> h
+> ε
+
+, be the ε-covers of Qrh, Quh, and Q† 
+
+> h
+
+with the distance metric dist ∞.
+
+Lemma 29 (Q covers) . When Algorithm 2 is run with ρ = 1 , it hold that: 
+
+(i) For all k, h and for any π ∈ Π, Qπ,r 
+
+> (k),h
+
+[κ] ∈ Q rh, Qπ,u  
+
+> (k),h
+
+∈ Q uh, and Qπ, † 
+
+> (k),h
+
+∈ Q †
+
+> h
+
+(ii) ln |N Qrh 
+
+> ε
+
+| ≤ d ln  1 + 4KH κ
+
+> ε
+
+ + d2 ln 
+
+
+
+1 + 8√dC 2
+
+> r
+> ε2
+
+
+
+= O d2 polylog  d, K, H κ, C r , ε −1,
+
+ln |N Quh 
+
+> ε
+
+| ≤ d ln  1 + 4KH ε
+
+ + d2 ln 
+
+
+
+1 + 8√dC 2
+
+> u
+> ε2
+
+
+
+= O d2 polylog  d, K, H, C u, ε −1,and ln |N Q† 
+
+> h
+> ε
+
+| ≤ d ln 
+
+
+
+1 + 4KB †Hε
+
+
+
++ d2 ln 
+
+
+
+1 + 8√dC 2
+
+> †
+> ε2
+
+
+
+=
+
+O d2 polylog  d, K, H, B †, C †, ε −1
+
+Proof. The statements in ( ii ) immediately follow from the proof of Lemma D.6 in Jin et al. [23]. 32 We prove the first claim ( i). For Qπ,r 
+
+> (k),h
+
+, we have 
+
+Qπ,r 
+
+> (k),h
+
+[κ] = rh + clip 
+
+n
+
+Cr β(k) + bP (k)V π,r 
+
+> (k),h +1
+
+[κ], 0, (H − h)(1 + κ ln A)
+
+o
+
+=rh + clip 
+
+(
+
+Cr
+
+r
+
+ϕ(s, a )⊤
+
+
+
+Λ(k)
+
+> h
+
+−1
+
+ϕ(s, a ) + ϕ(s, a )⊤
+
+μ(k)
+
+> h
+
+⊤
+
+V π,r 
+
+> (k),h +1
+
+[κ], 0, (H − h)(1 + κ ln A)
+
+)
+
+.
+
+According to the definition of Q(w,Λ),r h (Definition 10), the claim immediately holds by showing the L2 bound of 
+
+
+
+μ(k)
+
+> h
+
+⊤
+
+V π,r 
+
+> (k),h +1
+
+[κ]. For any h ∈ J1, H K and k ∈ J1, K K, we have 
+
+
+
+μ(k)
+
+> h
+
+⊤
+
+V π,r 
+
+> (k),h +1
+
+[κ] 2
+
+=
+
+> k−1
+
+X
+
+> i=1
+
+V π,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+s(i)
+
+> h+1
+
+
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+⊤
+
+Λ(k)
+
+> h
+
+−1
+
+> 2
+> (a)
+
+≤Hκ
+
+
+
+Λ(k)
+
+> h
+
+−1 k−1X
+
+> i=1
+
+ϕ
+
+
+
+s(i) 
+
+> h
+
+, a (i)
+
+> h
+
+
+
+> 2
+
+≤ KH κ .
+
+where (a) uses ∥ϕ∥2 ≤ 1 with ρ = 1 and 0 ≤ V π,r 
+
+> (k),h +1
+
+[κ] ≤ Hκ.The remaining claims for Qπ,u 
+
+> (k),h
+
+(s, a ) ∈ Q uh and Qπ, †
+
+> (k),h
+
+(s, a ) ∈ Q † 
+
+> h
+
+can be similarly proven. 
+
+Definition 11 (Composite Q function class) . For each h, let Q◦ 
+
+> h
+
+denote a function class such that 
+
+Q◦ 
+
+> h
+
+:= 
+
+n
+
+Q† + Qr + λQ u Q† ∈ Q †
+
+> h
+
+, Q r ∈ Q rh, Q u ∈ Q uh, and λ ∈ [0 , C λ]
+
+o
+
+.
+
+where Cλ > 0. We let N Q◦ 
+
+> h
+> ε
+
+be the ε-cover of Q◦ 
+
+> h
+
+with the distance metric dist ∞.
+
+Lemma 30 (Composite Q cover) . When Algorithm 2 is run with ρ = 1 , the following statements hold: 
+
+(i) For all (k, h ), for any π ∈ Π, and for any λ ∈ [0 , C λ], Qπ, † 
+
+> (k),h
+
++ Qπ,r 
+
+> (k),h
+
+[κ] + λQ π,u  
+
+> (k),h
+
+∈ Q ◦
+
+> h
+
+(ii) ln N Q◦ 
+
+> h
+> ε
+
+= O d2 polylog  d, K, H κ, C r , C u, B †, C †, C λ, ε −1
+
+Proof. The claim (i) clearly holds by Lemma 29 and Definition 11. We prove the second claim (ii) . Let N λε be the ε-cover of a set {λ | λ ∈ [0 , C λ]} with the distance metric ∥·∥ 2. Let ε†, ε r , ε u, ε λ > 0 be positive scalars. Consider eQ† ∈ N Q† 
+
+> h
+> ε†
+
+, eQr ∈ N Qrh 
+
+> εr
+
+,
+
+eQu ∈ N Quh 
+
+> εu
+
+, and eλ ∈ N λελ . For any Q† ∈ Q †
+
+> h
+
+, Qr ∈ Q rh, Qu ∈ Q uh, and λ ∈ [0 , C λ], we have 
+
+dist ∞
+
+
+
+Q† + Qr + λQ u, eQ† + eQr + eλ eQu
+
+≤ sup 
+
+> s,a
+
+Q†(s, a ) − eQ†(s, a )
+
+| {z }
+
+> ≤ε†
+
++ sup 
+
+> s,a
+
+Qr (s, a ) − eQr (s, a )
+
+| {z }
+
+> ≤εr
+
++ λ sup 
+
+> s,a
+
+
+
+Qu(s, a ) − eQu(s, a )
+
+| {z }
+
+> ≤Cλεu
+
++ sup 
+
+> s,a
+
+
+
+λ − eλ
+
+
+
+Qu(s, a )
+
+| {z }
+
+> ελH
+> (a)
+
+≤ ε† + εr + Cλεu + ελH , 
+
+where (a) appropriately chooses eQ†, eQr , eQu, eλ. By replacing ε† with ε/ 4, εr with ε/ 4, εu with 
+
+1/4Cλ, and ελ with ε/ 4H, the above inequality is upper bounded by ε. Thus, 
+
+ln N Q◦ 
+
+> h
+> ε
+
+≤ ln N λε/ 4H + ln N Quh 
+
+> ε/ 4Cλ
+
++ ln N Qrh 
+
+> ε/ 4
+
++ ln N Q†
+
+> h
+> ε/ 4
+
+≤O  d2 polylog  d, K, H κ, C r , C u, B †, C †, C λ, ε −1 .
+
+where the second inequality uses Lemma 9 and Lemma 29. 33 Definition 12 (Policy class) . eΠ := eΠ1 × · · · × eΠH denotes a softmax policy class such that 
+
+eΠh := {πQ ∈ Π | Q ∈ Q ◦
+
+> h
+
+} where πQ(· | s) = SoftMax 
+
+ 1
+
+κ Q(s, ·)
+
+
+
+∀s ∈ S ,
+
+where κ > 0. We let N eΠh 
+
+> ε
+
+be the ε-cover of eΠh with the distance metric dist 1.
+
+Lemma 31 (π(k),λ cover) . When Algorithm 2 is run with ρ = 1 and κ > 0, for all h, the following statements hold: 
+
+(i) For all (k, h ) and λ ∈ [0 , C λ] in Algorithm 2, π(k),λ h ∈ eΠh
+
+(ii) ln N eΠh 
+
+> ε
+
+= O d2 polylog  d, K, H κ, C r , C u, B †, C †, C λ, ε −1, κ −1
+
+Proof. The claim (i) immediately follows from Lemma 30 and Definition 3. We prove the second claim. For a Q : S × A → R, let πQ be a softmax policy such that πQ(· | 
+
+s) = SoftMax 
+
+ Q(s, ·)
+
+> κ
+
+
+
+. Consider eQ from N Q◦ 
+
+> h
+> ε
+
+. Then, for any Q ∈ Q ◦
+
+> h
+
+, we have 
+
+dist 1
+
+
+
+πQ, π eQ
+
+ (a)
+
+≤ 8
+
+κ dist ∞
+
+
+
+Q, eQ
+
+ (b)
+
+≤ 8εκ ,
+
+where (a) uses Lemma 19 and (b) appropriately chooses eQ from N Q◦ 
+
+> h
+> ε
+
+. Therefore, 
+
+ln N eΠh 
+
+> ε
+
+≤ ln N Q◦ 
+
+> h
+> κε/ 8
+
+≤ O  d2 polylog  d, K, H κ, C r , C u, B †, C †, C λ, ε −1, κ −1
+
+where the second inequality uses Lemma 30. 
+
+Definition 13 (V function class) . Let Vrh, Vuh, and V† 
+
+> h
+
+denote value function classes such that 
+
+Vrh := 
+
+n
+
+V πQ [κ] : S → R π ∈ eΠh ∪ { πsf  
+
+> h
+
+} and Q ∈ Q rh
+
+o
+
+,
+
+Vuh := 
+
+n
+
+V πQ [0] : S → R π ∈ eΠh ∪ { πsf  
+
+> h
+
+} and Q ∈ Q uh
+
+o
+
+,
+
+and V† 
+
+> h
+
+:= 
+
+n
+
+V πQ [0] : S → R π ∈ eΠh ∪ { πsf  
+
+> h
+
+} and Q ∈ Q †
+
+> h
+
+o
+
+,
+
+where V πQ [κ]( s) := X
+
+> a∈A
+
+π(a | s)( Q(s, a ) − κ ln π(a | s)) ∀s ∈ S .
+
+We let N Vrh 
+
+> ε
+
+, N Vuh 
+
+> ε
+
+, and N V† 
+
+> h
+> ε
+
+be the ε-covers of Vrh, Vuh, and V† 
+
+> h
+
+with the distance metric dist ∞.
+
+Lemma 32 (V covers) . When Algorithm 2 is run with ρ = 1 and κ > 0, for all h, the following statements hold: 
+
+(i) For all (k, h ), for any λ ∈ [0 , C λ], and for both π = π(k),λ and π = πsf , we have: 
+
+V π,r 
+
+> (k),h
+
+[κ] ∈ V rh, V π,u  
+
+> (k),h
+
+∈ V uh, and V π, † 
+
+> (k),h
+
+∈ V †
+
+> h
+
+(ii) ln N Vrh 
+
+> ε
+
+= O d2 polylog  d, K, H κ, C r , C u, B †, C †, C λ, ε −1, κ −1,
+
+ln N Vuh 
+
+> ε
+
+= O d2 polylog  d, K, H κ, C r , C u, B †, C †, C λ, ε −1, κ −1,and ln N V† 
+
+> h
+> ε
+
+= O d2 polylog  d, K, H κ, C r , C u, B †, C †, C λ, ε −1, κ −1
+
+Proof. The condition (i) immediately follow from Lemma 29 and Lemma 31 with Definition 13 and Definition 3. 34 We prove the second claim (ii) . Let Q ∈ Q rh and eQ ∈ N Qrh 
+
+> εr
+
+where εr > 0. For any two 
+
+π, eπ : S → P(A), for any s, we have 
+
+X
+
+> a∈A
+
+π(a | s)( Q(s, a ) − κ ln π(a | s)) − X
+
+> a∈A
+
+eπ(a | s)
+
+ eQ(s, a ) − κ ln π(a | s)
+
+
+
+≤ X
+
+> a∈A
+
+π(a | s)Q(s, a ) − X
+
+> a∈A
+
+π(a | s) eQ(s, a ) + X
+
+> a∈A
+
+π(a | s) eQ(s, a ) − X
+
+> a∈A
+
+eπ(a | s) eQ(s, a )
+
++ κ X
+
+> a∈A
+
+π(a | s) ln π(a | s) − eπ(a | s) ln eπ(a | s)
+
+| {z }  
+
+> =: H(π)−H(eπ)
+
+≤ X
+
+> a∈A
+
+π(a | s) Q(s, a ) − eQ(s, a )
+
+| {z }
+
+> ≤εr
+
++∥π(· | s) − eπ(· | s)∥1 eQ(·, s ) ∞
+
+| {z }
+
+> ≤Hκ
+
++κ(H (π) − H (eπ)) 
+
+≤εr + Hκ∥π(· | s) − eπ(· | s)∥1 + κ(H (π) − H (eπ)) 
+
+where the second inequality chooses appropriate eQ. We defined entropies of π and eπ as 
+
+H (π) := P 
+
+> a∈A
+
+π(a | s) ln π(a | s) and H (eπ) := P 
+
+> a∈A
+
+eπ(a | s) ln eπ(a | s), respectively. The remaining task is to bound Hκ∥π(· | s) − eπ(· | s)∥1 + κ(H (π) − H (eπ)) . When π = πsf ,choosing eπ = πsf trivially bounds this term by 0. Thus, we only consider the case when π ∈ eΠh, i.e., 
+
+π(· | s) = SoftMax   1 
+
+> κ
+
+Q◦(s, ·) with Q◦ ∈ Q ◦
+
+> h
+
+. We also consider eπ(· | s) = SoftMax 
+
+ 1 
+
+> κ
+
+eQ◦(s, ·)
+
+
+
+with eQ◦ ∈ N Q◦ 
+
+> h
+> ε◦
+
+, where ε◦ > 0. For the entropy gap, we have 
+
+H (π) − H (eπ)= X
+
+> a∈A
+
+π(a | s) ln π(a | s) − eπ(a | s) ln eπ(a | s)
+
+= X
+
+> a∈A
+
+(π(a | s) − eπ(a | s)) ln π(a | s) + X
+
+> a∈A
+
+eπ(a | s)(ln π(a | s) − ln eπ(a | s)) 
+
+≤∥ π(· | s) − eπ(· | s)∥1 max  
+
+> a
+
+ln π(a | s) + max  
+
+> a
+
+|ln π(a | s) − ln eπ(a | s)|
+
+> (a)
+
+≤ ∥π(· | s) − eπ(· | s)∥1
+
+| {z }  
+
+> ≤8
+> κmax a
+
+|Q◦(s,a )− eQ◦(s,a )| by Lemma 19 
+
+max  
+
+> a
+
+ln π(a | s) + 2
+
+κ max  
+
+> a
+
+Q◦(s, a ) − eQ◦(s, a )
+
+| {z }
+
+> ≤ε◦
+> (b)
+
+≤ ε◦
+
+κ
+
+
+
+8 max  
+
+> a
+
+ln π(a | s) + 2 
+
+
+
+,
+
+where (a) utilizes a decomposition similar to the proof of Lemma 19, and (b) chooses an appropriate 
+
+eQ◦. Finally, ln π(a | s) can be bounded as 
+
+max  
+
+> a
+
+ln π(a | s) = max 
+
+> a
+
+1
+
+κ Q◦(s, a ) − ln X
+
+> a′
+
+exp 
+
+ 1
+
+κ Q◦(s, a ′)
+
+
+
+≤ B†H + Hκ + CλHκ ,
+
+where the last inequality is due to Definition 11. Therefore, we have 
+
+Hκ∥π(· | s) − eπ(· | s)∥1 + κ(H (π) − H (eπ)) ≤ ε◦
+
+
+
+2 + 8
+
+κ (B†H + 2 Hκ + CλH)
+
+| {z }
+
+> =: Z
+
+.
+
+Finally, by setting εr = ε/ 2Hκ and ε◦ = ε/ 2Z, ln N Vrh 
+
+> ε
+
+is bounded as: 
+
+ln N Vrh 
+
+> ε
+
+≤ ln 
+
+
+
+N Q◦ 
+
+> h
+> ε/ 2Z
+
++ 1 
+
+
+
++ ln |N Qrh 
+
+> ε/ 2Hκ
+
+| = O d2 polylog  d, K, H κ, C r , C u, B †, C †, C λ, ε −1, κ −1 ,
+
+35 where the second inequality is due to Lemma 29 and Lemma 30. The claims for ln N Vuh 
+
+> ε
+
+and 
+
+ln N V† 
+
+> h
+> ε
+
+can be similarly proven. 
+
+E.3 Good Events and Value Confidence Bounds for Lemma 4 Proof Lemma 33 (Good event 1) . Define E1 as the event where the following inequality holds: 
+
+> K
+
+X
+
+> k=1
+> H
+
+X
+
+> h=1
+
+E
+
+"
+
+ϕ(s(k) 
+
+> h
+
+, a (k) 
+
+> h
+
+) 2 
+
+> 
+> Λ(k)
+> h
+> −1
+
+s(k) 
+
+> h
+
+, a (k) 
+
+> h
+
+∼ π(k)
+
+> h
+
+#
+
+≤2
+
+> K
+
+X
+
+> k=1
+> H
+
+X
+
+> h=1
+
+ϕ(s(k) 
+
+> h
+
+, a (k) 
+
+> h
+
+) 2 
+
+> 
+> Λ(k)
+> h
+> −1
+
++ 4 H ln 2KH δ .
+
+If Algorithm 2 is run with ρ = 1 , P(E1) ≥ 1 − δ.Proof. The claim immediately follows from Lemma 11 with ∥ϕ∥2 ≤ 1 and ρ = 1 .
+
+Lemma 34 (Good event 2) . Define E2 as the event where the following condition holds: For all k, h and for any V r ∈ V rh+1 , V u ∈ V uh+1 , and V † ∈ V †
+
+> h+1
+
+ bP (k) 
+
+> h
+
+− Ph
+
+
+
+V r 
+
+(s, a ) ≤ Cr β(k) 
+
+> h
+
+(s, a ) ∀(h, s, a ) ∈ J1, H K × S × A 
+
+ bP (k) 
+
+> h
+
+− Ph
+
+
+
+V u
+
+(s, a ) ≤ Cuβ(k) 
+
+> h
+
+(s, a ) ∀(h, s, a ) ∈ J1, H K × S × A 
+
+and 
+
+ bP (k) 
+
+> h
+
+− Ph
+
+
+
+V †
+
+(s, a ) ≤ C†β(k) 
+
+> h
+
+(s, a ) ∀(h, s, a ) ∈ J1, H K × S × A .
+
+If Algorithm 2 is run with ρ = 1 , Cr = eO(dH κ), Cu = eO(dH ), and C† = eO(dHB †), we have 
+
+P(E2) ≥ 1 − 2δ.Proof. Using Lemma 28 with N Vrh+1  
+
+> 1/K
+
+, with probability at least 1 − δ, for any (k, h, s, a ),
+
+ bP (k) 
+
+> h
+
+− Ph
+
+
+
+V r 
+
+(s, a )
+
+> (a)
+
+≤∥ ϕ(s, a )∥
+
+> Λ(k)
+> h
+> −1
+
+
+
+√dH κ + 2 Hκ
+
+r d
+
+2 ln(2 K) + 2 Hκ
+
+vuutln 
+
+N Vrh+1 
+
+> 1/K
+
+δ + 4 
+
+
+
+> (b)
+
+≤∥ ϕ(s, a )∥ 
+
+> Λ(k)
+> h
+> −1
+
+eO(dH κ) ln Cr
+
+> (c)
+
+≤ ∥ ϕ(s, a )∥ 
+
+> Λ(k)
+> h
+> −1
+
+Cr
+
+where (a) sets ε = 1 /K to N Vuh 
+
+> ε
+
+and uses Lemma 28, (b) uses Lemma 29, and (c) set sufficiently large 
+
+Cr = eO(dH κ) and uses Lemma 15. The claim for Vuh+1 and V† 
+
+> h+1
+
+can be similarly proven. 
+
+Lemma 35 (Remove clipping one-side) . Under E2, for any (k, h, s, a ), and for any λ ∈ [0 , C λ], for both π = π(k),λ and π = πsf , we have 
+
+Cr β(k) 
+
+> h
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+(s, a ) ≥
+
+
+
+PhV π,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+(s, a ) ≥ 0 ,
+
+− Cuβ(k) 
+
+> h
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+(s, a ) ≤
+
+
+
+PhV π,u 
+
+> (k),h +1
+
+
+
+(s, a ) ≤ H − h , 
+
+and C†β(k) 
+
+> h
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π, †
+
+> (k),h +1
+
+
+
+(s, a ) ≥
+
+
+
+PhV π, †
+
+> (k),h +1
+
+
+
+(s, a ) ≥ 0
+
+36 Proof. We have 
+
+Cr β(k) 
+
+> h
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+(s, a )
+
+> (a)
+
+≥
+
+
+
+Ph − bP (k)
+
+> h
+
+
+
+V π,r 
+
+> (k),h +1
+
+[κ] (s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+(s, a )
+
+≥
+
+
+
+Ph − bP (k)
+
+> h
+
+
+
+V π,r 
+
+> (k),h +1
+
+[κ]( s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+(s, a )=PhV π,r 
+
+> (k),h +1
+
+[κ]( s, a ) (b)
+
+≥ 0 ,
+
+where (a) is due to E2 with Lemma 32 and (b) is due to r ≥ 0 and by the definition of V π,r 
+
+> (k),h +1
+
+[κ].The claim for V π, † 
+
+> (k),h +1
+
+can be similarly proven. For V π,u 
+
+> (k),h +1
+
+, we have 
+
+− Cuβ(k) 
+
+> h
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+(s, a )
+
+> (a)
+
+≤ − 
+
+ bP (k) 
+
+> h
+
+− Ph
+
+
+
+V π,u  
+
+> (k),h +1
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+(s, a )
+
+≤ − 
+
+ bP (k) 
+
+> h
+
+− Ph
+
+
+
+V π,u 
+
+> (k),h +1
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+(s, a )=PhV π,u 
+
+> (k),h +1
+
+(s, a ) (b)
+
+≤ H − h , 
+
+where (a) is due to E2 with Lemma 32 and (b) is due to u ≤ 1 and by the definition of V π,u 
+
+> (k),h +1
+
+.
+
+Definition 14 (Q estimation gap) . For any h, k and π ∈ Π, define δπ,r 
+
+> (k),h
+
+, δ π,u 
+
+> (k),h
+
+, δ π, † 
+
+> (k),h
+
+: S × A → R
+
+be functions such that: 
+
+δπ,r  
+
+> (k),h
+
+= clip 
+
+n
+
+Cr β(k) 
+
+> h
+
++
+
+ bP (k) 
+
+> h
+
+V π,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+, 0, H κ − hκ
+
+o
+
+−
+
+
+
+PhV π,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+,δπ,u  
+
+> (k),h
+
+=
+
+
+
+PhV π,u 
+
+> (k),h +1
+
+
+
+− clip 
+
+n
+
+−Cuβ(k) 
+
+> h
+
++
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+, 0, H − h
+
+o
+
+,
+
+and δπ, † 
+
+> (k),h
+
+= clip 
+
+n
+
+C†β(k) 
+
+> h
+
++
+
+ bP (k) 
+
+> h
+
+V π, †
+
+> (k),h +1
+
+
+
+, 0, B †(H − h)
+
+o
+
+−
+
+
+
+PhV π, †
+
+> (k),h +1
+
+
+
+,
+
+It is clear that these functions satisfy, for any (π, k, h ),
+
+Qπ,r 
+
+> (k),h
+
+[κ] = Qπ,r +δπ,r  
+
+> (k)
+> P,h
+
+[κ], Qπ,u  
+
+> (k),1
+
+= Qπ,u −δπ,u  
+
+> (k)
+> P,h
+
+, and Qπ, † 
+
+> (k),h
+
+= Qπ,B †β(k)+δπ, † 
+
+> (k)
+> P,h
+
+. (11) Additionally, let ∆(k) 
+
+> r
+
+, ∆(k) 
+
+> u
+
+, and ∆(k) 
+
+> †
+
+be function classes such that: 
+
+∆(k) 
+
+> r
+
+:= 
+
+n
+
+δ : J1, H K × S × A → R 0 ≤ δh ≤ min 
+
+n
+
+2Cr β(k) 
+
+> h
+
+, H κ − hκ
+
+o
+
+∀h ∈ J1, H K
+
+o
+
+∆(k) 
+
+> u
+
+:= 
+
+n
+
+δ : J1, H K × S × A → R 0 ≤ δh ≤ min 
+
+n
+
+2Cuβ(k) 
+
+> h
+
+, H − h
+
+o
+
+∀h ∈ J1, H K
+
+o
+
+and ∆(k) 
+
+> †
+
+:= 
+
+n
+
+δ : J1, H K × S × A → R 0 ≤ δh ≤ min 
+
+n
+
+2C†β(k) 
+
+> h
+
+, B †(H − h)
+
+o
+
+∀h ∈ J1, H K
+
+o
+
+.
+
+Lemma 36. Under E2, for any k and for any λ ∈ [0 , C λ], for both π = π(k),λ and π = πsf , it holds that δπ,r  
+
+> (k),·
+
+∈ ∆(k) 
+
+> r
+
+, δπ,u  
+
+> (k),·
+
+∈ ∆(k) 
+
+> u
+
+, and δπ, † 
+
+> (k),·
+
+∈ ∆(k) 
+
+> †
+
+.Proof. δπ,u 
+
+> (k),h
+
+(s, a ) ≤ H − h clearly holds. Additionally, we have 
+
+δπ,u 
+
+> (k),h
+
+(s, a ) (a)
+
+=
+
+
+
+PhV π,u 
+
+> (k),h +1
+
+
+
+(s, a ) − max 
+
+n
+
+−Cuβ(k) 
+
+> h
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+(s, a ), 0
+
+o
+
+≤
+
+
+
+PhV π,u 
+
+> (k),h +1
+
+
+
+(s, a ) + Cuβ(k) 
+
+> h
+
+(s, a ) −
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+(s, a )
+
+≤Cuβ(k) 
+
+> h
+
+(s, a ) + 
+
+
+
+Ph − bP (k)
+
+> h
+
+
+
+V π,u  
+
+> (k),h +1
+
+(s, a ) (b)
+
+≤ 2Cuβ(k) 
+
+> h
+
+(s, a ) ,
+
+37 where (a) is due to Lemma 35 and (b) is due to E2. Finally, note that 
+
+δπ,u 
+
+> (k),h
+
+(s, a ) = 
+
+
+
+PhV π,u 
+
+> (k),h +1
+
+
+
+(s, a ) − max 
+
+n
+
+−Cuβ(k) 
+
+> h
+
+(s, a ) + 
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+(s, a ), 0
+
+o
+
+≥ Cuβ(k) 
+
+> h
+
+(s, a ) + 
+
+
+
+PhV π,u 
+
+> (k),h +1
+
+
+
+(s, a ) −
+
+ bP (k) 
+
+> h
+
+V π,u 
+
+> (k),h +1
+
+
+
+(s, a )
+
+| {z }  
+
+> ≥0by E2
+
+≥ 0 .
+
+This concludes the proof for δπ,u 
+
+> (k),h
+
+. The claims for δπ,r  
+
+> (k),h
+
+and δπ, † 
+
+> (k),h
+
+can be similarly proven. 
+
+Lemma 37 (Restatement of Lemma 4) . Suppose E2 holds. For any k and for any λ ∈ [0 , C λ], for both π = π(k),λ and π = πsf , we have 
+
+V π,r P,h ≤ V π,r  
+
+> (k),h
+
+≤ V π,r +2 Cr β(k) 
+
+> P,h
+
+, Qπ,r P,h ≤ Qπ,r  
+
+> (k),h
+
+≤ Qπ,r +2 Cr β(k)
+
+> P,h
+
+V π,B †β(k) 
+
+> P,h
+
+≤ V π, † 
+
+> (k),h
+
+≤ V π,B †β(k)+2 C†β(k) 
+
+> P,h
+
+, Qπ,B †β(k) 
+
+> P,h
+
+≤ Qπ, † 
+
+> (k),h
+
+≤ Qπ,B †β(k)+2 C†β(k) 
+
+> P,h
+
+,V π,u −2Cuβ(k) 
+
+> P,h
+
+≤ V π,u  
+
+> (k),h
+
+≤ V π,u P,h , Qπ,u −2Cuβ(k) 
+
+> P,h
+
+≤ Qπ,u  
+
+> (k),h
+
+≤ Qπ,u P,h .
+
+Proof. The inequalities for Q functions directly hold by Equation (11) and Lemma 36. For the utility V function, 
+
+V π(k),u  
+
+> (k),h
+
+(s) − V π(k),u P,h (s) = X
+
+> a∈A
+
+πh(a | s)
+
+
+
+Qπ,u 
+
+> (k),h
+
+(s, a ) − Qπ,u P,h (s, a )
+
+
+
+> (a)
+
+= X
+
+> a∈A
+
+πh(a | s)Qπ, −δπ,u  
+
+> (k)
+> P,h
+
+(s) (b)
+
+≤ 0 ,
+
+where (a) uses Equation (11) and (b) uses Lemma 36. Similarly, 
+
+V π,u 
+
+> (k),h
+
+(s) − V π,u −2Cuβ(k) 
+
+> P,h
+
+(s) = X
+
+> a∈A
+
+πh(a | s)
+
+
+
+Qπ,u 
+
+> (k),h
+
+(s, a ) − Qπ,u −2Cuβ(k) 
+
+> P,h
+
+(s, a )
+
+
+
+> (a)
+
+= X
+
+> a∈A
+
+πh(a | s)Qπ, −δπ,u   
+
+> (k)+2 Cuβ(k)
+> P,h
+
+(s) (b)
+
+≥ 0 ,
+
+where (a) uses Equation (11) and (b) uses Lemma 36. The claims for r and † can be similarly proven. 
+
+E.4 Proofs for Zero-Violation Guarantee (Section 3.2.1) E.4.1 Proof of Lemma 5 and Lemma 6 Lemma 38 (Restatement of Lemma 6) . Let f, g : J1, H K × S × A → R be functions and let κ > 0.Given λ ≥ 0, let πλ be a softmax policy such that 
+
+πλh (· | s) = SoftMax 
+
+ 1
+
+κ
+
+
+
+Qπ,f P,h [κ]( s, ·) + λQ π,g P,h (s, ·)
+
+
+
+.
+
+Then, V πλ,g P, 1 (s1) is monotonically increasing in λ.Proof. Let W := wπP, · : J1, H K × S × A → [0 , 1] π ∈ Π be the set of all the occupancy mea-sures. Let L : R × W → R be a function such that: 
+
+L (λ, w ) = X
+
+> h,s,a ∈J1,H K×S×A
+
+wh(s, a )( fh(s, a ) + λg h(s, a )) − κw h(s, a ) ln wh(s, a )
+
+P 
+
+> a′∈A
+
+wh(s, a ′) .
+
+We first show that L is strictly concave in W. Let 
+
+H : w ∈ W 7 → X
+
+> h,s,a ∈J1,H K×S×A
+
+−wh(s, a ) ln wh(s, a )
+
+P 
+
+> a′∈A
+
+wh(s, a ′)
+
+38 be the function representing the second term of L . Then, 10 
+
+H  αw 1 + (1 − α)w2
+
+= − X
+
+> h,s,a
+
+ αw 1
+
+> h
+
+(s, a ) + (1 − α)w2
+
+> h
+
+(s, a ) log αw 1
+
+> h
+
+(s, a ) + (1 − α)w2
+
+> h
+
+(s, a )
+
+α P 
+
+> a′
+
+w1 
+
+> h
+
+(s, a ′) + (1 − α) P 
+
+> a′
+
+w2 
+
+> h
+
+(s, a ′)
+
+> (a)
+
+≥ − X
+
+> h,s,a
+
+αw 1
+
+> h
+
+(s, a ) log αw 1
+
+> h
+
+(s, a )
+
+α P 
+
+> a′
+
+w1 
+
+> h
+
+(s, a ′) − X
+
+> h,s,a
+
+(1 − α)w2
+
+> h
+
+(s, a ) log (1 − α)w2
+
+> h
+
+(s, a )(1 − α) P 
+
+> a′
+
+w2 
+
+> h
+
+(s, a ′)= αH  w1
+
+> h
+
+ + (1 − α)H  w2
+
+> h
+
+ ,
+
+for any w1, w 2 ∈ W and α ∈ [0 , 1] , where (a) is due to the log sum inequality (P 
+
+> i
+
+xi) ln    
+
+> P
+> ixi
+> P
+> iyi
+
+≤
+
+P 
+
+> i
+
+xi ln xi 
+
+> yi
+
+for non-negative xi and yi. Since (a) takes equality if and only if w1 = w2, H is strictly concave. Consequently, L (λ, w ) = P 
+
+> h,s,a ∈J1,H K×S×A
+
+wh(s, a )( fh(s, a ) + λg h(s, a )) − κH (w)
+
+is also strictly concave in W.Let wλ = arg max w∈W L (λ, w ), which is a unique maximizer due to the strict concavity. Define L (λ) := max w∈W L (λ, w ). Using Danskin’s theorem (Lemma 10), L (λ) is convex and ∂L (λ) 
+
+> ∂λ
+
+= P 
+
+> h,s,a ∈J1,H K×S×A
+
+wλh (s, a )gh(s, a ). Since L (λ) is convex, its derivative is non-decreasing. Therefore, 
+
+∂2L (λ)
+
+∂λ 2 = ∂∂λ 
+
+X
+
+> h,s,a ∈J1,H K×S×A
+
+wλh (s, a )gh(s, a ) ≥ 0 . (12) Since πλ is the softmax policy, combined with the one-to-one mapping between occupancy measure and policy [ 35 ], the well-known analytical solution of regularized MDP [ 15 ] indicates that wλ
+
+corresponds to the occupancy measure of πλ. Thus, due to Equation (12), it holds that 
+
+0 ≤ ∂∂λ 
+
+X
+
+> h,s,a ∈J1,H K×S×A
+
+wλh (s, a )gh(s, a ) = ∂∂λ V πλ,g P, 1 (s1) .
+
+This concludes the proof. 
+
+Definition 15 (Softmax policy with fixed δ). For any k ∈ U ∁, δ := ( δr , δ u, δ †) ∈ ∆(k) 
+
+> r
+
+×∆(k) 
+
+> u
+
+×∆(k)
+
+> †
+
+and λ ≥ 0, let πδ,λ ∈ Π be a policy such that 
+
+πδ,λ h (· | s) = SoftMax 
+
+ 1
+
+κ
+
+
+
+Qπδ,λ ,B †β(k)+δ† 
+
+> P,h
+
+(s, ·) + Qπδ,λ ,r +δr 
+
+> P,h
+
+[κ]( s, ·) + λQ πδ,λ ,u −δu 
+
+> P,h
+
+(s, ·)
+
+
+
+.
+
+Lemma 39 (Existence of feasible λ). Suppose κ ≤ ξ2 
+
+> 32 H2
+> κ(B†+1)
+
+. For any k and for any δ ∈
+
+∆(k) 
+
+> †
+
+× ∆(k) 
+
+> r
+
+× ∆(k) 
+
+> u
+
+, there exists a λδ ∈
+
+h
+
+0, 8H2
+
+> κ(B†+1)
+> ξ
+
+i
+
+such that, V πδ,λ ,u −δu 
+
+> P, 1
+
+(s1) ≥ b holds for any λ ≥ λδ .Proof. Throughout the proof, we use a shorthand rδ := B†β(k) + δ† + r + δr . Consider the following entropy-regularized max-min optimization problem: 
+
+max  
+
+> π∈Π
+
+min  
+
+> λ≥0
+
+V π,r δ 
+
+> P, 1
+
+[κ]( s1) + λ
+
+
+
+V π,u −δu 
+
+> P, 1
+
+(s1) − b − ξ
+
+4
+
+
+
++ κ
+
+2 λ2
+
+= min  
+
+> λ≥0
+
+max  
+
+> π∈Π
+
+V π,r δ 
+
+> P, 1
+
+[κ]( s1) + λ
+
+
+
+V π,u −δu 
+
+> P, 1
+
+(s1) − b − ξ
+
+4
+
+
+
++ κ
+
+2 λ2 . (13) where the equality holds by the strong duality of regularized CMDPs (see, e.g., Appendix C.1 in Ding et al. [11] ). Let (eπ, eλ) be a saddle point of the problem, which is ensured to be unique thanks to the regularization. We first show the analytical forms of (eπ, eλ).
+
+> 10
+
+This proof is based of Lemma 14 from Ding et al. [11] 
+
+39 Analytical forms of (eπ, eλ). Due to the strong duality, we have 
+
+max  
+
+> π∈Π
+
+V π,r δ eλ(u−δu) 
+
+> P, 1
+
+[κ]( s1) = V eπ,r δ +eλ(u−δu) 
+
+> P, 1
+
+[κ]( s1) .
+
+Since the left-hand side is an entropy-regularized optimization problem in an MDP, the well-known analytical solution of regularized MDP indicates that [15]: 
+
+eπh(· | s) = SoftMax 
+
+ 1
+
+κ
+
+
+
+Qeπ,r δ 
+
+> P,h
+
+[κ]( s, ·) + eλQ eπ,u −δu 
+
+> P,h
+
+(s, ·)
+
+
+
+= πδ,eλh , (14) where the last equality is due to the definition of πδ,λ h . Additionally, due to the strong duality, 
+
+eλ ∈ arg min 
+
+> λ≥0
+
+V eπ,r δ 
+
+> P, 1
+
+[κ]( s1) + λ
+
+
+
+V eπ,u −δu 
+
+> P, 1
+
+(s1) − b − ξ
+
+4
+
+
+
++ κ
+
+2 λ2 .
+
+Since the right-hand side is a quadratic equation on λ, we have 
+
+eλ = 1
+
+κ
+
+
+
+b + ξ
+
+4 − V eπ,u −δu 
+
+> P, 1
+
+(s1)
+
+
+
+> +
+
+. (15) 
+
+eλ upper bound. Next, we will show that eλ is upper bounded by constant. We have 
+
+2H2
+
+> κ
+
+(B† + 1) (a)
+
+≥ V eπ,r δ 
+
+> P, 1
+
+[κ]( s1) − 12κ
+
+
+
+b + ξ
+
+4 − V eπ,u −δu 
+
+> P, 1
+
+(s1)
+
+2+
+
+| {z }
+
+> ≥0
+> (b)
+
+= V eπ,r δ 
+
+> P, 1
+
+[κ]( s1) + eλ
+
+
+
+V eπ,u −δu 
+
+> P, 1
+
+(s1) − b − ξ
+
+4
+
+
+
++ κ
+
+2 eλ2
+
+> (c)
+
+≥ V πsf ,r δ 
+
+> P, 1
+
+[κ]( s1) + eλ
+
+
+
+V πsf ,u −δu 
+
+> P, 1
+
+(s1) − b − ξ
+
+4
+
+
+
++ κ
+
+2 eλ2
+
+≥ eλ
+
+V πsf ,u P, 1 (s1) − b − ξ
+
+4| {z }
+
+> ≥3ξ/ 4
+
+− V πsf ,2Cβ β(k) 
+
+> P, 1
+
+(s1)
+
+| {z }  
+
+> ≤ξ/ 2since k∈U ∁
+
+ ≥ eλ ξ
+
+4 ,
+
+where (a) is since rδ 
+
+> ∞
+
+= B†β(k) + δ† + r + δr 
+
+> ∞
+
+≤ B† + B†H + 1 + H = ( H + 1)( B† + 1) ,(b) is due to Equation (15), (c) uses Equation (13). By reformulating the inequality, 
+
+eλ ≤ 8H2
+
+> κ
+
+(B† + 1) 
+
+ξ . (16) 
+
+Constraint violation of πδ,λ Finally, we will show that for any λ ≥ eλ, πδ,λ guarantees zero constraint violation. Due to Equations (14), (15), and (16), we have 
+
+κeλ =
+
+
+
+b + ξ
+
+4 − V πδ,eλ,u −δu 
+
+> P, 1
+
+(s1)
+
+
+
+> +
+
+≤ 8κH 2
+
+> κ
+
+(B† + 1) 
+
+ξ ,
+
+which ensures the small violation of πδ,eλ when κ ≪ 1. Since V πδ,λ ,u −δu 
+
+> P, 1
+
+(s1) is monotonically increasing in λ due to Lemma 38, for any λ ≥ eλ, V πδ,λ ,u −δu 
+
+> P, 1
+
+(s1) ≥ b + ξ 
+
+> 4
+
+− 8κH 2 
+
+> κ(B†+1)
+> ξ
+
+. Therefore, by setting κ ≤ ξ2 
+
+> 32 H2
+> κ(B†+1)
+
+, we have V πδ,λ ,u −δu 
+
+> P, 1
+
+(s1) ≥ b.
+
+Lemma 40 (Restatement of Lemma 5) . If Algorithm 2 is run with ρ = 1 , Cλ ≥ 8H2 
+
+> κ(B†+1)
+> ξ
+
+, and 
+
+κ ≤ ξ2 
+
+> 32 H2
+> κ(B†+1)
+
+, under E2, it holds V π(k),C λ ,u  
+
+> (k),1
+
+(s1) ≥ b for any k ∈ U ∁.Proof. Due to E2, it holds that 
+
+δ := 
+
+
+
+δπ(k),C λ ,r  
+
+> (k),·
+
+, δ π(k),C λ ,u  
+
+> (k),·
+
+, δ π(k),C λ ,†
+
+> (k),·
+
+
+
+∈ ∆(k) 
+
+> †
+
+× ∆(k) 
+
+> r
+
+× ∆(k) 
+
+> u
+
+.
+
+According to Equation (11), this δ satisfies πδ,C λ = π(k),C λ where πδ,C λ is defined in Definition 15. Therefore, using Lemma 39, V π(k),C λ ,u  
+
+> (k),1
+
+(s1) ≥ b. This concludes the proof. 40 E.4.2 Proof of Theorem 3 Lemma 41 (Bonus summation bound) . If Algorithm 2 is run with ρ = 1 , under E1 and E2, it holds that 
+
+> K
+
+X
+
+> k=1
+
+
+
+V π(k),β (k) 
+
+> P, 1
+
+(s1)
+
+2
+
+≤ 2H2d ln 
+
+
+
+1 + Kd
+
+
+
++ 4 H2 ln 2KH δ = eO H2d
+
+and 
+
+> K
+
+X
+
+> k=1
+
+
+
+V π(k),β (k) 
+
+> P, 1
+
+(s1)
+
+
+
+≤ H√K
+
+s
+
+2d ln 
+
+
+
+1 + Kd
+
+
+
++ 4 ln 2KH δ = eO
+
+
+
+H√dK 
+
+
+
+.
+
+Proof. We have 
+
+> K
+
+X
+
+> k=1
+
+
+
+V π(k),β (k) 
+
+> P, 1
+
+(s1)
+
+2
+
+=
+
+> K
+
+X
+
+> k=1
+> H
+
+X
+
+> h=1
+
+E
+
+h
+
+β(k) 
+
+> h
+
+(sh, a h) sh, a h ∼ π(k)i!2
+
+> (a)
+
+≤ H
+
+> K
+
+X
+
+> k=1
+> H
+
+X
+
+> h=1
+
+
+
+E
+
+h
+
+β(k) 
+
+> h
+
+(sh, a h) sh, a h ∼ π(k)i 2
+
+> (a)
+
+≤ H
+
+> K
+
+X
+
+> k=1
+> H
+
+X
+
+> h=1
+
+E
+
+
+
+∥ϕ(sh, a h)∥2 
+
+> Λ(k)
+> h
+> −1
+
+sh, a h ∼ π(k)
+
+
+
+> (b)
+
+≤ 2H
+
+> K
+
+X
+
+> k=1
+> H
+
+X
+
+> h=1
+
+ϕ(s(k) 
+
+> h
+
+, a (k) 
+
+> h
+
+) 2 
+
+> 
+> Λ(k)
+> h
+> −1
+
++ 4 H2 ln 2KH δ
+
+> (c)
+
+≤ 2H2d ln 
+
+
+
+1 + Kd
+
+
+
++ 4 H2 ln 2KH δ ,
+
+where (a) is due to Jensen’s inequality, (b) is due to E1, and (c) uses Lemma 12. The second claim follows by: 
+
+> K
+
+X
+
+> k=1
+
+V π(k),β (k) 
+
+> P, 1
+
+(s1) (a)
+
+≤ √K
+
+vuut KX
+
+> k=1
+
+
+
+V π(k),β (k) 
+
+> P, 1
+
+(s1)
+
+2 (b)
+
+≤ H√K
+
+s
+
+2d ln 
+
+
+
+1 + Kd
+
+
+
++ 4 ln 2KH δ ,
+
+where (a) uses Cauchy–Schwarz inequality and (b) uses the first claim. 
+
+Lemma 42 (Restatement of Theorem 3) . Suppose Algorithm 2 is run with ρ = 1 and E1 and E2 hold. Then, 
+
+|U| ≤ 64 C2
+
+> u
+
+H2dξ2 ln 
+
+ 2KH δ
+
+
+
+= eO ξ−2H4d3 ,
+
+where the last equality sets Cu = eO(dH ).Proof. Using Lemma 41 and Definition 4, we have 
+
+|U| 
+
+ ξ
+
+2
+
+2
+
+≤ X
+
+> k∈U
+
+
+
+V πsf ,2Cuβ(k) 
+
+> P, 1
+
+(s1)
+
+2
+
+≤ 8C2
+
+> u
+
+H2d ln 
+
+
+
+1 + Kd
+
+
+
++ 16 C2
+
+> u
+
+H2 ln 2KH δ .
+
+Therefore, we have 
+
+|U| ≤ 32 C2
+
+> u
+
+H2dξ2 ln 
+
+
+
+1 + Kd
+
+
+
++ 64 C2
+
+> u
+
+H2
+
+ξ2 ln 2KH δ ≤ 64 C2
+
+> u
+
+H2dξ2 ln 
+
+ 2KH δ
+
+
+
+.
+
+41 E.5 Proofs for Sublinear Regret Guarantee (Section 3.2.2) 
+
+Suppose the good events E1 ∩ E2 hold. We decompose the regret as follows: 
+
+Regret( K)=
+
+> K
+
+X
+
+> k=1
+
+
+
+V π⋆,r P, 1 (s1) − V π(k),r P, 1 (s1)
+
+
+
+= X
+
+> k∈U
+
+
+
+V π⋆,r P, 1 (s1) − V π(k),r P, 1 (s1)
+
+
+
++ X
+
+> k∈U ∁
+
+
+
+V π⋆,r P, 1 (s1) − V π(k),r P, 1 (s1)
+
+
+
+≤|U| H + X
+
+> k∈U ∁
+
+
+
+V π(k),r  
+
+> (k),1
+
+[κ]( s1) − V π(k),r P, 1 (s1)
+
+
+
++ X
+
+> k∈U ∁
+
+
+
+V π⋆,r P, 1 (s1) − V π(k),r  
+
+> (k),1
+
+[κ]( s1)
+
+
+
+> (a)
+
+≤ eO d3H4ξ−2 + X
+
+> k∈U ∁
+
+
+
+V π(k),r  
+
+> (k),1
+
+[κ]( s1) − V π(k),r P, 1 [κ]( s1)
+
+
+
++ X
+
+> k∈U ∁
+
+
+
+V π⋆,r P, 1 (s1) − V π(k),r  
+
+> (k),1
+
+[κ]( s1)
+
+
+
++ κKH ln A
+
+> (b)
+
+≤ eO d3H4ξ−2 + 2 Cr
+
+X
+
+> k∈U ∁
+
+V π(k),β (k) 
+
+> P, 1
+
+(s1)
+
+| {z }
+
+1
+
++ X
+
+> k∈U ∁
+
+
+
+V π⋆,r P, 1 (s1) − V π(k),r  
+
+> (k),1
+
+[κ]( s1)
+
+| {z }
+
+2
+
++κKH ln A , 
+
+(17) where (a) uses Lemma 42 and (b) is due to Lemma 37 with E2. Under E1 ∩ E2, 1 can be easily bounded by Lemma 41 1 ≤ Cr eO(H√dK ) ≤ eO
+
+
+
+H2
+
+> κ
+
+d3/2√K
+
+
+
+, (18) where the last equality inserts Cr = eO(dH κ).
+
+E.5.1 Mixture Policy Decomposition 
+
+We upper bound 2 in Equation (17) by the mixture policy technique. 
+
+Lemma 43 (Mixture policy’s feasibility) . Let α(k) := ξξ+2 V π⋆,2Cuβ (k) 
+
+> P, 1(s1)
+
+. For any k ∈ U ∁ and 
+
+α ∈ [0 , α (k)], πα defined in Definition 5 satisfies V πα,u −2Cuβ(k) 
+
+> P, 1
+
+(s1) ≥ b.Proof. We have 
+
+V πα,u −2Cuβ(k) 
+
+> P, 1
+
+(s1) − b
+
+=(1 − α)
+
+
+
+V πsf ,u −2Cuβ(k) 
+
+> P, 1
+
+(s1) − b
+
+
+
++ α
+
+
+
+V π⋆,u −2Cuβ(k) 
+
+> P, 1
+
+(s1) − b
+
+
+
+≥(1 − α) ξ
+
+2 + α
+
+
+
+V π⋆,−2Cuβ(k) 
+
+> P, 1
+
+(s1)
+
+
+
+,
+
+where the last inequality holds because V πsf ,2Cuβ(k) 
+
+> P, 1
+
+(s1) ≤ ξ 
+
+> 2
+
+due to k ∈ U∁. Thus, 
+
+V πα,u −2Cuβ(k) 
+
+> P, 1
+
+(s1) − b ≥ 0 holds when 
+
+α ≤ ξξ + 2 V π⋆,2Cuβ(k) 
+
+> P, 1
+
+(s1) .
+
+Lemma 44 (Mixture policy’s optimism) . Let B† ≥ 4CuHξ . For any k ∈ U ∁, πα(k)
+
+with α(k) from Lemma 43 satisfies, 
+
+V πα(k) 
+
+> ,r +B†β(k)
+> P, 1
+
+(s1) ≥ V π⋆,r P, 1 (s1) and V πα(k) 
+
+> ,u −2Cuβ(k)
+> P, 1
+
+(s1) ≥ b . 
+
+42 Proof. The sufficient condition that V πα,r +B†β(k)
+
+P, 1 (s1) ≥ V π⋆,r P, 1 (s1) to hold is 
+
+B† ≥ V π⋆,r P, 1 (s1) − V πα,r P, 1 (s1)
+
+V πα,β (k)
+
+P, 1 (s1) =(1 − α)
+
+
+
+V π⋆,r P, 1 (s1) − V πsf ,r P, 1 (s1)
+
+
+
+(1 − α)V πsf ,β (k)
+
+P, 1 (s1) + αV π⋆,β (k)
+
+P, 1 (s1)= V π⋆,r P, 1 (s1) − V πsf ,r P, 1 (s1)
+
+V πsf ,β (k)
+
+P, 1 (s1) + α
+
+1−α V π⋆,β (k)
+
+P, 1 (s1) .
+
+By inserting α(k) = ξξ+2 V π⋆,2Cuβ (k) 
+
+> P, 1
+
+(s1)
+
+into α, i.e., α
+
+1−α = ξ
+
+2V π⋆,2Cuβ (k) 
+
+> P, 1
+
+(s1)
+
+,
+
+B† ≥ V π⋆,r P, 1 (s1) − V πsf ,r P, 1 (s1)
+
+V πsf ,β (k)
+
+P, 1 (s1) + ξ
+
+4CuV π⋆,β (k) 
+
+> P, 1
+
+(s1)
+
+V π⋆,β (k)
+
+P, 1 (s1) =4Cu
+
+
+
+V π⋆,r P, 1 (s1) − V πsf ,r P, 1 (s1)
+
+
+
+2V πsf ,2Cuβ(k)
+
+P, 1 (s1) + ξ .
+
+Thus, when B† ≥ 4CuHξ , it holds that V πα(k)
+
+,r +B†β(k)
+
+P, 1 (s1) ≥ V π⋆,r P, 1 (s1). The second claim follows from Lemma 43. We are now ready to decompose 2 . Using Lemmas 43 and 44, we have 2 = X
+
+k∈U ∁
+
+
+
+V π⋆,r P, 1 (s1) − V π(k),r 
+
+(k),1 [κ]( s1)
+
+
+
+≤ X
+
+k∈U ∁
+
+
+
+V πα(k)
+
+,B †β(k)
+
+P, 1 (s1) + V πα(k)
+
+,r P, 1 [κ]( s1) − V π(k),r 
+
+(k),1 [κ]( s1)
+
+
+
+= X
+
+k∈U ∁
+
+
+
+V πα(k)
+
+,B †β(k)
+
+P, 1 (s1) + V πα(k)
+
+,r P, 1 [κ]( s1) + λ(k,T )V πα(k)
+
+,u −2Cuβ(k)
+
+P, 1 (s1)
+
+−V π(k),†
+
+(k),1 (s1) − V π(k),r 
+
+(k),1 [κ]( s1) − λ(k,T )V π(k),u 
+
+(k),1 (s1)
+
+| {z }
+
+3
+
++ X
+
+k∈U ∁
+
+V π(k),†
+
+(k),1 (s1)
+
+| {z }
+
+4
+
++ X
+
+k∈U ∁
+
+λ(k,T )
+
+
+
+V π(k),u 
+
+(k),1 (s1) − V πα(k)
+
+,u −2Cuβ(k)
+
+P, 1 (s1)
+
+| {z }
+
+5
+
+,
+
+(19) where λ(k,T ) is defined in Line 10. Using Lemma 37, the term 4 is bounded as 4 ≤ V π(k),(B†+2 C†)β(k)
+
+P, 1 (s1) .
+
+Using Lemma 41, it holds that 4 ≤ (B† + 2 C†) eO
+
+
+
+H√dK 
+
+
+
+= eO
+
+
+
+H4d5/2ξ−1√K
+
+
+
+, (20) where the last equality inserts B† = 4 ξ−1CuH, Cu = eO(dH ), and C† = eO(dHB †). We will bound 3 and 5 separately. 
+
+E.5.2 Optimistic Bounds Lemma 45 (Optimism in composite value function) . Suppose E2 holds. Then, 3 = X
+
+k∈U ∁
+
+
+
+V πα(k)
+
+,B †β(k)
+
+P, 1 (s1) + V πα(k)
+
+,r P, 1 [κ]( s1) + λ(k,T )V πα(k)
+
+,u −2Cuβ(k)
+
+P, 1 (s1)
+
+− V π(k),B †β(k)
+
+(k),1 (s1) − V π(k),r 
+
+(k),1 [κ]( s1) − λ(k,T )V π(k),u 
+
+(k),1 (s1)
+
+
+
+≤ 0 .
+
+43 Proof. Using Lemma 18, for any k ∈ U ∁, we have 
+
+V π(k),B †β(k)
+
+(k),1 (s1) + V π(k),r 
+
+(k),1 [κ]( s1) + λ(k,T )V π(k),u 
+
+(k),1 (s1)
+
+− V πα(k)
+
+,B †β(k)
+
+P, 1 (s1) − V πα(k)
+
+,r P, 1 [κ]( s1) − λ(k,T )V πα(k)
+
+,u −2Cuβ(k)
+
+P, 1 (s1)=V πα(k)
+
+,f 1
+
+P, 1 (s1) + V πα(k)
+
+,f 2
+
+P, 1 (s1) + λ(k,T )V πα(k)
+
+,2Cuβ(k)
+
+P, 1 (s1)
+
+where f 1 : J1, H K × S × A → R and f 2 : J1, H K × S × A → R are functions such that 
+
+f 1
+
+h (s, a ) = X
+
+a∈A 
+
+
+
+π(k)
+
+h (a | s)
+
+
+
+Qπ(k),r 
+
+(k),h [κ]( s, a ) + λ(k,T )Qπ(k),u 
+
+(k),h (s, a ) − κ ln π(k)
+
+h (a | s)
+
+ 
+
+− X
+
+a∈A 
+
+
+
+πα(k)
+
+h (a | s)
+
+
+
+Qπ(k),r 
+
+(k),h (s, a ) + λ(k,T )Qπ(k),u 
+
+(k),h (s, a ) − κ ln πα(k)
+
+h (a | s)
+
+ 
+
+f 2
+
+h (s, a ) = δπ(k),r 
+
+(k) − λ(k,T )δπ(k),u 
+
+(k) .
+
+It is well-known that the analytical maximizer of max π∈P(A)
+
+P
+
+a∈A π(a)( x(a) − κ ln π(a)) is 
+
+SoftMax   1
+
+κ x(·). Therefore, the function f 1 is non-negative and thus V πα(k)
+
+,f 1
+
+P, 1 (s1) ≥ 0.On the other hand, using Lemma 36, we have 
+
+f 2
+
+h (s, a ) = δπ(k),r 
+
+(k),h − λ(k,T )δπ(k),u 
+
+(k),h 
+
+> (a)
+
+≥ − λ(k,T )2Cuβ(k)
+
+h
+
+Therefore, it holds that 
+
+V πα(k)
+
+,f 2
+
+P, 1 (s1) + λ(k,T )V πα(k)
+
+,2Cuβ(k)
+
+P, 1 (s1) ≥ 0 .
+
+By combining all the results, we have 3 ≤ 0.
+
+E.5.3 Bounds for Bisection Search 
+
+Using Lemma 43, 5 is further bounded by 5 = X
+
+k∈U ∁
+
+λ(k,T )
+
+
+
+V π(k),u 
+
+(k),1 (s1) − V πα(k)
+
+,u −2Cuβ(k)
+
+P, 1 (s1)
+
+
+
+≤ X
+
+k∈U ∁
+
+λ(k,T )
+
+V π(k),u 
+
+(k),1 (s1) − b
+
+
+
+≤ Cλ
+
+X
+
+k∈U ∁
+
+
+
+V π(k),u 
+
+(k),1 (s1) − b
+
+
+
+.
+
+We bound the last term using the bisection search in Algorithm 2. Note that we focus only the case V π(k),0,u 
+
+(k),1 (s1) < b and V π(k),C λ ,u 
+
+(k),1 (s1) ≥ b due to Line 4 and Line 3 in Algorithm 2. Due to the definitions of λ(k,t ) and λ(k,t ) in Algorithm 2, 
+
+V π(k),λ (k,t )
+
+,u 
+
+(k),1 (s1) < b and V π(k),λ (k,t )
+
+,u 
+
+(k),1 (s1) ≥ b
+
+hold for any t ∈ J1, T K. Therefore, 5 ≤Cλ
+
+X
+
+k∈U ∁
+
+
+
+V π(k),λ (k,T )
+
+,u 
+
+(k),1 (s1) − V π(k),λ (k,T )
+
+,u 
+
+(k),1 (s1)
+
+
+
+To bound the right-hand side, we derive the sensitivity of V π(k),λ ,u 
+
+(k),1 (s1) with respect to λ.
+
+Lemma 46 (Restatement of Lemma 8) . Let X := K
+
+
+
+1 + 8(1+ Cλ)( Hκ+B†H+H)
+
+κ
+
+
+
+and Y := 
+
+8( Hκ+B†H+H)
+
+κ . For any k and λ ∈ [0 , C λ], it holds that 
+
+V π(k),λ ,u 
+
+(k),1 (s1) − V π(k),λ +ε,u 
+
+(k),1 (s1) ≤ XH H2Y ε . 
+
+44 Proof. The proof is based on Lemma 2 from Ghosh et al. [18] . For notational simplicity, we denote 
+
+π := π(k),λ and π′ := π(k),λ +ε. Additionally, we use shorthand: 
+
+vrh := V π,r 
+
+> (k),h
+
+[κ] − V π′,r 
+
+> (k),h
+
+[κ] ∞ , qrh := Qπ,r 
+
+> (k),h
+
+[κ] − Qπ′,r 
+
+> (k),h
+
+[κ] ∞ ,v† 
+
+> h
+
+:= V π, † 
+
+> (k),h
+
+− V π′,† 
+
+> (k),h ∞
+
+, q† 
+
+> h
+
+:= Qπ, † 
+
+> (k),h
+
+− Qπ′,† 
+
+> (k),h ∞
+
+,vuh := V π,u  
+
+> (k),h
+
+− V π′,u  
+
+> (k),h ∞
+
+, quh := Qπ,u  
+
+> (k),h
+
+− Qπ′,u  
+
+> (k),h ∞
+
+.
+
+For any h, we have 
+
+vrh = πhQπ,r 
+
+> (k),h
+
+[κ] − π′
+
+> h
+
+Qπ′,r 
+
+> (k),h
+
+[κ] ∞
+
+≤ Hκ∥πh − π′
+
+> h
+
+∥1 + qrh
+
+v† 
+
+> h
+
+≤ B†H∥πh − π′
+
+> h
+
+∥1 + q†
+
+> h
+
+vuh ≤ H∥πh − π′
+
+> h
+
+∥1 + quh .
+
+Since πh and π′ 
+
+> h
+
+are softmax policies, using Lemma 19, 
+
+∥πh − π′
+
+> h
+
+∥1 ≤ 8
+
+κ Qπ, † 
+
+> (k),h
+
++ Qπ,r 
+
+> (k),h
+
+[κ] + λQ π,u  
+
+> (k),h
+
+− Qπ′,† 
+
+> (k),h
+
+− Qπ′,r 
+
+> (k),h
+
+[κ] − (λ + ε)Qπ′,u  
+
+> (k),h ∞
+
+≤ 8
+
+κ
+
+
+
+q† 
+
+> h
+
++ qrh + Cλquh + εH 
+
+
+
+Additionally, 
+
+qrh ≤ bP (k)
+
+> h
+
+
+
+V π,r 
+
+> (k),h +1
+
+[κ] − V π′,r 
+
+> (k),h +1
+
+[κ]
+
+
+
+> ∞
+
+≤ Kv rh+1 
+
+q† 
+
+> h
+
+≤ bP (k)
+
+> h
+
+
+
+V π, † 
+
+> (k),h +1
+
+− V π′,†
+
+> (k),h +1
+
+
+
+> ∞
+
+≤ Kv †
+
+> h+1
+
+quh ≤ bP (k)
+
+> h
+
+
+
+V π,u  
+
+> (k),h +1
+
+− V π′,u 
+
+> (k),h +1
+
+
+
+> ∞
+
+≤ Kv uh+1 ,
+
+where we used the fact that, for any V : S → R,
+
+bP (k) 
+
+> h
+
+V (s, a ) = ϕ(s, a )⊤(Λ(k) 
+
+> h
+
+)−1
+
+> k−1
+
+X
+
+> i=1
+
+ϕ(s(i) 
+
+> h
+
+, a (i) 
+
+> h
+
+)V (s(i)
+
+> h+1
+
+)
+
+≤ (Λ(k) 
+
+> h
+
+)−1
+
+> k−1
+
+X
+
+> i=1
+
+ϕ(s(i) 
+
+> h
+
+, a (i) 
+
+> h
+
+)
+
+> 2
+
+∥V ∥∞ ≤ K∥V ∥∞ .
+
+By combining all the results, 
+
+vrh ≤ K
+
+ 8Hκ
+
+κ + 1 
+
+
+
+vrh+1 + K 8Hκ
+
+κ v† 
+
+> h+1
+
++K 8HκCλ
+
+κ vuh+1 + 8Hκ
+
+κ εH v† 
+
+> h
+
+≤ K 8B†Hκ vrh+1 + K
+
+ 8B†Hκ + 1 
+
+
+
+v† 
+
+> h+1
+
++K 8B†HC λ
+
+κ vuh+1 + 8B†Hκ εH vuh ≤ K 8Hκ vrh+1 + K 8Hκ v† 
+
+> h+1
+
++K
+
+ 8Hκ + 1 
+
+
+
+Cλvuh+1 + 8Hκ εH . 
+
+Let X := K
+
+
+
+1 + 8(1+ Cλ)( Hκ+B†H+H)
+
+> κ
+
+
+
+and Y := 8( Hκ+B†H+H) 
+
+> κ
+
+. Then, 
+
+vrh + v† 
+
+> h
+
++ vuh ≤ X(vrh+1 + v† 
+
+> h+1
+
++ vuh+1 ) + Y Hε 
+
+≤ X2(vrh+2 + v† 
+
+> h+2
+
++ vuh+2 ) + XY Hε + Y Hε 
+
+≤ . . . 
+
+≤  XH + · · · + X + 1 Y Hε . 
+
+45 We are now ready to bound 5 Applying Lemma 46 to 5 , we obtain the following lemma. 
+
+Lemma 47. When T = eO(H), it holds that 5 ≤ Cλ
+
+X
+
+> k∈U ∁
+
+
+
+V π(k),λ (k,T ) 
+
+> ,u
+> (k),1
+
+(s1) − V π(k),λ (k,T ) 
+
+> ,u
+> (k),1
+
+(s1)
+
+
+
+≤ eO(1) .
+
+Proof. Due to the bisection search update rule, λ(k,T ) − λ(k,T ) = 2 −T . Thus, 5 ≤ Cλ
+
+X
+
+> k∈U ∁
+
+
+
+V π(k),λ (k,T ) 
+
+> ,u
+> (k),1
+
+(s1) − V π(k),λ (k,T ) 
+
+> ,u
+> (k),1
+
+(s1)
+
+
+
+≤ XH CλKH 2Y 2−T
+
+where the inequality uses Lemma 46 with X and Y defined in Lemma 46. Thus, 5 ≤ eO(1) holds by setting T = H polylog( X, H, Y ). This concludes the proof. We are now ready to prove Theorem 4. The proof is under the parameters of: ρ = 1 , Cr = eO(dH ),
+
+Cu = eO(dH ), C† = eO(d2H3ξ−1), B† = eO dH 2ξ−1, κ = eΩ ξ3H−4d−1K−0.5, T = eO(H),and Cλ = eO dH 4ξ−2.
+
+E.5.4 Proof of Theorem 4 
+
+We condition the proof with the good events E1 ∩ E2, which holds with probability at least 1 − 3δ
+
+by Lemmas 33 and 34. In Algorithm 2, the deployed policy switches between πsf ∈ Πsf and the softmax policies. Since Algorithm 2 deploys the softmax policies only when V π(k),0,u  
+
+> (k),1
+
+(s1) ≥ b, due to Lemma 36 and the good events, all the deployed policies satisfy π(k) ∈ Πsf for all k ∈ J1, K K. This concludes the proof of the zero-violation guarantee. Next, we derive the regret bound. Recall from Equation (17) that 
+
+Regret( K) ≤ eO d3H4ξ−2 + 1 + 2 + κKH ln A ≤ eO d3H4ξ−2 + 1 + 2 + eO(√K) ,
+
+where the second inequality is due to the value of κ.Using Equation (18), 1 ≤ eO
+
+
+
+H2d3/2√K
+
+
+
+.
+
+Using Equation (19), 2 can be decomposed as: 2 ≤ 3 + 4 + 5 .
+
+Each term can be bounded as: • 3 ≤ 0 by Lemma 45 • 4 ≤ eO
+
+
+
+H4d5/2ξ−1√K
+
+
+
+by Equation (20), • 5 ≤ eO(1) by Lemma 47 Finally, by combining all the results, we have 
+
+Regret( K) ≤ eO d3H4ξ−2 + eO
+
+
+
+H2d3/2√K
+
+
+
++ eO
+
+
+
+H4d5/2ξ−1√K
+
+
+
+.
+
+This concludes the proof of the sublinear regret guarantee. 46 F Numerical Experiments 
+
+This section presents empirical results supporting Theorem 4, which guarantees √K regret and episode-wise safety of OPSE-LCMDP. We also evaluate how often OPSE-LCMDP deploys the safe policy πsf , a key technique for achieving sublinear regret (Theorem 3). All experiments were conducted within 30 minutes using eight Intel Core i7 CPUs and 32 GiB of RAM. The source code for the experiment is available at https://github.com/matsuolab/ Episode-Wise-Safe-Linear-CMDP .We compare OPSE-LCMDP against the previous state-of-the-art linear CMDP algorithm by Ghosh et al. [18] and the tabular CMDP algorithm called DOPE [ 8]. Ghosh et al. [18] achieves 
+
+eO(√K) bounds for both regret and violation regret, and DOPE achieves eO(√K) regret with zero episode-wise violation. For a sequence of policies {π(k)}k∈[1 ,K ], the violation regret is defined as: 
+
+Vio( K) := PKk=1 max 
+
+n
+
+b − V π(k),u P, 1 (s1), 0
+
+o
+
+. (21) Clearly, if all the policies satisfy π(k) ∈ Πsf , the violation regret is zero. Additionally, we also report the performance of a uniform policy defined by πh(· | s) = 1 /A for all h, s , to highlight the sublinear regret of our algorithm. 
+
+Implementations of Ghosh et al. [18] and DOPE. Ghosh et al. [18] ’s algorithm can be implemented similarly to ours, with a few modifications: remove the πsf deployment trigger, eliminate the pessimism compensation bonuses by setting C† = B† = 0 , and apply an optimistic constraint bonus instead of our pessimistic one (i.e., use a negative sign for Cu). We use Cr and 
+
+Cu to denote the bonus scaling parameters for Ghosh et al. [18] . See Algorithm 1 of Ghosh et al. [18] for further implementation details. The DOPE algorithm can be implemented in tabular environments with a moderately small state space. It computes the policy π(k) by solving the following optimistic–pessimistic problem: 
+
+π(k) ∈ max  
+
+> π∈Π
+
+max  
+
+> P′∈P (k)
+
+V π,r +Cr β(k)  
+
+> P′,1
+
+(s1) such that V π,u −Cuβ(k)  
+
+> P′,1
+
+(s1) ≥ b , (22) where β(k) 
+
+> h
+
+(s, a ) denotes the bonus at step h for the state-action pair (s, a ) and P(k) denotes the confidence set for the transition kernel. Specifically, using the visitation count 11 n(k) 
+
+> h
+
+(s, a, s ′) := 
+
+Pkk′=1 1[s(k) 
+
+> h
+
+= s, a (k) 
+
+> h
+
+= a, s (k) 
+
+> h+1
+
+= s′], the bonus and the confidence set are defined as 
+
+β(k) 
+
+> h
+
+(s, a ) = X
+
+> s′∈S
+
+γ(k) 
+
+> h
+
+(s, a, s ′) where γ(k) 
+
+> h
+
+(s, a, s ′) ∝
+
+vuut bP (k) 
+
+> h
+
+(s′ | s, a )(1 − bP (k) 
+
+> h
+
+(s′ | s, a )) 
+
+n(k) 
+
+> h
+
+(s, a ) ∨ 1 ,n(k) 
+
+> h
+
+(s, a ) := X
+
+> s′∈S
+
+n(k) 
+
+> h
+
+(s, a, s ′) , and bP (k) 
+
+> h
+
+(s′ | s, a ) := n(k) 
+
+> h
+
+(s, a, s ′)
+
+n(k) 
+
+> h
+
+(s, a ) ∨ 1 .
+
+For simplicity, we omit absolute constants and logarithmic factors, and use this simplified form in all experiments. Further implementation details can be found in Bura et al. [8]. For each environment, we select the hyperparameters of each algorithm using heuristic adjustments to balance exploration and exploitation. To ensure numerical stability, we assign relatively small values to these parameters. The detailed values are provided below. 
+
+Synthetic tabular environments. To evaluate the exact regret values, we conduct experiments on tabular CMDPs with a small state space size. Tabular CMDP is the special case of linear CMDP with 
+
+d = |S| and allows us to compute the optimal policy π⋆ by linear programming. 
+
+> 11
+
+1[E] equals 1 if the event E is true, and 0 otherwise. For two scalars a and b, we use shorthand a ∨ b := max {a, b }.
+
+47 We instantiated CMDPs with |S| = 5 , |A| = 3 , H = 4 , employing a construction strategy akin to that of Dann et al. [9] . For all s, a, h , the transition probabilities Ph(· | s, a ) were independently sampled from Dirichlet(0 .1, . . . , 0.1) . This transition probability kernel is concentrated yet encompasses non-deterministic transition probabilities. The reward values for the objective rh(s, a ) are set to 0 with probability 0.1 and to 1 otherwise. The utility values for the constraint uh(s, a ) are assigned in the same way. The initial state 
+
+s1 is randomly chosen from S and fixed during the training. The constraint threshold is set as 
+
+b = 0 .6 max π∈Π V π,u P, 1 (s1).We choose the hyperparameters of the algorithms as follows: • OPSE-LCMDP: Cr = Cu = Cd = 1 .0, Cλ = 300 , B† = 1 .0, and κ = 0 .1.• Ghosh et al. [18]: Cr = Cu = 1 .0 and κ = 0 .1.• DOPE [8]: Cr = Cu = 1 .0.
+
+Media Streaming CMDP Environments. As a realistic environment, we also evaluate algorithms on the media streaming environment from Bura et al. [8] . In the environment, a wireless base station (agent) transmits media to a device using either a fast or slow service option, each incurring different costs. The slow and fast services correspond to actions a = 1 and a = 2 , respectively. The fast service succeeds with probability μ1, and the slow one with μ2 = 1 − μ1, where both follow independent Bernoulli distributions. At each environment construction, we randomly sample μ1
+
+from [0 .5, 0.9] . Packets received at the device are stored in a media buffer and played out according to a Bernoulli process with parameter ρ. We sample ρ uniformly from [0 .1, 0.4] .Let Ah, B h ∈ { 0, 1} denote the number of arriving and departing packets, respectively. The media buffer length represents the state, and transitions as sh+1 = min {max {0, s h + Ah − Bh}, L } where 
+
+L denotes the maximum buffer length. We set L = 5 , |S| = L + 1 , and H = 4 . The initial state is set to s1 = 0 .The objective is to deliver enough packets to the buffer while limiting the use of the fast service. Accordingly, the agent receives a reward rh(s, ·) = 1{s ≥ 0.3L} and incurs a constraint utility 
+
+uh(·, a ) = 1{a = 1 }. The constraint threshold is set as b = 0 .6 max π∈Π V π,u P, 1 (s1).We choose the hyperparameters of the algorithms as follows: • OPSE-LCMDP: Cr = Cu = Cd = 2 .0, Cλ = 300 , B† = 1 .0, and κ = 0 .1.• Ghosh et al. [18]: Cr = Cu = 2 .0 and κ = 0 .1.• DOPE [8]: Cr = Cu = 1 .0.
+
+Synthetic linear environments. Building on the experiment by Amani et al. [4] , we randomly construct linear CMDPs in which the number of states is larger than the feature map dimension. We test the algorithms on environments with S = 100 , A = 3 , d = 5 , and H = 4 . This setup has a relatively large state space while still allowing us to analytically compute the optimal policy and exact regret. For each (s, a ) ∈ S × A , the feature vector ϕ(s, a ) ∈ Rd is sampled from Dirichlet(0 .1, . . . , 0.1) .Recall from Assumption 2 the definition of μh =  μ1
+
+> h
+
+, . . . , μdh
+
+ ∈ RS×d. For each 
+
+(h, i ) ∈ J1, H K × J1, d K, we sample μih from Dirichlet(0 .1, . . . , 0.1) . With these μ and ϕ,we set Ph(s′ | s, a ) = μh(s′)⊤ϕ(s, a ). This construction ensures that Ph(· | s, a ) = 1 becomes a valid probability distribution for any (h, s, a ).For the reward and utility functions, we sample both θrh and θuh from a uniform distribution over 
+
+[0 , 1] d. The reward and utility functions are then constructed such that rh(s, a ) = ( θrh)⊤ϕ(s, a ) and 
+
+uh(s, a ) = ( θuh)⊤ϕ(s, a ).The initial state s1 is randomly chosen from S and fixed during the training. The constraint threshold is set as b = 0 .68 max π∈Π V π,u P, 1 (s1).48 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Episode ×10 4     
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> Regret
+> ×10 4
+> OPSE-LCMDP (Ours)
+> Ghosh et al. (2024)
+> Uniform Policy
+> DOPE
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Episode ×10 4    
+
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> Violation Regret
+> ×10 3
+> OPSE-LCMDP (Ours)
+> Ghosh et al. (2024)
+> Uniform Policy
+> DOPE
+> 10 010 110 210 310 4
+
+Episode 
+
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> 40
+> Total number of  sf  deployments
+
+Synthetic Tabular Env 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Episode ×10 4     
+
+> 0
+> 1
+> 2
+> 3
+> 4
+> Regret
+> ×10 3
+> OPSE-LCMDP (Ours)
+> Ghosh et al. (2024)
+> Uniform Policy
+> DOPE
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Episode ×10 4    
+
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> 3.5
+> 4.0
+> Violation Regret
+> ×10 3
+> OPSE-LCMDP (Ours)
+> Ghosh et al. (2024)
+> Uniform Policy
+> DOPE
+> 10 010 110 210 310 4
+
+Episode 
+
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> Total number of  sf  deployments
+
+Media Streaming Env 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Episode ×10 4     
+
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> 8
+> Regret
+> ×10 3
+> OPSE-LCMDP (Ours)
+> Ghosh et al. (2024)
+> Uniform Policy
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Episode ×10 4    
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> Violation Regret
+> ×10 2
+> OPSE-LCMDP (Ours)
+> Ghosh et al. (2024)
+> Uniform Policy
+> 10 010 110 210 310 4
+
+Episode 
+
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> 600
+> 700
+> 800
+> Total number of  sf  deployments
+
+Synthetic Linear Env Figure 1: Numerical comparison of the algorithms in the synthetic tabular environment ( Top ), the media streaming environment ( Middle ), and the synthetic linear environment ( Bottom ). We do not run DOPE in the linear CMDP environment due to its computational intractability (see Remark 3). 
+
+Left : regret (Equation (6)), Middle : violation regret (Equation (21)), and Right : total number of πsf 
+
+deployments in OPSE-LCMDP. 
+
+Remark 3. We do not run the DOPE algorithm in this linear environment due to its heavy compu-tational cost. Using the extended LP technique introduced by Efroni et al. [13] , the optimization problem in (22) can be reformulated as the following standard LP problem: 
+
+min x c⊤x such that Ax = b and Gx ≥ h ,
+
+where parameters are defined appropriately. This LP involves HS 2A decision variables and more than HS 2A number of constraints (see [ 13 ] for more details). Therefore, in our synthetic linear CMDP experiment, the matrices A and G require at least 10 10 entries, which is computationally intractable in practice. 
+
+Results. Figure 1 shows the performance of the algorithms, averaged over 10 random seeds, with regret plotted on the left, violation regret in the middle, and the total number of πsf deployments on the right. Across all settings, both OPSE-LCMDP and the algorithm by Ghosh et al. [18] exhibit sublinear regret. However, while OPSE-LCMDP maintains zero constraint violation throughout, Ghosh et al. [18] con-49 sistently violates the constraint, leading to increasing violation regret. These results empirically val-idate Theorem 4, confirming the eO(√K) regret and episode-wise safety guarantees of our algorithm. While DOPE achieves sublinear regret with zero-violation, it is limited to the tabular settings where S is small, as described in Remark 3. This highlights the computational tractability of our OPSE-LCMDP in large S, which supports Remark 2. Finally, the right plot shows that OPSE-LCMDP explores the environment using πsf primarily during the early stages of training, and stops deploying it after approximately 10 4 episodes. This behavior supports Theorem 3. 50

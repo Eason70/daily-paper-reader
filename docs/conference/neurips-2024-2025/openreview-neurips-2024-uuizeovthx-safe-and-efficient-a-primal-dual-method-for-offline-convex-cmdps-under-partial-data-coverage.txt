@@ -1,0 +1,1921 @@
+Title: 16517_Safe_and_Efficient_A_Pri.pdf
+
+URL Source: https://openreview.net/pdf?id=UuiZEOVtHx
+
+Number of Pages: 31
+
+Markdown Content:
+# Safe and Efficient: A Primal-Dual Method for Offline Convex CMDPs under Partial Data Coverage 
+
+Haobo Zhang 
+
+ShanghaiTech University 
+
+zhanghb2023@shanghaitech.edu.cn 
+
+Xiyue Peng 
+
+ShanghaiTech University 
+
+pengyx2024@shanghaitech.edu.cn 
+
+Honghao Wei 
+
+Washington State University 
+
+honghao.wei@wsu.edu 
+
+Xin Liu ∗
+
+ShanghaiTech University 
+
+liuxin7@shanghaitech.edu.cn 
+
+# Abstract 
+
+Offline safe reinforcement learning (RL) aims to find an optimal policy using a pre-collected dataset when data collection is impractical or risky. We propose a novel linear programming (LP) based primal-dual algorithm for convex MDPs that incorporates “uncertainty” parameters to improve data efficiency while requiring only partial data coverage assumption. Our theoretical results achieve a sample complexity of O(1 /(1 − γ)√n) under general function approximation, improving the current state-of-the-art by a factor of 1/(1 − γ), where n is the number of data samples in an offline dataset, and γ is the discount factor. The numerical experiments validate our theoretical findings, demonstrating the practical efficacy of our approach in achieving improved safety and learning efficiency in safe offline settings. 
+
+# 1 Introduction 
+
+Safe reinforcement learning (RL) aims to learn a reward-maximizing policy while satisfying multiple safety constraints, demonstrating its practicality in many real-world applications, such as autonomous driving [Kiran et al., 2021], robotics [Levine et al., 2016], and healthcare [Yu et al., 2021]. In these tasks, certain behaviors may potentially harm the agent or its surroundings, which is crucial for task completion. One way to mathematically characterize safe RL is through Constrained Markov Decision Processes (CMDPs) [Altman, 2021], where safety constraints are incorporated into the problem when optimizing the objective. Offline RL aims to learn a sequence of actions from a pre-collected dataset to address scenarios where interacting with the environment is risky, expensive, or impractical. Ensuring sample efficiency in offline RL with function approximation typically requires additional assumptions about both the function classes and the dataset due to training instability and distribution shift issues [Fujimoto et al., 2019, Kostrikov et al., 2021, Paine et al., 2020]. Earlier studies [Chen and Jiang, 2019, Liao et al., 2022, Liu et al., 2019, Wang et al., 2019, Zhang et al., 2020b] in offline RL usually require that all functions in the function space are Bellman-complete and that the dataset has full coverage, meaning it covers the state-action distributions induced by all policies. This might be a mild and accepted assumption in offline RL without considering safety. However, it is highly unacceptable and impractical in safe offline RL, as it would require the dataset to cover all hazardous state-action pairs induced by all dangerous policies. To address the full coverage issue, later works [Chen and Jiang, 2022, Rashidinejad et al., 2021, Uehara and Sun, 2021, Xie et al., 2021, Zhan et al., 2022, Zhu et al., 
+
+> ∗
+
+Corresponding author. 38th Conference on Neural Information Processing Systems (NeurIPS 2024). Table 1: Comparison of algorithms for offline safe RL with function approximation. Algorithm Convex MDP Data Function Sample Coverage Approximation Complexity CoptiDICE [Lee et al., 2021] No Partial General None DPDL [Chen et al., 2022] No Partial None O
+
+ 1(1 −γ)2√n
+
+
+
+MBCL [Le et al., 2019] No Full General O
+
+ 1(1 −γ)5√n
+
+
+
+PDCA [Hong et al., 2024] No Full General O
+
+ 1(1 −γ)2√n
+
+
+
+Ours Yes Partial General O
+
+ 1(1 −γ)√n
+
+
+
+2023] reduce the assumption to single-policy coverage by using pessimism in the face of uncertainty. Unfortunately, all existing studies [Chen et al., 2022, Hong et al., 2024, Le et al., 2019] in safe offline RL still require coverage for all policies. Beyond traditional offline safe RL, many applications do not fit the standard RL problem [Abel et al., 2021]. There is a substantial body of literature [Geist et al., 2022, Mutti et al., 2023, Zahavy et al., 2021] studying a more general scenario called convex MDPs, where the objec-tive function is modeled as a convex (or concave) utility function instead of linear, as in the standard RL problem. This framework is quite general and captures various learning scenar-ios, including imitation [Abbeel and Ng, 2004], exploration [Hazan et al., 2019], and more. However, studying convex MDPs introduces additional challenges. In convex MDPs, moving beyond cumulative rewards means that the Bellman equation fails to hold due to the lack of reward additivity. This leads to breakdowns in many techniques based on Dynamic Program-ming (DP) [Zhang et al., 2020b]. Despite a large body of practical literature [Lee et al., 2021, Xu et al., 2022, Zheng et al., 2023], robust theoretical analysis remains lacking in this setting. G G
+
+Figure 1: Performance of our algorithm on FrozenLake with completely random data. To address the coverage issue and extend the general func-tion approximation setting, we focus on convex MDPs in the safe offline setting. Our main contributions are sum-marized below (the detailed comparisons can be found in Table 1): 
+
+• We are the first to study offline convex MDPs under safety constraints with partial data coverage assumption. We reformulate the problem using marginalized impor-tance weights to avoid issues caused by the Bellman equa-tion’s failure in convex MDPs. 
+
+• We analyze the convergence rate of our proposed ap-proach under partial coverage assumption and theoretically prove that our algorithm achieves 
+
+O
+
+ 1(1 −γ)√n
+
+
+
+in both objective and violation bounds with general function approximation, when the number of iteration is larger than n. The sample complexity of O
+
+ 1(1 −γ)√n
+
+
+
+improves the best existing result by a factor of 1/(1 − γ)2.
+
+• Experimental results on Imitation Learning and standard CMDPs demonstrate the generality and effectiveness of our algorithm. As Figure 1 shows our algorithm performs well even with a completely random and safety-violated offline dataset with general function approximation, which verifies our theoretical findings. 
+
+1.1 Related Work Offline Safe RL: The offline safe reinforcement learning setting entails the agent learning from a fixed dataset while adhering to safety constraints. This involves a blend of offline RL and safe RL, yet research on this approach, particularly concerning theoretical analysis, remains limited. BCQL 
+
+> 2Note that, they consider standard CMDPs which is a special case of ours.
+
+2augmented by BCQ [Fujimoto et al., 2019] optimizes the policy in the offline phase and applies the Lagrange method to handle constraints. CPQ [Xu et al., 2022] tackles the safety constraints by overestimating the cost value function of out-of-distribution (’unsafe’) actions and updating the reward value function with ’safe’ actions. Another line of work [Lee et al., 2021] using DICE-style technique optimizes policy by calculating the stationary distribution of state-action pairs instead of value function and extracts the policy by importance-sample behavior cloning. CDT [Liu et al., 2023b] combines Decision Transformer with safety constraints and utilizes data augmentation based on Pareto frontiers to enhance the safety and adaptability of the Transformer. It also focuses on the model’s capability to different cost thresholds. The work [Le et al., 2019] proposes a meta-algorithm, using Fitted Q Evaluation and Fitted Q Iteration as subroutines to evaluate safety constraints and learn policy respectively. [Chen et al., 2022] analyzes the information-theoretic sample complexity lower bound and proposes a near-optimal primal-dual learning algorithm under partial data coverage but without function approximation. The most related work [Hong et al., 2024] approaches the problem from the perspective of the Actor-Critic algorithm, analyzing the sample complexity to be 
+
+O( 1(1 −γ)2√n ) under Slater’s condition and full data coverage assumption. 
+
+Convex MDP: Convex MDP problem extends the scope of MDP by focusing on convex objective functions of stationary distribution, rather than an inner product between reward and stationary distribution. To address the challenge, [Zhang et al., 2020b] introduces a variational Monte Carlo gradient estimation algorithm, demonstrating convergence to the optimal policy across general utility functions. The work [Zahavy et al., 2021] utilizes Fenchel duality to cast convex MDPs as min-max "two-player" games, proposing a meta-algorithm that addresses various convex MDPs through distinct subroutines. The work [Geist et al., 2022] approaches convex MDPs from the Mean-Field Game (MFG) perspective, establishing the equivalence between the optimal condition in convex MDPs and Nash equilibrium in MFGs. [Ying et al., 2023] studies the convex CMDP problem through a policy-based primal-dual algorithm and proves an O  T −1/3 convergence rate in both optimality gap and constraint violation. The existing literature on convex MDPs primarily focuses on the online setting, while this paper specifically targets the offline scenario. 
+
+# 2 Problem Setup 
+
+2.1 Convex CMDP problem 
+
+We study a discounted constrained Markov decision process (CMDP), denoted by M =(S, A, R, C, T, γ, μ 0), where S is the state space (a finite set), A is the action space (a finite set), R : S × A → [0 , 1] and C : S × A → [0 , 1] are reward and cost functions, respectively, 
+
+T : S × A → ∆( S) is the transition probability kernel, where ∆( ·) denotes the probability simplex, 
+
+γ ∈ [0 , 1) denotes the discount factor, and μ0 ∈ ∆( S) is the initial state distribution. We define a policy π : S → ∆( A) as a probability mapping from states to actions. At time slot t, the agent observes state st and takes action at according to the policy π. For a policy π, we define its discounted state-action occupancy measure dπ as follows 
+
+dπ (s, a ) = (1 − γ)
+
+> ∞
+
+X
+
+> t=0
+
+γtPπ (st = s, a t = a) , ∀s ∈ S , a ∈ A ,
+
+where Pπ (st, a t) is the probability of state-action pair (s, a ) being visited at time slot t under the policy π. Further, we let dπ (s) = P 
+
+> a∈A
+
+dπ (s, a ) be the discounted state occupancy measure. Given the occupancy measure above, we can formulate the following convex CMDP problem 
+
+min   
+
+> dπ∈K
+
+f (dπ ) s.t. g (dπ ) ≤ τ, (1) where f and g are both convex functions, and τ is the cost threshold. We present a single safety constraint for simple exposition, and our result can be readily generalized to the setting with multiple constraints. The set K is a probability simplex that satisfies global balance equations of the underlying Markov process 
+
+K = {d | X
+
+> a
+
+d(s, a ) = (1 − γ) μ0(s) + X
+
+> s′,a ′
+
+T (s | s′, a ′) d (s′, a ′) , ∀s ∈ S} .
+
+This set can also be written as a compact matrix form that 
+
+K = {d | M d = (1 − γ)μ0 }, M = Diag( 1⊤|A| , · · · , 1⊤|A| ) − γP, (2) 3where 1|A| = [1 , 1, · · · , 1] ⊤ ∈ R|A| and P ∈ R|S|×|S||A| is the transition probability matrix. The convex CMDP problem in (1) is quite general to capture various learning scenarios, including apprenticeship learning [Abbeel and Ng, 2004], standard CMDPs [Altman, 2021], pure exploration [Hazan et al., 2019], and inverse reinforcement learning in contextual MDPs [Belogolovsky et al., 2021]. Take the standard CMDP as an example, the agent aims to find a policy that maximizes cumulative reward while satisfying the safety constraints [Altman, 2021], which can be written as 
+
+max  
+
+> dπ∈K
+
+X
+
+> s,a
+
+r(s, a )dπ (s, a ) s.t. X
+
+> s,a
+
+c(s, a )dπ (s, a ) ≤ τ, (3) where f and g are linear functions w.r.t. the state-action occupancy measure. Take safety-aware apprenticeship learning [Zhou and Li, 2018] for another example, the agent aims to mimic the expert’s demonstrations while avoiding the unsafe states in H, which can be written as 
+
+min   
+
+> dπ∈K
+
+F (dπ , d e) s.t. d π (s) ≤ τ, ∀s ∈ H . (4) where de represents the empirical distribution of the expert’s demonstration and F (·, ·) is the convex distance function, such as KL-divergence or total variation distance [Zhang et al., 2020a]. However, solving these problems in the online setting can be time-consuming, costly, and potentially dangerous in safety-critical contexts. In contrast, by leveraging historical data, offline RL offers a promising avenue for developing safe and effective algorithms, as introduced next. 
+
+2.2 Offline Reinforcement Learning 
+
+In offline RL, we cannot interact with the environment and only have access to dataset with a finite number of samples. Let D = ( si, a i, r i, c i)ni=1 be a collected offline dataset where we assume all the pairs (si, a i)ni=1 are generated independently and identically distributed (i.i.d. ) from data distribution 
+
+μ(s, a ) induced by a behavior policy πμ. Let nD (s, a ) represents the number of occurrences of the state-action pair (s, a ) in the offline dataset D, then μD (s, a ) = nD (s, a )/n is an empirical version of 
+
+μ(s, a ). In offline RL, a major challenge is distribution shift, which measures the mismatch between data distribution and occupancy measure induced by candidate policies. To quantify the distribution shift, we make the following π∗ concentrability assumption that refers to partial data coverage, 
+
+Assumption 1 (π∗–concentrability) . Let π∗ be the optimal policy to problem (1) , there exists constant 
+
+Cπ∗ > 0 such that dπ∗ (s, a )/μ (s, a ) ≤ Cπ∗ , for all s ∈ S , a ∈ A .
+
+This assumption controls the distribution shift between offline data distribution μ and the occupancy measure dπ∗ induced by optimal policy π∗. Specifically, the partial data coverage assumption indicates the offline dataset D should cover state-action pairs visited by the optimal policy π∗. Unlike the common full data coverage assumption in previous works that the dataset D should encompass data visited by all policies [Chen and Jiang, 2019, Hong et al., 2024, Le et al., 2019], our assumption is considerably more relaxed. Furthermore, in the field of safe RL, partial coverage assumption also offers significant advantages, as the full coverage implies the behavior policy needs to visit every dangerous state and action space, which is obviously impractical. Beyond using assumptions to limit distribution shift in offline RL, we consider Marginalized Impor-tance Weight (MIW), a method widely used in the existing literature [Hong et al., 2024, Ozdaglar et al., 2023, Zhan et al., 2022], to further address this challenge. 
+
+Definition 1 (Marginalized Importance Weight) . Given a policy π, let d be the occupancy measure induced by π. We define marginalized importance weight w : S × A → R+ as w(s, a ) = d(s,a ) 
+
+> μ(s,a )
+
+,
+
+∀s ∈ S , a ∈ A .
+
+Note w can be regarded as the density ratio between the normalized discounted occupancy measure and data distribution. Moreover, recall the definition of w and M in equation (2) , we define matrix 
+
+K ∈ R|S|×|S||A| and KD ∈ R|S|×|S||A| as 
+
+K(s′, (s, a )) = M (s′, (s, a )) · μ(s, a ), KD (s′, (s, a )) = M (s′, (s, a )) · μD (s, a ),
+
+where KD can be seen as an empirical version of K in dataset D and it is straightforward to verify 
+
+Kw = M d . With these notations, we establish an equivalent formulation with problem (1) w.r.t. 4MIW 
+
+min  
+
+> w≥0
+
+f (μ · w) (5) s.t. Kw = (1 − γ)μ0 (6) 
+
+g(μ · w) ≤ τ (7) where the operator “ ·” denotes the element-wise product of vectors. As we aim to establish the sample-efficient learning algorithms in large state-action spaces, we regard the importance weight w
+
+as a function, i.e. w : S × A → R+ that belongs to the convex function class W in the following assumption. 
+
+Assumption 2 (Realizability) . We assume w∗ ∈ W where w∗ is the optimal solution to the problem 
+
+(5) –(7) .
+
+This assumption assumes the optimal solution w∗(π∗) can be realizable for a convex function class 
+
+W. Note that the assumption of the convex function class W is reasonable and standard, which is also achievable with the convexification process in case the function class is non-convex. The convexification process is a common practice in the offline safe RL literature, particularly in the context of general function approximation [Le et al., 2019, Hong et al., 2024]. Now we consider W
+
+as a discrete function class for simplicity and it readily extends to continuous settings (in Remark 1). Further, we introduce a completeness assumption that is used to relax the key constraint in (6). 
+
+Assumption 3 (Completeness) . Let xw be within the function class X . Define a mapping ϕ: such that ϕ(w)⊤(Kw − (1 − γ)μ0) = x⊤ 
+
+> w
+
+(Kw − (1 − γ)μ0) = ∥Kw − (1 − γ)μ0∥1. Then, we have 
+
+(W, X )-completeness under the mapping ϕ, i.e. xw ∈ X for all w ∈ W .
+
+Intuitively, the completeness assumption allows us to replace the computation of the l1-norm with a linear product and simplifies our subsequent analysis. Next, we introduce the standard boundness assumption in offline RL literature with general function approximation [Chen and Jiang, 2019, 2022, Le et al., 2019, Munos and Szepesvári, 2008]. 
+
+Assumption 4 (Boundness of W and X ). We assume function classes W and X are bounded, i.e. 
+
+∥w∥∞ ≤ Bw, ∀w ∈ W and ∥xw∥∞ ≤ Bw, ∀xw ∈ X .
+
+Combining this assumption with Assumption 1 implies Bw ≥ Cπ∗ . Lastly, we impose a mild assumption for the reward and cost functions in the problem (1). 
+
+Assumption 5 (Lipschitz condition) . The functions f (x) and g(x) are convex and satisfy the Lipschitz condition, where there exist constants Lf and Lg such that for any x, y , the following inequalities hold |f (x) − f (y)| ≤ Lf ∥x − y∥ and |g(x) − g(y)| ≤ Lg ∥x − y∥.
+
+# 3 Algorithm Design and Main Results 
+
+Despite the practical importance of offline safe RL in real-world applications, there is still a lack of theoretical research on this topic. The earlier literature on this setting often lacks robust theoretical analysis [Lee et al., 2021, Liu et al., 2023b, Xu et al., 2022], and articles with theoretical analysis either yield unsatisfactory results or rely on strong assumptions [Chen et al., 2022, Hong et al., 2024, Le et al., 2019]. In this section, we propose a provable algorithmic framework and establish the first theoretical result in offline convex CMDP, to the best of our knowledge. Moreover, when reducing to standard offline CMDP, we achieve a sample complexity of O
+
+ 1(1 −γ)√n
+
+
+
+with general function approximation, which improves the current state-of-the-art result by a factor of 1/(1 − γ).
+
+3.1 Algorithm Design 
+
+Inspired by [Ozdaglar et al., 2023], we first introduce an empirical version of problem (5) – (7) in the offline setting by incorporating a suitable relaxed parameter into the safety constraint. Intuitively, the empirical version of the problem is "close" to the original problem when the dataset is large. This is the key observation for analyzing the convergence performance and safety violations. To solve 5(5)–(7), we present its empirical and relaxed problem: 
+
+min  
+
+> w∈W
+
+f (μD · w) (8) s.t. ∥KD w − (1 − γ)μ0∥1 ≤ ζ, (9) 
+
+g(μD · w) − τ ≤ κ, (10) where μD and KD are the empirical version of μ and K, respectively; ζ and κ are the relaxed hyperparameters for the validity constraint (Bellman equation) and safety constraint. Intuitively, the parameters of ζ and κ capture the “uncertainty” induced by the offline dataset D in terms of distribution shift and safety concerns. The values of these parameters will be specified later and play an important role in our analysis. Next, we demonstrate that the mismatch of the objective and constraint violation bound depends on the “uncertainty”, which exhibits O(1 /√n) distance. Note that all parameters in the optimization problem (8) – (10) can be determined from the offline dataset. When the state-action space is not large, this problem can be efficiently solved by convex optimization solvers. However, when the state-action space is large, and the function approximation is necessary (e.g., w is parameterized by a neural network), it would be quite challenging (if not impossible) to solve this problem. To address this challenge, we propose a primal-dual algorithm that is sample-efficient and computationally tractable to solve the problem iteratively. We first introduce the Lagrange function of problem (8)–(10), 
+
+L (w, λ, ϕ ) = f (μD · w) + λ (∥KD w − (1 − γ)) μ0∥1 − ζ) + ϕ (g (μD · w) − τ − κ) , (11) where λ and ϕ are Lagrange multipliers. 
+
+Algorithm 1: P rimal-dual algorithm for Offline Convex CMDP (POCC)  
+
+> 1
+
+Input : Dataset D = {(si, a i, r i, c i)}ni=1 , the relaxed parameters κ, ζ, and the step size η = 1√K ; 
+
+> 2
+
+Initialization : Choose any w1 ∈ W and the Lagrangian multipliers λ1 = 0 , ϕ1 = 0 ; 
+
+> 3
+
+for k = 1 , 2, . . . , K do 
+
+> 4
+
+Primal: wk+1 = PW
+
+wk − η∇L w(wk, λ k, ϕ k) ,
+
+Dual: ϕk+1 = τ k − η∇L ϕ(wk, λ k, ϕ k)ϕk+1  
+
+> max
+> 0
+
+, λk+1 = λk − η∇L λ(wk, λ k, ϕ k)λk+1 max  
+
+> 0
+
+,
+
+where PW is the projection onto set W and [·]hl is the projection onto interval [l, h ]. 
+
+> 5
+
+Compute the average wK = PKi=1 wi; 
+
+> 6
+
+Extract the policy πK with formula (12);  
+
+> 7
+
+Output: Policy πK ;Given the Lagrange function above, we introduce our algorithm called POCC (in Algorithm 1), which takes the offline dataset D as input and runs a primal-dual method on the estimated Lagrange function. Specifically, at each iteration k, POCC updates the importance weight by gradient descent and projects it back to function class W, then updates Lagrange multipliers of validity constraint (6) and safety constraint (7) respectively. After K steps, POCC returns an averaged wK , we can extract the corresponding policy πK based on the offline dataset D as follows 
+
+πK (a | s) := 
+
+( wK (s,a )πμ(a|s)P   
+
+> a′∈A wK(s,a ′)πμ(a′|s)
+
+, if P 
+
+> a′∈A
+
+wK (s, a ′)πμ(a′ | s) > 0 
+
+> 1
+> |A|
+
+, if P 
+
+> a′∈A
+
+wK (s, a ′)πμ(a′ | s) = 0 (12) where the second equality means that if P 
+
+> a′∈A
+
+wK (s, a ′)πμ(a′ | s) = 0 we randomly choose an action for state s.
+
+3.2 Theoretical Results 
+
+We present the theoretical results of our proposed approach in the following theorem. 
+
+Theorem 1 (Sample complexity of πK ). Suppose Assumptions 1–7 hold. Denote πK as the corresponding policy induced by wK . Set the relaxed parameters ζ = 2√2Bw√n
+
+q
+
+log |W||X |  
+
+> δ
+
+and 
+
+6κ = 
+
+> √2LgBw
+> √n
+
+q
+
+log 2|W|  
+
+> δ
+
+, and the step size η = 1√K . Let the constants υ = 11−γ (4 B + 4 L + 2 ε)
+
+and ι = 11−γ
+
+
+
+B2 + 4 B + 4 L + L2 
+
+> √K
+
++ ε
+
+
+
+, we have, with at least 1 − 8δ probability, 
+
+Jr (πK ) − Jr (π∗) ≤ 6Lf Bw
+
+p2 log( |W||X | /δ )(1 − γ) √n + ι
+
+2√K (13) 
+
+Jc (πK ) − τ ≤ 6Lg Bw
+
+p2 log(2 |W||X | /δ )(1 − γ) √n + υ
+
+√K (14) 
+
+where Jr (πK ) = f (dK ) and Jc(πK ) = g(dK ) are objective and constraint performance of policy π
+
+respectively, B represents the distance between initial value w1 of the iteration and optimal solution 
+
+wD to problem (8) –(10) , ε ≥ 0 is a constant, L is the max Lipschitz constant of Lagrange function and K is the number of iterations. 
+
+Remark 1. We remark that Theorem 1 remains valid even when the function class W is a continuous set. In this case, the cardinality |W| can be replaced with the covering number of W, and the union bound can be applied to its ϵ-covering set. This adjustment also preserves the sample complexity order of O(1 /√n), up to a constant dependent on ϵ. For further details on the extension from discrete 
+
+W to a continuous set, please refer to [Le et al., 2019, Xie and Jiang, 2021]. 
+
+Theorem 1 demonstrates that the convergence performance of our algorithm can be divided into two parts: O(1 /√n) + O(1 /√K). Regarding the first term, except for the size of dataset, it mainly depends on the function class (searching space) log |W||X | and relaxed parameters ζ and κ that capture the “uncertainty” for addressing the distribution shift and safety concern. Moreover, the second term O(1 /√K) connects with the error bound between wK and optimal solution wD , which decays at the rate of 1/√K when the number of iterations increases. It is worth noting that the convergence rate of policy πK is still O(1 /√n) when the iterative number is sufficient to satisfy 
+
+K ≥ n. The algorithm is gradient-based and does not involve additional computations for solving the optimization problem (8) –(10) . This suggests that we can improve the convergence performance w.r.t. K by employing more advanced primal-dual techniques to reduce the convergence rate of the second term, such as those discussed in [Yu and Neely, 2017] with a convergence rate of O(1 /K ).Unlike most of the previous work focuses on convex MDPs in online setting [Bai et al., 2023, Ying et al., 2023, Zahavy et al., 2021, Zhang et al., 2020b], Theorem 1 to the best of our knowledge, is the first provable result in offline convex MDPs. Moreover, compared to the best result O
+
+ 1(1 −γ)2√n
+
+
+
+in offline CMDP [Hong et al., 2024, Chen et al., 2022], our results achieve a sample complexity of O
+
+ 1(1 −γ)√n
+
+
+
+, which outperform the state-of-the-art by a factor of 1/(1 − γ). Besides, our algorithm is appropriate in the scenario with large-scale state-action space due to the general function approximation for w while the work [Chen et al., 2022] targets the tabular setting; our result is more favorable in the safety applications compared to [Hong et al., 2024] because we replace the realizability of value function ν with a slightly stronger completeness assumption but reduce the data coverage from full to partial . As stated in Assumption 1, the full data coverage not only implies access to a highly exploratory dataset but also is impractical for offline safe RL, as it assumes behavior policy needs to visit every dangerous state-action pair. Finally, we want to comment that the previous work all focuses on the standard RL, whose objective function is linear, while our algorithm is general enough to tackle the convex MDPs. 
+
+Remark 2. In the theorem, we assume prior knowledge of the behavior policy πμ for the sake of exposition. However, in practice, it is often challenging to know the behavior policy in advance, as we typically only have access to the offline dataset. The most popular approach to tackle this challenge is behavior clone. It posits that ˆπμ can be estimated as ˆπμ(a|s) = n(s,a ) 
+
+> n(s)
+
+, where n(s, a ) denotes the number of the occurrences of the state-action pair (s, a ) in the offline dataset. We employed this estimation method in the experiments and results demonstrate its effectiveness. 
+
+# 4 Theoretical Analysis 
+
+In this section, we present a sketch of the proof of Theorem 1. We focus on illustrating the analysis of the constraint violation, and the convergence of the objective follows similar steps. The detailed proof can be found in Appendix A. 7We first decompose the bound into different major terms and then sutdy them individually 
+
+Jc(πK ) − τ = g(dπK ) − τ (15) 
+
+= g(dπK ) − g(dK )
+
+| {z }
+
+> I
+
++ g(μ · wK ) − g(μD · wK )
+
+| {z }
+
+> II
+
++ g(μD · wK ) − τ
+
+| {z }
+
+> III
+
+(16) The first equality holds due to the definition: Jc(πK ) = g(dπK ), where dπK represents the occupancy measure induced by returned policy πK . Recall the definition w(s, a ) · μ(s, a ) = d(s, a ), we then have g(dK ) = g(μ · wK ). It is worth noting that the decomposition is intuitive since terms I and II relates to the idea of constructing “uncertainty” parameter for the offline dataset and term III mainly depends on the convergence of primal-dual method. Specifically, term I is the distance between g(dK ) and g(dπK ). It represents the error that we rectify the unnormalized occupancy measure dK , which violates the validity constraint (6) , to a satisfying one dπK . The term II illustrates the error incurred when applying the calculated wK from offline dataset D to the real environment μ, which depends on the sample size of the dataset. The term III is related to the relaxed parameter κ in safety constraint (7) and the distance between returned wK and optimal solution wD . Next, we present the following lemmas to bound these terms. 
+
+Lemma 1. Suppose Assumptions 1–4 hold, we have, with probability at least 1 − 2δ,
+
+Jc(πK ) − g(dK ) ≤ 4Lg Bw
+
+p2 log( |W||X | /δ )(1 − γ)√n .
+
+Lemma 2. Suppose Assumptions 1–4 hold. For wK ∈ W , we have, with probability at least 1 − δ,
+
+g(μ · wK ) − g(μD · wK ) ≤√2Lg Bw
+
+√n
+
+r
+
+log 2|W| 
+
+δ .
+
+Lemma 3. Suppose Assumptions 1–7 hold. For wK ∈ W , we have 
+
+g(μD · wK ) − τ ≤ κ + υ
+
+√K .
+
+Combining the above lemmas, we have, with at least 1 − 3δ probability, 
+
+Jc(πK ) − τ = g(dπK ) − g(dK )
+
+| {z }
+
+> I
+
++ g(μ · wK ) − g(μD · wK )
+
+| {z }
+
+> II
+
++ g(μD · wK ) − τ
+
+| {z }
+
+> III
+
+≤ 4Lg Bw
+
+p2 log( |W||X | /δ )(1 − γ)√n + 2√2Lg Bw
+
+√n
+
+r
+
+log 2|W| 
+
+δ + υ
+
+√K
+
+≤ 6√2Lg Bw
+
+p2 log(2 |W||X | /δ )(1 − γ)√n + υ
+
+√K .
+
+where we set ζ = 2√2Bw√n
+
+q
+
+log |W||X |  
+
+> δ
+
+, κ = 
+
+> √2LgBw
+> √n
+
+q
+
+log 2|W|  
+
+> δ
+
+.
+
+# 5 Experiments 
+
+This section aims to justify the effectiveness of our proposed framework through numerical experi-ments. We test a practical version of Algorithm 1, where we replace the gradient-type update with the “Adam”-type update (the detailed algorithm can be found in Algorithm 2 in the appendix). We test our algorithm to two specific offline convex CMDPs: 1) Safe imitation learning and 2) standard offline CMDP. Our objective is to address the following questions: (i) Are the experimental results consistent with our theory? (ii) how does the data quality affect the performance of our algorithm? The additional details can be found in the Appendix B. 
+
+5.1 Safe Imitation Learning 
+
+To showcase the generality of our algorithm, we choose imitation learning as a user case of convex MDPs and conduct the experiments in a maze environment. We design the environment, as illustrated 8in Figure 2, modified from [Geist et al., 2022]. The problem of (safe) imitation learning can be formulated as F (d) = KL (d || dE ), where dE represents the stationary distribution of an expert. The environment is deterministic; agent has four actions (left, down, right, up); moving towards the wall (white) and the boundary does not change the state; the goal is to learn from the expert demonstrations (yellow) under safety constraints. We collect data by expert demonstrations in (a) but randomly remove 25% states. We intend for the algorithm to learn to fill in the gaps using its inherent properties and function approximation, as emphasized in our theory. We are presenting two sets of results: one that considers safety constraints with a cost threshold of 0, and another that does not consider safety constraints. It’s important to note that we cannot simply take the stationary distribution of the dataset as our final result. This is due to several reasons, including the fact that expert demonstrations are incomplete (25% of states are removed), simple replacement leads to poor results, and it’s not suitable when considering the safety of the agents. 0 2 4 6 8 10 0246810 0 2 4 6 8 10 0246810            
+
+> 345670246810 0246810 0246810 0246810 234567
+
+Figure 2: Reading order: (a) target demonstrations in yellow, wall in white; (b) result for log-density without considering the safety constraint; (c) target demonstrations that all states in top-right corners have cost; (d) result for log-density with safety constraint. Our results are presented in Figure 2. In Figure (2b), it is demonstrated that our policy can accurately replicate the expert distribution using function approximation and completely bridge the gap required by the expert. Additionally, when taking into account the safety constraints, which involve setting the cost in the entire top-right corners, it is evident that our policy avoids states with cost and behaves appropriately, aligning with our theoretical framework. 
+
+5.2 Offline CMDP 
+
+We consider an 8x8 grid world environment FrozenLake, with the initial state being the top-left grid. The agent has four actions: N (north), S (south), E (east), and W (west). The primary objective is to reach the goal while avoiding all holes. The game terminates if the agent achieves the goal within 25 steps. A reward of 1 is obtained when the agent achieves the goal, and the main cost function assigns a cost of 1 if the agent falls into a hole and 0 otherwise. The diagram of the environment has been presented in Figure 1 in the introduction. Initially, we simulate a mixture of different percentages of optimal and uniform policies to collect the offline dataset. We employ various behavior policies πD , running 200 trajectories to collect the offline dataset D, with each trajectory having a maximum of 50 time steps to ensure that the optimal goal is included in the dataset. Additionally, we increase the difficulty of the environment compared to classical FrozenLake, such that if the agent falls into a hole, it can also come out in the next step. This implies that our cost constraint influences the training. We set the cost threshold as 0 here, which means that the agent is not supposed to incur any cost. Note that a higher percentage with a uniform policy indicates that the problem becomes more difficult. We set the discount factor as γ = 0 .99 , ζ = 0 .1, and κ
+
+in our algorithm. Furthermore, we encode the environment with one-hot encoding and employ a more practical algorithm. We refer to w as a single hidden-layer neural network which we describe in Algorithm 2 in Appendix B. We set the learning rate of 10 −5 for w and 10 −4 for Lagrange multipliers. In remark (), we have stated that there are two approaches when facing with the scenario that the behavior policy is unknown, and here we choose to use the behavior clone method that we will estimate the behavior policy through the offline dataset. We compare our algorithm with COptiDICE 9[Lee et al., 2021], which is a well-acknowledged baseline algorithm in the offline safe RL literature [Hong et al., 2024, Liu et al., 2023b]. 0 50 100 150 200                  
+
+> Training step
+> 0.00 0.25 0.50 0.75 1.00
+> ×10 3
+> Reward
+> 050 100 150 200
+> Training step
+> 0246
+> ×10 3
+> Cost
+> 10 210 310 4
+> Datasize
+> 0.40.60.81.0
+> Reward
+> 10 210 310 4
+> Datasize
+> 02468Cost
+> p= 0 .75 p= 0 .5p= 0 .25 p= 0 .0Ours COptiDICE
+
+Figure 3: Performance on FrozenLake with general function approximation. Reading order: (a) and (b) show the training result with four different behavior policies of COptiDICE and ours. (c) and (d) demonstrate the variations in rewards and costs as the dataset increases. Each point is the average result of 10 independent runs. Denote p as the percentage of optimal policy within the behavior policy. We evaluate the algorithm with different behavior policies p = {0.75 , 0.5, 0.25 , 0} and dataset sizes. We present the results in Figure 3. In the first two figures, it can be seen that our algorithm can consistently find the optimal path even with completely random data. Conversely, COptiDICE behaves well when the proportion of optimal policy is 0.75, but cannot even learn a logical and safe policy when the majority of the data in dataset is random and constraint violated. In the last two figures, we test the performance of algorithms in different sizes of dataset, where p = 0 .5 in behavior policy. The results demonstrate that our algorithm can find a safe and optimal path as the dataset size increases. In contrast, the results from the COptiDICE algorithm show high variance, where it can only find a safe path in about 
+
+50% runs. In summary, our algorithm performs well across various behavior policies and dataset sizes, which is consistent with our theoretical results and assumptions. 
+
+# 6 Conclusions 
+
+In this work, we consider convex CMDPs in the offline setting. We propose a sample efficient RL approach that addresses the challenges in offline convex CMDPs. We theoretically prove that we can suffer O(1 /√n) sample complexity in both performance and violation bound with general function approximation under mild data coverage assumption, which is the first result in offline convex MDPs as best of our knowledge and surpasses the state-of-the-art result in offline safe RL by a factor of 1/(1 − γ). Experimental studies further demonstrate the effectiveness and generality of our framework. 10 References 
+
+Pieter Abbeel and Andrew Y Ng. Apprenticeship learning via inverse reinforcement learning. In 
+
+Proceedings of the twenty-first international conference on Machine learning , page 1, 2004. David Abel, Will Dabney, Anna Harutyunyan, Mark K Ho, Michael Littman, Doina Precup, and Satinder Singh. On the expressivity of markov reward. Advances in Neural Information Processing Systems , 34:7799–7812, 2021. Eitan Altman. Constrained Markov decision processes . Routledge, 2021. Qinbo Bai, Amrit Singh Bedi, Mridul Agarwal, Alec Koppel, and Vaneet Aggarwal. Achieving zero constraint violation for concave utility constrained reinforcement learning via primal-dual approach. Journal of Artificial Intelligence Research , 78:975–1016, 2023. Stav Belogolovsky, Philip Korsunsky, Shie Mannor, Chen Tessler, and Tom Zahavy. Inverse rein-forcement learning in contextual mdps. Machine Learning , 110(9):2295–2334, 2021. Dimitri P Bertsekas. Nonlinear programming. Journal of the Operational Research Society , 48(3): 334–334, 1997. Fan Chen, Junyu Zhang, and Zaiwen Wen. A near-optimal primal-dual method for off-policy learning in cmdp. Advances in Neural Information Processing Systems , 35:10521–10532, 2022. Jinglin Chen and Nan Jiang. Information-theoretic considerations in batch reinforcement learning. In 
+
+International Conference on Machine Learning , pages 1042–1051. PMLR, 2019. Jinglin Chen and Nan Jiang. Offline reinforcement learning under value and density-ratio realizability: the power of gaps. In Uncertainty in Artificial Intelligence , pages 378–388. PMLR, 2022. Scott Fujimoto, David Meger, and Doina Precup. Off-policy deep reinforcement learning without exploration. In International conference on machine learning , pages 2052–2062. PMLR, 2019. Matthieu Geist, Julien Pérolat, Mathieu Laurière, Romuald Elie, Sarah Perrin, Oliver Bachem, Rémi Munos, and Olivier Pietquin. Concave utility reinforcement learning: The mean-field game viewpoint. In Proceedings of the 21st International Conference on Autonomous Agents and Multiagent Systems , pages 489–497, 2022. Elad Hazan, Sham Kakade, Karan Singh, and Abby Van Soest. Provably efficient maximum entropy exploration. In International Conference on Machine Learning , pages 2681–2691. PMLR, 2019. Jean-Baptiste Hiriart-Urruty and Claude Lemaréchal. Convex analysis and minimization algorithms I: Fundamentals , volume 305. Springer science & business media, 1996. Kihyuk Hong, Yuhang Li, and Ambuj Tewari. A primal-dual-critic algorithm for offline constrained reinforcement learning. In International Conference on Artificial Intelligence and Statistics , pages 280–288. PMLR, 2024. B Ravi Kiran, Ibrahim Sobh, Victor Talpaert, Patrick Mannion, Ahmad A Al Sallab, Senthil Yogamani, and Patrick Pérez. Deep reinforcement learning for autonomous driving: A survey. IEEE Transactions on Intelligent Transportation Systems , 23(6):4909–4926, 2021. Ilya Kostrikov, Ashvin Nair, and Sergey Levine. Offline reinforcement learning with implicit q-learning. arXiv preprint arXiv:2110.06169 , 2021. Hoang Le, Cameron Voloshin, and Yisong Yue. Batch policy learning under constraints. In Interna-tional Conference on Machine Learning , pages 3703–3712. PMLR, 2019. Jongmin Lee, Cosmin Paduraru, Daniel J Mankowitz, Nicolas Heess, Doina Precup, Kee-Eung Kim, and Arthur Guez. Coptidice: Offline constrained reinforcement learning via stationary distribution correction estimation. In International Conference on Learning Representations , 2021. Sergey Levine, Chelsea Finn, Trevor Darrell, and Pieter Abbeel. End-to-end training of deep visuomotor policies. Journal of Machine Learning Research , 17(39):1–40, 2016. 11 Peng Liao, Zhengling Qi, Runzhe Wan, Predrag Klasnja, and Susan A Murphy. Batch policy learning in average reward markov decision processes. Annals of statistics , 50(6):3364, 2022. Boyi Liu, Qi Cai, Zhuoran Yang, and Zhaoran Wang. Neural trust region/proximal policy optimization attains globally optimal policy. Advances in neural information processing systems , 32, 2019. Zuxin Liu, Zijian Guo, Haohong Lin, Yihang Yao, Jiacheng Zhu, Zhepeng Cen, Hanjiang Hu, Wenhao Yu, Tingnan Zhang, Jie Tan, et al. Datasets and benchmarks for offline safe reinforcement learning. 
+
+arXiv preprint arXiv:2306.09303 , 2023a. Zuxin Liu, Zijian Guo, Yihang Yao, Zhepeng Cen, Wenhao Yu, Tingnan Zhang, and Ding Zhao. Con-strained decision transformer for offline safe reinforcement learning. In International Conference on Machine Learning , pages 21611–21630. PMLR, 2023b. Rémi Munos and Csaba Szepesvári. Finite-time bounds for fitted value iteration. Journal of Machine Learning Research , 9(5), 2008. Mirco Mutti, Riccardo De Santi, Piersilvio De Bartolomeis, and Marcello Restelli. Convex reinforce-ment learning in finite trials. Journal of Machine Learning Research , 24(250):1–42, 2023. Angelia Nedi´ c and Asuman Ozdaglar. Subgradient methods for saddle-point problems. Journal of optimization theory and applications , 142:205–228, 2009. Asuman E Ozdaglar, Sarath Pattathil, Jiawei Zhang, and Kaiqing Zhang. Revisiting the linear-programming framework for offline rl with general function approximation. In International Conference on Machine Learning , pages 26769–26791. PMLR, 2023. Tom Le Paine, Cosmin Paduraru, Andrea Michi, Caglar Gulcehre, Konrad Zolna, Alexander Novikov, Ziyu Wang, and Nando de Freitas. Hyperparameter selection for offline reinforcement learning. 
+
+arXiv preprint arXiv:2007.09055 , 2020. Paria Rashidinejad, Banghua Zhu, Cong Ma, Jiantao Jiao, and Stuart Russell. Bridging offline rein-forcement learning and imitation learning: A tale of pessimism. In Advances Neural Information Processing Systems (NeurIPS) , volume 34, pages 11702–11716, 2021. Masatoshi Uehara and Wen Sun. Pessimistic model-based offline reinforcement learning under partial coverage. arXiv preprint arXiv:2107.06226 , 2021. Lingxiao Wang, Qi Cai, Zhuoran Yang, and Zhaoran Wang. Neural policy gradient methods: Global optimality and rates of convergence. arXiv preprint arXiv:1909.01150 , 2019. Tengyang Xie and Nan Jiang. Batch value-function approximation with only realizability. In Int. Conf. Machine Learning (ICML) , pages 11404–11413. PMLR, 2021. Tengyang Xie, Ching-An Cheng, Nan Jiang, Paul Mineiro, and Alekh Agarwal. Bellman-consistent pessimism for offline reinforcement learning. Advances in neural information processing systems ,34:6683–6694, 2021. Haoran Xu, Xianyuan Zhan, and Xiangyu Zhu. Constraints penalized q-learning for safe offline rein-forcement learning. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 36, pages 8753–8760, 2022. Donghao Ying, Mengzi Amy Guo, Yuhao Ding, Javad Lavaei, and Zuo-Jun Shen. Policy-based primal-dual methods for convex constrained markov decision processes. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 37, pages 10963–10971, 2023. Chao Yu, Jiming Liu, Shamim Nemati, and Guosheng Yin. Reinforcement learning in healthcare: A survey. ACM Computing Surveys (CSUR) , 55(1):1–36, 2021. Hao Yu and Michael J Neely. A simple parallel algorithm with an o(1/t) convergence rate for general convex programs. SIAM Journal on Optimization , 27(2):759–783, 2017. Tom Zahavy, Brendan O’Donoghue, Guillaume Desjardins, and Satinder Singh. Reward is enough for convex mdps. Advances in Neural Information Processing Systems , 34:25746–25759, 2021. 12 Wenhao Zhan, Baihe Huang, Audrey Huang, Nan Jiang, and Jason Lee. Offline reinforcement learning with realizability and single-policy concentrability. In Conference on Learning Theory ,pages 2730–2775. PMLR, 2022. Junyu Zhang, Amrit Singh Bedi, Mengdi Wang, and Alec Koppel. Cautious reinforcement learning via distributional risk in the dual domain. arXiv preprint arXiv:2002.12475 , 2020a. Junyu Zhang, Alec Koppel, Amrit Singh Bedi, Csaba Szepesvari, and Mengdi Wang. Variational policy gradient method for reinforcement learning with general utilities. Advances in Neural Information Processing Systems , 33:4572–4583, 2020b. Yinan Zheng, Jianxiong Li, Dongjie Yu, Yujie Yang, Shengbo Eben Li, Xianyuan Zhan, and Jingjing Liu. Feasibility-guided safe offline reinforcement learning. In The Twelfth International Conference on Learning Representations , 2023. Weichao Zhou and Wenchao Li. Safety-aware apprenticeship learning. In Computer Aided Verifica-tion: 30th International Conference, CAV 2018, Held as Part of the Federated Logic Conference, FloC 2018, Oxford, UK, July 14-17, 2018, Proceedings, Part I 30 , pages 662–680. Springer, 2018. Hanlin Zhu, Paria Rashidinejad, and Jiantao Jiao. Importance weighted actor-critic for optimal conservative offline reinforcement learning. arXiv preprint arXiv:2301.12714 , 2023. 13 Appendix 
+
+# A Proof of Theorem 1 
+
+In this section, we give the complete proof of Theorem 1. Specifically, we bound the regret first and constraint violation second. Hence, we first present some auxiliary lemmas and combine them to prove the final theorem. 
+
+Proof of objective bound 
+
+We also decompose the expression by adding and subtracting corresponding terms and prove them individually. 
+
+Jr (πK ) − Jr (π∗) = f (dπK ) − f (d∗)= f (dπK ) − f (dK ) + f (dK ) − f (d∗)= f (dπK ) − f (dK ) + f (μ · wK ) − f (μ · w∗)= f (dπK ) − f (dK )
+
+| {z }
+
+> I
+
++ f (μ · wK ) − f (μD · wK )
+
+| {z }
+
+> II
+
++ f (μD · wK ) − f (μ · w∗)
+
+| {z }
+
+> III
+
+Next, we will prove these items individually. 
+
+Lemma 4. ∀w∗ ∈ W , w∗ satisfies constraint functions (6) and (7) with at least 1 − 2δ probability. Proof. First, we focus on the safety constraint (7) . We prove it with Hoeffding inequality. Recall the Hoeffding inequality: 
+
+P   ¯X − E[X] ≥ t ≤ 2 exp 
+
+
+
+− 2n2t2
+
+Pni=1 (bi − ai)2
+
+
+
+Take μD · w as the random variable, we have 
+
+E[( μD − μ) · w] = 0 
+
+Since μ(s, a ) ∈ [0 , 1] , and meanwhile w lies in [−Bw, B w], we have (μD − μ) · w lies in interval 
+
+[−Bw, B w]. To satisfy the safety constraint function: 
+
+g(μD · w) − τ ≤ κ
+
+We set t = √2Bw√n
+
+q
+
+log 2|W|  
+
+> δ
+
+. Combine with the Hoeffding inequality, we have 
+
+P (|μD · w − μ · w| ≥ t) ≤ δ
+
+|W| (17) For the constraint function, recall we suppose that it satisfies the Lipschitz condition, 
+
+|g(μD · w) − g(μ · w)| ≤ Lg ∥μD · w − μ · w∥
+
+Before proceeding to the following derivation, we first state a fact: 
+
+P (z ≥ t) ≤ δ and y ≤ z =⇒ P (y ≥ t) ≤ δ
+
+The above equation means that if a variable z is greater than t with probability less than or equal to δ,then any variable such as y that is lower than that variable must also be lower than t with probability less than or equal to δ.We get 
+
+P (|g(μD · w) − g(μ · w)| ≥ Lg · t) ≤ δ
+
+|W| (18) Note the fact that (μD · w − μ · w) is obviously lower than |μD · w − μ · w|, then 
+
+P (g(μD · w) − g(μ · w) ≥ Lg · t) ≤ δ
+
+|W| (19) 14 Take the union bound for w ∈ W , then 
+
+∀w ∈ W , P (g(μD · w) − g(μ · w) ≥ Lg · t) ≤ δ (20) Then for all w∗ ∈ W ,
+
+P (g(μD · w∗) − g(μ · w∗) ≥ Lg · t) ≤ δ (21) Because w∗ is the optimal solution for problem (5) –(7) and we suppose the assumption of realizability is set up, then in equation (7), w∗ satisfies 
+
+g(μ · w∗) ≤ τ
+
+Combing with equation (19), we get 
+
+P (g(μD · w∗) − τ ≥ Lg · t) ≤ δ (22) So we have, with at least 1 − δ probability, 
+
+g(μD · w∗) − τ ≤ Lg · t = κ (23) Next, we focus on the validity constraint function (6). Here, we take x⊤(KD − K)w as the random variable and note the fact that it lies in the interval 
+
+[−2Bw, 2Bw]. Use the Hoeffding inequality we have that ∀x ∈ B,
+
+P(x⊤(KD − K)w ≥ t) ≤ exp 
+
+
+
+− 2n2t2
+
+Pni=1 (bi − ai)2
+
+
+
+= exp 
+
+ −nt 2
+
+8B2
+
+> w
+
+
+
+(24) Set t = 2Bw
+
+√2 log( |W||X | /δ ) 
+
+> √n
+
+, the inequality becomes the form as: 
+
+P  x⊤(KD − K)w ≥ t ≤ δ
+
+|W||X | (25) Take the union bound for all w and x, we have 
+
+P  x⊤(KD − K)w ≥ t ≤ δ , ∀w ∈ W , ∀x ∈ X (26) So for all w∗ ∈ W ,
+
+P  x⊤(KD − K)w∗ ≥ t ≤ δ (27) Note the fact ∥Kw ∗ − (1 − γ)μ0∥ = 0 , we have the inequality for all w∗ ∈ W 
+
+P  x⊤ (KD w∗ − (1 − γ) μ0) ≥ t ≤ δ (28) That is, with at least 1 − δ probability, 
+
+x⊤ (KD w∗ − (1 − γ) μ0) ≤ t = ζ (29) Take the union bound for equation (23) and (29) completes the proof. Next, we show that f (μD · wD ) is close to f (μ · w∗).Then the empirical covering number n(ϵ, W) is defined as the size of the smallest ϵ-cover. Intuitively, the ϵ cover set can represents the original set in the sense of ϵ. This definition is very useful when the original set is continuous and we want to take the union bound of it. By this ϵ cover we can take the union bound of the continuous set and the distance of them is measured by ϵ.
+
+Lemma 5. We have 
+
+f (μD · wD ) ≤ f (μ · w∗) + 
+
+√2Lf Bw
+
+√n
+
+r
+
+log 2|W| 
+
+δ
+
+with 1 − 3δ probability. 
+
+15 Proof. From Lemma 4, we have 
+
+f (μD · wD ) ≤ f (μD · w∗)
+
+with probability at least 1 − 2δ. Now, we use Hoeffding inequality to bound f (μD · w) − f (μ · w).Take (μD − μ) · w as the random variable and note it lies in interval [−Bw, B w], then we have 
+
+P (| (μD − μ) · w| ≥ t) ≤ 2 exp 
+
+
+
+− 2n2t2
+
+Pni=1 (bi − ai)2
+
+
+
+= 2 exp 
+
+ −nt 2
+
+2B2
+
+> w
+
+
+
+(30) Set t = Bw
+
+√2 log(2 |W| /δ ) 
+
+> √n
+
+, the inequality becomes 
+
+P (| (μD − μ) · w| ≥ t) ≤ δ
+
+|W| 
+
+Use the Lipschitz condition and union bound of w, we have 
+
+∀w ∈ W , P (f (μD · w) − f (μ · w) ≥ Lf · t) ≤ δ (31) Choose w∗ ∈ W and combine with the inequality f (μD · wD ) ≤ f (μD · w∗), we get the final result 
+
+f (μD · wD ) ≤ f (μ · w∗) + 
+
+√2Lf Bw
+
+√n
+
+r
+
+log 2|W| 
+
+δ (32) with at least 1 − 3δ probability. Next, we prove term II that f (μ · wK ) is close to f (μD · wK ).
+
+Lemma 6. We have 
+
+f (μ · wK ) ≤ f (μD · wK ) + 
+
+√2Lf Bw
+
+√n
+
+r
+
+log 2|W| 
+
+δ
+
+with probability 1 − δ.Proof. This is easy to prove as we have a general result for all w ∈ W in equation (31) . Here we take wK ∈ W ,
+
+P (f (μ · wK ) − f (μD · wK ) ≥ t) ≤ δ (33) which completes the proof. Note that wK violates the validity constraint in problem (5) . This means that the calculated result may not satisfy the quality of the occupancy measure. To find the relation, we utilize the analogous lemmas in [Ozdaglar et al., 2023] to get the error bound between validity constraint violation and absolute objective difference. 
+
+Lemma 7. Let dK be a variable solved by Program (8) that violates the validity constraint (6) and 
+
+πK is the policy induced by dK . We can get that 
+
+f (dπK ) ≤ f (dK ) + 2BwLf
+
+p2 log( |W||X | /δ )(1 − γ)√n
+
+with at least 1 − δ probability. Proof. Define the marginalized occupancy measure as ˆdK (s) = P 
+
+> a∈A
+
+dK (s, a ) and ˆdπK (s) = P 
+
+> a∈A
+
+dπK (s, a ). Then, we can write 
+
+ˆdK (s) = X
+
+> a∈A
+
+dK (s, a ) and ˆdπK (s) = X
+
+> a∈A
+
+dπK (s, a ). (34) 16 Let P |S||A|  
+
+> π
+
+∈ R be the state transition matrix, i.e., 
+
+PπD (j, i ) = X
+
+> a∈A
+
+Psi,a (sj ) · π(a | si).
+
+Also, we define the matrix Gπ = Diag (πd(· | s1), π d(· | s2), · · · , π d(· | s|S| )) ∈ R|S||A|×|S| , and notice the fact that M G π = I − γP π . Now, since dπ satisfies the constraints in Problem, we have 
+
+M d π = (1 − γ)μ0. This implies: 
+
+∥M d K − (1 − γ)μ0∥1 = ∥M (dK − dπK )∥1
+
+= ∥M G π ( ˆdK − ˆdπK )∥1
+
+= ∥(I − γP π )( ˆdK − ˆdπK )∥1
+
+≥ (1 − γ)∥ ˆdK − ˆdπK ∥1. (35) Here the last inequality is because γ∥Pπ ( ˆdK − ˆdπK )∥1 ≤ γ∥ ˆdK − ˆdπK ∥1, which follows from the fact that Pπ is a column stochastic matrix. We have: 
+
+|f (dK ) − f (dπK )| ≤ Lf |dK − dπK | (36) 
+
+= Lf |Gπ ( ˆdK − ˆdπK )|≤ Lf ∥ ˆdK − ˆdπK ∥1. (37) The first inequality holds because of the Lipschitz condition of function f . So combining the above two inequalities, we get 
+
+f (dπK ) − f  dK
+
+ ≤ Lf ∥M d K − (1 − γ)μ0∥1
+
+1 − γ (38) 
+
+= Lf ∥Kw K − (1 − γ)μ0∥1
+
+1 − γ (39) which follows the definition of density ratio w. Next, we give the bound of ∥Kw K − (1 − γ)μ0∥1.From inequality (26) above we have that 
+
+P  x⊤(KD − K)w ≥ ζ ≤ δ , ∀w ∈ W , ∀x ∈ X 
+
+Then take w as wK and x as 1-norm, with at least 1 − δ we have 
+
+∥Kw K − (1 − γ)μ0∥1 ≤∥ KD wK − (1 − γ)μ0∥1 + ∥(K − KD )wK ∥1
+
+≤ζ + ζ (40) where the first inequality is because of the triangle inequality and the last inequality follows the fact that wK is the optimal solution to problem (8) and the above inequality. Combining (40) and (38) completes the proof. Now, we have the bound of term I and II . To further demonstrate the final bound, we also need to investigate the distance between the returned value wK by primal-dual method and optimal solution 
+
+wD .Our algorithm 1 is the classical type of primal-dual subgradient method and our analysis mostly refers to [Nedi´ c and Ozdaglar, 2009]. We put it here for the sake of completeness and add the theoretical analysis of our algorithm. First, recall the Lagrange function and updated rules of the algorithm 
+
+L (w, λ, ϕ ) = f (μD · w) + λ (∥KD w − (1 − γ)) μ0∥1 − ζ) + ϕ (g (μD · w) − τ − κ)
+
+wk+1 = PW
+
+wk − η∇L w(wk, λ k, ϕ k)
+
+λk+1 = λk − η∇L λ(wk, λ k, ϕ k)λk+1 max 
+
+> 0
+
+ϕk+1 = ϕk − η∇L ϕ(wk, λ k, ϕ k)ϕk+1 
+
+> max
+> 0
+
+17 For simplicity, we combine the Lagrange multipliers into one variable and call it ν, accordingly, we set the constraint g (w) ≤ 0. Note that constraints are analogous and we would split them in the end. Now the updated rules become 
+
+wk+1 = PW
+
+wk − η∇L w(wk, ν k) (41) 
+
+νk+1 = PM
+
+νk − η∇L ν (wk, ν k) (42) where νk ∈ M and note that we turn the interval of ν into a projection set which is an equivalent transformation. The Lagrange function is denoted as 
+
+L (w, ν ) = f (w) + νg (w) (43) 
+
+Theorem 2 (Saddle-Point Theorem in [Bertsekas, 1997]) . The pair (wD , ν D ) is a primal-dual optimal solution if and only if 
+
+L (wD , ν ) ≤ L (wD , ν D ) ≤ L (w, ν D ) , f or all w ∈ W , ν ≥ 0,
+
+where wD ∈ W and νD ≥ 0.
+
+The analysis of convergence is based on this theorem and it is a standard result that characterizes the primal-dual optimal solutions as the saddle points of the Lagrange function[Nedi´ c and Ozdaglar, 2009]. 
+
+Theorem 3. According to the updated rules, denote the solution to problem (8) as wK . Compared to the optimal solution wD , we have the upper bound for performance and constraint violation: (1) ∥g (wK )+ ∥ ≤ 2∥w1 − wD ∥
+
+Kη + 2L
+
+√K + ε (44) 
+
+(2) f (wK ) ≤ f ∗ + ∥w1 − wD ∥2
+
+2Kη + ηL 2 (45) 
+
+where η is the constant learning rate, w1 is an initial state, ε ≥ 0, K is the iteration step and L
+
+is the max subgradient of the Lagrange function. Furthermore, we denote, w∗ = wD , f (wK ) = 
+
+f (μD · wK ) and f ∗ = f (μD · wD ), we use the above notations for simplicity. 
+
+We first introduce some lemmas and prove the theorem step by step. 
+
+Lemma 8. Suppose that the sequence {wk} and {νk} are generated by the updated rules. Then we have (1) ∀w ∈ W , ∥wk+1 − w∥2 ≤ ∥ wk − w∥2 − 2η (L (wk, ν k) − L (w, ν k)) + η2∥L w (wk, ν k) ∥2.
+
+(2) ∀ν ∈ M , ∥νk+1 − ν∥2 ≤ ∥ νk − ν∥2 − 2η (L (wk, ν k) − L (wk, ν )) + η2∥L ν (wk, ν k) ∥2.
+
+Proof. We prove (1) and (2) is similar to (1) .
+
+∥wk+1 − w∥2 = ∥P (wk − ηLw (wk, ν k)) − w∥2
+
+≤ ∥ wk − ηLw (wk, ν k) − w∥2
+
+= ∥wk − w∥2 − 2ηLw (wk, ν k) ( wk − w) + η2∥L w (wk, ν k) ∥2
+
+≤ ∥ wk − w∥2 − 2η (L (wk, ν k) − L (w, ν k)) + η2∥L w (wk, ν k) ∥2
+
+where the first equality comes from the update rule and the last inequality is because of the convexity of the Lagrange function. 
+
+Assumption 6 (Boundness of subgradient) . We assume that the subgradient of the Lagrange function is bounded, such as 
+
+∥L w (wk, ν k) ∥ ≤ L , ∥L ν (wk, ν k) ∥ ≤ L, ∀k ≥ 0.
+
+where L is the max Lipschitz constant in Lagrange function. 
+
+18 Lemma 9. Set wk = 1
+
+> k
+
+Pki=1 wki and νk = 1
+
+> k
+
+Pki=1 νki , we have (1) 1
+
+k
+
+> k
+
+X
+
+> i=1
+
+L (wi, ν i) − L (w, ν k) ≤ ∥w1 − w∥2
+
+2ηk + ηL 2
+
+2 , ∀w ∈ W .
+
+(2) − ∥ν1 − ν∥2
+
+2ηk − ηL 2
+
+2 ≤ 1
+
+k
+
+> k
+
+X
+
+> i=1
+
+L (wi, ν i) − L (wk, ν ) , ∀ν ∈ M .
+
+Proof. We only prove (1) and equation (2) is similar to (1) . By using Lemma 8 we have 
+
+L (wi, ν i) − L (w, ν i) ≤ ∥wi − w∥2 − ∥ wi+1 − w∥2
+
+2η + ηL 2
+
+2
+
+Sum it from 1 to k,
+
+1
+
+k
+
+> k
+
+X
+
+> i=1
+
+L (wi, ν i) − L (w, ν i) ≤ ∥w1 − w∥2 − ∥ wk − w∥2
+
+2η + ηL 2
+
+2
+
+≤ ∥w1 − w∥2
+
+2η + ηL 2
+
+2 (46) And combine with 1
+
+> k
+
+Pki=1 L (w, ν i) ≥ L (w, ν k) which is because of Jensen’s inequality, we have 
+
+1
+
+k
+
+> k
+
+X
+
+> i=1
+
+L (wi, ν i) − L (w, ν k) ≤ ∥w1 − w∥2
+
+2η + ηL 2
+
+2 (47) 
+
+Assumption 7 (Slater’s condition) . There exists a vector ˆw such that 
+
+gj ( ˆ w) < 0, ∀j = 1 , 2, · · · , N 
+
+we refer to ˆw as a Slater’s vector. 
+
+Note that Slater’s condition is assumed in many primal-dual method literature [Chen et al., 2022, Hong et al., 2024, Nedi´ c and Ozdaglar, 2009]. 
+
+Lemma 10. Under Assumption 7, suppose q∗ is the dual optimal solution and ¯w is a vector that satisfies Slater’s condition, we have 
+
+∥ν∥1 ≤ 1
+
+γ (f ( ˆ w) − q∗)
+
+where γ = min 1≤j≤m{− gj ( ˆ w)} and m is the number of constraints. 
+
+The proof is referred to [Hiriart-Urruty and Lemaréchal, 1996]. The lemma above motivates the choice of dual set, that is 
+
+M =
+
+
+
+ν ≥ 0 | f ( ˆ w) − ˜qγ + r
+
+
+
+where ˜q ≤ q∗ and r ≥ 0 is a constant. 
+
+Proof. Now, we are ready to give the general proof of Theorem 3. Combine Lemma 8 and Assumption 6, we have 
+
+∥νk+1 − ν∥2 ≤ ∥ νk − ν∥2 − 2η (L (wk, ν k) − L (wk, ν )) + η2∥L ν (wk, ν k) ∥2 (48) Moreover, 
+
+(νi − νD ) Lν (wi, ν i) ≤ L (wi, ν i) − L (wi, ν D )
+
+≤ L (wi, ν i) − f ∗ (49) 19 where the first equation is because of convexity of Lν and the last equation dues to the Slater’s condition. We have, ∀ν ∈ M and i ≥ 1(ν − νD )⊤ Lν (wi, ν i) = ( ν − νD + νi − νi)⊤ Lν (wi, ν i)= ( ν − νi)⊤ Lν (wi, ν i) + ( νi − νD ) Lν (wi, ν i)
+
+≤ ∥νi − ν∥2 − ∥ νi+1 − ν∥2
+
+2η + ηL 2
+
+2 + L (wi, ν i) − f ∗ (50) Then, sum over i = 1 , · · · , k ,
+
+> k
+
+X
+
+> i=1
+
+(ν − νD )⊤ L (wi, ν i) ≤ ∥ν1 − ν∥2
+
+2η + ηkL 2
+
+2 +
+
+> k−1
+
+X
+
+> i=0
+
+L (wi, ν i) − kf ∗ (51) Because the above function is for all ν, then 
+
+max 
+
+> ν∈M
+
+( kX
+
+> i=1
+
+(ν − νD )⊤ L (wi, ν i)
+
+)
+
+≤ 12η max  
+
+> ν∈M
+
+∥ν1 − ν∥2 ηkL 2
+
+2 +
+
+> k
+
+X
+
+> i=1
+
+L (wi, ν i) − kf ∗ (52) Set 
+
+s =
+
+> k
+
+X
+
+> i=1
+
+Lν (wi, ν i) = 
+
+> k
+
+X
+
+> i=1
+
+g (wi) ≥ kg ( ˆ wk) (53) Hence, if s+ = 0 , equation (52) holds. If s+̸ = 0 , define vector: 
+
+ˆν = νD + r s+
+
+∥s+∥ ≥ 0
+
+Combine Lemma 10, we have 
+
+∥ˆν∥ ≤ ∥ νD ∥ + r ≤ f ( ˆ w) − ˜qγ + r (54) which implies that for ˆν ∈ M ,
+
+(ˆ ν − νD )⊤ s =
+
+> k
+
+X
+
+> i=1
+
+(ˆ ν − νD )⊤ L (wi, ν i)
+
+≤ max 
+
+> ν∈M
+
+( kX
+
+> i=1
+
+(ν − νD )⊤ L (wi, ν i)
+
+)
+
+(55) Recall the definition of s, we have 
+
+(ˆ ν − νD )⊤ s = r∥
+
+" kX
+
+> i=0
+
+g (wi)
+
+#+
+
+∥≤ r max 
+
+> ν∈M
+
+( kX
+
+> i=1
+
+(ν − νD )⊤ L (wi, ν i)
+
+)
+
+≤ 12η max  
+
+> ν∈M
+
+∥ν1 − ν∥2 + ηkL 2
+
+2 +
+
+> k
+
+X
+
+> i=1
+
+L (wi, ν i) − kf ∗
+
+≤ 12η max  
+
+> ν∈M
+
+(∥ν1∥ + ∥ν∥)2 + ηkL 2
+
+2 + ∥w1 − wD ∥2
+
+2ηk + ηL 2
+
+2
+
+≤ 12η max  
+
+> ν∈M
+
+∥ν∥ + ηkL 2
+
+2 + ∥w1 − wD ∥2
+
+2ηk + ηL 2
+
+2
+
+≤ 12η
+
+ f ( ˆ w) − ˜qγ + r
+
+
+
++ ηkL 2
+
+2 + ∥w1 − wD ∥2
+
+2ηk + ηL 2
+
+2 (56) 20 Then, 
+
+∥g (wk)+ ∥ ≤ ∥w1 − wD ∥2
+
+2ηk + ηL 2
+
+2 + 2
+
+kηr 
+
+ f ( ˆ w) − ˜qγ + r
+
+2
+
+(57) Until now, we assume the dual set is appropriately chosen in every iteration and we should quantify it. For the dual set 
+
+M =
+
+
+
+ν ≥ 0|∥ ν∥ ≤ f ( ˆ w) − ˜qγ + r
+
+
+
+and the result in (57), We should choose 
+
+r = min 
+
+> r≥0
+
+(
+
+∥w1 − wD ∥2
+
+2ηk + ηL 2
+
+2 + 2
+
+kηr 
+
+ f ( ˆ w) − ˜qγ + r
+
+2)
+
+which is 
+
+r∗ (k) = 
+
+s f ( ˆ w) − ˜qγ
+
+2
+
++ ∥w1 − wD ∥2
+
+4 + kη 2L2
+
+4 , ∀k ≥ 1.
+
+So the dual set in every iteration is 
+
+Mk =
+
+
+
+ν ≥ 0|∥ ν∥ ≤ f ( ˆ w) − ˜qγ + r∗ (k)
+
+
+
+which implies 
+
+∥g (wk)+ ∥ ≤ 4
+
+kη 
+
+ f ( ˆ w) − ˜qγ +
+
+s f ( ˆ w) − ˜qγ
+
+2
+
++ ∥w1 − wD ∥2
+
+4 + kη 2L2
+
+4
+
+
+
+≤ 4
+
+ηk 
+
+"
+
+2 ( f ( ˆ w) − ˜q)
+
+γ + ∥w1 − wD ∥
+
+2 + ηL √k
+
+2
+
+#
+
+(58) For simplicity, we take the first term as a constant which doesn’t affect our result: 
+
+∥g (wk)+ ∥ ≤ ε + 2∥w1 − wD ∥
+
+kη + 2L
+
+√k (59) The result of (1) in Theorem 3 completes. Next, we give the bound of the objective value. From the definition of the Lagrange function, 
+
+f (wk) ≤ 1
+
+k
+
+> k
+
+X
+
+> i=1
+
+f (wi) = 1
+
+k
+
+> k−1
+
+X
+
+> i=0
+
+L (wi, ν i) − 1
+
+k
+
+> k
+
+X
+
+> i=1
+
+g (wi) νi
+
+Then, 
+
+f (wk) − f ∗ ≤ 1
+
+k
+
+> k
+
+X
+
+> i=1
+
+L (wi, ν i) − 1
+
+k
+
+> k
+
+X
+
+> i=1
+
+g (wi) νi − f ∗
+
+≤ ∥w1 − w∗∥2
+
+2ηk + ηL 2
+
+2 − 1
+
+k
+
+> k
+
+X
+
+> i=1
+
+νig (wi) (60) Note that 
+
+0 ∈ M =
+
+
+
+ν ≥ 0|∥ ν∥ ≤ f ( ˆ w) − ˜qγ + r
+
+
+
+Set ν = 0 and combine Lemma 8, we have 
+
+∥νk+1 ∥2 ≤ ∥ νk∥2 + 2 ην kg (wk) + η2L2
+
+21 Then 
+
+2ην kg (wk) ≤ ∥ νk∥2 − ∥ νk+1 ∥2 + η2L2
+
+Sum over i = 0 , · · · , k − 1,
+
+−
+
+> k−1
+
+X
+
+> i=1
+
+νig (wi) ≤ 12η
+
+ ∥w1∥2 − ∥ νk∥2 + η2L2k
+
+2 (61) We get the final result, 
+
+f (wk) ≤ f ∗ + ∥ν1∥2
+
+2η + ∥w1 − wD ∥2
+
+2ηk + η2L2
+
+2
+
+which completes the proof of Theorem 3. Then we have the all results to prove the regret bound in Theorem 1. Theorem 3 indicates that after K iterations the objective and violation bound for problem (8) are 
+
+f (μD · wK ) ≤ f (μD · wD ) + ∥ν1∥2
+
+2η + ∥w1 − wD ∥2
+
+2ηK + η2L2
+
+2= f (μD · wD ) + B2
+
+2ηK + η2L2
+
+2= f (μD · wD ) + B2
+
+2√K + L2
+
+2K (62) 
+
+x⊤ (KD wK − (1 − γ) μ0) ≤ ζ + 2∥w1 − wD ∥
+
+Kη + 2L
+
+√K + ε
+
+√K
+
+= ζ + 2B
+
+√K + 2L
+
+√K + ε
+
+√K (63) 
+
+g (hD · wK ) ≤ τ + κ + 2∥w1 − wD ∥
+
+Kη + 2L
+
+√K + ε
+
+√K
+
+= τ + κ + 2B
+
+√K + 2L
+
+√K + ε
+
+√K (64) where we set the initial Lagrange values equal to 0, the constant step size η = 1√K and B is the distance between w1 and optimal solution wD .And recall Lemma 7, we have with at least 1 − 2δ probability, 
+
+∥Kw K − (1 − γ)μ0∥1 ≤∥ KD wK − (1 − γ)μ0∥1 + ∥(K − KD )wK ∥1
+
+≤2ζ + ε
+
+√K + 2∥w1 − wD ∥
+
+Kη + 2L
+
+√K (65) Then, we have, with at least 1 − δ probability, the bound is, 
+
+Jr (πK ) − Jr (π∗)= f (dπK ) − f (dK )
+
+| {z }
+
+> I
+
++ f (μ · wK ) − f (μD · wK )
+
+| {z }
+
+> II
+
++ f (μD · wK ) − f (μ · w∗)
+
+| {z }
+
+> III
+
+= f (dπK ) − f (dK )
+
+| {z }
+
+> I
+
++ f (μ · wK ) − f (μD · wK )
+
+| {z }
+
+> II
+
++ f (μ · wK ) − f (μD · wD ) + f (μD · wD ) − f (μD · w∗)
+
+| {z }
+
+> III
+
+≤ Lf
+
+1 − γ · ∥ Kw K − (1 − γ)μ0∥1 +
+
+√2BwLf
+
+√n
+
+r
+
+log 2|W| 
+
+δ + B2
+
+2√K
+
++ L2
+
+2K +
+
+√2BwLf
+
+√n
+
+r
+
+log 2|W| 
+
+δ
+
+22 ≤ 11 − γ
+
+6√2Lf Bw
+
+√n
+
+r
+
+log 2|W||X | 
+
+δ + 2B
+
+√K + 2L
+
+√K + B2
+
+2√K + L2
+
+2K + ε
+
+√K
+
+!
+
+≤ 11 − γ
+
+6√2Lf Bw
+
+√n
+
+r
+
+log 2|W||X | 
+
+δ + ι
+
+2√K
+
+!
+
+≤ O (1 /√n) + O(1 /√K)
+
+where we set ι = 4 B + 4 L + B2 + L2 
+
+> √K
+
++ ε.
+
+Proof of violation bound 
+
+In the main text, we split the violation bound into three parts and list the relevant lemmas. Here we give the proofs for these lemmas and theorem. 
+
+Proof of Lemma 1 
+
+Proof. This proof is quite similar to Lemma 7 since we always want to establish connections between the required function and validity error bound. The main difference is the objective function and constraint function. So we keep the first half conclusion of the Lemma 7 which is 
+
+∥M d K − (1 − γ)μ0∥1 = ∥M (dK − dπK )∥1
+
+≥ (1 − γ)∥ ˆdK − ˆdπK ∥1. (66) Then for the safety constraint function, we have 
+
+|g(dK ) − g(dπK )| ≤ Lg |dK − dπK | (67) 
+
+= Lg |Gπ ( ˆdK − ˆdπK )|≤ Lg ∥ ˆdK − ˆdπK ∥1. (68) where the first inequality is because Lipschitz condition of the safety constraint function. Also by combining the above functions, we have 
+
+g(dK ) − g(dπK ) ≤ Lg ∥M d K − (1 − γ)μ0∥1
+
+1 − γ (69) 
+
+= Lg ∥Kw K − (1 − γ)μ0∥1
+
+1 − γ (70) And in Lemma 7 we have already established the bound of ∥Kw K − (1 − γ)μ0∥1, then with at least 
+
+1 − 2δ probability 
+
+g(dK ) ≤ g(dπK ) + 2Lg Bw
+
+p2 log( |W||X | /δ )(1 − γ)√n .
+
+which completes the proof. 
+
+Proof of Lemma 2 
+
+Proof. In this lemma, actually, we will prove that g (μ · wK ) is close to g (μD · wK ). We take 
+
+(μ − μD ) · w as the random variable and it lies in [−Bw, B w]. We have the Hoeffding inequality 
+
+P (|μ · w − μD · w| ≥ t) ≤ 2 exp 
+
+
+
+− 2n2t2
+
+Pni=1 (bi − ai)2
+
+
+
+= δ
+
+|W| (71) where we set t = √2Bw√n
+
+q
+
+log 2|W|  
+
+> δ
+
+. Next, take the union bound for w and use the Lipschitz condition for g, we have 
+
+∀w ∈ W , P (g (μD · w) − g (μ · w) ≥ Lg · t) ≤ δ (72) So for wK ∈ W ,
+
+P (g (μD · wK ) − g (μ · wK ) ≥ Lg · t) ≤ δ (73) 23 which means that with at least 1 − δ probability, 
+
+g (μD · wK ) − g (μ · wK ) ≤√2Lg Bw
+
+√n
+
+r
+
+log 2|W| 
+
+δ .
+
+The proof is complete. 
+
+Proof of Lemma 3 
+
+Proof. This lemma is easy to be verified because we choose the relax parameter κ is equal to  
+
+> √2LgBw
+> √n
+
+q
+
+log 2|W|  
+
+> δ
+
+and recall the result in Theorem 3 which completes the proof. Thus, take the Lemma 1, 2 and 3 together, we have, with at least 1 − 3δ,
+
+Jc(πK ) − τ = g(dπK ) − g(dK )
+
+| {z }
+
+> I
+
++ g(μ · wK ) − g(μD · wK )
+
+| {z }
+
+> II
+
++ g(μD · wD ) − τ
+
+| {z }
+
+> III
+
+≤ Lg
+
+1 − γ · ∥ Kw K − (1 − γ)μ0∥1 +
+
+√2Bw
+
+√n
+
+r
+
+log 2|W| 
+
+δ + κ + 2B
+
+√K + 2L
+
+√K + ε
+
+√K
+
+≤ 11 − γ
+
+6√2Lg Bw
+
+√n
+
+r
+
+log 2|W||X | 
+
+δ + 2B
+
+√K + 2L
+
+√K + ε
+
+√K
+
+!
+
++ 2B
+
+√K + 2L
+
+√K + ε
+
+√K
+
+≤ 6√2Lg Bw
+
+(1 − γ)√n
+
+r
+
+log 2|W||X | 
+
+δ + υ
+
+√K
+
+≤ O (1 /√n) + O(1 /√K)
+
+where we set υ = 11−γ (4 B + 4 L + 2 ε) which completes the proof. 
+
+# B Experiments 
+
+We introduce a practical version of our primal-dual algorithm, following the key structure in Algorithm 1. We utilize this algorithm to conduct various experiments in this paper. 
+
+Algorithm 2: Practical version of POCC  
+
+> 1
+
+Input : Dataset D = {(si, a i, r i, c i)}ni=1 , cost threshold τ , learning rate ηλ, ηw, ηϕ, relaxed parameter ζ, κ.;  
+
+> 2
+
+Initialize network of importance weight wψ ; 
+
+> 3
+
+for k = 1 , 2, . . . , K do  
+
+> 4
+
+Jointly optimize: 
+
+wk+1  
+
+> ψ
+
+= Adam  wkψ − ηϕ∇L(wψ , λ k, ϕ k) ,λk+1 = Adam  λk − ηλ∇L(wkψ , λ, ϕ k ,ϕk+1 = Adam  ϕk − ητ ∇L(wkψ , λ k, ϕ ) . 
+
+> 5
+
+Compute the importance weight: ∀(s, a ), w(s, a ) = wψ (s, a ); 
+
+> 6
+
+Extract the policy: π(a | s) = wψ (s,a )πμ(a|s)P   
+
+> a′∈Awψ(s,a ′)πμ(a′|s)
+
+; 
+
+> 7
+
+Output: Policy π ;
+
+Hyperparameters In the experiments of maze and FrozenLake environments, we set the discount factor as γ = 0 .99 and the cost threshold as τ = 0 , indicating that the agent is not supposed to incur any cost. For our algorithm 2 and COptiDICE [Lee et al., 2021], we perform a grid search on the set 
+
+{0.00001 , 0.00005 , 0.0001 , 0.0005 , 0.001 , 0.005 } to determine the learning rate for parameters. We ultimately select a learning rate of 0.00001 for the neural network and a Lagrange scalar learning 24 rate of 0.0001. We set ζ = 0 .1 and κ = 0 .001 in our algorithm, and we set α = 0 .5 in COptiDICE. In both environments, we run the algorithm for K = 100000 iterations to ensure model convergence. Additionally, we use fully-connected neural networks with a single hidden layer of width 64. 
+
+Continuous environments We also run a list of experiments in SafetyGym with offline datasets provided by [Liu et al., 2023a] and compare with comprehensive baselines (e.g., CPQ in [R5], PDCA in [R4], CoptiDICE in [R6], and BEAR-Lagrangian in [R7], [R8]). Note that only PDCA and our algorithm provide theoretical results. In these experiments, to deal with the continuous state-action space, we use the fully connected single hidden-layer neural network of width 128 to represent w.We summarize the evaluation results in the following table. All the rewards and costs are normalized and the cost threshold is 1. Each value is averaged over 20 evaluation episodes and 3 random seeds. Table 2: All the rewards and costs are normalized. The cost threshold is 1. Blue: Safe agents with the highest reward.                                                            
+
+> Task COptiDICE CPQ BEAR-Lag PDCA Ours [Reward, Cost] [Reward, Cost] [Reward, Cost] [Reward, Cost] [Reward, Cost]
+> AntRun [0 .6,0.94] [0 .03 ,0.02] [0 .15 ,0.73] [0 .28 ,0.93] [0 .6,0.01]
+> CarRun [0 .87 ,0.0] [0 .95 ,1.79] [0 .68 ,7.78] [0 .91 ,0.0] [0 .90 ,0.0]
+> BallRun [0 .59 ,3.52] [0 .22 ,1.27] [−0.47 ,5.03] [0 .55 ,3.38] [0 .24 ,0.0]
+> BallCircle [0 .70 ,2.61] [0 .64 ,0.76] [0 .86 ,3.09] [0 .63 ,2.29] [0 .39 ,0.93]
+> CarPush1 [0 .23 ,0.5] [−0.03 ,0.95] [0 .21 ,0.54] [0 .17 ,0.41] [0 .20 ,0.4]
+
+Compute setting We run the experiments with NVIDIA GeForce RTX 3080 Ti 8-Core Processor. 25 NeurIPS Paper Checklist 
+
+1. Claims 
+
+Question: Do the main claims made in the abstract and introduction accurately reflect the paper’s contributions and scope? Answer: [Yes] Justification: Claims in the abstract and introduction accurately reflect our paper’s contribu-tions. Guidelines: • The answer NA means that the abstract and introduction do not include the claims made in the paper. • The abstract and/or introduction should clearly state the claims made, including the contributions made in the paper and important assumptions and limitations. A No or NA answer to this question will not be perceived well by the reviewers. • The claims made should match theoretical and experimental results, and reflect how much the results can be expected to generalize to other settings. • It is fine to include aspirational goals as motivation as long as it is clear that these goals are not attained by the paper. 2. Limitations 
+
+Question: Does the paper discuss the limitations of the work performed by the authors? Answer: [Yes] Justification: We include the limitations in our assumptions. Guidelines: • The answer NA means that the paper has no limitation while the answer No means that the paper has limitations, but those are not discussed in the paper. • The authors are encouraged to create a separate "Limitations" section in their paper. • The paper should point out any strong assumptions and how robust the results are to violations of these assumptions (e.g., independence assumptions, noiseless settings, model well-specification, asymptotic approximations only holding locally). The authors should reflect on how these assumptions might be violated in practice and what the implications would be. • The authors should reflect on the scope of the claims made, e.g., if the approach was only tested on a few datasets or with a few runs. In general, empirical results often depend on implicit assumptions, which should be articulated. • The authors should reflect on the factors that influence the performance of the approach. For example, a facial recognition algorithm may perform poorly when image resolution is low or images are taken in low lighting. Or a speech-to-text system might not be used reliably to provide closed captions for online lectures because it fails to handle technical jargon. • The authors should discuss the computational efficiency of the proposed algorithms and how they scale with dataset size. • If applicable, the authors should discuss possible limitations of their approach to address problems of privacy and fairness. • While the authors might fear that complete honesty about limitations might be used by reviewers as grounds for rejection, a worse outcome might be that reviewers discover limitations that aren’t acknowledged in the paper. The authors should use their best judgment and recognize that individual actions in favor of transparency play an impor-tant role in developing norms that preserve the integrity of the community. Reviewers will be specifically instructed to not penalize honesty concerning limitations. 3. Theory Assumptions and Proofs 
+
+Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof? Answer: [Yes] 26 Justification: We provide a proof sketch of our theorem in the main paper and complete the full proof in the supplemental material. Guidelines: • The answer NA means that the paper does not include theoretical results. • All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced. • All assumptions should be clearly stated or referenced in the statement of any theorems. • The proofs can either appear in the main paper or the supplemental material, but if they appear in the supplemental material, the authors are encouraged to provide a short proof sketch to provide intuition. • Inversely, any informal proof provided in the core of the paper should be complemented by formal proofs provided in appendix or supplemental material. • Theorems and Lemmas that the proof relies upon should be properly referenced. 4. Experimental Result Reproducibility 
+
+Question: Does the paper fully disclose all the information needed to reproduce the main ex-perimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)? Answer: [Yes] Justification: We disclose all the information needed to reproduce the main experiments. Guidelines: • The answer NA means that the paper does not include experiments. • If the paper includes experiments, a No answer to this question will not be perceived well by the reviewers: Making the paper reproducible is important, regardless of whether the code and data are provided or not. • If the contribution is a dataset and/or model, the authors should describe the steps taken to make their results reproducible or verifiable. • Depending on the contribution, reproducibility can be accomplished in various ways. For example, if the contribution is a novel architecture, describing the architecture fully might suffice, or if the contribution is a specific model and empirical evaluation, it may be necessary to either make it possible for others to replicate the model with the same dataset, or provide access to the model. In general. releasing code and data is often one good way to accomplish this, but reproducibility can also be provided via detailed instructions for how to replicate the results, access to a hosted model (e.g., in the case of a large language model), releasing of a model checkpoint, or other means that are appropriate to the research performed. • While NeurIPS does not require releasing code, the conference does require all submis-sions to provide some reasonable avenue for reproducibility, which may depend on the nature of the contribution. For example (a) If the contribution is primarily a new algorithm, the paper should make it clear how to reproduce that algorithm. (b) If the contribution is primarily a new model architecture, the paper should describe the architecture clearly and fully. (c) If the contribution is a new model (e.g., a large language model), then there should either be a way to access this model for reproducing the results or a way to reproduce the model (e.g., with an open-source dataset or instructions for how to construct the dataset). (d) We recognize that reproducibility may be tricky in some cases, in which case authors are welcome to describe the particular way they provide for reproducibility. In the case of closed-source models, it may be that access to the model is limited in some way (e.g., to registered users), but it should be possible for other researchers to have some path to reproducing or verifying the results. 5. Open access to data and code 
+
+Question: Does the paper provide open access to the data and code, with sufficient instruc-tions to faithfully reproduce the main experimental results, as described in supplemental material? 27 Answer: [Yes] Justification: We provide the data and code. Guidelines: • The answer NA means that paper does not include experiments requiring code. • Please see the NeurIPS code and data submission guidelines ( https://nips.cc/ public/guides/CodeSubmissionPolicy ) for more details. • While we encourage the release of code and data, we understand that this might not be possible, so “No” is an acceptable answer. Papers cannot be rejected simply for not including code, unless this is central to the contribution (e.g., for a new open-source benchmark). • The instructions should contain the exact command and environment needed to run to reproduce the results. See the NeurIPS code and data submission guidelines ( https: //nips.cc/public/guides/CodeSubmissionPolicy ) for more details. • The authors should provide instructions on data access and preparation, including how to access the raw data, preprocessed data, intermediate data, and generated data, etc. • The authors should provide scripts to reproduce all experimental results for the new proposed method and baselines. If only a subset of experiments are reproducible, they should state which ones are omitted from the script and why. • At submission time, to preserve anonymity, the authors should release anonymized versions (if applicable). • Providing as much information as possible in supplemental material (appended to the paper) is recommended, but including URLs to data and code is permitted. 6. Experimental Setting/Details 
+
+Question: Does the paper specify all the training and test details (e.g., data splits, hyper-parameters, how they were chosen, type of optimizer, etc.) necessary to understand the results? Answer: [Yes] Justification: We specify the experimental settings in the supplemental material. Guidelines: • The answer NA means that the paper does not include experiments. • The experimental setting should be presented in the core of the paper to a level of detail that is necessary to appreciate the results and make sense of them. • The full details can be provided either with the code, in appendix, or as supplemental material. 7. Experiment Statistical Significance 
+
+Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments? Answer: [Yes] Justification: We report error bars correctly in the paper. Guidelines: • The answer NA means that the paper does not include experiments. • The authors should answer "Yes" if the results are accompanied by error bars, confi-dence intervals, or statistical significance tests, at least for the experiments that support the main claims of the paper. • The factors of variability that the error bars are capturing should be clearly stated (for example, train/test split, initialization, random drawing of some parameter, or overall run with given experimental conditions). • The method for calculating the error bars should be explained (closed form formula, call to a library function, bootstrap, etc.) • The assumptions made should be given (e.g., Normally distributed errors). • It should be clear whether the error bar is the standard deviation or the standard error of the mean. 28 • It is OK to report 1-sigma error bars, but one should state it. The authors should preferably report a 2-sigma error bar than state that they have a 96% CI, if the hypothesis of Normality of errors is not verified. • For asymmetric distributions, the authors should be careful not to show in tables or figures symmetric error bars that would yield results that are out of range (e.g. negative error rates). • If error bars are reported in tables or plots, The authors should explain in the text how they were calculated and reference the corresponding figures or tables in the text. 8. Experiments Compute Resources 
+
+Question: For each experiment, does the paper provide sufficient information on the com-puter resources (type of compute workers, memory, time of execution) needed to reproduce the experiments? Answer: [Yes] Justification: We provide the sufficient information on the computer resources. Guidelines: • The answer NA means that the paper does not include experiments. • The paper should indicate the type of compute workers CPU or GPU, internal cluster, or cloud provider, including relevant memory and storage. • The paper should provide the amount of compute required for each of the individual experimental runs as well as estimate the total compute. • The paper should disclose whether the full research project required more compute than the experiments reported in the paper (e.g., preliminary or failed experiments that didn’t make it into the paper). 9. Code Of Ethics 
+
+Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines ?Answer: [Yes] Justification: The research conducted in this paper conform with the NeurIPS Code of Ethics. Guidelines: • The answer NA means that the authors have not reviewed the NeurIPS Code of Ethics. • If the authors answer No, they should explain the special circumstances that require a deviation from the Code of Ethics. • The authors should make sure to preserve anonymity (e.g., if there is a special consid-eration due to laws or regulations in their jurisdiction). 10. Broader Impacts 
+
+Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed? Answer: [NA] Justification: There is no societal impact of the work performed. Guidelines: • The answer NA means that there is no societal impact of the work performed. • If the authors answer NA or No, they should explain why their work has no societal impact or why the paper does not address societal impact. • Examples of negative societal impacts include potential malicious or unintended uses (e.g., disinformation, generating fake profiles, surveillance), fairness considerations (e.g., deployment of technologies that could make decisions that unfairly impact specific groups), privacy considerations, and security considerations. 29 • The conference expects that many papers will be foundational research and not tied to particular applications, let alone deployments. However, if there is a direct path to any negative applications, the authors should point it out. For example, it is legitimate to point out that an improvement in the quality of generative models could be used to generate deepfakes for disinformation. On the other hand, it is not needed to point out that a generic algorithm for optimizing neural networks could enable people to train models that generate Deepfakes faster. • The authors should consider possible harms that could arise when the technology is being used as intended and functioning correctly, harms that could arise when the technology is being used as intended but gives incorrect results, and harms following from (intentional or unintentional) misuse of the technology. • If there are negative societal impacts, the authors could also discuss possible mitigation strategies (e.g., gated release of models, providing defenses in addition to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system learns from feedback over time, improving the efficiency and accessibility of ML). 11. Safeguards 
+
+Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pretrained language models, image generators, or scraped datasets)? Answer: [NA] Justification: The paper poses no such risks. Guidelines: • The answer NA means that the paper poses no such risks. • Released models that have a high risk for misuse or dual-use should be released with necessary safeguards to allow for controlled use of the model, for example by requiring that users adhere to usage guidelines or restrictions to access the model or implementing safety filters. • Datasets that have been scraped from the Internet could pose safety risks. The authors should describe how they avoided releasing unsafe images. • We recognize that providing effective safeguards is challenging, and many papers do not require this, but we encourage authors to take this into account and make a best faith effort. 12. Licenses for existing assets 
+
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected? Answer: [Yes] Justification: We cite the original paper and abide by the license. Guidelines: • The answer NA means that the paper does not use existing assets. • The authors should cite the original paper that produced the code package or dataset. • The authors should state which version of the asset is used and, if possible, include a URL. • The name of the license (e.g., CC-BY 4.0) should be included for each asset. • For scraped data from a particular source (e.g., website), the copyright and terms of service of that source should be provided. • If assets are released, the license, copyright information, and terms of use in the package should be provided. For popular datasets, paperswithcode.com/datasets 
+
+has curated licenses for some datasets. Their licensing guide can help determine the license of a dataset. • For existing datasets that are re-packaged, both the original license and the license of the derived asset (if it has changed) should be provided. 30 • If this information is not available online, the authors are encouraged to reach out to the asset’s creators. 13. New Assets 
+
+Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets? Answer: [NA] Justification: The paper does not release new assets. Guidelines: • The answer NA means that the paper does not release new assets. • Researchers should communicate the details of the dataset/code/model as part of their submissions via structured templates. This includes details about training, license, limitations, etc. • The paper should discuss whether and how consent was obtained from people whose asset is used. • At submission time, remember to anonymize your assets (if applicable). You can either create an anonymized URL or include an anonymized zip file. 14. Crowdsourcing and Research with Human Subjects 
+
+Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)? Answer: [NA] Justification: The paper does not involve crowdsourcing nor research with human subjects. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Including this information in the supplemental material is fine, but if the main contribu-tion of the paper involves human subjects, then as much detail as possible should be included in the main paper. • According to the NeurIPS Code of Ethics, workers involved in data collection, curation, or other labor should be paid at least the minimum wage in the country of the data collector. 15. Institutional Review Board (IRB) Approvals or Equivalent for Research with Human Subjects 
+
+Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained? Answer: [NA] Justification: The paper does not involve crowdsourcing nor research with human subjects. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Depending on the country in which research is conducted, IRB approval (or equivalent) may be required for any human subjects research. If you obtained IRB approval, you should clearly state this in the paper. • We recognize that the procedures for this may vary significantly between institutions and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the guidelines for their institution. • For initial submissions, do not include any information that would break anonymity (if applicable), such as the institution conducting the review. 31

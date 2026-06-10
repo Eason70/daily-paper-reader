@@ -1,0 +1,6056 @@
+Title: 18517_Near_Optimal_Sample_Comp.pdf
+
+URL Source: https://openreview.net/pdf?id=kYisDXzTk7
+
+Number of Pages: 31
+
+Markdown Content:
+# Near-Optimal Sample Complexity for Online Constrained MDPs 
+
+Chang Liu 
+
+University of California, Los Angeles 
+
+changliu11@ucla.edu 
+
+Yunfan Li 
+
+University of California, Los Angeles 
+
+yunfanli@ucla.edu 
+
+Lin F. Yang 
+
+University of California, Los Angeles 
+
+linyang@ee.ucla.edu 
+
+## Abstract 
+
+Safety is a fundamental challenge in reinforcement learning (RL), particularly in real-world applications such as autonomous driving, robotics, and healthcare. To address this, Constrained Markov Decision Processes (CMDPs) are commonly used to enforce safety constraints while optimizing performance. However, ex-isting methods often suffer from significant safety violations or require a high sample complexity to generate near-optimal policies. We address two settings: re-laxed feasibility, where small violations are allowed, and strict feasibility, where no violation is allowed. We propose a model-based primal-dual algorithm that balances regret and bounded constraint violations, drawing on techniques from online RL and constrained optimization. For relaxed feasibility, we prove that our algorithm returns an ε-optimal policy with ε-bounded violation with arbitrar-ily high probability, requiring ˜O
+
+( SAH 3
+
+> ε2
+
+)
+
+learning episodes, matching the lower bound for unconstrained MDPs. For strict feasibility, we prove that our algorithm returns an ε-optimal policy with zero violation with arbitrarily high probability, requiring ˜O
+
+( SAH 5
+
+> ε2ζ2
+
+)
+
+learning episodes, where ζ is the problem-dependent Slater constant characterizing the size of the feasible region. This result matches the lower bound for learning CMDPs with access to a generative model. Our results demonstrate that learning CMDPs in an online setting is as easy as learning with a generative model and is no more challenging than learning unconstrained MDPs when small violations are allowed. 
+
+## 1 Introduction 
+
+Safety is a fundamental concern in reinforcement learning (RL), especially in real-world applica-tions such as autonomous driving [1], healthcare [2], and industrial automation [3]. Constrained Markov Decision Processes (CMDPs) [4] are widely used to ensure safety by incorporating safe constraints and safe policies into the decision-making process. These frameworks allow for opti-mizing performance while limiting risky actions in safety-critical environments, such as preventing collisions in autonomous vehicles or ensuring correct treatment in healthcare. However, during the course of training, many RL methods can suffer from significant safety violations [5, 6], particularly when exploring new states or actions. This is highly problematic in real-world systems where even temporary unsafe actions can result in accidents, equipment damage, or hazardous conditions. For instance, in autonomous driving [7], safety violations during training might lead to collisions or dan-gerous maneuvers, while in robotics [8], such violations could cause physical harm to equipment 
+
+> 39th Conference on Neural Information Processing Systems (NeurIPS 2025).
+
+or workers. As a result, it is crucial to design methods that guarantee bounded safety constraint violations, ensuring that any violations during training remain within acceptable limits, thereby pre-venting catastrophic outcomes while maintaining safety throughout the learning process. Tabular episodic MDPs, one of the most fundamental settings in RL, have been extensively stud-ied, with various methods proposed to solve them [9, 10, 11, 12, 13, 14, 15]. Many algorithms have been shown to achieve minimax optimal regret ˜O(√SAH 3K) and [15] provided a method to achieve the minimax optimal sample complexity ˜O
+
+( SAH 3
+
+> ε2
+
+)
+
+. Extending to CMDPs, prior works [6, 16, 17, 18, 19, 20, 21, 22, 23, 24] have proposed methods in various settings that either achieve sublinear regret or return near-optimal algorithms. However, lower bounds and algorithms with provable minimax optimal upper bounds still remain unexplored in most of these works. Two pri-mary feasibility settings in CMDPs are relaxed feasibility and strict feasibility [18, 20, 21, 23]. In the relaxed feasibility setting, algorithms may return approximately optimal policies that allow small constraint violations. In contrast, in the strict feasibility setting, the learned policies must be near-optimal while ensuring zero constraint violations. The formal formulations for both settings are defined in section 3. [18] proposed a model-based algorithm that achieves minimax sample com-plexity in both regimes, but relied on the assumption of a generative model that grants the learner random access to any state-action queries. However, in many real-world scenarios such as robotics and autonomous driving, the learning agent has to collect data online through sequential interactions with the environment. How or whether a minimax optimal sample complexity can be achieved in the online setting, which generalizes the random access setting and is inherently more challenging [25], remains unknown. This raises the following question: 
+
+Can we design safe online reinforcement learning (RL) algorithms for both relaxed and strict fea-sibility settings that achieve near-optimal sample efficiency in large-scale state spaces and long horizons while guaranteeing approximate reward optimality with arbitrarily high probability? 
+
+In this paper, we affirmatively answer this question by proposing a model-based primal-dual algo-rithm. Our contributions are summarized as follows: • We propose a model-based primal-dual algorithm with doubling batch updates. In each episode, a policy is derived by mixing policies from multiple iterations of primal-dual up-dates in a constrained model represented in its Lagrangian form. This policy is then used to gather data to update the empirical transition model. The doubling batch update tech-nique ensures a lazy update of the empirical transition model, allowing us to derive tighter theoretical bounds. • For the relaxed feasibility setting, we prove that our algorithm returns an ε-optimal policy with at most ε constraint violation after ˜O
+
+( SAH 3
+
+> ε2
+
+)
+
+of online learning episodes, where 
+
+S and A is the number of states and actions, H is the horizon. This sample complexity matches the lower bound for unconstrained MDPs: Ω
+
+( SAH 3
+
+> ε2
+
+)
+
+[11], showing that learning CMDPs in the relaxed feasibility setting is as easy as learning unconstrained MDPs. • For the strict feasibility setting, we prove that our algorithm returns an ε-optimal zero-violation policy after ˜O
+
+( SAH 5
+
+> ε2ζ2
+
+)
+
+of online learning episodes, where ζ is the problem-dependent Slater constant characterizing the size of the feasible region. This sample com-plexity matches the lower bound for infinite-horizon discounted CMDPs with access to a generative model: Ω
+
+( SA 
+
+> (1 −γ)5ε2ζ2
+
+)
+
+[18], showing that learning CMDPs with online access is as easy as learning CMDPs with random access. 
+
+Notation. We introduce a set of notation to be used throughout. For any two vectors x, y ∈ Rd
+
+with the same dimension d, we use xy to abbreviate the inner product x⊤y, e.g. Ps,a,h V ∗ 
+
+> h+1 ,r
+
+=
+
+∑ 
+
+> s′
+
+Ps,a,h (s′)V ∗ 
+
+> h+1 ,r
+
+(s′). For any integer S > 0, any probability vector p ∈ ∆[S] and another vector v = [ vi]1≤i≤S , we denote by V(p, v ) := 〈p, v 2〉 − (⟨p, v ⟩)2 the associated variance, where 
+
+v2 = [v2
+
+> i
+
+] 
+
+> 1≤i≤S
+
+represents element-wise square of v.22 Related Work 
+
+Constrained Markov Decision Process (CMDP) The Constrained Markov Decision Process (CMDP) [4] is a key model for addressing safety concerns in reinforcement learning (RL). Many existing works on CMDPs employ a primal-dual approach to achieve sublinear regret while main-taining bounded constraint violations [18, 26, 27, 28, 29, 30]. Another widely-used method is adapt-ing policy gradient algorithms [31, 32, 33, 34]. Furthermore, [6] introduces a more stringent metric for hard constraint violation, where only positive constraint violations are accumulated. Their ap-proach achieves sublinear regret, constraint violations and hard constraint violation. Recently, [35] extended this idea to a linear setting, obtaining similar results. In practical applications, ensuring strict adherence to safety constraints without violations often requires system-specific assumptions. For instance, [36] assumes regularity in the safety functions, while [37] presumes knowledge of a safe action for each state. Additionally, [16, 17] assume the existence of a known safe policy and its true constraint value, achieving improved regret bounds and constraint violations compared to [6]. Building on the assumption of a known safe policy and its true constraint value, our work proposes a primal-dual low-switching algorithm, leveraging advanced techniques from standard MDPs. This approach not only improves the regret bound but also maintains a constant constraint violation. [18] solved the infinite-horizon discounted tabular CMDPs in the random access setting. Our work ex-tends their results to tabular CMDPs in the online setting, which serve as a crucial benchmark for safe RL that provides a structured environment for theoretical analysis and algorithmic validation. Further extension to function approximation or multiple constraints is out of the scope of this paper and an interesting topic for future research. 
+
+Episodic unconstrained MDPs [38] first provided an upper bound of O(√S2AKHD 2). [39, 11] established lower bounds of Ω( √SAH 3K) for regret and Ω( SAH 3/ε 2) for sample complexity. [40] introduced a posterior sampling approach for RL, achieving minimax-optimal regret bounds of 
+
+O(√SAHK ) under certain conditions. [9] further achieved a minimax optimal regret for a model-based algorithm, and [41] developed similar results for a model-free Q-learning method. Many methods have achieved near-optimal upper bounds [12, 13, 14]. Recently, [15] achieved minimax optimal regret, sample complexity, and burn-in cost, yet such methods are rarely explored in CMDPs. To our knowledge, this work is the first to incorporate state-of-the-art techniques for unconstrained MDPs into CMDPs, achieving minimax optimal performance in online constrained RL. 
+
+## 3 Problem Setup 
+
+We consider a finite-horizon non-stationary constrained Markov Decision Process (MDP) defined by the tuple M = ( S, A, H, P, r, c, b ), where S is the state space, A is the action space, and H is the horizon length. The unknown transition probability at each time step is denoted by Ps,a,h , where 
+
+Ps,a,h (s′) represents the probability of transitioning to state s′ from state s after taking action a at time step h. The reward function rh : S × A → [0 , 1] quantifies the immediate reward the agent receives for taking action a in state s at time step h. Similarly, the cost function ch : S × A → [0 , 1] 
+
+represents safety violations incurred for the same action. We assume that both the reward and cost functions are known to the agent, though the same results can be easily extended to the case where neither function is known. Finally, b ∈ (0 , H ] is a predefined safety constraint that limits the cumulative cost over the episode. The agent interacts with the environment over K episodes, each consisting of H steps. At the start of each episode k, the agent selects a randomized policy πk = {πkh}h, where at time step h the policy 
+
+πkh : S → ∆A prescribes a distribution over actions conditioned on the current state. The policy is executed with the goal of maximizing the cumulative reward while ensuring that the cumulative cost remains within the safety limit. The cumulative value at state s and time step h, with respect to any function g : S × A → R, under policy π, is defined as: V πh,g (s) = EP,π 
+
+[∑Ht=h g(St, A t)
+
+∣∣∣Sh = s
+
+]
+
+,representing the expected cumulative sum of g(St, A t) from time step h to the end of the episode, given that the process starts in state s at time h. The objective of CMDP is to solve the following constrained optimization problem: 
+
+max  
+
+> π
+
+V π 
+
+> 1,r
+
+(s1) s.t. V π
+
+> 1,c
+
+(s1) ≤ b, (1) 3where V π 
+
+> 1,r
+
+(s1) is the expected cumulative reward value, and V π
+
+> 1,c
+
+(s1) is the expected cumulative cost value, constrained by the safety threshold b. The optimal policy π∗ solving eq. (1) is defined as 
+
+π∗ = arg max 
+
+> π
+
+V π 
+
+> 1,r
+
+(s1) s.t. V π
+
+> 1,c
+
+(s1) ≤ b. 
+
+The corresponding expected reward and cost value are denoted by V ∗ 
+
+> 1,r
+
+(s1) and V ∗
+
+> 1,c
+
+(s1). For a CMDP instance, we define the Slater constant ζ := max π b − V π
+
+> 1,c
+
+(s1). The Slater constant ζ
+
+measures the size of the feasible region. We also define the policy that with the minimal cost value: 
+
+π∗ 
+
+> c
+
+∈ arg max π b − V π
+
+> 1,c
+
+(s1).We now define the regret and constraint violation over K episodes: Regret (K) := 
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+and CV (K) := 
+
+( K∑
+
+> k=1
+
+(
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b
+
+))
+
+> +
+
+. (2) We will provide upper bounds on both regret and constraint violation of our algorithm, but more importantly, convert such bounds to our final sample complexity bounds. For a small suboptimality error ε, we define the two settings as follows: 
+
+Relaxed feasibility: The agent’s objective is to return a policy that with high probability achieves an approximately optimal reward value, while violates the constraint by a small margin. Formally the agent returns a policy π such that with high probability, 
+
+V π 
+
+> 1,r
+
+(s1) ≥ V ∗ 
+
+> 1,r
+
+(s1) − ε, and V π
+
+> 1,c
+
+(s1) ≤ b + ε. (3) 
+
+Strict feasibility: The agent’s objective is to return a policy that with high probability achieves an approximately optimal reward value, and simultaneously achieves zero constraint violation. For-mally the agent returns a policy π such that with high probability, 
+
+V π 
+
+> 1,r
+
+(s1) ≥ V ∗ 
+
+> 1,r
+
+(s1) − ε, and V π
+
+> 1,c
+
+(s1) ≤ b. (4) In the next section, we present our technical methodology to tackle both settings in online CMDPs. 
+
+## 4 Methodology 
+
+Before introducing our method, we examine the state-of-the-art algorithms in tabular online CMDPs, and discuss why their methods fail to achieve near-optimal sample complexity. One of the biggest challenges in analyzing model-based algorithms in unconstrained MDPs and CMDPs is to decouple the correlation between the empirical model ̂ P and the estimate values ̂ V πk
+
+.Indeed, both [16] and [17] get the extra regret terms due to loose decoupling steps. In particular, [17] achieve a regret of ˜O(√S2AH 6K/ (b − c0)) , where c0 is the value of a known safe policy. In both their regret analysis, the authors bound the term ̂ V πk 
+
+> 1,r
+
+(s1) − V πk 
+
+> 1,r
+
+(s1) by ̂
+
+V πk 
+
+> 1,r
+
+(s1) − V πk 
+
+> 1,r
+
+(s1) = 
+
+> H
+
+∑
+
+> h=1
+
+Eπk ,P 
+
+[∑
+
+> s′
+
+(̂ 
+
+Pskh,a kh,h (s′) − Pskh,a kh,h (s′)
+
+)̂ 
+
+V πk 
+
+> h+1 ,r
+
+(s′)
+
+]
+
+≤
+
+> H
+
+∑
+
+> h=1
+
+Eπk ,P 
+
+[∑
+
+> s′
+
+∣∣∣̂ Pskh,a kh,h (s′) − Pskh,a kh,h (s′)
+
+∣∣∣ H
+
+]
+
+,
+
+where the equality follows from value difference lemma and the inequality follows from Hölder’s inequality and ̂ V ≤ H. Then they invoke Bernstein’s inequality on the concentration bound of ̂
+
+P . This technique is also known to be used in unconstrained MDPs [42] and gives a regret of 
+
+˜O(√S2AH 4K), which is suboptimal compared to the lower bound Ω( √SAH 3K). Following [42], subsequent works [9, 15] introduced different techniques to achieve near-optimal regret, but neither method extends directly to CMDPs. In the regret analysis of [9], the authors bound ̂ V πk 
+
+> h, ˜r
+
+(skh) − V πk 
+
+> h,r
+
+(skh) by writing it in a recursive form. One of the key steps is to bound the following term as: 
+
+(̂ 
+
+Ps,a,h − Ps,a,h 
+
+) (̂ 
+
+V πk 
+
+> h+1 ,˜r
+
+− V ∗
+
+> h+1 ,r
+
+)
+
+≤ ∑
+
+> s′
+
+∣∣∣̂ Ps,a,h (s′) − Ps,a,h (s′)
+
+∣∣∣ ·
+
+(̂ 
+
+V πk 
+
+> h+1 ,˜r
+
+(s′) − V πk 
+
+> h+1 ,r
+
+(s′)
+
+)
+
+,
+
+4where the inequality follows from the optimism of ̂ V πk 
+
+> h, ˜r
+
+and optimality of V ∗ 
+
+> h,r
+
+:̂ V πk 
+
+> h, ˜r
+
+(s) ≥ V ∗ 
+
+> h,r
+
+(s) ≥
+
+V πk 
+
+> h,r
+
+(s), ∀h ∈ [H], k ∈ [K], s ∈ S . This argument fails in CMDPs, because the optimal policy π∗
+
+in CMDPs is not necessarily optimal for all h ∈ [H].The high-level idea of [15] to decouple the correlation between ̂ P and ̂ V is that, when fixing a “profile” that keeps track of visitation counts for all (s, a, h ) tuples, ̂ Vh+1 is independent of ̂ Ph. A union bound over all possible profiles then gives the desired regret bound. To avoid the number of such profiles being exponential in K, the authors adopt the double batch updates explained later. Although decoupling arises naturally in unconstrained MDPs through backward updates, it is not the case in constrained MDPs. If the policy π is determined by enforcing the constraint ̂ V π 
+
+> 1,c
+
+≤ b,then π and thus ̂ V πh+1 will be inherently correlated to all ̂ Ph’s. To tackle these challenges, we use a model-based approach to address the CMDP problem defined in eq. (1). Adopting the doubling batch updates, we update our empirical transition matrix only when the visitation count of any state-action pair doubles. To be specific, we denote ¯Nh(s, a ) as the total visitation count of state-action pair (s, a ) in time step h, Nh(s, a, s ′) as the count of transitions from 
+
+(s, a ) to s′ since the last update, and Nh(s, a ) = ∑ 
+
+> s′
+
+Nh(s, a, s ′) as the visitation count of (s, a )
+
+since the last update. We update an empirical transition matrix ̂ P whenever ¯Nh(s, a ) for any (s, a )
+
+doubles, such that ̂ Ps,a,h (s′) = Nh(s,a,s ′) 
+
+> Nh(s,a )
+
+. Note that we will only use the data collected after the last update to calculate ̂ P . With ̂ P , we are able to formulate an empirical CMDP. We adopt a UCB-style bonus for both reward and cost. For any reward function g and policy π, we define the bonus for a (s, a, h, k ) tuple as 
+
+bk,π h,g (s, a ) = c1
+
+√
+
+V(̂ Ps,a,h ,̂ V πh+1 ,g ) log(1 /δ ′)
+
+Nh(s, a ) + c2
+
+H log(1 /δ ′)
+
+Nh(s, a ) , (5) where c1 and c2 are constant to be specified later and δ′ = δ/ (200 SAH 2K2) is related to the confidence level δ. For reward, we add this Bernstein-style bonus bh,r (s, a ) to rh(s, a ) for each 
+
+(s, a ) to encourage exploration. We denote the optimistically biased reward estimate as ˜r, i.e., 
+
+˜rh(s, a ) = rh(s, a ) + bh,r (s, a ). For safety cost, we subtract a Bernstein-style bonus bh,c (s, a ) from 
+
+ch(s, a ). We denote the optimistically biased cost estimate by c, i.e., ch(s, a ) = ch(s, a ) − bh,c (s, a ).By using the optimistically biased cost estimate we will underestimate the cumulative cost. To com-pensate for this and strive to satisfy the safety constraint in the strict feasibility setting, we define a pessimistic constraint constant b′ for each episode by subtracting a gap ∆ from b, that is, b′ := b− ∆.Whereas for the relaxed feasibility setting, since small violations are allowed, we define an optimistic constraint constant b′ := b + τ . This non-negative optimistic shift τ is also required to derive ζ-free results for the relaxed feasibility setting. We will specify the value of ∆ and τ later. We now introduce an empirical CMDP for each episode k, defined by ̂ Mk = ( S, A, H, ̂ P , ˜r, c, b ′),and the corresponding optimization problem ̂ Pk:
+
+max 
+
+> π
+
+̂ V π 
+
+> 1,˜r
+
+(s1) s.t. ̂ V π
+
+> 1,c
+
+(s1) ≤ b′. (6) As discussed before, directly solving eq. (6) results in complex correlation of ̂ P and ̂ V π , leading to suboptimal results. Therefore, we employ a primal-dual approach, which transforms the constrained optimization problem into a saddle-point problem. Let λ ≥ 0 be the dual variable associated with the cost constraint. The equivalent saddle-point problem to eq. (6) is: 
+
+min  
+
+> λ≥0
+
+max 
+
+> π
+
+̂ V π 
+
+> 1,˜r
+
+(s1) − λ
+
+(̂ 
+
+V π
+
+> 1,c
+
+(s1) − b′)
+
+, (7) and we denote (̂ πk, ∗,̂ λk, ∗) as the optimal solutions to the saddle point problem eq. (7). We solve the saddle-point problem eq. (7) iteratively, and for each iteration t ∈ [T ], we alternatively update iterates of the primal variable ̂ πkt and the dual variable ̂ λkt+1 . The primal update is ̂
+
+πkt = arg max 
+
+> π
+
+̂ V π 
+
+> 1,˜r
+
+(s1) −̂ λkt
+
+(̂ 
+
+V π
+
+> 1,c
+
+(s1) − b′)
+
+= arg max 
+
+> π
+
+̂ V π  
+
+> 1,˜r−̂λktc
+
+(s1), (8) 5where the last equality follows from lemma 15. By augmenting rewards with the Lagrange-weighted costs, the policy ̂ πkt can be solved with backward updates, allowing us to decouple ̂ V πh+1 from ̂ Ph.However, the value estimates ̂ V π now depend on the dual variable ̂ λk that takes continuous values. To retain tractable union bounds in the analysis, we must restrict ̂ λ to a discrete set. Specifically, we update the dual variable by performing a single gradient descent step with step size η. We then discretize the values by rounding the gradient descent result to the nearest element in an ε-net 
+
+Λ = {0, ε 1, 2ε1, . . . , U }. The resulting dual update is ̂
+
+λkt+1 = RΛ
+
+[̂ 
+
+λkt + η
+
+(̂ 
+
+V̂ πkt 
+
+> 1,c
+
+(s1) − b′)] 
+
+, (9) where RΛ(λ) = arg min p∈Λ|p − λ| is a rounding function. 
+
+Algorithm 1: Model-based algorithm for online CMDP 
+
+Input: S, A, H, K, r, c, ζ, b ′, c 1 = 460 /9, c 2 = 544 /9, η = UH√T , T , ε1, U .
+
+Initialization : for all k ∈ [K],̂ λk 
+
+> 1
+
+← 0, for all (s, a, s ′, h ), set Nh(s, a, s ′) ← 0,
+
+¯Nh(s, a, s ′) ← 0, Nh(s, a ) ← 0; for all π, set ̂ V πh,c (s) ← 0,̂ V πh, ˜r (s) ← H.
+
+for k = 1 , · · · , K do for t = 1 , · · · , T do ̂
+
+πkt = arg max π̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λkt̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+)̂
+
+λkt+1 = RΛ[̂ λkt − η(b′ −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+))] 
+
+πk = 1
+
+> T
+
+∑Tt=1 ̂ πkt
+
+for h = 1 , · · · , H do 
+
+Observe skh, take action akh ∼ πkh(·| skh), receive rkh, ckh, observe skh+1 
+
+(s, a, s ′) ← skh, a kh, s kh+1 
+
+¯Nh(s, a ) ← ¯Nh(s, a ) + 1 , Nh(s, a, s ′) ← Nh(s, a, s ′) + 1 
+
+if ¯Nh(s, a ) ∈ { 1, 2, 4, · · · , 2log 2 K } then 
+
+Nh(s, a ) ← ∑ 
+
+> ˜s
+
+Nh(s, a, ˜s)̂
+
+Ps,a,h (˜s) ← Nh(s, a, ˜s)/N h(s, a )
+
+TRIGGERED ← TRUE 
+
+Nh(s, a, ·) ← 0
+
+if TRIGGERED then 
+
+TRIGGERED ← FALSE ̂
+
+V πH+1 ,g (s) ← 0, ∀x ∈ S 
+
+for h = H, H − 1, · · · , 1 do for (s, a ) ∈ S × A and any π do ̂
+
+Qπh, ˜r (s, a ) = min {rh(s, a ) + bk,t,π h,r (s, a ) + ̂ Ps,a,h ̂ V πh+1 ,˜r , H }̂
+
+V πh, ˜r (s) = ∑ 
+
+> a∈A
+
+π(a|s)̂ Qπh, ˜r (s, a )̂
+
+Qπh,c (s, a ) = max {ch(s, a ) − bk,t,π h,c (s, a ) + ̂ Ps,a,h ̂ V πh+1 ,c , 0}̂
+
+V πh,c (s) = ∑ 
+
+> a∈A
+
+π(a|s)̂ Qπh,c (s, a )
+
+return ¯π = 1
+
+> K
+
+∑Kk=1 πk
+
+Finally, we state our algorithm in algorithm 1. For each episode, we first execute T iterations of primal and dual updates. The agent executes the mixture policy πk and receives the reward, cost, and the next state. We update the empirical model using the doubling technique as described before. In the end, the algorithm outputs the mixture policy ¯π that mixes all intermediate policies. 
+
+## 5 Main Results and Analysis 
+
+We first present the regret and constraint violation bounds of our algorithm and proofs, while we leave intermediate lemmas and proofs used to support the main results in the appendix. 65.1 Regret and constraint violation results Theorem 1 (Regret bound of algorithm 1 for relaxed feasibility) . Let b′ = b + τ in algorithm 1 for some τ > 0. With probability at least 1 − δ, the regret of algorithm 1 is Regret (K) = ˜O
+
+(√SAH 3K + 2 ε1HK √T + H2Kτ √T
+
+)
+
+.
+
+Proof. Recall the definition of regret: Regret (K) = ∑Kk=1 
+
+(
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+. Note that π∗ is the optimal solution to the original CMDP optimization problem eq. (1), while for each episode πk
+
+is an approximation solution to the empirical CMDP optimization problem eq. (6). To cope with the gap between the two policies, we introduce a proxy policy πτ, ∗ defined as the optimal solution to the following optimization problem 
+
+πτ, ∗ ∈ arg max 
+
+> π
+
+V π 
+
+> 1,r
+
+(sk 
+
+> 1
+
+), s.t. V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤ b′ = b + τ. (10) We decompose the regret as Regret (K) = 
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V πτ, ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
++
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V πτ, ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) −̂ V πτ, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
++
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πτ, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
++
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+,
+
+and give the regret bound by bounding each term above. The first term is the error incurred by replacing the original constraint constant b by a relaxed empirical constraint constant b′ = b + τ for each episode k. Note that by definition of π∗, we have V ∗
+
+> 1,c
+
+(s1) ≤ b ≤ b′. Thus by definition of πτ, ∗
+
+in eq. (10), we have V πτ, ∗ 
+
+> 1,r
+
+(s1) ≥ V ∗ 
+
+> 1,r
+
+(s1). Hence, we bound the first term by 0: ∑Kk=1 (V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) −
+
+V πτ, ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)) ≤ 0.By definition of the proxy policy πτ, ∗ in eq. (10), and noting that τ is a predetermined constant, we see that πτ, ∗ is a fixed policy that is independent of the online learning process. Thus we can apply lemma 16 and bound the second term by 0: ∑Kk=1 
+
+(
+
+V πτ, ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) −̂ V πτ, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 0.The third term is the optimization error, and it is incurred because πk is an approximation solution generated by iterative primal-dual updates. We bound this term by using the primal update rules in lemma 2 and also by lemmas 11 and 12, we have 
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πτ, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 2ε1HK √T + U HK 
+
+√T ≤ 2ε1HK √T + H2Kτ √T .
+
+Finally, the last term in the regret decomposition is the model prediction error, consisting of the errors caused by inaccurate empirical models and additional bonus terms. Worth mentioning, this term is essentially similar to the entire regret in [15] as the algorithms share the similar exploration bonus and update rules for transition models. We state in lemma 3 the bound with probability 1 − δ,
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+= ˜O(√SAH 3K). (11) Putting everything together, we conclude our desired regret bound. 
+
+Theorem 2 (Regret bound of algorithm 1 for strict feasibility) . Let b′ = b − ∆ in algorithm 1 for some ∆ > 0. With probability at least 1 − δ, the regret of algorithm 1 is Regret (K) = ˜O(√SAH 3K + ∆
+
+ζ HK + 2 ε1HK √T + H2K
+
+(ζ − ∆) √T ).
+
+7Proof. The proof to theorem 2 follows the similar idea as the proof to theorem 1. Again, we intro-duce a proxy policy π∆,∗ defined as the optimal solution to the following optimization problem 
+
+π∆,∗ ∈ arg max 
+
+> π
+
+V π 
+
+> 1,r
+
+(sk 
+
+> 1
+
+), s.t. V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤ b′ = b − ∆. (12) We decompose the regret as Regret (K) = 
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V π∆,∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
++
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V π∆,∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) −̂ V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
++
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
++
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+,
+
+and give the regret bound by bounding each term above. The first term is the error incurred by replacing the original constraint constant b by a more restrictive empirical constraint constant b′ =
+
+b − ∆ for each episode k. We bound the first term in lemma 1: 
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V π∆,∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ ∆
+
+ζ HK. (13) For the second term, we use the similar argument as in the proof to theorem 1. By definition of the proxy policy π∆,∗ in eq. (12), and noting that ∆ is a predetermined constant, we see that π∆,∗ is a fixed policy that is independent of the online learning process. Thus we can apply lemma 16 and bound the second term by 0: ∑Kk=1 
+
+(
+
+V π∆,∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) −̂ V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 0.The last two terms can be bounded with the same argument as in the proof to theorem 1. Putting everything together, we conclude the regret bound in the strict feasibility setting. 
+
+Theorem 3 (Constraint violation bound of algorithm 1 for relaxed feasibility) . Let b′ = b + τ in algorithm 1 for some τ > 0. With probability at least 1 − δ, the constraint violation of algorithm 1 is CV (K) = ˜O(√SAH 3K + 2ε1H√T + U H/ √TU − H/τ K + Kτ ).
+
+Proof. Recall the definition of constraint violation and we decompose it as follows: CV (K) = 
+
+( K∑
+
+> k=1
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b
+
+)
+
+> +
+
+=
+
+( K∑
+
+> k=1
+
+(
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
++
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
++
+
+> K
+
+∑
+
+> k=1
+
+(b′ − b)
+
+)
+
+> +
+
+.
+
+For the first term, by definition of optimistically biased estimates of rewards and cost, we note that the analysis of bounding ∑ 
+
+> k
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) and ∑
+
+> k
+
+̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) are analogous, and mostly identical. Hence, by lemma 3, we have 
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ ˜O(√SAH 3K), (14) with probability at least 1 − SAHKδ ′.The second term is the optimization error in the primal-dual process. We calculate πk as an approx-imate solution to the empirical optimization problem defined in eq. (6). Thus, it is not necessarily satisfied that ̂ V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤ b′. We hence return to the analysis of the primal-dual framework, and adapt techniques used in [26, 18]. By lemmas 11 to 14, we have 
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+≤
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+> +
+
+≤ 2ε1H√T + U H/ √TU − H/τ K, 
+
+For the third term, we recall the definition of b′, and we have ∑Kk=1 (b′ − b) = Kτ. Finally, putting everything together, we have the desired upper bound on constraint violation. 8Theorem 4 (Constraint violation bound of algorithm 1 for strict feasibility) . Let b′ = b − ∆ for some ∆ > 0. With probability at least 1 − δ, the constraint violation of algorithm 1 is CV (K) = ˜O(√SAH 3K + 2ε1H√T + U H/ √TU − H/ (ζ − ∆) K − K∆) .
+
+Proof. We decompose the violation similarly as in the proof to theorem 3 and note that the first two terms can be bounded using the same argument. Then, recall b′ = b − ∆, and we immediately have the upper bound on constraint violation for strict feasibility. 
+
+5.2 Sample complexity bounds 
+
+We present the sample complexity bounds of algorithm 1. We derive these bounds by converting them from the regret and constraint violation upper bounds presented above. 
+
+Theorem 5 (Sample complexity of algorithm 1 for relaxed feasibility) . For a fixed ε ∈ (0 , H ] and 
+
+δ ∈ (0 , 1) , with K = ˜O
+
+( SAH 3
+
+> ε2
+
+)
+
+, T = O
+
+( H4
+
+> ε4
+
+)
+
+, U = O ( Hε
+
+), ε1 = O
+
+( ε3
+
+> H3
+
+)
+
+, and τ = ε 
+
+> 2
+
+,algorithm 1 returns a policy ¯π that satisfies eq. (3) with probability 1 − δ.Proof. Note that ¯π = 1
+
+> K
+
+∑Kk=1 πk is a mixture policy, and we have 
+
+V ∗ 
+
+> 1,r
+
+(s1) − V ¯π 
+
+> 1,r
+
+(s1) = 1
+
+K
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V ∗ 
+
+> 1,r
+
+(s1) − V πk 
+
+> 1,r
+
+(s1)
+
+)
+
+= Regret (K)
+
+K ,
+
+and 
+
+V ¯π
+
+> 1,c
+
+(s1) − b = 1
+
+K
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V πk 
+
+> 1,c
+
+(s1) − b
+
+)
+
+≤ CV (K)
+
+K .
+
+By setting K = ˜O
+
+( SAH 3
+
+> ε2
+
+)
+
+, T = O
+
+( H4
+
+> ε4
+
+)
+
+, U = O ( Hε
+
+), ε1 = O
+
+( ε3
+
+> H3
+
+)
+
+, and τ = ε 
+
+> 2
+
+, with proper coefficients we have V ∗ 
+
+> 1,r
+
+(s1) − V ¯π 
+
+> 1,r
+
+(s1) ≤ ε, and V ¯π
+
+> 1,c
+
+(s1) − b ≤ ε.Theorem 5 shows the sample complexity of algorithm 1 is ˜O
+
+( SAH 3
+
+> ε2
+
+)
+
+in the relaxed feasibility setting. For unconstrained MDPs with online access, [11] provided a lower bound of Ω
+
+( SAH 3
+
+> ε2
+
+)
+
+for ε-optimal policy identification. We thus conclude that learning online CMDPs in the relaxed feasibility setting is as easy as learning unconstrained MDPs. 
+
+Theorem 6 (Sample complexity of algorithm 1 for strict feasibility) . For a fixed ε ∈ (0 , H − ζ]
+
+and δ ∈ (0 , 1) , with K = ˜O
+
+( SAH 5
+
+> ε2ζ2
+
+)
+
+, T = O
+
+( H6
+
+> ζ4ε2
+
+)
+
+, U = O
+
+( H2
+
+> ζ(H−ε)
+
+)
+
+, ε1 = O
+
+( ε2ζ2
+
+> H4
+
+)
+
+, and 
+
+∆ = ζε  
+
+> 2H
+
+, algorithm 1 returns a policy ¯π that satisfies eq. (4) with probability 1 − δ.Proof. The proof is mostly the same as the proof to theorem 5: 
+
+V ∗ 
+
+> 1,r
+
+(s1) − V ¯π 
+
+> 1,r
+
+(s1) = 1
+
+K
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V ∗ 
+
+> 1,r
+
+(s1) − V πk 
+
+> 1,r
+
+(s1)
+
+)
+
+= Regret (K)
+
+K ,
+
+and 
+
+V ¯π
+
+> 1,c
+
+(s1) − b = 1
+
+K
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V πk 
+
+> 1,c
+
+(s1) − b
+
+)
+
+≤ CV (K)
+
+K .
+
+By setting K = ˜O
+
+( SAH 5
+
+> ε2ζ2
+
+)
+
+, T = O
+
+( H6
+
+> ζ4ε2
+
+)
+
+, U = O
+
+( H2
+
+> ζ(H−ε)
+
+)
+
+, ε1 = O
+
+( ε2ζ2
+
+> H4
+
+)
+
+, and ∆ = ζε  
+
+> 2H
+
+,with proper coefficients, we have V ∗ 
+
+> 1,r
+
+(s1) − V ¯π 
+
+> 1,r
+
+(s1) ≤ ε, and V ¯π
+
+> 1,c
+
+(s1) − b ≤ 0.9Theorem 6 shows the sample complexity of algorithm 1 is ˜O
+
+( SAH 5
+
+> ε2ζ2
+
+)
+
+in the strict feasibility setting. With access to a generative model, [18] provided a lower bound of Ω
+
+( SA 
+
+> (1 −γ)5ε2ζ2
+
+)
+
+for infinite-horizon discounted CMDPs, which translates to Ω
+
+( SAH 5
+
+> ε2ζ2
+
+)
+
+for episodic CMDPs. Note that this lower bound can be readily applied to learning with online access: Suppose there exists an online algorithm A achieving better sample complexity than the lower bound for the random access setting. Since trajectories generated in the online setting can be simulated with a generative model, we can easily construct a sampling scheme with the generative model using A as a subroutine. This contradicts the lower bound. We thus conclude that in the strict feasibility setting, learning CMDPs with online access is as easy as learning CMDPs with random access. 
+
+## Acknowledgement 
+
+Chang Liu, Yunfan Li, and Lin F. Yang are supported in part by NSF Grant 2221871 and an Amazon Faculty Award. 
+
+## References 
+
+[1] Jun Wang, Li Zhang, Yanjun Huang, and Jian Zhao. Safety of autonomous vehicles. Journal of advanced transportation , 2020(1):8867757, 2020. [2] Charles Vincent, Susan Burnett, and Jane Carthey. Safety measurement and monitoring in healthcare: a framework to guide clinical teams and healthcare organisations in maintaining safety. BMJ quality & safety , 23(8):670–677, 2014. [3] José Machado, Eurico Seabra, José C Campos, Filomena Soares, and Celina P Leão. Safe controllers design for industrial automation systems. Computers & Industrial Engineering , 60 (4):635–653, 2011. [4] Eitan Altman. Constrained Markov Decision Processes . CRC Press, 1999. [5] Dongsheng Ding, Xiaohan Wei, Zhuoran Yang, Zhaoran Wang, and Mihailo Jovanovic. Prov-ably efficient safe exploration via primal-dual policy optimization. In International conference on artificial intelligence and statistics , pages 3304–3312. PMLR, 2021. [6] Yonathan Efroni, Shie Mannor, and Matteo Pirotta. Exploration-exploitation in constrained mdps, 2020. URL https://arxiv.org/abs/2003.02189 .[7] Alessandro Calò, Paolo Arcaini, Shaukat Ali, Florian Hauer, and Fuyuki Ishikawa. Generating avoidable collision scenarios for testing autonomous driving systems. In 2020 IEEE 13th International Conference on Software Testing, Validation and Verification (ICST) , pages 375– 386. IEEE, 2020. [8] Barbara CN Müller, Xin Gao, Sari RR Nijssen, and Tom GE Damen. I, robot: How human appearance and mind attribution relate to the perceived danger of robots. International Journal of Social Robotics , 13:691–701, 2021. [9] Mohammad Gheshlaghi Azar, Ian Osband, and Rémi Munos. Minimax regret bounds for rein-forcement learning. In International conference on machine learning , pages 263–272. PMLR, 2017. [10] Chi Jin, Zeyuan Allen-Zhu, Sebastien Bubeck, and Michael I Jordan. Is q-learning prov-ably efficient? In S. Bengio, H. Wallach, H. Larochelle, K. Grauman, N. Cesa-Bianchi, and R. Garnett, editors, Advances in Neural Information Processing Systems , volume 31. Curran Associates, Inc., 2018. URL https://proceedings.neurips.cc/paper_files/paper/ 2018/file/d3b1fb02964aa64e257f9f26a31f72cf-Paper.pdf .[11] Omar Darwiche Domingues, Pierre Ménard, Emilie Kaufmann, and Michal Valko. Episodic reinforcement learning in finite mdps: Minimax lower bounds revisited. In Proceedings of the 32nd International Conference on Algorithmic Learning Theory . PMLR, 2021. 10 [12] Zihan Zhang, Xiangyang Ji, and Simon Du. Is reinforcement learning more difficult than bandits? a near-optimal algorithm escaping the curse of horizon. In Proceedings of Thirty Fourth Conference on Learning Theory . PMLR, 2021. [13] Pierre Ménard, Omar Darwiche Domingues, Xuedong Shang, and Michal Valko. UCB Mo-mentum Q-learning: Correcting the bias without forgetting. In International Conference on Machine Learning , Vienna / Virtual, Austria, 2021. [14] Gen Li, Laixi Shi, Yuxin Chen, Yuantao Gu, and Yuejie Chi. Breaking the sample complexity barrier to regret-optimal model-free reinforcement learning. In Proceedings of the 35th Inter-national Conference on Neural Information Processing Systems , NIPS ’21, Red Hook, NY, USA, 2021. [15] Zihan Zhang, Yuxin Chen, Jason D Lee, and Simon S Du. Settling the sample complexity of online reinforcement learning. In Proceedings of Thirty Seventh Conference on Learning Theory , Proceedings of Machine Learning Research. PMLR, 2024. [16] Tao Liu, Ruida Zhou, Dileep Kalathil, P. R. Kumar, and Chao Tian. Learning policies with zero or bounded constraint violation for constrained mdps. In Proceedings of the 35th International Conference on Neural Information Processing Systems , NIPS ’21, 2021. [17] Archana Bura, Aria Hasanzade Zonuzy, Dileep Kalathil, Srinivas Shakkottai, and Jean-Francois Chamberland. Dope: doubly optimistic and pessimistic exploration for safe reinforce-ment learning. In Proceedings of the 36th International Conference on Neural Information Processing Systems , NIPS ’22, 2022. [18] Sharan Vaswani, Lin Yang, and Csaba Szepesvári. Near-optimal sample complexity bounds for constrained MDPs. In Advances in Neural Information Processing Systems , 2022. [19] Tiancheng Yu, Yi Tian, Jingzhao Zhang, and Suvrit Sra. Provably efficient algorithms for multi-objective competitive rl. In Proceedings of the 38th International Conference on Machine Learning . PMLR, 2021. [20] Fan Chen, Junyu Zhang, and Zaiwen Wen. A near-optimal primal-dual method for off-policy learning in cmdp. In Proceedings of the 36th International Conference on Neural Information Processing Systems , NIPS ’22, 2022. [21] Aria HasanzadeZonuzy, Archana Bura, Dileep M. Kalathil, and Srinivas Shakkottai. Learning with safety constraints: Sample complexity of reinforcement learning for constrained mdps. In 
+
+Thirty-Fifth AAAI Conference on Artificial Intelligence, AAAI 2021 . AAAI Press, 2021. [22] Washim Uddin Mondal and Vaneet Aggarwal. Sample-efficient constrained reinforcement learning with general parameterization. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024. [23] Jiashuo Jiang and Yinyu Ye. Achieving $\tilde{O}(1/\epsilon)$ sample complexity for con-strained markov decision process. In The Thirty-eighth Annual Conference on Neural Informa-tion Processing Systems , 2024. [24] Arnob Ghosh. Sample complexity for obtaining sub-optimality and violation bound for distri-butionally robust constrained MDP. In First Reinforcement Learning Safety Workshop , 2024. [25] Dong Yin, Botao Hao, Yasin Abbasi-Yadkori, Nevena Lazi´ c, and Csaba Szepesvári. Effi-cient local planning with linear function approximation. In Proceedings of The 33rd Inter-national Conference on Algorithmic Learning Theory , Proceedings of Machine Learning Re-search, pages 1165–1192. PMLR, 2022. [26] Arushi Jain, Sharan Vaswani, Reza Babanezhad Harikandeh, Csaba Szepesvári, and Doina Precup. Towards painless policy optimization for constrained MDPs. In The 38th Conference on Uncertainty in Artificial Intelligence , 2022. [27] Santiago Paternain, Luiz F. O. Chamon, Miguel Calvo-Fullana, and Alejandro Ribeiro. Con-strained reinforcement learning has zero duality gap. In Proceedings of the 33rd International Conference on Neural Information Processing Systems , 2019. 11 [28] Dongsheng Ding, Xiaohan Wei, Zhuoran Yang, Zhaoran Wang, and Mihailo R. Jovanovi´ c. Provably efficient safe exploration via primal-dual policy optimization. In International Con-ference on Artificial Intelligence and Statistics , 2020. [29] Xiaohan Wei, Hao Yu, and Michael J. Neely. Online primal-dual mirror descent under stochas-tic constraints. In Abstracts of the 2020 SIGMETRICS/Performance Joint International Con-ference on Measurement and Modeling of Computer Systems , 2020. [30] Dongsheng Ding, Kaiqing Zhang, Tamer Basar, and Mihailo Jovanovic. Natural policy gra-dient primal-dual method for constrained markov decision processes. In Advances in Neural Information Processing Systems , 2020. [31] Joshua Achiam, David Held, Aviv Tamar, and Pieter Abbeel. Constrained policy optimization. In Proceedings of the 34th International Conference on Machine Learning - Volume 70 , 2017. [32] Chen Tessler, Daniel J. Mankowitz, and Shie Mannor. Reward constrained policy optimization. In International Conference on Learning Representations , 2019. [33] Adam Stooke, Joshua Achiam, and Pieter Abbeel. Responsive safety in reinforcement learning by pid lagrangian methods. In Proceedings of the 37th International Conference on Machine Learning , 2020. [34] Tian Tian, Lin F Yang, and Csaba Szepesvári. Confident natural policy gradient for local planning in qπ -realizable constrained mdps. arXiv preprint arXiv:2406.18529 , 2024. [35] Arnob Ghosh, Xingyu Zhou, and Ness Shroff. Towards achieving sub-linear regret and hard constraint violation in model-free RL. In Proceedings of The 27th International Conference on Artificial Intelligence and Statistics , 2024. [36] Akifumi Wachi and Yanan Sui. Safe reinforcement learning in constrained markov decision processes. In Proceedings of the 37th International Conference on Machine Learning , 2020. [37] Sanae Amani, Christos Thrampoulidis, and Lin Yang. Safe reinforcement learning with linear function approximation. In International Conference on Machine Learning , pages 243–253. PMLR, 2021. [38] Peter Auer, Thomas Jaksch, and Ronald Ortner. Near-optimal regret bounds for reinforcement learning. Advances in neural information processing systems , 21, 2008. [39] Christoph Dann and Emma Brunskill. Sample complexity of episodic fixed-horizon reinforce-ment learning. Advances in Neural Information Processing Systems , 28, 2015. [40] Ian Osband and Benjamin Van Roy. Why is posterior sampling better than optimism for re-inforcement learning? In International conference on machine learning , pages 2701–2710. PMLR, 2017. [41] Chi Jin, Zeyuan Allen-Zhu, Sebastien Bubeck, and Michael I Jordan. Is q-learning provably efficient? Advances in neural information processing systems , 31, 2018. [42] Thomas Jaksch, Ronald Ortner, and Peter Auer. Near-optimal regret bounds for reinforcement learning. Journal of Machine Learning Research , 11:1563–1600, 2010. 12 NeurIPS Paper Checklist 
+
+1. Claims 
+
+Question: Do the main claims made in the abstract and introduction accurately reflect the paper’s contributions and scope? Answer: [Yes] Justification: The contributions and scope of this paper are included in both the abstract and the introduction. Guidelines: • The answer NA means that the abstract and introduction do not include the claims made in the paper. • The abstract and/or introduction should clearly state the claims made, including the contributions made in the paper and important assumptions and limitations. A No or NA answer to this question will not be perceived well by the reviewers. • The claims made should match theoretical and experimental results, and reflect how much the results can be expected to generalize to other settings. • It is fine to include aspirational goals as motivation as long as it is clear that these goals are not attained by the paper. 2. Limitations 
+
+Question: Does the paper discuss the limitations of the work performed by the authors? Answer: [Yes] Justification: The limitations of this work are discussed in the related work. Guidelines: • The answer NA means that the paper has no limitation while the answer No means that the paper has limitations, but those are not discussed in the paper. • The authors are encouraged to create a separate "Limitations" section in their paper. • The paper should point out any strong assumptions and how robust the results are to violations of these assumptions (e.g., independence assumptions, noiseless settings, model well-specification, asymptotic approximations only holding locally). The au-thors should reflect on how these assumptions might be violated in practice and what the implications would be. • The authors should reflect on the scope of the claims made, e.g., if the approach was only tested on a few datasets or with a few runs. In general, empirical results often depend on implicit assumptions, which should be articulated. • The authors should reflect on the factors that influence the performance of the ap-proach. For example, a facial recognition algorithm may perform poorly when image resolution is low or images are taken in low lighting. Or a speech-to-text system might not be used reliably to provide closed captions for online lectures because it fails to handle technical jargon. • The authors should discuss the computational efficiency of the proposed algorithms and how they scale with dataset size. • If applicable, the authors should discuss possible limitations of their approach to ad-dress problems of privacy and fairness. • While the authors might fear that complete honesty about limitations might be used by reviewers as grounds for rejection, a worse outcome might be that reviewers discover limitations that aren’t acknowledged in the paper. The authors should use their best judgment and recognize that individual actions in favor of transparency play an impor-tant role in developing norms that preserve the integrity of the community. Reviewers will be specifically instructed to not penalize honesty concerning limitations. 3. Theory assumptions and proofs 
+
+Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof? Answer: [Yes] 13 Justification: For all main results of this paper, the proof sketch is provided in the main paper, and the complete proof and auxiliary lemmas are included in the appendix, numbered and referenced. Guidelines: • The answer NA means that the paper does not include theoretical results. • All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced. • All assumptions should be clearly stated or referenced in the statement of any theo-rems. • The proofs can either appear in the main paper or the supplemental material, but if they appear in the supplemental material, the authors are encouraged to provide a short proof sketch to provide intuition. • Inversely, any informal proof provided in the core of the paper should be comple-mented by formal proofs provided in appendix or supplemental material. • Theorems and Lemmas that the proof relies upon should be properly referenced. 4. Experimental result reproducibility 
+
+Question: Does the paper fully disclose all the information needed to reproduce the main experimental results of the paper to the extent that it affects the main claims and/or conclu-sions of the paper (regardless of whether the code and data are provided or not)? Answer: [NA] Justification: This paper does not include experiments. Guidelines: • The answer NA means that the paper does not include experiments. • If the paper includes experiments, a No answer to this question will not be perceived well by the reviewers: Making the paper reproducible is important, regardless of whether the code and data are provided or not. • If the contribution is a dataset and/or model, the authors should describe the steps taken to make their results reproducible or verifiable. • Depending on the contribution, reproducibility can be accomplished in various ways. For example, if the contribution is a novel architecture, describing the architecture fully might suffice, or if the contribution is a specific model and empirical evaluation, it may be necessary to either make it possible for others to replicate the model with the same dataset, or provide access to the model. In general. releasing code and data is often one good way to accomplish this, but reproducibility can also be provided via detailed instructions for how to replicate the results, access to a hosted model (e.g., in the case of a large language model), releasing of a model checkpoint, or other means that are appropriate to the research performed. • While NeurIPS does not require releasing code, the conference does require all sub-missions to provide some reasonable avenue for reproducibility, which may depend on the nature of the contribution. For example (a) If the contribution is primarily a new algorithm, the paper should make it clear how to reproduce that algorithm. (b) If the contribution is primarily a new model architecture, the paper should describe the architecture clearly and fully. (c) If the contribution is a new model (e.g., a large language model), then there should either be a way to access this model for reproducing the results or a way to re-produce the model (e.g., with an open-source dataset or instructions for how to construct the dataset). (d) We recognize that reproducibility may be tricky in some cases, in which case au-thors are welcome to describe the particular way they provide for reproducibility. In the case of closed-source models, it may be that access to the model is limited in some way (e.g., to registered users), but it should be possible for other researchers to have some path to reproducing or verifying the results. 5. Open access to data and code 
+
+14 Question: Does the paper provide open access to the data and code, with sufficient instruc-tions to faithfully reproduce the main experimental results, as described in supplemental material? Answer: [NA] Justification: This paper does not include experiments. Guidelines: • The answer NA means that paper does not include experiments requiring code. • Please see the NeurIPS code and data submission guidelines ( https://nips.cc/ public/guides/CodeSubmissionPolicy ) for more details. • While we encourage the release of code and data, we understand that this might not be possible, so No is an acceptable answer. Papers cannot be rejected simply for not including code, unless this is central to the contribution (e.g., for a new open-source benchmark). • The instructions should contain the exact command and environment needed to run to reproduce the results. See the NeurIPS code and data submission guidelines ( https: //nips.cc/public/guides/CodeSubmissionPolicy ) for more details. • The authors should provide instructions on data access and preparation, including how to access the raw data, preprocessed data, intermediate data, and generated data, etc. • The authors should provide scripts to reproduce all experimental results for the new proposed method and baselines. If only a subset of experiments are reproducible, they should state which ones are omitted from the script and why. • At submission time, to preserve anonymity, the authors should release anonymized versions (if applicable). • Providing as much information as possible in supplemental material (appended to the paper) is recommended, but including URLs to data and code is permitted. 6. Experimental setting/details 
+
+Question: Does the paper specify all the training and test details (e.g., data splits, hyper-parameters, how they were chosen, type of optimizer, etc.) necessary to understand the results? Answer: [NA] Justification: This paper does not include experiments. Guidelines: • The answer NA means that the paper does not include experiments. • The experimental setting should be presented in the core of the paper to a level of detail that is necessary to appreciate the results and make sense of them. • The full details can be provided either with the code, in appendix, or as supplemental material. 7. Experiment statistical significance 
+
+Question: Does the paper report error bars suitably and correctly defined or other appropri-ate information about the statistical significance of the experiments? Answer: [NA] Justification: This paper does not include experiments. Guidelines: • The answer NA means that the paper does not include experiments. • The authors should answer "Yes" if the results are accompanied by error bars, confi-dence intervals, or statistical significance tests, at least for the experiments that support the main claims of the paper. • The factors of variability that the error bars are capturing should be clearly stated (for example, train/test split, initialization, random drawing of some parameter, or overall run with given experimental conditions). • The method for calculating the error bars should be explained (closed form formula, call to a library function, bootstrap, etc.) 15 • The assumptions made should be given (e.g., Normally distributed errors). • It should be clear whether the error bar is the standard deviation or the standard error of the mean. • It is OK to report 1-sigma error bars, but one should state it. The authors should prefer-ably report a 2-sigma error bar than state that they have a 96% CI, if the hypothesis of Normality of errors is not verified. • For asymmetric distributions, the authors should be careful not to show in tables or figures symmetric error bars that would yield results that are out of range (e.g. negative error rates). • If error bars are reported in tables or plots, The authors should explain in the text how they were calculated and reference the corresponding figures or tables in the text. 8. Experiments compute resources 
+
+Question: For each experiment, does the paper provide sufficient information on the com-puter resources (type of compute workers, memory, time of execution) needed to reproduce the experiments? Answer: [NA] Justification: This paper does not include experiments. Guidelines: • The answer NA means that the paper does not include experiments. • The paper should indicate the type of compute workers CPU or GPU, internal cluster, or cloud provider, including relevant memory and storage. • The paper should provide the amount of compute required for each of the individual experimental runs as well as estimate the total compute. • The paper should disclose whether the full research project required more compute than the experiments reported in the paper (e.g., preliminary or failed experiments that didn’t make it into the paper). 9. Code of ethics 
+
+Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines ?Answer: [Yes] Justification: The research conducted in this paper conform in every respect with the NeurIPS Code of Ethics. Guidelines: • The answer NA means that the authors have not reviewed the NeurIPS Code of Ethics. • If the authors answer No, they should explain the special circumstances that require a deviation from the Code of Ethics. • The authors should make sure to preserve anonymity (e.g., if there is a special consid-eration due to laws or regulations in their jurisdiction). 10. Broader impacts 
+
+Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed? Answer: [NA] Justification: There is no societal impact of the work performed. Guidelines: • The answer NA means that there is no societal impact of the work performed. • If the authors answer NA or No, they should explain why their work has no societal impact or why the paper does not address societal impact. • Examples of negative societal impacts include potential malicious or unintended uses (e.g., disinformation, generating fake profiles, surveillance), fairness considerations (e.g., deployment of technologies that could make decisions that unfairly impact spe-cific groups), privacy considerations, and security considerations. 16 • The conference expects that many papers will be foundational research and not tied to particular applications, let alone deployments. However, if there is a direct path to any negative applications, the authors should point it out. For example, it is legitimate to point out that an improvement in the quality of generative models could be used to generate deepfakes for disinformation. On the other hand, it is not needed to point out that a generic algorithm for optimizing neural networks could enable people to train models that generate Deepfakes faster. • The authors should consider possible harms that could arise when the technology is being used as intended and functioning correctly, harms that could arise when the technology is being used as intended but gives incorrect results, and harms following from (intentional or unintentional) misuse of the technology. • If there are negative societal impacts, the authors could also discuss possible mitiga-tion strategies (e.g., gated release of models, providing defenses in addition to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system learns from feedback over time, improving the efficiency and accessibility of ML). 11. Safeguards 
+
+Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pretrained language models, image generators, or scraped datasets)? Answer: [NA] Justification: This paper poses no such risks. Guidelines: • The answer NA means that the paper poses no such risks. • Released models that have a high risk for misuse or dual-use should be released with necessary safeguards to allow for controlled use of the model, for example by re-quiring that users adhere to usage guidelines or restrictions to access the model or implementing safety filters. • Datasets that have been scraped from the Internet could pose safety risks. The authors should describe how they avoided releasing unsafe images. • We recognize that providing effective safeguards is challenging, and many papers do not require this, but we encourage authors to take this into account and make a best faith effort. 12. Licenses for existing assets 
+
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected? Answer: [NA] Justification: This paper does not use existing assets. Guidelines: • The answer NA means that the paper does not use existing assets. • The authors should cite the original paper that produced the code package or dataset. • The authors should state which version of the asset is used and, if possible, include a URL. • The name of the license (e.g., CC-BY 4.0) should be included for each asset. • For scraped data from a particular source (e.g., website), the copyright and terms of service of that source should be provided. • If assets are released, the license, copyright information, and terms of use in the pack-age should be provided. For popular datasets, paperswithcode.com/datasets has curated licenses for some datasets. Their licensing guide can help determine the li-cense of a dataset. • For existing datasets that are re-packaged, both the original license and the license of the derived asset (if it has changed) should be provided. 17 • If this information is not available online, the authors are encouraged to reach out to the asset’s creators. 13. New assets 
+
+Question: Are new assets introduced in the paper well documented and is the documenta-tion provided alongside the assets? Answer: [NA] Justification: This paper does not release new assets. Guidelines: • The answer NA means that the paper does not release new assets. • Researchers should communicate the details of the dataset/code/model as part of their submissions via structured templates. This includes details about training, license, limitations, etc. • The paper should discuss whether and how consent was obtained from people whose asset is used. • At submission time, remember to anonymize your assets (if applicable). You can either create an anonymized URL or include an anonymized zip file. 14. Crowdsourcing and research with human subjects 
+
+Question: For crowdsourcing experiments and research with human subjects, does the pa-per include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)? Answer: [NA] Justification: This paper does not involve crowdsourcing nor research with human subjects. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Including this information in the supplemental material is fine, but if the main contri-bution of the paper involves human subjects, then as much detail as possible should be included in the main paper. • According to the NeurIPS Code of Ethics, workers involved in data collection, cura-tion, or other labor should be paid at least the minimum wage in the country of the data collector. 15. Institutional review board (IRB) approvals or equivalent for research with human subjects 
+
+Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained? Answer: [NA] Justification: This paper does not involve crowdsourcing nor research with human subjects. Guidelines: • The answer NA means that the paper does not involve crowdsourcing nor research with human subjects. • Depending on the country in which research is conducted, IRB approval (or equiva-lent) may be required for any human subjects research. If you obtained IRB approval, you should clearly state this in the paper. • We recognize that the procedures for this may vary significantly between institutions and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the guidelines for their institution. • For initial submissions, do not include any information that would break anonymity (if applicable), such as the institution conducting the review. 16. Declaration of LLM usage 
+
+18 Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does not impact the core methodology, scientific rigorousness, or originality of the research, declaration is not required. Answer: [NA] Justification: The core method development in this research does not involve LLMs as any important, original, or non-standard components. Guidelines: • The answer NA means that the core method development in this research does not involve LLMs as any important, original, or non-standard components. • Please refer to our LLM policy ( https://neurips.cc/Conferences/2025/LLM )for what should or should not be described. 19 A Regret Analysis 
+
+Lemma 1. Let π∆,∗ be defined as in eq. (12) , then 
+
+> K
+
+∑
+
+> k=1
+
+(
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V π∆,∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ ∆
+
+ζ HK. 
+
+Proof. Recall the definition 
+
+π∗ 
+
+> c
+
+= arg max 
+
+> π
+
+b − V π
+
+> 1,c
+
+(s1),
+
+and ζ = b − V π∗ 
+
+> c
+> 1,c
+
+(s1). For each episode k, we define a fixed policy ˚π∆ = (1 − ∆ 
+
+> ζ
+
+)π∗ + ∆ 
+
+> ζ
+
+π∗ 
+
+> c
+
+, and its value function satisfies 
+
+V ˚π∆ 
+
+> 1,c
+
+(s1) = (1 − ∆
+
+ζ )V ∗
+
+> 1,c
+
+(s1) + ∆
+
+ζ V π∗ 
+
+> c
+> 1,c
+
+(s1) ≤ (1 − ∆
+
+ζ )b + ∆
+
+ζ (b − ζ) = b − ∆.
+
+Then, 
+
+> K
+
+∑
+
+> k=1
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V π∆,∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+≤
+
+> K
+
+∑
+
+> k=1
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V ˚π∆ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)=
+
+> K
+
+∑
+
+> k=1
+
+V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) −
+
+(
+
+(1 − ∆
+
+ζ )V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) + ∆
+
+ζ V π∗ 
+
+> c
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+=
+
+> K
+
+∑
+
+> k=1
+
+∆
+
+ζ (V ∗ 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) − V π∗ 
+
+> c
+> 1,r
+
+(sk 
+
+> 1
+
+)) 
+
+≤ ∆
+
+ζ HK, 
+
+where the first inequality is due to the definition of π∆,∗, i.e., for any policy π, s.t. V π
+
+> 1,c
+
+(s1) ≤ b′ =
+
+b − ∆, V π∆,∗ 
+
+> 1,r
+
+(s1) ≥ V π 
+
+> 1,r
+
+(s1), and the second inequality follows from V ∗ 
+
+> 1,r
+
+(s1) ≤ H.
+
+Lemma 2. Let πk be the mixture policy in algorithm 1, πτ, ∗ and π∆,∗ be defined as in eqs. (10) 
+
+and (12) , then K∑
+
+> k=1
+
+(̂ 
+
+V πτ, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 2ε1H√T + U H 
+
+√T ,
+
+and K∑
+
+> k=1
+
+(̂ 
+
+V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 2ε1H√T + U H 
+
+√T .
+
+Proof. For any primal-dual iteration t ∈ [T ],̂
+
+V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λkt̂ V π∆,∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤̂ V̂ πkt 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λkt̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+).
+
+Taking average over T iterations, 
+
+1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ 
+
+V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λkt̂ V π∆,∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ 
+
+V̂ πkt 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λkt̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+.
+
+Note that the mixture policy πk is the average policies of ̂ πkt , we have ̂
+
+V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+λkt̂ V π∆,∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+λkt̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+). (15) 20 Further, we notice that ̂
+
+V π∆,∗ 
+
+> 1,c
+
+≤ V π∆,∗ 
+
+> 1,c
+
+≤ b′. (16) Thus, for any episode k,̂
+
+V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)=
+
+(̂ 
+
+V π∆,∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+λkt̂ V π∆,∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+−
+
+(̂ 
+
+V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+λkt̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
++ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+λkt
+
+(̂ 
+
+V π∆,∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+λkt (̂ V π∆,∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)) 
+
+≤ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+λkt (b′ −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)) 
+
+≤2ε1H√T + U H 
+
+√T ,
+
+where the first inequality follows from eq. (15), the second inequality follows from eq. (16), and the last inequality follows from lemma 14 by letting λ = 0 The proof for πτ, ∗ is analogous and is thus omitted. 
+
+Lemma 3. K∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+= ˜O(√SAH 3K).
+
+Proof. By definition, we write ̂
+
+V πk 
+
+> h, ˜r
+
+(skh) = ∑
+
+> a∈A
+
+πk(a|skh)̂ Qπk 
+
+> h, ˜r
+
+(skh, a )=̂ Qπk 
+
+> h, ˜r
+
+(skh, a kh) + 
+
+(∑
+
+> a∈A
+
+πk(a|skh)̂ Qπk 
+
+> h, ˜r
+
+(skh, a ) −̂ Qπk 
+
+> h, ˜r
+
+(skh, a kh)
+
+)
+
+≤ rh(skh, a kh) + bkh(skh, a kh) + ̂ P kskh,a kh,h ̂ V πk 
+
+> h+1 ,˜r
+
++ ϕkh
+
+≤ rh(skh, a kh) + bkh(skh, a kh) + ( ̂ P kskh,a kh,h − Ps,a,h )̂ V πk 
+
+> h+1 ,˜r
+
++ ( Pskh,a kh,h − 1{skh+1 })̂ V πk
+
+> h+1 ,˜r
+
++̂ V πk 
+
+> h+1 ,˜r
+
+(skh+1 ) + ϕkh,
+
+where 
+
+ϕkh =
+
+(∑
+
+> a∈A
+
+πk(a|skh)̂ Qπk 
+
+> h, ˜r
+
+(skh, a ) −̂ Qπk 
+
+> h, ˜r
+
+(skh, a kh)
+
+)
+
+is a zero-mean random variable conditional on πk. Then by summing over H time steps and tele-scoping, we have ̂
+
+V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) ≤
+
+> H
+
+∑
+
+> h=1
+
+rh(skh, a kh) + bkh(skh, a kh) + ( ̂ P kskh,a kh,h − Ps,a,h )̂ V πk
+
+> h+1 ,˜r
+
++ ( Pskh,a kh,h − 1{skh+1 })̂ V πk 
+
+> h+1 ,˜r
+
++
+
+> H
+
+∑
+
+> h=1
+
+ϕkh.
+
+21 The term we want to bound is now decomposed as 
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+bkh(skh, a kh) + 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(̂ P kskh,a kh,h − Ps,a,h )̂ V πk 
+
+> h+1 ,˜r
+
++
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+ϕkh
+
++
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(Pskh,a kh,h − 1{skh+1 })̂ V πk 
+
+> h+1 ,˜r
+
++
+
+> K
+
+∑
+
+> k=1
+
+( H∑
+
+> h=1
+
+rh(skh, a kh) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+.
+
+We apply lemmas 4, 5 and 7 to 9, and conlude that with probability 1 − δ,
+
+> K
+
+∑
+
+> k=1
+
+(̂ 
+
+V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+= O
+
+(√ 
+
+SAH 3K log 5 SAHK δ
+
+)
+
+.
+
+Lemma 4. With probability at least 1 − 3SAHKδ ′,
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+bk,π k 
+
+> h,r
+
+(skh, a kh) ≤ ˜O(√SAH 3K).
+
+Proof. By definition of bonus bk,π k 
+
+> h,r
+
+(skh, a kh), we have 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+, b k,π k
+
+> h,r
+
+(skh, a kh
+
+) = 460 9
+
+∑
+
+> k,h
+
+√√√√ V
+
+(̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+> h+1 ,˜r
+
+)
+
+log 1
+
+> δ′
+
+N kh
+
+(skh, a kh
+
+) + 544 9
+
+∑
+
+> k,h
+
+H log 1
+
+> δ′
+
+N kh
+
+(skh, a kh
+
+) .
+
+Applying the Cauchy-Schwarz inequality and lemma 17, we obtain 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+bk,π k
+
+> h,r
+
+(skh, a kh
+
+) ≤ 460 9
+
+√√√√∑
+
+> k,h
+
+log 1
+
+> δ′
+
+N kh
+
+(skh, a kh
+
+)√∑
+
+> k,h
+
+V
+
+(̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+> h+1 ,˜r
+
+)
+
++ 544 H log 1
+
+> δ′
+
+9
+
+∑
+
+> k,h
+
+1
+
+N kh
+
+(skh, a kh
+
+)
+
+≤ 460 9
+
+√√√√2SAH (log 2 K)
+
+(
+
+log 1
+
+δ′
+
+) ∑
+
+> k,h
+
+V
+
+(̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+> h+1 ,˜r
+
+)
+
++ 1088 9 SAH 2 (log 2 K) log 1
+
+δ′ .
+
+Then by lemma 10, we have the desired result. 
+
+Lemma 5. K∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(̂ P kskh,a kh,h − Ps,a,h )̂ V πk 
+
+> h+1 ,˜r
+
+≤ ˜O(√SAH 3K).
+
+Proof. First we notice that πk is a mixture policy of πk = 1
+
+> T
+
+∑Tt=1 ̂ πkt , then we have 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(̂ P kskh,a kh,h − Ps,a,h )̂ V πk 
+
+> h+1 ,˜r
+
+=
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(̂ P kskh,a kh,h − Ps,a,h ) 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+V̂ πkt
+
+> h+1 ,˜r
+
+= 1
+
+T
+
+> T
+
+∑
+
+> t=1
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(̂ P kskh,a kh,h − Ps,a,h )̂ V̂ πkt 
+
+> h+1 ,˜r
+
+.
+
+Note that given a total profile I ∈ C and a dual variable sequence λ ∈ Λ,̂ V̂ πkt 
+
+> h+1 ,˜r
+
+is determined by 
+
+{̂ 
+
+P (Iks,a,h ′ ) 
+
+> s,a,h ′
+
+, r (Iks,a,h ′ ) 
+
+> h′
+
+(s, a ), c (Iks,a,h ′ ) 
+
+> h′
+
+(s, a )
+
+}
+
+> h<h ′≤H, (s,a,k )∈S×A× [K]
+
+,
+
+22 and ∥̂V πk 
+
+> h+1 ,˜r
+
+∥∞ ≤ H. Thus we can invoke lemma 6 and also by lemma 10, we have 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(̂ P kskh,a kh,h − Ps,a,h )̂ V πk 
+
+> h+1 ,˜r
+
+≤ ˜O(√SAH 3K).
+
+Lemma 6. Let us first specify the types of vectors {Xh,s,a }. For each total profile I ∈ C , consider any set {X h, I }1≤h≤H obeying: for each 1 ≤ h ≤ H,
+
+• Xh+1 ,I is given by a deterministic function of I, a dual variable λ ∈ Λ, and 
+
+{̂ 
+
+P (Iks,a,h ′ ) 
+
+> s,a,h ′
+
+, r (Iks,a,h ′ ) 
+
+> h′
+
+(s, a ), c (Iks,a,h ′ ) 
+
+> h′
+
+(s, a )
+
+}
+
+> h<h ′≤H, (s,a,k )∈S×A× [K]
+
+;
+
+• ∥X∥∞ ≤ H for each vector X ∈ X h, I ;
+
+• Xh, I is a set of no more than K + 1 non-negative vectors in RS , and contains the all-zero vector 0. Suppose that K ≥ SAH log 2 K, and construct a set {X h, I }1≤h≤H for each I ∈ C satisfying the above properties. Then with probability at least 1 − δ′,
+
+∑
+
+> s,a,h ∈S×A× [H]
+
+〈̂ 
+
+P (l) 
+
+> s,a,h
+
+− Ps,a,h , X h+1 ,s,a 
+
+〉
+
+≤ ∑
+
+> s,a,h ∈S×A× [H]
+
+max 
+
+{〈̂ 
+
+P (l) 
+
+> s,a,h
+
+− Ps,a,h , X h+1 ,s,a 
+
+〉
+
+, 0
+
+}
+
+≤
+
+√ 82l−2
+
+∑
+
+> s,a,h
+
+V (Ps,a,h , X h+1 ,s,a ) (6SAH log 22 K) + 4H
+
+2l−2
+
+(6SAH log 22 K)
+
+holds simultaneously for all I ∈ C , all dual variable sequences, all 2 ≤ l ≤ log 2 K + 1 , and all sequences {Xh,s,a }(s,a,h )∈S×A× [H] obeying Xh,s,a ∈ X h+1 ,I , ∀(s, a, h ) ∈ S × A × [H].Proof. This proof is adapted from the proof to lemma 6 in [15]. Let us begin by considering any fixed total profile I ∈ C , any fixed integer l obeying 2 ≤ l ≤ log 2 K + 1 , and any given feasible sequence {Xh,s,a }(s,a,h )∈S×A× [H]. Recall that (i) ̂ P (l) 
+
+> s,a,h
+
+is computed based on the l-th batch of data comprising 2l−2 independent samples; and (ii) each Xh+1 ,s,a is given by a deterministic function of I and the empirical models for steps h′ ∈ [h + 1 , H ]. Consequently, lemma 18 tells us that: with probability at least 1 − δ′, one has 
+
+∑
+
+> s,a,h
+
+〈̂ 
+
+P (l) 
+
+> s,a,h
+
+− Ps,a,h , X h+1 ,s,a 
+
+〉
+
+≤
+
+√√√√ 82l−2
+
+∑
+
+> s,a,h
+
+V (Ps,a,h , X h+1 ,s,a ) log 3 log 2(SAHK )
+
+δ′ + 4H
+
+2l−2 log 3 log 2(SAHK )
+
+δ′
+
+where we view the left-hand side as a martingale sequence from h = H back to h = 1 . Moreover, given that each Xh,s,a has at most K + 1 different choices (since we assume |X h, I | ≤ K + 1 
+
+), there are no more than (K + 1) SAH ≤ (2 K)SAH possible choices of the feasible sequence 
+
+{Xh,s,a }(s,a,h )∈S×A× [H]. In addition, it has been shown in Lemma 5 of [15] that there are no more than (4 SAHK )2SAH log 2 K possibilities of the total profile I. Taking the union bound over all these choices and replacing δ′ with δ′/ ((4 SAHK )2SAH log 2 K(2 K)SAH log 2 K|Λ|KT ), we can demonstrate that with probability at least 1 − δ′,
+
+∑
+
+> s,a,h
+
+〈̂ 
+
+P (l) 
+
+> s,a,h
+
+− Ps,a,h , X h+1 ,s,a 
+
+〉
+
+≤
+
+√ 82l−2
+
+∑
+
+> s,a,h
+
+V (Ps,a,h , X h+1 ,s,a ) (6SAH log 22 K) + 4H
+
+2l−2
+
+(6SAH log 22 K)
+
+23 holds simultaneously for all I ∈ C , all dual variable sequences, all 2 ≤ l ≤ log 2 K + 1 , and all feasible sequences {Xh,s,a }(s,a,h )∈S×A× [H]. Finally, recalling our assumption 0 ∈ X h+1 ,I , we see that for every total profile I and its associated feasible sequence {Xh,s,a }
+
+∑
+
+> s,a,h
+
+max 
+
+{〈̂ 
+
+P (l) 
+
+> s,a,h
+
+− Ps,a,h , X h+1 ,s,a 
+
+〉
+
+, 0
+
+}
+
+∈
+
+∑
+
+> s,a,h
+
+〈̂ 
+
+P (l) 
+
+> s,a,h
+
+− Ps,a,h , ˜Xh+1 ,s,a 
+
+〉
+
+| ˜Xh+1 ,s,a ∈ X h+1 ,I , ∀(s, a, h )
+
+
+
+holds true. Consequently, the uniform upper bound on the right-hand side continues to be a valid upper bound on ∑ 
+
+> s,a,h
+
+max 
+
+{〈̂ 
+
+P (l) 
+
+> s,a,h
+
+− Ps,a,h , X h+1 ,s,a 
+
+〉
+
+, 0
+
+}
+
+. This concludes the proof. 
+
+Lemma 7. With probability at least 1 − 4δ′ log( KH ),
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+ϕkh ≤ ˜O(√H3K).
+
+Proof. Note that ϕkh =
+
+(∑ 
+
+> a∈A
+
+πk(a|skh)̂ Qπk 
+
+> h, ˜r
+
+(skh, a ) −̂ Qπk 
+
+> h, ˜r
+
+(skh, a kh)
+
+)
+
+is a zero-mean random vari-able conditional on πk and is upper bounded by constant H. By lemma 18, we have 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+ϕkh ≤ 2√2
+
+√√√√ K∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+Var (ϕkh) log 1
+
+δ′ + 3 H log 1
+
+δ′
+
+≤ 2
+
+√
+
+2KH 3 log 1
+
+δ′ + 3 H log 1
+
+δ′
+
+with probability at least 1 − 4δ′ log( KH ).
+
+Lemma 8. With probability at least 1 − SAH 2K2δ′,
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(Pskh,a kh,h − 1skh+1 )̂ V πk 
+
+> h+1 ,˜r
+
+≤ ˜O(√H2K).
+
+Proof. We note that conditional on state-action pair (skh, a kh), the vectors Pskh,a kh,h and 1skh+1 are both independent of the value function estimate ̂ V πk 
+
+> h+1 ,˜r
+
+. Also, the vector 1skh+1 has the mean of Pskh,a kh,h .Hence, (Pskh,a kh,h − 1skh+1 )̂ V πk 
+
+> h+1 ,˜r
+
+is a zero-mean random variable bounded by H from above, and we thus apply lemma 18 and have 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(Pskh,a kh,h − 1skh+1 )̂ V πk 
+
+> h+1 ,˜r
+
+≤ 2√2
+
+√√√√ K∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+V
+
+(
+
+Pskh,a kh,h ,̂ V πk
+
+> h+1 ,˜r
+
+)
+
+log 1
+
+δ′ + 3 H log 1
+
+δ′
+
+with probability at least 1 − SAH 2K2δ′. By lemma 10, we obtain our lemma. 
+
+Lemma 9. With probability at least 1 − 4δ′ log( KH ),
+
+> K
+
+∑
+
+> k=1
+
+( H∑
+
+> h=1
+
+rh(skh, a kh) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ ˜O(√H2K).
+
+Proof. Note that conditional on πk, Ek := ∑Hh=1 rh(skh, a kh) − V πk 
+
+> 1,r
+
+(sk 
+
+> 1
+
+) is a zero-mean random variable upper bounded by constant H. By lemma 18, we have 
+
+∣∣∣∣∣
+
+> K
+
+∑
+
+> k=1
+
+Ek
+
+∣∣∣∣∣ ≤ 2√2
+
+√√√√ K∑
+
+> k=1
+
+Var (Ek) log 1
+
+δ′ + 3 H log 1
+
+δ′
+
+≤ 2
+
+√
+
+2KH 2 log 1
+
+δ′ + 3 H log 1
+
+δ′ ,
+
+with probability at least 1 − 4δ′ log( KH ), where the last inequality holds because |Ek| ≤ H.24 Lemma 10. With probability at least 1 − 6SAHKδ ′,
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+V
+
+(̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+h+1 ,˜r
+
+)
+
+≤ ˜O(H2K + √H5K + SAH 3),
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+V
+
+(
+
+Pskh,a kh,h ,̂ V πk
+
+h+1 ,˜r
+
+)
+
+≤ ˜O(H2K + √H5K + SAH 3).
+
+Proof. This proof is modified from the proof to lemma 11 in [15], and we show here the parts where the proofs differ. First we write by direct calculation 
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+V
+
+(̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+h+1 ,˜r
+
+)
+
+=
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+(〈̂ 
+
+P kskh,a kh,h , (̂ V πk
+
+h+1 ,˜r )2〉
+
+−
+
+〈̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+h+1 ,˜r
+
+〉2)
+
+=
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈̂ 
+
+P kskh,a kh,h − P kskh,a kh,h , (̂ V πk
+
+h+1 ,˜r )2〉
+
++
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈
+
+P kskh,a kh,h − 1skh+1 , (̂ V πk
+
+h+1 ,˜r )2〉
+
++
+
+K∑
+
+k=1 
+
+H∑
+
+h=2 
+
+(̂ V πk
+
+h, ˜r (skh)) 2 −
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+h+1 ,˜r
+
+〉2
+
+≤
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈̂ 
+
+P kskh,a kh,h − P kskh,a kh,h , (̂ V πk
+
+h+1 ,˜r )2〉
+
++
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈
+
+P kskh,a kh,h − 1skh+1 , (̂ V πk
+
+h+1 ,˜r )2〉
+
++
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+(̂ 
+
+V πk
+
+h, ˜r (skh) + 
+
+〈̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+h+1 ,˜r
+
+〉) (̂ 
+
+V πk
+
+h, ˜r (skh) −
+
+〈̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+h+1 ,˜r
+
+〉) 
+
+,
+
+and since the value function estimates are bounded by H,
+
+≤
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈̂ 
+
+P kskh,a kh,h − P kskh,a kh,h , (̂ V πk
+
+h+1 ,˜r )2〉
+
++
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈
+
+P kskh,a kh,h − 1skh+1 , (̂ V πk
+
+h+1 ,˜r )2〉
+
++ 2 H
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+max 
+
+{̂ 
+
+V πk
+
+h, ˜r (skh) − ⟨ ̂ Pskh,a kh,h ,̂ V πk
+
+h+1 ,˜r ⟩, 0
+
+}
+
+≤
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈̂ 
+
+P kskh,a kh,h − P kskh,a kh,h , (̂ V πk
+
+h+1 ,˜r )2〉
+
++
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈
+
+P kskh,a kh,h − 1skh+1 , (̂ V πk
+
+h+1 ,˜r )2〉
+
++ 2 H
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+max 
+
+{̂ 
+
+V πk
+
+h, ˜r (skh) −̂ Qπk
+
+h, ˜r (skh, a kh) + ̂ Qπk
+
+h, ˜r (skh, a kh) − ⟨ ̂ Pskh,a kh,h ,̂ V πk
+
+h+1 ,˜r ⟩, 0
+
+}
+
+.
+
+By definition of update rule of ̂ Q functions, we have 
+
+≤
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈̂ 
+
+P kskh,a kh,h − P kskh,a kh,h , (̂ V πk
+
+h+1 ,˜r )2〉
+
++
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+〈
+
+P kskh,a kh,h − 1skh+1 , (̂ V πk
+
+h+1 ,˜r )2〉
+
++ 2 H
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+rh(skh, a kh) + 2 H
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+bk,π k
+
+h,r (skh, a kh) + 2 H
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+max {ξkh, 0},
+
+where ξkh := ̂ V πk
+
+h, ˜r (skh) −̂ Qπk
+
+h, ˜r (skh, a kh) = ∑
+
+a∈A πk(a|skh)̂ Qπk
+
+h, ˜r (skh, a ) −̂ Qπk
+
+h, ˜r (skh, a kh) is a zero-mean random variable conditional on πk bounded by H. By the results of lemma 10 and 11 in [15], we finally bound 
+
+K∑
+
+k=1 
+
+H∑
+
+h=1 
+
+V
+
+(̂ 
+
+P kskh,a kh,h ,̂ V πk
+
+h+1 ,˜r
+
+)
+
+≤ ˜O(H2K + √H5K + SAH 3).
+
+25 Similarly we can show that with probability at least 1 − 3SAHKδ ′,
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+V
+
+(
+
+Pskh,a kh,h ,̂ V πk
+
+> h+1 ,˜r
+
+)
+
+=
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+〈
+
+Pskh,a kh,h , (V kh+1 
+
+)2〉
+
+−
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(〈 
+
+Pskh,a kh,h , V kh+1 
+
+〉) 2
+
+=
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+〈
+
+Pskh,a kh,h − 1skh+1 , (V kh+1 
+
+)2〉
+
++
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=2
+
+(V kh
+
+(skh
+
+)) 2 −
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+(〈 
+
+Pskh,a kh,h , V kh+1 
+
+〉) 2
+
+,
+
+and we invoke the similar argument as above, 
+
+≤
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+〈
+
+Pskh,a kh,h − 1skh+1 , (V kh+1 
+
+)2〉
+
++ 2 H
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+max 
+
+{
+
+V kh
+
+(skh
+
+) −
+
+〈
+
+Pskh,a kh,h , V kh+1 
+
+〉
+
+, 0
+
+}
+
+≤
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+〈
+
+Pskh,a kh,h − 1skh+1 , (V kh+1 
+
+)2〉
+
++ 2 H
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+max 
+
+{
+
+V kh
+
+(skh
+
+) −
+
+〈̂ 
+
+Pskh,a kh,h , V kh+1 
+
+〉
+
+, 0
+
+}
+
++ 2 H
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+max 
+
+{〈̂ 
+
+P kskh,a kh,h − Pskh,a kh,h , V kh+1 
+
+〉
+
+, 0
+
+}
+
+≤
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+〈
+
+Pskh,a kh,h − 1skh+1 , (V kh+1 
+
+)2〉
+
++ 2 H
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+rh(skh, a kh) + 2 H
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+bk,π k 
+
+> h,r
+
+(skh, a kh)+ 2 H
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+max {ξkh, 0} + 2 H
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+max 
+
+{〈̂ 
+
+P kskh,a kh,h − Pskh,a kh,h , V kh+1 
+
+〉
+
+, 0
+
+}
+
+By the results of lemma 10 and 11 in [15], we finally bound 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+V
+
+(
+
+Pskh,a kh,h ,̂ V πk
+
+> h+1 ,˜r
+
+)
+
+≤ ˜O(H2K + √H5K + SAH 3).
+
+## B Primal-dual Optimization Analysis 
+
+Lemma 11. For the relaxed feasibility setting, let b′ = b + τ , for some τ > 0, we have ̂
+
+λk, ∗ ≤ Hτ .
+
+For the strict feasibility setting, let b′ = b − ∆, for some ∆ ∈ (0 , ζ ), we have ̂
+
+λk, ∗ ≤ Hζ − ∆ .
+
+Proof. Writing the empirical CMDP in eq. (6) in its Lagrangian form, ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) = max  
+
+> π
+
+min 
+
+> λ≥0
+
+̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − λ
+
+(̂ 
+
+V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+Using the linear programming formulation of CMDPs in terms of the state-occupancy measures μ,we know that both the objective and the constraint are linear functions of μ, and strong duality holds w.r.t. μ. Since μ and π have a one-to-one mapping, we can switch the min and the max, implying, ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) = min  
+
+> λ≥0
+
+max 
+
+> π
+
+̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − λ
+
+(̂ 
+
+V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+Since ̂ λk, ∗ is the optimal dual variable for the empirical CMDP in eq. (6) and recall π∗ 
+
+> c
+
+∈
+
+arg max π b − V π 
+
+> 1,r
+
+(s1), we have ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) = max 
+
+> π
+
+̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λk, ∗ (̂ 
+
+V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+≥̂ V π∗ 
+
+> c
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λk, ∗ (̂ 
+
+V π∗ 
+
+> c
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+=̂ V π∗ 
+
+> c
+> 1,˜r
+
+(sk 
+
+> 1
+
+) + ̂ λk, ∗ (
+
+(b′ − b) + ( b − V π∗ 
+
+> c
+> 1,c
+
+(sk 
+
+> 1
+
+)) + ( V π∗ 
+
+> c
+> 1,c
+
+(sk 
+
+> 1
+
+) −̂ V π∗ 
+
+> c
+> 1,c
+
+(sk 
+
+> 1
+
+)) 
+
+)
+
+26 Note that π∗ 
+
+> c
+
+is a fixed policy and by lemma 16 we have V π∗ 
+
+> c
+> 1,c
+
+(sk 
+
+> 1
+
+) −̂ V π∗ 
+
+> c
+> 1,c
+
+(sk 
+
+> 1
+
+) ≥ 0. Recall that 
+
+ζ = b − V π∗ 
+
+> c
+> 1,c
+
+(s1), and we have 
+
+≥̂ V π∗ 
+
+> c
+> 1,˜r
+
+(sk 
+
+> 1
+
+) + ̂ λk, ∗ (( b′ − b) + ζ) .
+
+For the relaxed feasibility setting, we let b′ = b + τ for some τ > 0. Then we have ̂
+
+λk, ∗ ≤̂ V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V π∗ 
+
+> c
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+τ + ζ ≤ Hτ .
+
+Note that the shift τ > 0 is introduced to get rid of ζ in the results of the relaxed feasibility setting. For the strict feasibility setting, let b′ = b − ∆ for some ∆ ∈ (0 , ζ ), we have ̂
+
+λk, ∗ ≤̂ V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V π∗ 
+
+> c
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+−∆ + ζ ≤ Hζ − ∆ .
+
+Lemma 12. Let U > ̂ λk, ∗ and for any ˜π s.t. ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V ˜π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) + U
+
+(̂ 
+
+V ˜π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′) 
+
+> +
+
+≤ B, 
+
+we have (̂ 
+
+V ˜π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+> +
+
+≤ BU −̂ λk, ∗ .
+
+Proof. Define ν(γ) = max π {̂V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) |̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤ b′ − γ} and note that by definition, ν(0) = ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+), and that ν is a decreasing function for its argument. Then, for any policy π s.t. ̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤
+
+b′ − γ, we have ̂
+
+V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λk, ∗(̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′) ≤ max 
+
+> π
+
+̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λk, ∗(̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)=̂ V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λk, ∗(̂ V̂ πk, ∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)=̂ V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) = ν(0) (by strong duality )
+
+This further implies 
+
+ν(0) −̂ λk, ∗γ ≥̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λk, ∗(̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′) −̂ λk, ∗γ
+
+=̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λk, ∗(̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − (b′ − γ)) 
+
+Since this holds for any policy π s.t. ̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤ b′ − γ, we have 
+
+ν(0) −̂ λk, ∗γ ≥ max  
+
+> π
+
+{̂V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) |̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤ b′ − γ} = ν(γ),
+
+and thus ̂
+
+λk, ∗γ ≤ ν(0) − ν(γ).
+
+Now we choose ˜γ = −(̂ V ˜π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)+,
+
+U −̂ λk, ∗|˜γ| =̂ λk, ∗˜γ + U |˜γ|≤ ν(0) − ν(˜γ) + U |˜γ|
+
+=̂ V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V ˜π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) + U |˜γ| +̂ V ˜π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − ν(˜γ)=̂ V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V ˜π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) + U (̂ V ˜π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)+ +̂ V ˜π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − ν(˜γ)
+
+≤ B +̂ V ˜π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) − ν(˜γ).
+
+27 Now let us bound ν(˜γ):
+
+ν(˜γ) = max  
+
+> π
+
+{̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) |̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤ b′ + ( ̂ V ˜π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)+}≥ max  
+
+> π
+
+{̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) |̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤̂ V ˜π
+
+> 1,c
+
+(sk 
+
+> 1
+
+)} (tightening the constraint )
+
+≥̂ V ˜π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+).
+
+Finally, 
+
+U −̂ λk, ∗|˜γ| ≤ B =⇒ (̂ V ˜π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)+ ≤ BU −̂ λk, ∗ .
+
+Lemma 13. ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) + λ
+
+(̂ 
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+≤ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ λkt − λ)
+
+(
+
+b′ −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+.
+
+Proof. For any episode k and any time step t in the primal-dual iterations, the primal update ensures that for any policy π,̂
+
+V̂ πkt 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λkt (̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′) ≥̂ V π 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ λkt (̂ V π
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′).
+
+Let π be ̂ πk, ∗, and rearrange: ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V̂ πkt 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) ≤̂ λkt (̂ V̂ πk, ∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)) .
+
+Note that ̂ πk, ∗ is the solution to the empirical CMDP in eq. (6), thus ̂ V̂ πk, ∗ 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) ≤ b′, and we have ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V̂ πkt 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) ≤̂ λkt (b′ −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)) .
+
+Take average over T iterations, 
+
+1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ 
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V̂ πkt 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+̂
+
+λkt
+
+(
+
+b′ −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+.
+
+To use lemma 14, we rewrite as 
+
+1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ 
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V̂ πkt 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+)
+
+)
+
++ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+λ
+
+(̂ 
+
+V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+≤ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ λkt − λ)
+
+(
+
+b′ −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+.
+
+Note that ̂ V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) is constant throughout T primal-dual iterations, and πk is a mixture policy, then ̂
+
+V̂ πk, ∗ 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) −̂ V πk 
+
+> 1,˜r
+
+(sk 
+
+> 1
+
+) + λ
+
+(̂ 
+
+V πk 
+
+> 1,c
+
+(sk 
+
+> 1
+
+) − b′)
+
+≤ 1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ λkt − λ)
+
+(
+
+b′ −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+.
+
+Lemma 14. Recall we set η = UH√T . For any episode k, any λ ∈ [0 , U ], and primal and dual updates in eqs. (8) and (9) , we have 
+
+1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ 
+
+λkt − λ
+
+) ( 
+
+b′ −̂ V̂ πkt 
+
+> 1,c
+
+(sk 
+
+> 1
+
+)
+
+)
+
+≤ 2ε1H√T + U H 
+
+√T .
+
+Proof. In this proof, for the simplicity of notations, we will only focus on primal-dual iterations in an arbitrary episode k ∈ [K], and thus we will drop all dependency on k when the context is clear. The dual update is given by ̂
+
+λt+1 = RΛ[̂ λt − η(b′ −̂ V̂ πt 
+
+> 1,c
+
+(s1))] .
+
+28 Particularly, we denote ̂
+
+λ′ 
+
+> t+1
+
+= P[0 ,U ][̂ λt − η(b′ −̂ V̂ πt 
+
+> 1,c
+
+(s1))] .
+
+First, we shall look at |̂ λt − λ|:
+
+|̂ λt+1 − λ| = |R Λ[̂ λ′
+
+> t+1
+
+] − λ| = |R Λ[̂ λ′
+
+> t+1
+
+] −̂ λ′ 
+
+> t+1
+
++̂ λ′ 
+
+> t+1
+
+− λ|≤ |R Λ[̂ λ′
+
+> t+1
+
+] −̂ λ′
+
+> t+1
+
+| + |̂ λ′ 
+
+> t+1
+
+− λ|≤ ε1 + |̂ λ′ 
+
+> t+1
+
+− λ|.
+
+Take square on both sides, 
+
+|̂ λt+1 − λ|2 ≤ ε21 + 2 ε1|̂ λ′ 
+
+> t+1
+
+− λ| + |̂ λ′ 
+
+> t+1
+
+− λ|2
+
+≤ ε21 + 2 ε1U + |̂ λ′ 
+
+> t+1
+
+− λ|2
+
+≤ ε21 + 2 ε1U + |̂ λt − η(b′ −̂ V̂ πt 
+
+> 1,c
+
+(s1)) − λ|2
+
+= ε21 + 2 ε1U + |̂ λt − λ|2 − 2η(b′ −̂ V̂ πt 
+
+> 1,c
+
+(s1))( ̂ λt − λ) + η2(b′ −̂ V̂ πt 
+
+> 1,c
+
+(s1)) 2
+
+≤ ε21 + 2 ε1U + |̂ λt − λ|2 − 2η(b′ −̂ V̂ πt 
+
+> 1,c
+
+(s1))( ̂ λt − λ) + η2H2.
+
+Now we have 
+
+(̂ λt − λ)( b′ −̂ V̂ πt 
+
+> 1,c
+
+(s1)) ≤ ε21 + 2 ε1U + η2H2
+
+2η + |̂ λt − λ|2 − | ̂ λt+1 − λ|2
+
+2η .
+
+By taking average over T iterations and telescoping, we have 
+
+1
+
+T
+
+> T
+
+∑
+
+> t=1
+
+(̂ λt − λ)( b′ −̂ V̂ πt 
+
+> 1,c
+
+(s1)) ≤ ε21 + 2 ε1U + η2H2
+
+2η + |λ1 − λ|2 − | λT +1 − λ|2
+
+2ηT 
+
+≤ ε21 + 2 ε1U + η2H2
+
+2η + |λ1 − λ|2
+
+2ηT 
+
+≤ ε21 + 2 ε1U + η2H2
+
+2η + U 2
+
+2ηT 
+
+≤ 2ε1Uη + ηH 2
+
+2 + U 2
+
+2ηT 
+
+= 2 ε1H√T + U H 
+
+√T .
+
+## C Useful Lemmas 
+
+Lemma 15 (Primal update) . We re-state the primal update in eq. (8) :̂
+
+πkt = arg max 
+
+> π
+
+̂ V π 
+
+> 1,˜r
+
+(s1) −̂ λkt
+
+(̂ 
+
+V π
+
+> 1,c
+
+(s1) − b′)
+
+= arg max 
+
+> π
+
+̂ V π  
+
+> 1,˜r−̂λktc
+
+(s1).
+
+Proof. Note the estimate value functions ̂ V π 
+
+> 1,g
+
+of any reward-like function g : S × A → R is given by: ̂
+
+V π 
+
+> 1,g
+
+(s) = Ê P ,π 
+
+[ H∑
+
+> t=1
+
+g(St, A t)|S1 = s
+
+]
+
+.
+
+29 Then we have ̂
+
+πkt = arg max 
+
+> π
+
+̂ V π 
+
+> 1,˜r
+
+(s1) −̂ λkt
+
+(̂ 
+
+V π
+
+> 1,c
+
+(s1) − b′)
+
+= arg max 
+
+> π
+
+Ê P ,π 
+
+[ H∑
+
+> t=1
+
+˜r(St, A t)|S1 = s1
+
+]
+
+−̂ λkt · Ê P ,π 
+
+[ H∑
+
+> t=1
+
+c(St, A t)|S1 = s1
+
+]
+
++̂ λkt · b′.
+
+= arg max 
+
+> π
+
+Ê P ,π 
+
+[ H∑
+
+> t=1
+
+(˜r −̂ λkt c)( St, A t)|S1 = s1
+
+]
+
+= arg max 
+
+> π
+
+̂ V π  
+
+> 1,˜r−̂λktc
+
+(s1),
+
+where the second-to-last equality follows from the linearity of expectation and reward-like functions, and the last equality follows from the definition of estimate value functions. 
+
+Lemma 16 (Optimism) . With probability at least 1 − 2δ′, for any fixed policy π, reward function g
+
+and s ∈ S , h ∈ [H], we have ̂
+
+V πh, ˜g (s) ≥ V πh,g (s) ≥̂ V πh,g (s).
+
+Proof. First, we define the following function 
+
+f (p, v, n ) := ⟨p, v ⟩ + max 
+
+
+
+20 3
+
+√
+
+V(p, v ) log 1
+
+> δ′
+
+n , 400 9
+
+H log 1
+
+> δ′
+
+n
+
+
+
+for any vector p ∈ ∆S , any non-negative vector v ∈ RS obeying ∥v∥∞ ≤ H, and any positive integer n. We claim that 
+
+f (p, v, n ) is non-decreasing in each entry of v. (17) To justify this claim, consider any 1 ≤ s ≤ S, and let us freeze p, n and all but the s-th entries of v.It then suffices to observe that (i) f is a continuous function, and (ii) except for at most two possible choices of v(s) that obey 20 3
+
+√ V (p,v ) log 1 
+
+> δ′
+> n
+
+= 400 9   
+
+> Hlog 1
+> δ′
+> n
+
+, one can use the properties of p and v to calculate 
+
+∂f (p, v, n )
+
+∂v (s) = p(s) + 20 3 1
+
+
+
+20 3
+
+√
+
+V(p, v ) log 1
+
+> δ′
+
+n ≥ 400 9
+
+H log 1
+
+> δ′
+
+n
+
+
+
+p(s)( v(s) − ⟨ p, v ⟩)
+
+√
+
+log 1
+
+> δ′
+
+√nV(p, v )= p(s) + 1
+
+{√ 
+
+nV(p, v ) log 1
+
+δ′ ≥ 20 3 H log 1
+
+δ′
+
+} 20 3 H log 1
+
+> δ′
+
+√
+
+nV(p, v ) log 1
+
+> δ′
+
+· p(s)( v(s) − ⟨ p, v ⟩)
+
+H
+
+≥ min 
+
+{
+
+p(s) + p(s) (v(s) − ⟨ p, v ⟩)
+
+H , p (s)
+
+}
+
+≥ p(s) min 
+
+{ H + v(s) − ⟨ p, v ⟩
+
+H , 1
+
+}
+
+≥ 0,
+
+thus establishing the claim. We now proceed to the proof of lemma 16. Consider any (h, k, s, a ),and we divide into two cases. Case 1: N kh (s, a ) ≤ 2. In this case, the following trivial bounds arise directly from the value function initiation: ̂
+
+Qπh, ˜g (s, a ) = H ≥ Qπh,g (s, a ) ≥ 0 = ̂ Qπh,g (s, a ),̂
+
+V πh, ˜g (s) = H ≥ V πh,g (s) ≥ 0 = ̂ V πh,g (s).
+
+Case 2: N kh (s, a ) > 2. Suppose now that ̂ Qπh+1 ,˜g ≥ Qπh+1 ,g ≥̂ Qπh+1 ,g , which also implies that ̂
+
+V πh+1 ,˜g ≥ V πh+1 ,g ≥̂ V πh+1 ,g . If ̂ Qπh, ˜g (s, a ) = H, then ̂ Qπh, ˜g (s, a ) ≥ Qπh,g (s, a ) holds trivially, and 30 hence it suffices to look at the case with ̂ Qπh, ˜g (s, a ) < H . According to the update rule, it holds that ̂
+
+Qπh, ˜g (s, a )= gh(s, a ) + 
+
+〈̂ 
+
+Ps,a,h ,̂ V πh+1 ,˜g
+
+〉
+
++ c1
+
+√√√√ V
+
+(̂ 
+
+P ks,a,h ,̂ V πh+1 ,˜g
+
+)
+
+log 1
+
+> δ′
+
+N kh (s, a ) + c2
+
+H log 1
+
+> δ′
+
+N kh (s, a )
+
+≥ gh(s, a ) + 48 H log 1
+
+> δ′
+
+3N kh (s, a ) + f
+
+(̂ 
+
+P ks,a,h ,̂ V πh+1 ,˜g , N kh (s, a )
+
+)
+
+≥ gh(s, a ) + 48 H log 1
+
+> δ′
+
+3N kh (s, a ) + f
+
+(̂ 
+
+P ks,a,h , V πh+1 ,g , N kh (s, a )
+
+)
+
+(18) for any (s, a ), where the last inequality results from the claim (eq. (17)) and the hypothesis ̂ V πh+1 ,˜g ≥
+
+V πh+1 ,g . Moreover, applying Lemma 19, we have 
+
+P
+
+∣∣∣〈̂ 
+
+P ks,a,h − Ps,a,h , V πh+1 ,g 
+
+〉∣ ∣∣ > 2
+
+√√√√ V
+
+(̂ 
+
+P ks,a,h , V πh+1 ,g 
+
+)
+
+log 1
+
+> δ′
+
+N kh (s, a ) + 14 H log 1
+
+> δ′
+
+3N kh (s, a )
+
+
+
+≤ P
+
+∣∣∣〈̂ 
+
+P ks,a,h − Ps,a,h , V πh+1 ,g 
+
+〉∣ ∣∣ >
+
+√√√√ 2V
+
+(̂ 
+
+P ks,a,h , V πh+1 ,g 
+
+)
+
+log 1
+
+> δ′
+
+N kh (s, a ) − 1 + 7H log 1
+
+> δ′
+
+3N kh (s, a ) − 1
+
+ ≤ 2δ′.
+
+This implies that with probability at least 1 − 2δ′,
+
+f
+
+(̂ 
+
+P ks,a,h , V πh+1 ,g , N kh (s, a )
+
+)
+
+= 〈Ps,a,h , V πh+1 ,g 
+
+〉 +
+
+〈̂ 
+
+P ks,a,h − Ps,a,h , V πh+1 ,g 
+
+〉
+
++ max 
+
+
+
+20 3
+
+√√√√ V
+
+(̂ 
+
+P ks,a,h , V πh+1 ,g 
+
+)
+
+log 1
+
+> δ′
+
+N kh (s, a ) , 400 9
+
+H log 1
+
+> δ′
+
+N kh (s, a )
+
+
+
+≥ 〈Ps,a,h , V πh+1 ,g 
+
+〉 .
+
+Substitution into eq. (18) gives: with probability at least 1 − 2δ′,̂
+
+Qπh, ˜g (s, a ) ≥ gh(s, a ) + 〈Ps,a,h , V πh+1 ,g 
+
+〉 = Qπh,g (s, a ).
+
+The proof for Qπh,g ≥̂ Qπh,g is analogous and we leave out here. 
+
+Lemma 17. Recall the definition of N kh (skh, a kh) in algorithm 1. It holds that: 
+
+> K
+
+∑
+
+> k=1
+> H
+
+∑
+
+> h=1
+
+1max {N kh (skh, a kh), 1} ≤ 2SAH log 2 K. 
+
+Proof. In view of the doubling batch update rule, it is easily seen that: for any given (s, a, h ),
+
+> K
+
+∑
+
+> k=1
+
+1max {N kh (skh, a kh), 1} 1 {(s, a ) = ( skh, a kh)} ≤ 2 log 2 K, 
+
+since each (s, a, h ) is associated with at most log 2 K epochs. Summing over (s, a, h ) completes the proof. 
+
+Lemma 18 (Freedmans inequality) . Let (Mn)n≥0 be a martingale such that M0 = 0 and |Mn −
+
+Mn−1| ≤ c (∀n ≥ 1) hold for some quantity c > 0. Define Var n := 
+
+> n
+
+∑
+
+> k=1
+
+E [(Mk − Mk−1)2∣∣Fk−1
+
+]
+
+for every n ≥ 0, where Fk is the σ-algebra generated by (M1, . . . , M k). Then for any integer n ≥ 1
+
+and any ϵ, δ > 0, one has 
+
+P
+
+[
+
+|Mn| ≥ 2√2
+
+√
+
+Var n log 1
+
+δ + 2 
+
+√
+
+ϵ log 1
+
+δ + 2 c log 1
+
+δ
+
+]
+
+≤ 2
+
+(
+
+log 2
+
+( nc 2
+
+ϵ
+
+)
+
++ 1 
+
+)
+
+δ. 
+
+31
