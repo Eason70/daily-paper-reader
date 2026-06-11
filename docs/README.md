@@ -6,38 +6,29 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-10
-- 运行时间：2026-06-10 22:42:31 UTC
+- 最新运行日期：2026-06-11
+- 运行时间：2026-06-11 21:55:31 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：0
-- 速读区：5
+- 本次总论文数：3
+- 精读区：1
+- 速读区：2
 
 ### 今日简报（AI）
-1) 今天速读了5篇论文，重点关注机器人运动控制与多无人机仿真领域。
-2) 最值得看的是利用预测性安全过滤提升运动策略鲁棒性的Shield-Loco，以及基于模型辅助强化学习实现人形机器人稀疏立足点感知控制的MARCH。
-3) 建议进一步精读这两篇7分论文，尤其适合研究足式机器人安全控制与复杂地形运动的读者。
-- 详情：[/202606/10/README](/202606/10/README)
+今日精读一篇高分论文，聚焦基于控制障碍函数（CBF）的驾驶辅助技术，旨在稳定交通流。最值得关注的是CBF方法的有效性（9.0/10），以及速读中深度Koopman预测控制和LTLf约束强化学习两个方向。建议优先深入理解CBF在交通流中的应用，后续可尝试将其与其他控制策略结合。
+- 详情：[/202606/11/README](/202606/11/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [CBF-based Driving Assistance for Traffic Flow Stabilization](/202606/11/2606.11883v1-cbf-based-driving-assistance-for-traffic-flow-stabilization)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：基于控制屏障函数的驾驶辅助交通流稳定
 
 ### 速读区论文标签
-1. [Shield-Loco: Shielding Locomotion Policies with Predictive Safety Filtering](/202606/10/2606.07193v1-shield-loco-shielding-locomotion-policies-with-predictive-safety-filtering)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：为RL运动策略提供预测性安全过滤，类似CBF思想
-2. [MARCH: Model-Assisted Reinforcement Learning for the Perceptive Control of Humanoids over Sparse Footholds](/202606/10/2606.10288v1-march-model-assisted-reinforcement-learning-for-the-perceptive-control-of-humanoids-over-sparse-footholds)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：结合控制李雅普诺夫函数奖励的模型辅助强化学习实现安全运动
-3. [MuJoCo-Drones-Gym: A GPU-Accelerated Multi-Drone Simulator for Control and Reinforcement Learning](/202606/10/2606.08039v1-mujoco-drones-gym-a-gpu-accelerated-multi-drone-simulator-for-control-and-reinforcement-learning)  
+1. [Learning Predictive Control with Deep Koopman Operators for Autonomous Vehicle Motion Planning](/202606/11/2606.08136v1-learning-predictive-control-with-deep-koopman-operators-for-autonomous-vehicle-motion-planning)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：多无人机模拟器，支持控制和RL，有助于安全算法开发
-4. [Hybrid Neural Network and Conventional Controller Approach for Robust Control of Highly Unstable Systems: Application to Tilt-Rotor Control](/202606/10/2606.08714v1-hybrid-neural-network-and-conventional-controller-approach-for-robust-control-of-highly-unstable-systems-application-to-tilt-rotor-control)  
+   evidence：深度Koopman算子和强化学习的学习预测控制在自动驾驶中的运用
+2. [Neuro-Symbolic Injection of LTLf Constraints in Autoregressive Reinforcement Learning Policies](/202606/11/2606.08312v1-neuro-symbolic-injection-of-ltlf-constraints-in-autoregressive-reinforcement-learning-policies)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：倾斜旋翼无人机神经网络控制
-5. [SHAPO: Sharpness-Aware Policy Optimization for Safe Exploration](/202606/10/2606.10228v1-shapo-sharpness-aware-policy-optimization-for-safe-exploration)  
-   标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：基于神经网络的安全探索强化学习方法
+   evidence：神经符号强化学习结合LTLf约束以实现安全任务满足
 
 
 <div class="dpr-home-promo-card">
