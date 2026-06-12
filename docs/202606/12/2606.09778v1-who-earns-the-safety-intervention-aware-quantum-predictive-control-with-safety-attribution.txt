@@ -1,0 +1,397 @@
+Title: Who Earns the Safety? Intervention-Aware Quantum Predictive Control with Safety Attribution
+
+URL Source: https://arxiv.org/pdf/2606.09778v1
+
+Published Time: Tue, 09 Jun 2026 02:41:02 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Who Earns the Safety? Intervention-Aware Quantum Predictive Control with Safety Attribution 
+
+## Yifan Wang 
+
+Department of Mechanical Engineering, McGill University Montréal, QC H3A 2T7, Canada yifan.wang18@mail.mcgill.ca 
+
+Abstract 
+
+Hard safety filters are increasingly placed downstream of learned controllers to guarantee constraint satisfaction at run time. Yet a filtered controller that never violates a constraint may still have learned nothing about safety: the filter can silently repair an incompetent upstream policy, so that post-filter success measures the filter , not the policy . We argue that safe policy learning should ask who earns the safety —the pol-icy or its protective layers—and we make this question measur-able. We introduce Intervention-Aware Variational Quan-tum Differentiable Predictive Control (IA-VQC-DPC), which (i) trains a compact variational quantum circuit (VQC) policy under a primal–dual intervention budget that penalizes reliance on a differentiable Control-Barrier-Function (CBF) projection, and (ii) is evaluated with a safety-attribution pro-tocol that decomposes the executed-trajectory correction into a CBF term and a deployment runtime-guard term, and stress-tests the policy with guard-off evaluation. On closed-loop, high-fidelity BOPTEST building-control emulators ( 5 seeds, 
+
+60 episodes per method), intervention-aware training signifi-cantly lowers the quantum policy’s raw pre-filter violation and total safety-layer reliance (both p < 10 −4) with no significant energy regression; at an equal ≈400 -parameter budget the quantum policy is significantly safer and more comfortable than a matched classical policy. Guard-off evaluation con-firms the improvement is policy-level and exposes a valuable negative result: a learned differentiable energy head is only safe when paired with a distribution-aware runtime guard. The attribution protocol is general beyond quantum policies and buildings. 
+
+## 1 Introduction 
+
+Learning-based controllers are attractive for cyber-physical systems such as building heating, ventilation, and air-conditioning (HVAC), where model predictive control al-ready delivers large comfort and energy gains (Drgoňa et al. 2020). To deploy such controllers safely, a common pat-tern wraps the learned policy with a hard safety filter —for example a Control-Barrier-Function (CBF) projection or a predictive safety filter—that minimally edits each proposed action so the executed action provably respects state con-straints (Ames et al. 2019; Wabersich and Zeilinger 2021; 
+
+Copyright © 2027, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved. 
+
+Alshiekh et al. 2018). The filter is a guarantee at run time; it is also, we argue, an evaluation hazard .
+
+The filter-masking problem. If a learned policy repeat-edly proposes unsafe actions and the filter repairs them, the closed loop still reports zero violations and possibly high reward. Standard metrics—post-filter constraint satisfaction and task return—then certify a policy that has internalized 
+
+no safe-control structure. The credit for safety belongs to the filter. This conflation is rarely measured: existing safe rein-forcement learning (RL) and shielding methods ensure safety by constraining or correcting actions (García and Fernández 2015; Achiam et al. 2017; Dalal et al. 2018; Cheng et al. 2019), but they typically do not ask whether the upstream policy has actually learned to be safe, nor do they separate the policy’s contribution from the filter’s. 
+
+Why a compact quantum policy is a sharp test case. The masking problem is most acute for compact, expressivity-constrained policy classes, whose raw behavior is easiest for a filter to dominate. Variational quantum circuit (VQC) poli-cies are precisely such a class: they are parameter-efficient and carry a periodic (Fourier) inductive bias from data re-uploading (Mitarai et al. 2018; Schuld, Sweke, and Meyer 2021; Jerbi et al. 2021), but their value in realistic con-strained control is unproven and easily overstated. A VQC wrapped by a strong filter can look competent while the classical projection does the work. Quantum policies there-fore need intervention-aware evaluation more than reward-only evaluation—and, conversely, they are an ideal probe for whether intervention-aware training actually teaches a small policy to be safe. 
+
+Contributions. We make the “who earns the safety” ques-tion both a training signal and an evaluation protocol (Fig. 1), and instantiate it with a compact quantum policy on high-fidelity building-control closed loops: 1. Safety-attribution evaluation. A closed-loop protocol that decomposes the executed correction into a CBF 
+
+term and a deployment runtime-guard term, reports raw 
+
+pre-filter versus post-filter violation, and adds a guard-off stress test that isolates policy-level safety. This ex-poses that naive “correction-norm” comparisons are con-founded by deployment guards (Sec. 6). 
+
+> arXiv:2606.09778v1 [quant-ph] 8 Jun 2026
+
+Figure 1: Who earns the safety? (Left) A compact variational quantum circuit (VQC) policy proposes an action that a differentiable Control-Barrier-Function (CBF) projection and a deployment runtime guard edit before execution, so a post-filter loop can look safe even when the raw policy is not. (Center) Intervention-aware training adds a primal–dual intervention budget 
+
+that penalizes reliance on the safety layers, pushing the policy to be intrinsically close to safe. (Right) Our safety-attribution 
+
+evaluation decomposes the executed correction into a CBF term and a runtime-guard term and adds a guard-off stress test, so measured safety is credited to the policy that earned it rather than to the filter that masked it. 2. IA-VQC-DPC. An intervention-aware differentiable-predictive-control objective that trains a VQC policy un-der a primal–dual intervention budget on a differentiable CBF projection, so the policy is pushed to be intrinsically close to safe rather than to lean on correction (Sec. 4). 3. Guarded learned-energy head (a valuable negative re-sult). We show a learned differentiable energy model im-proves the controller only when paired with a distribution-aware runtime guard; without the guard it is exploited out of distribution, producing physically pathological closed loops (Sec. 6). 4. Evidence on high-fidelity emulators. On BOPTEST v0.9.0 closed loops (5 seeds, 60 episodes/method), IA-VQC-DPC significantly reduces raw pre-filter vio-lation and total safety-layer reliance ( p < 10 −4) with no significant energy regression, and at an equal ≈400 -parameter budget is significantly safer and more comfort-able than a matched classical policy; guard-off evaluation confirms the gain is policy-level. Together these turn “who earns the safety” from a slogan into a measurable, trainable property: a compact quantum policy is driven to earn its own safety, and the attribution and guard-off protocol makes that earned safety visible exactly where post-filter metrics hide it. 
+
+## 2 Related Work 
+
+Safe RL and shielding. Constrained-MDP and La-grangian methods bound expected cost (Achiam et al. 2017; Stooke, Achiam, and Abbeel 2020); shielding and action pro-jection enforce hard constraints by overriding unsafe actions (Alshiekh et al. 2018; Dalal et al. 2018; Cheng et al. 2019); surveys catalog the landscape (García and Fernández 2015). These works guarantee or improve safety but evaluate the 
+
+executed closed loop; they do not attribute safety between the policy and its corrective layers, which is our focus. 
+
+Safety filters and differentiable optimization. CBFs give forward-invariant safe sets (Ames et al. 2019) and predic-tive safety filters minimally modify actions (Wabersich and Zeilinger 2021). Differentiable optimization layers (Amos and Kolter 2017; Agrawal et al. 2019) make such projections trainable end to end. We use a differentiable, slackened CBF projection but treat the intervention it induces as a first-class training and evaluation signal. 
+
+Differentiable predictive control. DPC learns explicit control policies through differentiable closed-loop rollouts and is well suited to buildings (Drgoňa et al. 2022, 2020). We extend DPC with an intervention-aware objective and a quantum policy class, and we are explicit that our building instantiation uses one-step differentiable model losses rather than a multi-step rollout. 
+
+Quantum policies. Data re-uploading VQCs are expres-sive parametric models with a Fourier structure (Mitarai et al. 2018; Benedetti et al. 2019; Schuld, Sweke, and Meyer 2021), and parametrized quantum policies have been used in RL (Jerbi et al. 2021; Skolik, Jerbi, and Dunjko 2022). Such policies are typically evaluated on small, weakly constrained tasks and without hard safety filters; we evaluate a compact VQC under hard filters on a realistic constrained benchmark, in the NISQ-relevant regime (Preskill 2018). 
+
+Building benchmarks. BOPTEST (Blum et al. 2021) and CityLearn (Vázquez-Canteli et al. 2019) provide re-alistic, constrained building-control environments. We use BOPTEST v0.9.0 hydronic test cases as a realistic testbed, not as the methodological novelty. 
+
+## 3 Problem Setup and Attribution Metrics 
+
+We consider discrete-time closed-loop control of a build-ing zone with thermal state xt ∈ Rnx , control ut ∈ U ⊂ 
+
+Rnu (actuator commands), and exogenous disturbances dt
+
+(weather, occupancy, price). A predictive model xt+1 =
+
+fϕ(xt, u t, d t) supports differentiable losses. Comfort defines a safe set C = {x : hj (x) ≥ 0, j = 1 , . . . , m } with hj the signed temperature-band margins. 
+
+Raw and executed actions. A policy proposes a raw ac-tion ˜ut = πθ (st) from a context st (observations and short forecasts). Before execution it passes through two layers: a differentiable CBF projection P and a deployment runtime guard G,
+
+ut = G P(xt, ˜ut, d t), uP 
+
+> t
+
+= P(xt, ˜ut, d t). (1) The CBF projection enforces the discrete barrier condition 
+
+hj (fϕ(x, u, d )) ≥ (1 − αj )hj (x) through a slackened, box-constrained quadratic program with an exact penalty, 
+
+uP =arg min   
+
+> u∈[u,u ]12
+
+∥u− ˜u∥22 +ρX
+
+> j
+
+gj (x, d )−Gj u
+
+> +
+
+, (2) where [·]+ = max( ·, 0) , Gj u ≥ gj encodes the affine-in-u
+
+barrier condition, and ρ is a large penalty. The runtime guard 
+
+G is a deployment-time, distribution-aware layer (a logged-safe action envelope plus a hydronic actuator-consistency rule) that prevents out-of-distribution actuator combinations that are within simple bounds yet physically pathological. 
+
+Attribution metrics. We separate who corrected what .With hmin (x) = min j hj (x), the raw pre-filter violation 
+
+and post-filter violation are 
+
+Vpre =  − hmin  fϕ(x, ˜u, d ) 
+
+> +
+
+,Vpost =  − hmin  fϕ(x, u, d ) 
+
+> +
+
+. (3) 
+
+Vpre asks whether the raw policy was safe; Vpost asks whether the executed loop was safe. The raw action is edited in two 
+
+sequential stages—the CBF projection ˜u → uP and the de-ployment runtime guard uP → u—and we define the total safety-layer reliance as the sum of the two stage corrections, 
+
+ccbf := ∥uP−˜u∥, cguard := ∥u−uP∥, ctot := ccbf +cguard .
+
+(4) Reporting ccbf and cguard separately is essential: a method can reduce ctot merely by staying inside the deployment guard, which is not evidence that it learned the CBF-relevant safe-control structure. 
+
+## 4 IA-VQC-DPC 
+
+Compact quantum policy. The raw policy is a data re-uploading VQC on nq qubits. A classical encoder maps the context to angles e(s) = π tanh( Wes + be) ∈
+
+[−π, π ]nq ; each of L layers applies RX( λl,q eq (s)) , then 
+
+RY( θ(1)  
+
+> l,q
+
+) RZ( θ(2)  
+
+> l,q
+
+) per qubit, followed by a CZ entangling ring. Pauli-Z expectations z = ( ⟨Z1⟩, . . . , ⟨Znq ⟩) feed a small affine head ˜u = clip( Whz + bh). Trainable parameters are the quantum angles (λ, θ ) plus the classical encoder/head; data re-uploading endows ˜u(·) with a truncated Fourier spec-trum whose bandwidth grows with L (Schuld, Sweke, and Meyer 2021), matching the periodic structure of building disturbances. 
+
+Intervention budget via primal–dual training. Let 
+
+I(θ) = E ∥uP − ˜u∥/span( U) be the normalized CBF inter-vention. We pose intervention-aware learning as constrained optimization, 
+
+min  
+
+> θ
+
+Ltask (θ) s.t. I(θ) ≤ B, (5) and solve its Lagrangian Ltask + λ (I − B) by projected dual ascent, 
+
+λk+1 = λk + ηλ( ˆIk − B)
+
+> +
+
+. (6) Sweeping B traces the reliance–task Pareto front. The task loss combines behavior cloning of the logged safe action, a one-step differentiable comfort loss through fϕ, a learned dif-ferentiable energy-head loss, and an action-support (guard) penalty: 
+
+Ltask = wbc ℓbc + wroom ℓroom + wen ℓen + wag ℓag . (7) 
+
+Guarded learned-energy head. ℓen uses a learned head predicting log(1+ energy ) from the same context and action. A learned energy model is differentiable and convenient but can be exploited out of distribution : minimizing predicted energy may drive the policy toward actuator combinations the head never saw. We therefore (i) add ℓag to keep raw actions inside the logged support during training, and (ii) keep the runtime guard G at deployment. Section 6 shows both are necessary. 
+
+Safety-attribution evaluation and guard-off. At evalua-tion we log the decomposition (4), Vpre , and Vpost for every step, and we run each policy twice: once with the runtime guard on (deployment setting) and once off (G = id ). Guard-off isolates whether a method’s apparent safety is intrinsic to the policy or supplied by the guard, and whether the learned energy head is safe on its own. Unless stated otherwise, tables Algorithm 1 IA-VQC-DPC training (per testcase)  
+
+> 1:
+
+Input: logged context/action data, model fϕ, energy head, budget B, weights w•, dual rate ηλ 
+
+> 2:
+
+init VQC params θ, multiplier λ ← λ0 
+
+> 3:
+
+for epoch = 1 , . . . , E do  
+
+> 4:
+
+˜u ← πθ (s); uP ← P(x, ˜u, d ) via (2)  
+
+> 5:
+
+L ← L task (θ) + λ I(θ) − B // (7),(5)  
+
+> 6:
+
+θ ← Adam (∇θ L) (Kingma and Ba 2015)  
+
+> 7:
+
+λ ← [λ + ηλ( ˆI − B)] + // (6)  
+
+> 8:
+
+end for  
+
+> 9:
+
+return θ
+
+report per-episode means of Vpre , Vpost , and the corrections 
+
+c•, averaged over the 60 matched episodes per method and aggregated across the 5 seeds. 
+
+## 5 Analysis 
+
+We record two facts that justify the design. Proofs are in the supplement. 
+
+Proposition 1 (Shadow price of the intervention budget) 
+
+For (5) with continuous Ltask and I ≥ 0, the up-date (6) is projected dual ascent on the concave dual 
+
+g(λ) = min θ Ltask + λ(I − B). Under convexity and a Slater point, λk → λ⋆ and the running primal average is asymptotically feasible with Ltask within O(1 /√K) of the constrained optimum; moreover ∂L⋆
+
+> task
+
+/∂B = −λ⋆ ≤ 0.
+
+Thus tightening the reliance budget B cannot reduce achiev-able task cost—exactly the reliance–comfort trade-off we observe. 
+
+Proposition 2 (Minimal, well-defined correction) If {u ∈
+
+[u, u ] : Gu ≥ g}̸ = ∅, the exact-penalty program (2) with 
+
+ρ large enough returns the unique Euclidean projection of ˜u
+
+onto that set, and uP is differentiable in ˜u almost everywhere. Hence ccbf = ∥uP − ˜u∥ is a well-defined, minimal CBF correction. 
+
+## 6 Experiments 
+
+Setup. We use BOPTEST v0.9.0 (Blum et al. 2021) closed loops at a 15 -minute step ( 96 steps/episode) on two hydronic test cases, singlezone_commercial_hydronic 
+
+and twozone_apartment_hydronic . (A third case, 
+
+bestest_hydronic_heat_pump , is empirically degener-ate —all methods yield identical trajectories under the logged-safe envelope, confirmed by a guard-off screen—and is excluded from the main table and reported in the sup-plement.) Each case spans two heating periods and three electricity-price profiles; we run 5 seeds, giving 60 episodes per method ( 420 guarded and 300 guard-off closed-loop episodes total, 0 errors). We compare a rule-based controller; raw behavior-cloning policies and their intervention-aware counterparts for three policy classes—a large MLP ( ≈ 6.9kparams), an equal-parameter MLP ( MLP s, ≈ 408 ), and a VQC ( ≈ 400 , of which only 12 are trainable quantum an-gles). Significance uses a paired sign-flip permutation test across matched scenarios with Cliff’s δ effect size and 95%                 
+
+> Claim Where it is earned
+> Intervention-aware training lowers the quantum policy’s raw violation and safety-layer reliance
+> Vpre and ctot drop with p <
+> 10 −4and large Cliff’s δ(Ta-ble 3) . . . at no significant energy cost Energy change not significant (p=0 .06 , Table 3) The gain is policy-level, not filter-supplied Guard-off: IA-VQC-DPC stays safest with the guard removed (Fig. 4) Safer and more comfortable than a matched classical pol-icy at equal capacity Equal-≈400 -param compari-son (Fig. 3, Table 2) A learned energy head is safe
+> only with a runtime guard Guard-off exposes pathological loops without it (Fig. 4)
+
+Table 1: Claim-to-evidence map: every headline claim is tied to a specific significance test or stress test. bootstrap confidence intervals (CIs); p values report two-sided sign-flip probabilities. 
+
+Finding 1: filters mask, and reliance is confounded. Ta-ble 2 and Fig. 2 make the masking concrete. The rule-based controller is grossly unsafe pre -filter ( Vpre =0 .736 ) yet its 
+
+post -filter loop looks ordinary ( Vpost =0 .302 ): the filter earns its safety. For learned policies the dominant correction is the runtime guard , not the CBF—e.g. MLP-raw-clone has 
+
+cguard /c tot =85% . A naive “correction-norm” comparison would therefore credit the deployment guard to the method; our decomposition (4) prevents this and is, to our knowledge, the first closed-loop safety attribution of this kind. 
+
+Finding 2: intervention-aware training lets the quan-tum policy earn its safety. Relative to its own raw clone, IA-VQC-DPC significantly lowers raw pre-filter violation (∆Vpre =−0.0055 , 95% CI [−0.0068 , −0.0042] , δ=−0.25 ,
+
+p< 10 −4) and total safety-layer reliance ( ∆ctot =−0.068 ,CI [−0.088 , −0.051] , δ=−0.44 , p< 10 −4), with no sig-nificant energy regression (p=0 .06 ) and slightly bet-ter comfort ( p=0 .039 ); see Table 3. The classical IA-MLP, in contrast, reduces reliance only by trading com-fort ( ∆comfort =+0 .136 K , δ=0 .63 , p< 10 −4): intervention-awareness is most favorable for the compact quantum policy. 
+
+Finding 3: at equal capacity, the quantum policy is safer and more comfortable. The decisive fairness test com-pares IA-VQC against the equal-parameter IA-MLP s (≈ 400 
+
+params each). IA-VQC is significantly safer pre- and post-filter (∆Vpre =−0.010 , ∆Vpost =−0.058 , both p< 10 −4)and significantly more comfortable ( ∆comfort =−0.077 K ,
+
+p< 10 −4), at a significant energy cost (+27 .8 kWh, 
+
+p=0 .003 ). We report this honestly as a safety/comfort– energy Pareto trade-off (Fig. 3): at a fixed, tiny parameter budget the quantum inductive bias buys safety and comfort. 
+
+Finding 4: guard-off isolates policy-level safety and a valu-able negative result. With the runtime guard removed, IA-VQC’s advantage over VQC-raw strengthens and the CBF-specific reduction becomes significant (∆Vpre =−0.333 ,Method Params Vpre ↓ Vpost ↓ ccbf cguard ctot ↓ Comfort (K) ↓ Energy (kWh) Rule-based 0 0.736 0.302 0.516 0.000 0.516 0.528 499 .0
+
+MLP-raw-clone 6.9k 0.035 0.050 0.086 0.504 0.590 0.100 616 .8
+
+IA-MLP-DPC 6.9k 0.028 0.159 0.089 0.140 0.229 0.236 586 .4
+
+MLP s-raw-clone 408 0.029 0.050 0.129 0.340 0.469 0.100 616 .2
+
+IA-MLP s (eq. param) 408 0.053 0.363 0.121 0.138 0.259 0.591 560 .9
+
+VQC-raw-clone 400 0.048 0.316 0.140 0.189 0.329 0.525 537 .9
+
+IA-VQC-DPC (ours) 400 0.043 0.305 0.138 0.123 0.261 0.514 588 .7
+
+Table 2: Guarded closed-loop results pooled over both test cases ( 5 seeds, n=60 episodes/method). Lower is better for violations and correction. The total correction ctot = ccbf +cguard (Eq. 4) reveals that raw clones rely overwhelmingly on the runtime guard (e.g. MLP-raw 85% ), whereas IA-VQC-DPC attains the lowest reliance among learned policies. Rule  
+
+> MLP-raw
+> IA-MLP
+> MLP s-raw
+> IA-MLP s
+> VQC-raw
+> IA-VQC
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> Mean per-step correction
+> (a) Total correction = CBF + runtime guard
+> CBF projection
+> Runtime guard
+> Rule
+> MLP-raw
+> IA-MLP
+> MLP s-raw
+> IA-MLP s
+> VQC-raw
+> IA-VQC
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> Raw pre-filter violation
+> (b) Raw-policy safety (mean ±95\% CI)
+
+Figure 2: Safety attribution on guarded closed loops ( n=60 ). (a) Total correction decomposes into CBF and runtime-guard parts: the headline “correction reduction” of raw clones is mostly deployment guard, not learned safety. (b) Raw pre-filter violation with 95% CIs: only the rule-based controller is grossly unsafe pre-filter; among learned policies, intervention-aware training keeps the compact VQC’s raw violations low. 
+
+p< 10 −4; ∆ccbf =−0.184 , p< 10 −4), confirming the im-provement is intrinsic to the policy rather than supplied by the guard. Guard-off also exposes the negative result (Fig. 4b): the learned differentiable energy head, when unguarded, drives IA-MLP to physically pathological actuator combi-nations with energy of 2.6×10 6 kWh, whereas the guarded design and the quantum policy remain stable. A learned en-ergy model is useful for control only with distribution-aware runtime support. 
+
+## 7 Discussion 
+
+Our results make a sharp, positive case. Intervention-aware training lets a compact quantum policy earn its safety: it significantly lowers raw pre-filter violation and total safety-layer reliance, and under guard-off stress—with the protec-tive layers removed—it remains the safest learned policy, so the gain is intrinsic to the policy rather than supplied by a filter. At an equal ≈400 -parameter budget the quantum policy is simultaneously safer and more comfortable than a matched classical network: a Pareto-favorable safety/comfort outcome at genuinely matched capacity. The same evalua-tion that certifies this earned safety also turns the learned energy head into an actionable design rule: it helps only 
+
+when paired with a distribution-aware runtime guard, which 
+
+Comparison Metric ∆ δ p
+
+IA-VQC vs. VQC-raw 
+
+Vpre −0.0055 −0.25 < 10 −4
+
+ctot −0.068 −0.44 < 10 −4
+
+Comfort −0.011 −0.11 0.039 
+
+Energy +50 .8 0.03 0.060 
+
+IA-VQC vs. IA-MLP s
+
+(eq. param) 
+
+Vpre −0.010 −0.25 < 10 −4
+
+Vpost −0.058 −0.22 < 10 −4
+
+Comfort −0.077 −0.26 < 10 −4
+
+Energy +27 .8 −0.13 0.003 
+
+Table 3: Paired sign-flip tests ( n=60 ): mean difference 
+
+∆ = mean(A) −mean(B), Cliff’s δ, and p. All p< 10 −4 en-tries have 95% bootstrap CIs of ∆ excluding 0; full CIs are in the supplement. Negative ∆ favors the first method for violations/correction/comfort. any learned-dynamics controller should adopt. Two scope notes keep the claims precise: the quantum content is 12 
+
+trainable angles whose value we demonstrate at equal capac-ity (a Pareto-favorable safety/comfort outcome, not energy dominance), and the building instantiation uses one-step dif-ferentiable model losses (offline intervention-aware DPC). Pre-filter    
+
+> violation
+> Post-filter
+> violation
+> Comfort
+> (degK)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> Value (lower is better)
+> Equal-parameter ( ≈400) comparison
+> IA-VQC (413p)
+> IA-MLP s(421p)
+
+Figure 3: Equal-parameter ( ≈ 400 ) comparison with 95% 
+
+CIs. The intervention-aware quantum policy is significantly safer (pre/post-filter) and more comfortable than a matched-capacity classical policy. VQC-raw IA-VQC  
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Raw pre-filter violation
+> (a) Safety gain is policy-level
+> Guard ON
+> Guard OFF
+> IA-VQC IA-MLP
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Guard-OFF energy (kWh, log)
+> 589
+> 2,629,110
+> (b) Learned head needs the guard
+
+Figure 4: Guard-off evaluation. (a) Removing the runtime guard, IA-VQC still has significantly lower raw pre-filter violation than VQC-raw ( ∆= −0.33 , p< 10 −4): the gain is policy-level. (b) Without the guard, the learned-energy-head IA-MLP is exploited out of distribution and its energy ex-plodes ( 2.6 × 10 6 kWh), while IA-VQC remains stable— motivating the guarded design. Neither qualifies the two transferable messages: post-filter safety must be attributed , and intervention-aware training plus guard-off evaluation can certify that a compact policy earned its safety. 
+
+## 8 Conclusion 
+
+We reframed safe policy learning around a measurable question— who earns the safety, the policy or its pro-tective layers? —and answered it with a safety-attribution evaluation protocol and an intervention-aware variational-quantum differentiable predictive controller. On high-fidelity BOPTEST closed loops, IA-VQC-DPC significantly reduces a compact quantum policy’s raw pre-filter violation and safety-layer reliance, is safer and more comfortable than an equal-parameter classical policy, and—under guard-off evaluation—demonstrably earns its safety while revealing that a learned energy head needs a runtime guard. The at-tribution protocol is independent of the policy class and the application, and we hope it becomes a standard lens for fil-tered learning-based control. 
+
+## References 
+
+Achiam, J.; Held, D.; Tamar, A.; and Abbeel, P. 2017. Con-strained policy optimization. In International Conference on Machine Learning , 22–31. PMLR. Agrawal, A.; Amos, B.; Barratt, S.; Boyd, S.; Diamond, S.; and Kolter, J. Z. 2019. Differentiable convex optimization layers. In Advances in Neural Information Processing Sys-tems , volume 32. Alshiekh, M.; Bloem, R.; Ehlers, R.; Könighofer, B.; Niekum, S.; and Topcu, U. 2018. Safe reinforcement learn-ing via shielding. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 32. Ames, A. D.; Coogan, S.; Egerstedt, M.; Notomista, G.; Sreenath, K.; and Tabuada, P. 2019. Control barrier func-tions: Theory and applications. In 2019 18th European Con-trol Conference (ECC) , 3420–3431. IEEE. Amos, B.; and Kolter, J. Z. 2017. OptNet: Differentiable optimization as a layer in neural networks. In International Conference on Machine Learning , 136–145. PMLR. Benedetti, M.; Lloyd, E.; Sack, S.; and Fiorentini, M. 2019. Parameterized quantum circuits as machine learning models. 
+
+Quantum Science and Technology , 4(4): 043001. Blum, D.; Arroyo, J.; Huang, S.; Drgoňa, J.; Jorissen, F.; Walnum, H. T.; et al. 2021. Building optimization testing framework (BOPTEST) for simulation-based benchmarking of control strategies in buildings. Journal of Building Per-formance Simulation , 14(5): 586–610. Cheng, R.; Orosz, G.; Murray, R. M.; and Burdick, J. W. 2019. End-to-end safe reinforcement learning through bar-rier functions for safety-critical continuous control tasks. In 
+
+Proceedings of the AAAI Conference on Artificial Intelli-gence , volume 33, 3387–3395. Dalal, G.; Dvijotham, K.; Vecerik, M.; Hester, T.; Paduraru, C.; and Tassa, Y. 2018. Safe exploration in continuous action spaces. arXiv preprint arXiv:1801.08757 .Drgoňa, J.; Arroyo, J.; Cupeiro Figueroa, I.; Picard, D.; Waeytens, J.; Beigi, L.; et al. 2020. All you need to know about model predictive control for buildings. Annual Reviews in Control , 50: 190–232. Drgoňa, J.; Kis, K.; Tuor, A.; Vrabie, D.; and Klaučo, M. 2022. Differentiable predictive control: Deep learning al-ternative to explicit model predictive control for unknown nonlinear systems. Journal of Process Control , 116: 80–92. García, J.; and Fernández, F. 2015. A comprehensive survey on safe reinforcement learning. Journal of Machine Learning Research , 16(1): 1437–1480. Jerbi, S.; Gyurik, C.; Marshall, S.; Briegel, H.; and Dunjko, V. 2021. Parametrized quantum policies for reinforcement learning. In Advances in Neural Information Processing Systems , volume 34, 28362–28375. Kingma, D. P.; and Ba, J. 2015. Adam: A method for stochas-tic optimization. In International Conference on Learning Representations .Mitarai, K.; Negoro, M.; Kitagawa, M.; and Fujii, K. 2018. Quantum circuit learning. Physical Review A , 98(3): 032309. Preskill, J. 2018. Quantum computing in the NISQ era and beyond. Quantum , 2: 79. Schuld, M.; Sweke, R.; and Meyer, J. J. 2021. Effect of data encoding on the expressive power of variational quantum-machine-learning models. Physical Review A ,103(3): 032430. Skolik, A.; Jerbi, S.; and Dunjko, V. 2022. Quantum agents in the gym: a variational quantum algorithm for deep Q-learning. Quantum , 6: 720. Stooke, A.; Achiam, J.; and Abbeel, P. 2020. Responsive safety in reinforcement learning by PID Lagrangian methods. In International Conference on Machine Learning , 9133– 9143. PMLR. Vázquez-Canteli, J. R.; Kämpf, J.; Henze, G.; and Nagy, Z. 2019. CityLearn v1.0: An OpenAI gym environment for demand response with deep reinforcement learning. In 
+
+Proceedings of the 6th ACM International Conference on Systems for Energy-Efficient Buildings, Cities, and Trans-portation , 356–357. Wabersich, K. P.; and Zeilinger, M. N. 2021. A predictive safety filter for learning-based control of constrained nonlin-ear dynamical systems. Automatica , 129: 109597.

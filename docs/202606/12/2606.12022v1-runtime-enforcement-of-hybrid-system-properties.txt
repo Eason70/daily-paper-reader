@@ -1,0 +1,745 @@
+Title: Runtime Enforcement of Hybrid System Properties
+
+URL Source: https://arxiv.org/pdf/2606.12022v1
+
+Published Time: Thu, 11 Jun 2026 01:01:24 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Runtime Enforcement of Hybrid System Properties 
+
+Mir Md Sajid Sarwar 1, Srinivas Pinisetty 1, Rajarshi Ray 2, and Thierry Jéron 3 
+
+> 1
+
+Indian Institute of Technology Bhubaneswar, Bhubaneswar 752050, India 
+
+sajidsarwar2011@gmail.com,spinisetty@iitbbs.ac.in  
+
+> 2
+
+Indian Association for the Cultivation of Science, Kolkata 700032, India 
+
+rajarshi.ray@iacs.res.in  
+
+> 3
+
+Univ Rennes, Inria, CNRS, IRISA, France 
+
+Thierry.Jeron@inria.fr 
+
+Abstract. Runtime enforcement has emerged as a promising approach for ensuring the safety of autonomous and cyber-physical systems oper-ating in uncertain and dynamic environments. Unlike traditional runtime verification, runtime enforcement actively intervenes during execution to prevent property violations by modifying unsafe system behaviors. Exist-ing enforcement frameworks primarily focus on untimed or discrete-time specifications and are often limited to delaying or suppressing events, making them inadequate for reactive systems exhibiting complex contin-uous dynamics. In this paper, we propose a runtime enforcement frame-work where safety requirements are modeled using Hybrid Automata (HA). The framework combines discrete-event editing with continuous-time monitoring to support enforcement actions such as suppression, delay, and insertion of events at arbitrary time instants. Upon observing environmental inputs, the automaton is initialized, and runtime reacha-bility analysis is used to synthesize safe corrective actions. We formally define the enforcement problem for safety hybrid automata, establish en-forceability conditions, and present an online enforcement algorithm for reactive systems. A detailed case study on an Adaptive Cruise Control (ACC) system demonstrates the effectiveness of the proposed approach in maintaining safety properties under unsafe controller behaviors. Ex-perimental results show that the framework introduces minimal com-putational overhead while ensuring continuous compliance with safety requirements in real time. 
+
+Keywords: Runtime Enforcement · Monitoring · Hybrid Systems. 
+
+## 1 Introduction 
+
+The current engineering landscape for safety-critical autonomous systems is see-ing a fundamental shift in how we approach safety from relying solely on design-time guarantees to incorporating run-time assurances. Traditional approaches, such as formal verification and simulation-based testing, attempt to establish system correctness prior to deployment. However, complete verification is often 
+
+> arXiv:2606.12022v1 [cs.FL] 10 Jun 2026
+
+infeasible due to the complexity of autonomous systems and the uncertainty of real-world environments. Similarly, testing depends on scenario-based simula-tions with simplified models, where even exhaustive success cannot guarantee real-world reliability. Moreover, systems proven correct under design assump-tions may still fail when environmental conditions deviate from those assump-tions. Therefore, these methods alone are insufficient and require complementary runtime monitoring and enforcement mechanisms capable of detecting and mit-igating safety violations during execution. Runtime Enforcement (RE) [16, 23, 25, 28, 35] is a discipline concerned with ensuring that systems adhere to prescribed behaviors during execution. It ex-tends the traditional scope of Runtime Verification (RV) [7, 12–14, 31] by moving beyond passive observation. While RV monitors a “black-box” system to detect property violations, RE functions as an execution modifier. By synthesizing an enforcer that actively intervenes when a system risks deviating from its spec-ification. RE maintains system integrity through corrective actions. These in-terventions include halting execution to prevent violations [35], modifying event sequences by suppressing or inserting actions [23], and buffering inputs to be forwarded only when safety is guaranteed [28, 15]. Systems under Monitor (SuM) produce execution traces or events that reflect their underlying state. The monitor evaluates these streams against specifica-tions, commonly expressed through temporal logics like LTL [32] and STL [24], or through timed automata [15]. While these formalisms are advantageous for capturing the timing constraints essential to real-world applications, they possess inherent limitations. Temporal logics often provide a coarse, abstract represen-tation that fails to capture complex, continuous system dynamics, while timed automata introduce clock-based evolution, which is suitable for a limited sub-class of system behaviors, leaving more complex dynamics unaddressed. Hybrid Automata (HA) [2, 3] are a well-known mathematical framework for the modeling and specification of hybrid systems that exhibit a combination of discrete and continuous dynamics. Hybrid automata are generalizations of timed automata, and consequently, specifications given as HA expand the complexity of specifications that one would like to effectively monitor. RE has been extensively formalized through various automata-based models. Security Automata [35] were introduced to enforce safety properties by blocking execution sequences that violate a given specification. To broaden the scope of enforceable properties, Edit Automata [23] were developed, enabling the enforcer to transform input sequences by suppressing and/or inserting events. Further advancements by Falcone et al. [16] introduced mechanisms capable of buffer-ing events and releasing them only upon the observation of a satisfying trace. However, these foundational works primarily address untimed behaviors, largely ignore the complexities of real-time systems. While RE frameworks based on Discrete Timed Automata (DTA) [29] and Timed Automata (TA) [28, 15] have extended enforcement to real-time properties, they possess inherent limitations. Corrective actions in DTA-based approaches [29] are typically restricted to dis-crete time points, whereas dense-time TA frameworks [28, 15] are generally lim-2ited to buffering and delaying mechanisms, and they are not suitable for re-active systems. The enforcement frameworks that allow instantaneous editing of events are restricted to untimed [23, 30], and discrete time specifications [29]. This leaves a critical gap in enforcement for complex systems that require proac-tive, continuous-time interventions to maintain safety. 
+
+> Fig. 1: Runtime Enforcement Framework.
+
+Utilizing hybrid automata for monitor specifications is particularly advan-tageous for real-time systems, as it enables dense-time monitoring between dis-crete sampling points. This capability is critical for maintaining safety across continuous-time trajectories. In this work, we present a runtime enforcement framework wherein system specifications are formalized as hybrid automata (HA). This formalism explicitly captures continuous flows via differential equations, discrete execution steps via transition guards, and operational boundaries using state invariants. Upon receiving an environmental observation, the HA is initial-ized, and an enforcement strategy is then dynamically synthesized by performing reachability analysis on the automaton. As illustrated in Figure 1, the enforcer functions as an additional layer of security around the system that intercepts and regulates interactions between the system and its environment. The enforcer for a given property φ takes as input a stream of inputs from the environment, and a stream of events/commands from the system, and it pro-duces a stream of events/commands as output. It ensures proactively that the output sequence of events adheres to the specification properties and thus en-sures a safe execution in the environment. With respect to enforcement actions, it allows instantaneous editing at discrete steps/observation points, and in ad-dition, insertion of events between two consecutive observation points whenever necessary to ensure the policies are not violated. In summary, the key contribu-tions of this work are: 
+
+– We propose a novel runtime enforcement framework for reactive CPS based on HA specifications, enabling continuous-time monitoring and corrective intervention during system execution. 
+
+– We formally define the runtime enforcement problem for safety properties specified using safety hybrid automata, extending existing runtime enforce-ment approaches beyond untimed and discrete-time formalisms. 
+
+– We present an online enforcement algorithm capable of synthesizing safe execution traces through event suppression , delay , and insertion while re-specting system timing constraints and maintaining reactive behavior. 
+
+## 2 Motivating Example 
+
+In this section, we illustrate the intended behavior of an enforcer synthesized from a property specified as a hybrid automaton using the proposed approach 3via a simplified scenario related to a reactive adaptive cruise control (ACC) sys-tem of an autonomous car. The primary safety specification dictates that the vehicle maintain a safe distance to prevent collisions. We assume a scenario where the vehicle’s primary controller is potentially faulty, issuing commands that jeop-ardize system safety. The enforcer’s role is to intercept these events and apply corrective operators—specifically suppression, delay, or insertion—to maintain safety invariants. In our reactive configuration, the enforcer monitors the input stream at discrete clock ticks, where observed events are synchronously rectified through suppression or delay if they violate the specification. To bridge the gap between these discrete observations, the framework also facilitates inter-tick in-terventions. This allows the enforcer to proactively insert new commands into the stream whenever a continuous-time invariant violation is predicted during the interval between two sampling points. The vehicle state is defined by three variables: a and v, representing acceler-ation and velocity respectively, and d, representing the relative distance to the preceding vehicle. The acceleration is constrained to the interval [−3, 3] m/s 2,where negative values denote deceleration. Let us consider the safety property to be monitored φ to be: “the vehicle must maintain a minimum distance of 
+
+d > 10 meters from the leading car”. The controller operates over an alphabet of discrete actions Σ = {acc , dec ,
+
+cru , br , st , stutter }. Specifically, acc and dec initiate acceleration and deceler-ation, cru maintains a constant velocity, and br and st execute braking and stopping sequences, respectively. The stutter action represents a stuttering tran-sition, which performs no state change but facilitates the logical continuation of the preceding event. For this analysis, the velocity of the preceding vehicle ( vf )is assumed to be a constant 50 km/h ( ≈ 13 .89 m/s).    
+
+> (a) The car without an Enforcer. (b) The events stream from the controller. Fig. 2: The ACC system without a runtime enforcement layer and an example event stream from the controller that could lead to a safety violation.
+
+Example 1 Consider the scenario depicted in Figure 2a, where the controller’s output is fed directly into the environment without an intervening enforcement layer. Assume that initially the car’s speed is v = 10 m/s and the distance from the preceding vehicle is d = 95 meters. We consider the ACC as a reactive system that operates synchronously with its environment; at each discrete clock tick, the controller samples environmental inputs and emits a control command. Suppose the controller generates the event stream illustrated in Figure 2b, where time intervals between explicit actions are populated by stutter events. These stutter actions function as stuttering tran-sitions, maintaining the system’s current state until the next command. Each event is defined as a tuple (τ, α ), representing a time instance τ and an action 
+
+4α. For example, the tuple (1 .0, acc ) mandates that the acceleration action be ini-tiated at t = 1 .0. As demonstrated in Figure 3, the unmediated execution of this event stream results in a safety violation, as the distance d eventually falls below the 10 -meter threshold.             
+
+> Fig. 3: Execution of the input events stream shown in Figure 2b without an enforcer. distance ,speed ,and acceleration show the value of the variables d,v, and a, respectively, at different time points throughout the execution. vfrepresents the constant speed of the front car. The events below the time horizon show the application point of the actions, which leads to a safety violation. N.B., stutter
+> events are not shown in figure.
+
+To prevent the unsafe scenario described above, we introduce a runtime en-forcer that functions as an additional safety layer between the vehicle and the ACC system (see Figure 4). To monitor the safety requirement—“the distance to the front vehicle must remain greater than 10 meters”—we construct a safety hybrid automaton S (shown in Figure 5) based on the observed environmental inputs. The automaton consists of five operational locations, along with an im-plicit unsafe trap location (not shown in the figure). From any of the depicted locations, the system transitions to this unsafe state whenever the condition 
+
+d < 10 is violated, where d denotes the distance to the front vehicle. This design enables continuous monitoring of the safety constraint and immediate detection of unsafe conditions during execution.  
+
+> Fig. 4: The enforcer for the ACC system takes in an output event stream from the controller, and produces a modified/enforced output event stream for the environment that always satisfies the property φ.
+
+By observing the vehicle’s speed v, acceleration a, and following distance d,the enforcer evaluates the controller’s event stream in real-time. It then trans-forms this stream by suppressing, delaying, or inserting events as needed—to guarantee that the system’s behavior satisfies safe execution in S.In [29], a runtime enforcement framework based on discrete timed automata (DTA) [9] is proposed. There, property specifications are expressed as DTA, and enforcement is achieved by observing events at discrete time points (ticks) and instantaneously editing them when necessary to produce a corresponding event in the same tick. In contrast, by modeling properties as hybrid automata, our framework enables continuous monitoring between clock ticks. Consequently, it 5can delay or insert events at arbitrary time instants, providing finer-grained control and ensuring property satisfaction in real time.    
+
+> Fig. 5: The monitoring property φas Safety Hybrid Automaton S. The non-accepting trap location is not shown in the figure due to space constraints.
+
+Example 2 Consider the input event stream illustrated in Figure 2b and the corresponding enforced sequence in Figure 6. Initially, the enforcer resides in the 
+
+initM ode location (Figure 5). Given the initial environment state (d = 95 , v =10 , a = 0) , the first controller event (1 .0, acc ) cannot be executed in S because the distance is below the required acceleration threshold. Consequently, the enforcer emits a stutter event at t = 1 and delays this action until t = 1 .29 , triggering a transition to AccelerateM ode .The subsequent events, (2 .0, acc ) and (3 .0, acc ),are accepted without modification as the distance remains d > 100 , satisfying the invariant for AccelerateM ode . However, at approximately t = 5 .22 , the distance drops below 100 meters, violating the current location’s invariant. Since no controller event is available at this time, the enforcer inserts (5 .22 , cru ) to transition the system into CruiseM ode . At t = 6 .0, the controller’s (6 .0, cru )
+
+event is permitted as the system is already in CruiseM ode with d = 95 .64 .Later, at t = 9 .0, the enforcer suppresses the received (9 .0, acc ) event (emitting a stutter event instead), as acceleration is disallowed at d = 79 .17 . Finally, at 
+
+t ≈ 10 .67 , the enforcer inserts (10 .67 , dec ) to mitigate an impending invariant violation. This synthesized event sequence ensures the safety property d > 10 is strictly maintained throughout the execution. N.B., stutter events are not shown in the figure due to space constraints. 
+
+6Fig. 6: Output of the enforcer. It modified the event stream by suppressing/delaying/inserting events to satisfy the property φ. N.B. stutter events are not shown in the figure due to space constraints. 
+
+## 3 Preliminaries and Notations 
+
+Let Σ be a finite alphabet of actions. A finite word over Σ is a finite sequence 
+
+σ = a1a2 . . . a n where each ai ∈ Σ. The sets of all finite words over Σ are denoted by Σ∗. The length of a finite word σ is denoted by |σ|. The empty word is denoted by ϵ. For words σ and σ′, their concatenation is denoted by σ · σ′
+
+where “ ·” represents the usual concatenation of words. A word σ′ is a prefix of 
+
+σ, written σ′ ⪯ σ, if there exists a word σ′′ ∈ Σ∗ such that σ = σ′ · σ′′ . In this case, σ is said to extend σ′.We now discuss the background concepts of hybrid systems, which exhibit an in-terplay of discrete and continuous dynamics. Hybrid automata are a well-known mathematical model for such systems [2, 3]. We first define a hybrid automaton model of a hybrid system. 
+
+Definition 1 (Hybrid Automata). [2] A hybrid automaton (HA) is a seven-tuple HA=  Loc , Var , Flow , Init , Σ, Edge , Inv  where: 
+
+– Loc is a finite set of vertices called locations. 
+
+– Var is a finite set of real-valued variables. A valuation v is an assignment of a real value to each variable x ∈ Var . We write V for the set of all valuations. 
+
+– Flow is a mapping from each location l ∈ Loc to a set of differential equations 
+
+{ ˙x ∈ f (x1, . . . , x |V ar |) | x ∈ Var }, where ˙x denotes the rate of change of variable x.
+
+– Init is a tuple ⟨l0, S ⟩ such that l0 ∈ Loc and S ⊆ V .
+
+– Σ is a finite set of labels or actions (including a stutter action d). 
+
+– Edge is a finite set of transitions e = ( l, a, g, r, l ′), each consisting of a source location l ∈ Loc , a target location l′ ∈ Loc , a label a ∈ Σ, a guard g ⊆ V
+
+and a reset map r : R|V ar | → 2R|V ar |
+
+.
+
+– Inv is a mapping from each location l ∈ Loc to a subset of valuations V . □
+
+Remark 1 Stutter actions are modeled as stutter transitions. A stutter transi-tion is defined by the tuple e = ( l, d, g, r, l ), where the guard g = R|V ar | and the reset r is an identity mapping. A stutter transition for every location is implicitly a member of Edge .
+
+Consider the thermostat model [17] illustrated in Figure 7a, which serves as a foundational example of a hybrid automaton. The model features two dis-crete locations (or modes of operation) within which the temperature variables 
+
+x evolve continuously. The system executes a discrete transition between these locations whenever the corresponding guard condition is satisfied. 7A state of a HA is defined as a pair (l, v ), where l ∈ Loc represents a discrete location and v ∈ Inv (l) denotes a valuation of the continuous variables. The component Init specifies the set of initial configurations. A hybrid automaton of dimension n (number of variables) is an infinite-state machine whose state has a discrete part, which ranges over the locations in Loc , and a continuous part (valuation of v), which ranges over the n-dimensional Euclidean space Rn [3]. A state can change either due to the application of a transition or due to the passage of time following the continuous dynamics. The continuous state change is given by f low l(v, t ), which is the solution of the differential equation Flow( l). We refer to the former as discrete-transition and the latter as timed-transition .A behaviour of the hybrid automaton is defined by a run , which is a sequence of these discrete-transition and timed-transition steps. We define run as follows: 
+
+Definition 2 (Run). A run of a HA is an alternating sequence of timed-transitions and discrete-transitions of the hybrid automaton depicted as: (l0, v 0) τ0
+
+⇝
+
+(l0, v ′
+
+> 0
+
+) a1
+
+−→ (l1, v 1) τ1
+
+⇝ (l1, v ′
+
+> 1
+
+) a2
+
+−→ . . . an
+
+−−→ (ln, v n) τn
+
+⇝ (ln, v ′
+
+> n
+
+), where (i) (l0, v 0) ∈
+
+Init . (ii) Transitions labeled by ai represent discrete transitions, where ai denotes the label (or action) of an edge ei ∈ Edge . For each i ∈ J1..n K, the location li−1
+
+is the source and li is its destination of ei. Moreover, the valuation v′ 
+
+> i−1
+
+satisfies the guard g, and the valuation vi results from applying the reset map r associated with ei, i.e., v′ 
+
+> i−1
+
+∈ g and vi ∈ r. (iii) Transitions labeled by τi ∈ R≥0 correspond to timed transitions, where τi denotes the dwelling time spent in location li. They satisfy the invariant condition that, for all t ∈ [0 , τ i], the continuous evolution 
+
+(li, v i) t
+
+⇝ (li, v + 
+
+> i
+
+) remains within the invariant of the location, i.e., v+ 
+
+> i
+
+∈ Inv( li),for all i ∈ J0..n K. (iv) ⟨ti, a i⟩ is a pair where ti = Pi−1 
+
+> j=0
+
+τj , ∀i ∈ J1..n K. ti is being the time-stamp at which ai is executed. □
+
+3.1 Languages and Properties as Hybrid Automata 
+
+Let R≥0 denote the set of non-negative real numbers, and Σ a finite alphabet of actions. A pair ( t, a ) ∈ (R≥0 × Σ) is called an event , where t ∈ R≥0 is the time-stamp at which the event appears. A timed-word over Σ is a finite sequence of events over (R≥0 ×Σ)∗. We consider a timed-word σ = ( t1, a 1)( t2, a 2)· · · (tn, a n). For i ∈ [1 , n ], ti is the time-stamp of the corresponding event, and t1 is the time elapsed before the first action a1. Note that even though the alphabet (R≥0 × Σ) is infinite in this case, the notations defined above (related to length, concatenation, prefix, etc.) naturally extend to timed words. A timed-language 
+
+is any set L ⊆ (R≥0 × Σ)∗.
+
+Definition 3 (Projection of a Run on a Timed word). Let r = ( l0, v 0) τ0
+
+⇝
+
+(l0, v ′
+
+> 0
+
+) a1
+
+−→ (l1, v 1) τ1
+
+⇝ (l1, v ′
+
+> 1
+
+) a2
+
+−→ . . . an
+
+−−→ (ln, v n) τn
+
+⇝ (ln, v ′
+
+> n
+
+) be a run of a HA. The projection of r onto a timed word σ = ( t1, a 1), (t2, a 2), . . . , (tn, a n), where: for each discrete transition (li−1, v ′
+
+> i−1
+
+) ai
+
+−→ (li, v i) in r, there exists an event 
+
+e = ( ti, a i), such that ai ∈ Σ and the timestamp ti represents the cumulative time elapsed until the occurrence of the i-th discrete transition, defined as ti = Pi−1 
+
+> j=0
+
+τj
+
+for all i ∈ J1..n K. □
+
+8In this work, we consider finite runs of HA. A Muller acceptance condition of HA is given by a collection F ⊆ 2Loc of acceptance sets of locations [3]. A finite 
+
+run with final location ln is accepting when {ln} ∈ F . We define the language of a HA as follows: 
+
+Definition 4 (Language of Hybrid Automata). The language accepted by a HA, denoted by L(HA), is the set of all timed words generated by accepting runs of HA : L(HA) = {σ | σ is generated by an accepting run of HA, σ ∈ (R≥0 ×Σ)∗}.
+
+In this paper, we focus on prefix-closed properties. We formally express these properties as safety hybrid automata . A safety hybrid automaton is an HA with a sink location Sink and a transition fail from each HA location to the Sink .
+
+Sink is a unique non-accepting/trap location where Flow of the variables are zero, and the invariant set is true . We define a safety hybrid automaton below: 
+
+Definition 5 (Safety Hybrid Automata). A safety hybrid automaton S = Loc S , Var , Flow , Init , ΣS , Edge , Inv , Sink  is an extension of a hybrid au-tomaton HA with the following changes: (i) Loc S = Loc ∪ { Sink }, (ii) ΣS = Σ
+
+∪ { f ail }, and (iii) All other components are same as HA. (iv) All locations in 
+
+Loc S except Sink (i.e., Loc S \ { Sink }) are accepting locations. Sink is a unique non-accepting (trap) location, and there are no outgoing transitions in Edge from 
+
+Sink to a location in Loc S \ { Sink }. □
+
+Consider the thermostat automaton in Figure 7a, a property P such as “the temperature should always remain between 15 and 25” can be represented as a safety hybrid automaton as shown in Figure 7b where Fail-mode represents a 
+
+Sink location, and the violation of the property are shown as red transitions. A state (l, v ) in S is an accepting state if l is an accepting location and v ∈ Inv( l).    
+
+> (a) A thermostat automaton. (b) A safety automaton for the property P. Fig. 7: Thermostat automaton and corresponding safety thermostat automaton.
+
+Language of Safety Hybrid Automata The language accepted by a safety hybrid automaton S is a timed-language L(S) ⊆ (R≥0 × ΣS )∗.
+
+## 4 Runtime Enforcement Problem 
+
+In this section, we formalize the RE problem for “black box” reactive systems for properties specified as safety hybrid automata . We assume that the system 9interacts with the environment through a special function call called ptick , which is invoked exactly once during each reactive step. In each ptick , the system receives inputs from the environment and outputs an event in (R≥0 × Σ). These events are either a real event or a stutter (consisting of a stutter action d) if they are a continuation of a previous event. We consider a proactive enforcement monitor that observes the inputs from the environment in each ptick and corrects the outputs of the system whenever necessary. For a given safety property φ ⊆
+
+(R≥0 × Σ)∗ specified as a safety hybrid automata , we want to synthesize an enforcer. 
+
+4.1 Problem Definition 
+
+An enforcer for a property φ ⊆ (R≥0 × Σ)∗ can only edit the output sequence of events by suppressing, delaying, or inserting events whenever necessary. While suppressing and delaying an event in a ptick is a reactive trait, the enforcer can also proactively insert an event before any ptick (in the nick of time [6]) whenever necessary if SuM does not produce an event on its own. At each ptick 
+
+t ∈ N∪{ 0}, the enforcer receives an event (a continuation of the incoming timed-word σ ∈ (R≥0 × Σ)∗) as input while observing the current environmental state 
+
+I (I ranges over R|n|, where n is number of variables), and monitor the property until next ptick t′. It generates one or more events (a continuation of rectified output timed-word σ′ ∈ (R≥0 × Σ)∗), such that the output satisfies the safety property (i.e., σ′ |= φ) for all the time points τ ∈ [t, t ′].At an abstract level an enforcer can be considered as a function that takes a timed word as input and emits a timed word. An enforcer for any given property 
+
+φ should satisfy the following constraints: 
+
+Definition 6 (Enforcer for φ). Given a property φ ⊆ (R≥0 ×Σ)∗, an enforcer for φ is a function Eφ(σ, t, τ, I): (R≥0 ×Σ)∗ ×(N∪{ 0})×R≥0 ×R|n| → (R≥0 ×Σ)∗
+
+satisfying the following constraints: 
+
+– (Soundness) ∀σ ∈ (R≥0 × Σ)∗, ∀t, t ′ ∈ (N ∪ { 0}), t ≤ t′, ∀τ ∈ [t, t ′) : 
+
+Eφ(σ, t, τ, I) |= φ, where τ is a real-time between t and t′.
+
+– (Instantaneity) ∀σ ∈ (R≥0 × Σ)∗, ∀t ∈ (N ∪ { 0}), ∀τ ∈ [t, t + 1) : 
+
+Eφ(σ, t, τ, I) ≥ | σ|
+
+– (Monotonicity) ∀σ, σ ′ ∈ (R≥0 × Σ)∗, ∀t, t ′ ∈ (N ∪ { 0}) : 
+
+σ ⪯ σ′, t ≤ t′ =⇒ Eφ(σ, t, τ, I) ⪯ Eφ(σ′, t ′, τ ′, I′), where I and I′ are environmental inputs at t and t′, respectively. τ ∈ [t, t ′) and τ ′ ∈ [t′, t ′ + 1) .
+
+– (Transparency) (i) ∀σ ∈ (R≥0 ×Σ)∗, ∀e ∈ (R≥0 ×Σ), ∀t, t ′ ∈ (N∪{ 0}), t ≤
+
+t′, ∀τ ∈ [t, t ′) : Eφ(σ, t, τ, I)·e |= φ =⇒ Eφ(σ ·e, t ′, τ ′, I′) = Eφ(σ, t, τ, I)·e,where τ ′ ∈ [t′, t ′ + 1) . (ii) ∀σ ∈ (R≥0 × Σ)∗, ∀t, t ′ ∈ (N ∪ { 0}), t ≤ t′,
+
+∀τ ∈ [t, t ′) : Eφ(σ, t, τ, I) |= φ =⇒ Eφ(σ, t, τ, I) = Eφ(σ, t, t, I). □
+
+Soundness. It expresses that for any input sequence observed and at any given time, the sequence of events released as output by the enforcer must satisfy the property φ.10 Instantaneity. It expresses that for any observed input sequence σ, and tick 
+
+t, the length of output produced Eφ(σ, t, τ, I) should be greater than σ i.e., 
+
+|Eφ(σ, t, τ, I)| ≥ | σ|. This is because the enforcer can proactively insert events in between two pticks whenever necessary. Instantaneity condition ensures that the timestamps of events in Eφ(σ, t, τ, I) reflect the time at which the corresponding events are performed. Whenever the enforcer receives a new event, it has to react instantaneously and has to produce an output event immediately. 
+
+Monotonicity. The enforcer satisfies the monotonicity property: for any input 
+
+σ and its extension σ′ = σ · e, the output produced for the extension must be a continuation of the output produced for σ. Any output generated by Eφ at a given time step is preserved in all future iterations, reflecting the irreversible nature of real-time event streams. 
+
+Transparency. Transparency ensures that the enforcer performs the minimal necessary intervention, avoiding redundant edits or insertions. This property is governed by two primary constraints: ( Identity Preservation ) If the current output trace, extended by a new input event e, satisfies the safety property φ
+
+(i.e., Eφ(σ, t, τ, I) · e |= φ), the enforcer must forward e without modification. Formally: Eφ(σ · e, t ′, τ ′, I′) = Eφ(σ, t, τ, I) · e. ( Non-Intrusion ) The enforcer is prohibited from inserting unnecessary events during the interval [t, t ′) if the existing output sequence σ′ remains compliant with φ throughout that duration. Together, these constraints ensure that the enforcer acts as an identity func-tion whenever the system behaves safely. 
+
+4.2 Algorithm 
+
+In this section, we present the algorithm for the Enforcer Eφ for a given safety property φ. We assume that φ is formally defined by a safety hybrid automaton 
+
+S. Algorithm 1 implements an online reactive interface between the SuM and its environment. The algorithm accepts the automaton S, the synchronization in-terval pticks , and the environmental input set I as parameters. For an incoming online sequence of system events σ, where one event is produced at each syn-chronization step, the algorithm synthesizes an edited output sequence σ′ that satisfies the property φ.The function Initialize (I) initializes the hybrid automaton S in Line 1. Sub-sequently, Line 2 defines the execution context by setting the current state (curState ) to the automaton’s initial state, resetting the simulation time ( curTime )to 0.0, and nullifying the delayedTransition variable—which tracks a pending transition from the previous synchronization step. During each ptick , the algo-rithm receives an output event e as a continuation of the sequence σ. It calculates the system’s dwell time on Line 5 and invokes the timeElapse () function on Line 7 to verify that the control remains at the current location and that all invariants are satisfied. The algorithm then proceeds to edit the event e by performing the following checks: Case 1 (invariant not violated and guard satisfied) If 11 control remains within the current location and invariant conditions are not vio-lated for the entire dwell time, while guard conditions of the action in the event are satisfied at that time, the algorithm outputs the event without modifying it in line 38 (causing). It then goto step 7 to monitor the remaining part of the 
+
+ptick . Case 2 (invariant not violated, but guard not satisfied) If control is within the current location and invariant conditions are not violated, however, the guard conditions of the action in the event are not satisfied at that time. The algorithm suppresses the event (suppressing), while generating a stutter event that allows continuation of the previous event. It puts the suppressed event in the delayed event in line 45 to process the event at a later time if possible. It goes to step 7 for the further processing of the remaining time of the ptick . Case 3 (invariant violated and delayed event possible) If invariant conditions are violated within the current location, the algorithm checks for an enabled delayed action, which means guard conditions of the action are satisfied at that time. The action, along with its delayed time, is output as a delayed event in line 14 
+
+(delaying). The control goes to step 7 for the monitoring of the remaining time of the ptick . Case 4 (invariant violated and delayed event not enabled) 
+
+If invariant conditions are violated within the current location, and the guard is not satisfied at that time for a delayed action, the algorithm finds an alter-nate action that is enabled at that time. It outputs the alternate action along with the new time as an inserted event in line 22 (suppressing-inserting). The control goes to step 7. Case 5 (invariant violated and no delayed event exists) If invariant is violated and no delayed event exists, the algorithm finds an action among the enabled actions at that time to insert as a new event in line 31 (inserting). The control goes to step 7 to monitor the remaining time of the ptick .
+
+4.3 Enforceability 
+
+We now examine the enforceability of our proposed approach. The enforcer must synthesize a rectified event sequence by identifying an admissible set of enabled transitions. Consequently, the execution of Algorithm 1 fundamentally depends on solving underlying state reachability and membership problems. For exam-ple, the timeElapse() function, which computes the continuous state evolution over a time interval ∆t , and the enabledTransitions() function, which evaluates guard conditions against the current state. Because these problems are solvable for certain subclasses of hybrid automata (e.g, timed automata, initialized rect-angular automata, and time-bounded monotonic linear hybrid automata [18]), the applicability of our framework is restricted to those subclasses. In our model, a property φ is deemed non-enforceable if the set of enabled actions is empty at a critical junction where a corrective action is required to prevent a safety violation. We define enforceability as follows: 
+
+Definition 7 (Enforceability [29]). Let φ ⊆ (R≥0 ×Σ)∗ be a property, we say that φ is enforceable iff an enforcer Eφ for φ exists according to Definition 6. 
+
+12 Algorithm 1: Enforcer Eφ
+
+input : A safety hybrid automaton S, the synchronization pticks , an output event sequence σ, and the environmental inputs I.
+
+output: A sequence of edited output events σ′. 
+
+> 1
+
+{initState } ← Initialize (I); /* Initialize S. */  
+
+> 2
+
+Set curState ← initState , curT ime ← 0.0, delayedT ransition ← null ; 
+
+> 3
+
+for each ptick t do  
+
+> 4
+
+nxtP tick ← t + 1 ; 
+
+> 5
+
+Get next event e: {eventT ime, transition } ← σ; 
+
+> 6
+
+Compute deltaT ime = ( eventT ime − curT ime ); /* Compute the time to elapse. */  
+
+> 7
+
+{invariantOk , curState , curT ime } ← timeElapse (curState, deltaT ime );
+
+/* timeElapse () returns false the moment invariant is violated. */  
+
+> 8
+
+if curTime < nxtPtick then  
+
+> 9
+
+if invariantOk ̸ = True then  
+
+> 10
+
+if delayedTransition ̸ = null then  
+
+> 11
+
+e′ ← { curT ime, delayedT ransition }
+
+transP oss ← delayedT ransitionP ossible () ; /* Returns T rue if guard of the delayed transition satisfied at that time. */  
+
+> 12
+
+if transPoss == True then  
+
+> 13
+
+σ′ ← σ′.append (e′); 
+
+> 14
+
+Output σ′; /* A delayed event is outputted (delaying). */  
+
+> 15
+
+delayedT ransition ← null ; 
+
+> 16
+
+Compute deltaT ime = ( nxtP tick − curT ime ); /* Time elapse for the remaining part of the current ptick . */  
+
+> 17
+
+goto Step 7;  
+
+> 18
+
+else  
+
+> 19
+
+Find a transition a ∈ enabledT ransitions (curState ); /* Find a transition in current state whose guard is satisfied. */  
+
+> 20
+
+e′ ← { curT ime, a }; 
+
+> 21
+
+σ′ ← σ′.append (e′); 
+
+> 22
+
+Output σ′; /* Event is inserted as invariant is violated (delayed event is suppressed) (suppressing-inserting). */  
+
+> 23
+
+delayedT ransition ← null ; 
+
+> 24
+
+Compute deltaT ime = ( nxtP tick − curT ime );  
+
+> 25
+
+goto Step 7;  
+
+> 26
+
+end  
+
+> 27
+
+else  
+
+> 28
+
+Find a transition a ∈ enabledT ransitions (curLoc ); /* Find a transition in current location (no delayed event exists). */  
+
+> 29
+
+e′ ← { curT ime, a }; 
+
+> 30
+
+σ′ ← σ′.append (e′); 
+
+> 31
+
+Output σ′; /* Invariant violation, event inserted (inserting). */  
+
+> 32
+
+Compute deltaT ime = ( nxtP tick − curT ime );  
+
+> 33
+
+goto Step 7;  
+
+> 34
+
+end  
+
+> 35
+
+else  
+
+> 36
+
+if transition ∈ enabledTransition(curState) then  
+
+> 37
+
+σ′ ← σ′.append (e); 
+
+> 38
+
+Output σ′; /* The event is executable at that time. */  
+
+> 39
+
+Compute deltaT ime = ( nxtP tick − curT ime );  
+
+> 40
+
+goto Step 7;  
+
+> 41
+
+else  
+
+> 42
+
+Suppress-delay event: e′ ← d; /* d is a stutter event that allows continuation of the previous event. */  
+
+> 43
+
+σ′ ← σ′.append (e′) 
+
+> 44
+
+Output σ′; /* The event is suppressed (suppressing). */  
+
+> 45
+
+delayedT ransition ← transition ; 
+
+> 46
+
+Compute deltaT ime = ( nxtP tick − curT ime );  
+
+> 47
+
+goto Step 7;  
+
+> 48
+
+end  
+
+> 49
+
+end  
+
+> 50
+
+else  
+
+> 51
+
+continue ; 
+
+> 52
+
+end  
+
+> 53
+
+end 
+
+13 Definition 8 (Condition for Enforceability). Consider a property φ that is defined as a safety hybrid automaton S =  Loc S , Var , Flow , Init , ΣS , Edge ,
+
+Inv , Sink , property φ is enforceable iff the following condition holds: 
+
+∀l ∈ Loc S \ Sink , ∀v ∈ Inv (l) = ⇒ ∃ a ∈ ΣS \ { f ail } : ( l, v ) a
+
+−→ (l′, v ′),where l ′ ∈ Loc S \ Sink , and v ′ ∈ Inv (l′)
+
+The enforceability condition expresses that for a property φ defined as a safety hybrid automaton S where all locations in Loc S \Sink are accepting locations, 
+
+Eφ according to Definition 6 exists iff an accepting state (l′, v ′) is reachable from every non-violating state (l, v ) where l and l′ are accepting locations in 
+
+Loc S \Sink , and v′ ∈ Inv (l′). 
+
+Definition 9 ( E∗
+
+> φ
+
+). Consider an enforceable safety property φ ⊆ (R≥0 × Σ)∗.We define the function E∗
+
+> φ
+
+: (R≥0 × Σ)∗ → (R≥0 × Σ)∗ as follows: Let σ =
+
+e1 · e2 · · · em be a timed-word received by Algorithm 1. Then we let E∗
+
+> φ
+
+(σ) = 
+
+e′ 
+
+> 1
+
+· e′ 
+
+> 2
+
+· · · e′
+
+> n
+
+, where n ≥ m. e′ 
+
+> t
+
+is an event output by Algorithm 1. If E∗
+
+> φ
+
+(σ) = σ′,then the following holds: (i) σ′ · e |= φ =⇒ E∗
+
+> φ
+
+(σ′ · e) = σ′ · e.(ii) σ′ · e̸ |= φ =⇒ E∗
+
+> φ
+
+(σ′ · e) = σ′ · stutter , where stutter is a stutter event, 
+
+stutter ∈ (R≥0 × { d}) allowing continuation of a previous event. (iii) (∃ τ ′ ∈ (t′, t ′ + 1) | σ′̸ |= φ) =⇒ E∗
+
+> φ
+
+(σ′) = σ′ · e | σ′ · e |= φ, where t′ and 
+
+t′ + 1 are two consecutive pticks , and τ ∈ [t′, t ′ + 1) (inserting events when invariants are violated). □
+
+Proposition 1 (Correctness of the enforcement algorithm). Given any 
+
+safety hybrid automaton S for the property φ that satisfies the condition in Definition 8, the function E∗ 
+
+> φ
+
+defined above is an enforcer for φ, i.e., it satisfies all the constraints as per Definition 6. 
+
+A brief proof sketch of Proposition 1 is given in Appendix B. 
+
+## 5 Case Study 
+
+Modern autonomous vehicles offer many different safety and comfort functions. Most of them are nowadays realized in software running on a bunch of electronic control units with connected actuators and sensors. For example, an adaptive cruise control system of a car maintains the speed of the vehicle without human intervention. However, these systems are susceptible to sensor errors or adver-sarial attacks, which can lead to catastrophic outcomes. A runtime monitoring and enforcement system can detect such situations and generate commands in accordance with the security policy to prevent safety violations. In this section, we present a case study of our approach on adaptive cruise controller (ACC) system [8] of an autonomous vehicle, which is also a well-known domain in hybrid systems. An ACC is a reactive system; it works in synchronization with its environment. In each synchronization step, it takes in 14 the environmental inputs and produces commands/events for the system. In this work, we take into account some real-world specifications and safety requirements for modern cars as presented in [20], like maximum allowable velocity on a high-speed lane, minimum safety distance requirements, etc. A description of the domain and a scenario is presented in Section 2, where we assume the primary controller of the system is faulty, which can jeopardize safety requirements. An example safety requirement is shown in Figure 8a, where the current car needs to maintain a safe distance of 10 meters with the preceding car.     
+
+> (a) The safety requirement is to maintain the safe distance Sd>10 .(b) The speed-distance curve.
+> Fig. 8: Safety requirement and Speed-distance curve
+
+A central challenge in developing runtime enforcement frameworks is the for-malization of monitor specifications that accurately capture the desired system properties [22]. In this work, we provide a monitor specification for runtime en-forcement of the ACC system. The car movement control model is formalized with an automaton language. For a safety requirement, as shown in Figure 8a, the maintenance of the speed does not only depend on the desired speed but also on the vehicle ahead. Furthermore, the car’s motion involves both discrete control modes (e.g., acceleration, deceleration, braking) and continuous features (e.g., car speed and distance to the preceding car) in its behaviour. We use safety hybrid automata as a modeling language for the safety requirement in Figure 8a. The safety hybrid automaton modeling of the domain is shown in Figure 5. Our enforcement framework for the ACC system uses a hybrid automaton with five discrete control modes and an implicit Sink location (omitted from the figure for clarity) that represents a safety failure. From each operational location, a transition to the Sink is enabled whenever the safety property is violated. Initially, the car is in Init Mode . We compute a speed-distance curve for a given scenario to generate the monitoring specifications. For example, given a safety distance Sd = 10 m (meters), a maximum speed of the current car 
+
+VC = 120 kmph (kilometers per hour), a constant speed of the front car Vf =50 kmph , an initial distance from the front car d = 200 m, and a maximum braking limit K = −6m/s 2 (meters per second 2). We compute the speed-distance curve (as shown in Figure 8b) with a reverse iterative algorithm based on the following equation: Vsaf e =
+
+q
+
+V 2 
+
+> f
+
++ 2 × K × (d − Sd), where Vsaf e represents the maximum allowable speed of the car at a point in the speed-distance curve. 15 We partition the operational curve into four distinct segments: A, B, C, and D,which we use to set the invariants and guard conditions of the automaton S.The set of admissible control actions—comprising accelerate (acc ), cruise (cru ), 
+
+decelerate (dec ), brake (br ), and stop (st )—is progressively controlled across these regions to ensure safety compliance. Given an output event stream (see Figure 2b) from the ACC controller, the enforcement function Eφ transforms it into a modified sequence (see Figure 6, and Table 1 in Appendix A) that strictly satisfies the safety property φ throughout the execution trace. 
+
+Evaluation: The algorithm operates within a synchronous reactive framework, sampling events from the SuM at a uniform interval of 1 second. For the exe-cution trace illustrated in Figure 2b, the enforcer processed the entire sequence in 15 .098 s. Notably, the average response time per event was recorded at 4.67 
+
+milliseconds. This low latency confirms that the framework introduces negligi-ble computational overhead, ensuring that the enforcer can operate effectively within high-frequency reactive environments without violating the system’s strict timing constraints. Implementation : All experiments are performed on a ma-chine with 8 GB RAM, Intel Core i5-8250U@1.60GHz, and 8-core processor with Ubuntu 18.04 64-bit OS. The problem files and the code base can be found at: https://gitlab.com/anonymous2275/RuntimeEnforcer .
+
+## 6 Related Works 
+
+Runtime Enforcement (RE) [16, 23, 25, 28, 35] is an inherently online task that entails the active monitoring and mediation of a SuM to ensure that its execu-tion adheres to a requirement policy. When the specification includes temporal constraints, the discipline is referred to as real-time enforcement. This repre-sents a more complex challenge than traditional runtime verification (RV) [7, 12–14, 31], where the system is merely observed, and violations are reported rather than prevented. An enforcement monitor (EM) transforms an (untrust-worthy) input execution (sequence of events) into an output sequence of events that complies with a property (e.g., defining a desired safety requirement). The applications of RE are extensive, spanning industrial safety protocols to regu-latory compliance, and the field shares significant theoretical foundations with controller synthesis [1, 33]. Requirement policies are often divided into provisions and obligations [19]. Compliance with provisions is determined by the past and present behavior of the SuM; thus, the enforcer can function reactively based on the current system action. In contrast, compliance with obligations is contingent upon future system behavior. This necessitates a proactive enforcement strat-egy [5], where the enforcer must anticipate potential trajectories to preemptively prevent violations. Several RE models have been proposed to address the increasing complexity of system dynamics, ranging from classical discrete-event frameworks to more recent architectures designed for real-time systems. While earlier models focused on untimed safety properties, recent advancements have introduced dense-time 16 constraints and continuous-state evolutions. Foundations for runtime enforce-ment were pioneered by Schneider in [35] and by Rinard in [34]. [35] discusses the class of safety policies that are enforceable via runtime monitoring. It pro-vides an automata based mechanism for specifying policies that can be validated based on the prefixes of a system’s execution. The enforcement logic focuses on safety properties, where the monitor intervenes by blocking the execution the moment it recognizes a sequence of actions that violates the target property. While [34] identifies key properties that the execution must satisfy to be ac-ceptable.It defines the system with a layered set of components, each of which enforces one of the acceptability properties. The framework introduced by Ligatti et al. [23] utilizes edit automata to correct input sequences through suppress-ing and/or inserting events. Similarly, the enforcement mechanisms proposed in [16] rely on buffering events and releasing them only upon the observation of a sequence that satisfies the desired policy. While the synthesis of enforcers for real-time properties—modeled via dense Timed Automata (TA)—has been extensively studied [28, 15], these approaches are often inadequate for reactive systems. In such domains, halting execution or delaying actions are infeasible; rather, the enforcer must provide instantaneous rectification to maintain system liveness and satisfy strict timing constraints. Thus, the RE approaches such as [15, 26–28] are not suitable for reactive systems. Shield synthesis [21] introduces an enforcement component, known as a safety shield , to guarantee property adherence in reactive hardware systems at runtime. This approach mitigates the computational complexity associated with model checking and full reactive synthesis by focusing on a restricted subset of safety-critical properties, rather than the complete system specification. The shield op-erates by continuously monitoring the system’s input/output interface and inter-vening to rectify erroneous outputs only when a safety violation is imminent. The RE frameworks presented in [29, 30] introduce bidirectional enforcement moni-toring for synchronous reactive systems. This approach provides a methodology for synthesizing EMs for properties specified via a variant of Discrete Timed Automata (DTA) [9, 4]. However, these frameworks consider discrete systems or monitoring at discrete time intervals leaving a gap in enforcement for complex systems that require proactive, continuous-time interventions to maintain safety. While several frameworks have been developed for hybrid system analysis, their scope is largely confined to monitoring and verification. Cimatti et al. [11] address the problem of trace reconstruction within a network of hybrid automata to satisfy properties specified as Message Sequence Charts (MSCs). In the do-main of stochastic models, Sistla et al. [36] investigate the monitoring of hybrid systems modeled as Hidden Markov Chains (HMCs) against specifications de-fined by deterministic Streett automata. More recently, Chai et al. [10] proposed a dynamic monitoring generation method for communications-based train con-trol (CBTC) systems utilizing Parametric Hybrid Automata (PHA). These stud-ies focus primarily on runtime verification and passive monitoring—where the objective is to detect and report violations—rather than runtime enforcement. 17 In contrast, we model requirement specifications as hybrid automata, in the reactive setup our framework enables continuous monitoring of the system. Every clock tick events are observed and instantaneously rectified (suppression/delay-ing also handled with this). In the time period between ticks, we also allow events to be inserted. Consequently, it can delay or insert events at arbitrary time instants, providing finer-grained control and ensuring property satisfaction in real time. As far as we know, no enforcement frameworks exist that consider expressive HA specification that are suitable for reactive systems. 
+
+## 7 Conclusion and Future Work 
+
+This paper presents a runtime enforcement framework based on Hybrid Au-tomata monitoring specifications. The proposed approach extends existing run-time enforcement techniques by enabling continuous-time monitoring and proac-tive intervention for reactive cyber-physical systems. Unlike traditional approaches restricted to untimed or discrete-time specifications, our framework supports ex-pressive hybrid-system properties and allows corrective actions through suppres-sion, delay, and insertion of events both at synchronization points and between consecutive observation intervals. We formally define the enforcement problem for safety hybrid automata, in-troduce enforcement constraints such as soundness, monotonicity, transparency, and completeness, and provide enforceability conditions for the proposed frame-work. An online enforcement algorithm is developed to synthesize safe execu-tion traces while maintaining compliance with system timing constraints. The Adaptive Cruise Control (ACC) case study demonstrated how the enforcer can dynamically modify unsafe controller outputs and maintain critical safety re-quirements, such as minimum safe distance, throughout execution. Experimental evaluation shows that the framework operates with low latency and negligible runtime overhead, making it suitable for real-time reactive environments. Overall, the work demonstrates that hybrid automata provide a powerful and expressive formalism for runtime enforcement of cyber-physical systems, en-abling finer-grained control and stronger safety guarantees compared to existing discrete-time enforcement techniques. 
+
+Future works: Several promising directions remain for future research. First, the current framework focuses primarily on safety properties represented as prefix-closed specifications. Extending the approach to support richer tempo-ral properties, including liveness and obligation-based requirements, remains an important challenge. Second, the enforcement mechanism currently targets decidable subclasses of hybrid automata; future work may investigate scalable approximation techniques and symbolic reachability methods to support more expressive non-linear hybrid systems. Another important direction is the in-tegration of probabilistic and stochastic models to handle uncertainty arising from noisy sensors, imperfect environmental observations, and adversarial behav-iors. Incorporating learning-based prediction mechanisms could further improve 18 proactive enforcement by enabling the enforcer to anticipate unsafe trajectories earlier and synthesize more optimal corrective actions. Future work will also explore distributed and decentralized enforcement architectures for multi-agent cyber-physical systems such as autonomous vehicle platoons, robotic swarms, and smart-grid infrastructures. Additionally, integrating shield synthesis tech-niques with hybrid automata-based enforcement may provide stronger correct-ness guarantees while reducing computational complexity. Finally, implementing the framework on physical hardware platforms and evaluating it under real-world deployment conditions will be essential for validating its practical applicability, robustness, and scalability in safety-critical autonomous systems. 19 References 
+
+1. Martín Abadi, Leslie Lamport, and Pierre Wolper. Realizable and unrealiz-able specifications of reactive systems. In Giorgio Ausiello, Mariangiola Dezani-Ciancaglini, and Simona Ronchi Della Rocca, editors, Automata, Languages and Programming, 16th International Colloquium, ICALP89, Stresa, Italy, July 11-15, 1989, Proceedings , volume 372 of Lecture Notes in Computer Science , pages 1–17. Springer, 1989. 2. R. Alur, C. Courcoubetis, N. Halbwachs, T.A. Henzinger, P.-H. Ho, X. Nicollin, A. Olivero, J. Sifakis, and S. Yovine. The algorithmic analysis of hybrid systems. 
+
+Theoretical Computer Science , 138(1):3 – 34, 1995. Hybrid Systems. 3. Rajeev Alur, Costas Courcoubetis, Thomas A. Henzinger, and Pei-Hsin Ho. Hybrid automata: An algorithmic approach to the specification and verification of hybrid systems. In Robert L. Grossman, Anil Nerode, Anders P. Ravn, and Hans Rischel, editors, Hybrid Systems , volume 736 of Lecture Notes in Computer Science , pages 209–229. Springer, 1992. 4. Rajeev Alur and David L. Dill. A theory of timed automata. Theor. Comput. Sci. ,126(2):183–235, 1994. 5. David A. Basin, Søren Debois, and Thomas T. Hildebrandt. In the nick of time: Proactive prevention of obligation violations. In IEEE 29th Computer Security Foundations Symposium, CSF 2016, Lisbon, Portugal, June 27 - July 1, 2016 ,pages 120–134. IEEE Computer Society, 2016. 6. David A. Basin, Søren Debois, and Thomas T. Hildebrandt. Proactive enforcement of provisions and obligations. J. Comput. Secur. , 32(3):247–289, 2024. 7. Andreas Bauer, Martin Leucker, and Christian Schallhart. Runtime verification for LTL and TLTL. ACM Trans. Softw. Eng. Methodol. , 20(4):14:1–14:64, 2011. 8. Sergiy Bogomolov, Goran Frehse, Mirco Giacobbe, and Thomas A. Henzinger. Counterexample-guided refinement of template polyhedra. In Axel Legay and Tiziana Margaria, editors, Tools and Algorithms for the Construction and Analy-sis of Systems - 23rd International Conference, TACAS 2017, Held as Part of the European Joint Conferences on Theory and Practice of Software, ETAPS 2017, Uppsala, Sweden, April 22-29, 2017, Proceedings, Part I , Lecture Notes in Com-puter Science, pages 589–606, 2017. 9. Marius Bozga, Oded Maler, and Stavros Tripakis. Efficient verification of timed automata using dense and discrete time semantics. In Laurence Pierre and Thomas Kropf, editors, Correct Hardware Design and Verification Methods, 10th IFIP WG 10.5 Advanced Research Working Conference, CHARME ’99, Bad Herrenalb, Ger-many, September 27-29, 1999, Proceedings , Lecture Notes in Computer Science, pages 125–141. Springer, 1999. 10. Ming Chai, Haifeng Wang, Hongjie Liu, Jidong Lv, and Qian Hu. Runtime verifi-cation of communications-based train control with parametric hybrid automata. In 
+
+2019 IEEE Intelligent Transportation Systems Conference, ITSC 2019, Auckland, New Zealand, October 27-30, 2019 , pages 2160–2165. IEEE, 2019. 11. Alessandro Cimatti, Sergio Mover, and Stefano Tonetta. Efficient scenario verifi-cation for hybrid automata. In Ganesh Gopalakrishnan and Shaz Qadeer, editors, 
+
+Computer Aided Verification - 23rd International Conference, CAV 2011, Snow-bird, UT, USA, July 14-20, 2011. Proceedings , Lecture Notes in Computer Science, pages 317–332. Springer, 2011. 12. Yliès Falcone. You should better enforce than verify. In Howard Barringer, Yliès Falcone, Bernd Finkbeiner, Klaus Havelund, Insup Lee, Gordon J. Pace, Grigore 
+
+20 Rosu, Oleg Sokolsky, and Nikolai Tillmann, editors, Runtime Verification - First International Conference, RV 2010, St. Julians, Malta, November 1-4, 2010. Pro-ceedings , Lecture Notes in Computer Science, pages 89–105. Springer, 2010. 13. Yliès Falcone, Jean-Claude Fernandez, and Laurent Mounier. What can you verify and enforce at runtime? Int. J. Softw. Tools Technol. Transf. , 14(3):349–382, 2012. 14. Yliès Falcone, Klaus Havelund, and Giles Reger. A tutorial on runtime verifica-tion. In Manfred Broy, Doron A. Peled, and Georg Kalus, editors, Engineering Dependable Software Systems , volume 34 of NATO Science for Peace and Security Series, D: Information and Communication Security , pages 141–175. IOS Press, 2013. 15. Yliès Falcone, Thierry Jéron, Hervé Marchand, and Srinivas Pinisetty. Runtime enforcement of regular timed properties by suppressing and delaying events. Sci. Comput. Program. , 123:2–41, 2016. 16. Yliès Falcone, Laurent Mounier, Jean-Claude Fernandez, and Jean-Luc Richier. Runtime enforcement monitors: composition, synthesis, and enforcement abilities. 
+
+Formal Methods Syst. Des. , 38(3):223–262, 2011. 17. Thomas A. Henzinger. The theory of hybrid automata. In Proceedings, 11th Annual IEEE Symposium on Logic in Computer Science, New Brunswick, New Jersey, USA, July 27-30, 1996 , pages 278–292. IEEE Computer Society, 1996. 18. Thomas A. Henzinger, Peter W. Kopke, Anuj Puri, and Pravin Varaiya. What’s decidable about hybrid automata? In Frank Thomson Leighton and Allan Borodin, editors, Proceedings of the Twenty-Seventh Annual ACM Symposium on Theory of Computing, 29 May-1 June 1995, Las Vegas, Nevada, USA , pages 373–382. ACM, 1995. 19. Manuel Hilty, David A. Basin, and Alexander Pretschner. On obligations. In Sabrina De Capitani di Vimercati, Paul F. Syverson, and Dieter Gollmann, editors, 
+
+Computer Security - ESORICS 2005, 10th European Symposium on Research in Computer Security, Milan, Italy, September 12-14, 2005, Proceedings , volume 3679 of Lecture Notes in Computer Science , pages 98–117. Springer, 2005. 20. Frank Houdek and Alexander Raschke. Adaptive exterior light and speed control system. In Alexander Raschke, Dominique Méry, and Frank Houdek, editors, Rig-orous State-Based Methods - 7th International Conference, ABZ 2020, Ulm, Ger-many, May 27-29, 2020, Proceedings , Lecture Notes in Computer Science, pages 281–301. Springer, 2020. 21. Bettina Könighofer, Mohammed Alshiekh, Roderick Bloem, Laura R. Humphrey, Robert Könighofer, Ufuk Topcu, and Chao Wang. Shield synthesis. Formal Meth-ods Syst. Des. , 51(2):332–361, 2017. 22. Owolabi Legunsen, Wajih Ul Hassan, Xinyue Xu, Grigore Rosu, and Darko Mari-nov. How good are the specs? a study of the bug-finding effectiveness of exist-ing java API specifications. In David Lo, Sven Apel, and Sarfraz Khurshid, edi-tors, Proceedings of the 31st IEEE/ACM International Conference on Automated Software Engineering, ASE 2016, Singapore, September 3-7, 2016 , pages 602–613. ACM, 2016. 23. Jay Ligatti, Lujo Bauer, and David Walker. Run-time enforcement of nonsafety policies. ACM Trans. Inf. Syst. Secur. , 12(3):19:1–19:41, 2009. 24. Oded Maler and Dejan Nickovic. Monitoring temporal properties of continuous signals. In Yassine Lakhnech and Sergio Yovine, editors, Formal Techniques, Mod-elling and Analysis of Timed and Fault-Tolerant Systems, Joint International Con-ferences on Formal Modelling and Analysis of Timed Systems, FORMATS 2004 and Formal Techniques in Real-Time and Fault-Tolerant Systems, FTRTFT 2004, 
+
+21 Grenoble, France, September 22-24, 2004, Proceedings , volume 3253 of Lecture Notes in Computer Science , pages 152–166. Springer, 2004. 25. Srinivas Pinisetty. Runtime enforcement of timed properties. (Enforcement à l’éxécution de propriétés temporisées) . PhD thesis, University of Rennes 1, France, 2015. 26. Srinivas Pinisetty, Yliès Falcone, Thierry Jéron, and Hervé Marchand. Runtime enforcement of parametric timed properties with practical applications. In Jean-Jacques Lesage, Jean-Marc Faure, José E. R. Cury, and Bengt Lennartson, editors, 
+
+12th International Workshop on Discrete Event Systems, WODES 2014, Cachan, France, May 14-16, 2014 , pages 420–427. International Federation of Automatic Control, 2014. 27. Srinivas Pinisetty, Yliès Falcone, Thierry Jéron, and Hervé Marchand. Runtime enforcement of regular timed properties. In Yookun Cho, Sung Y. Shin, Sang-Wook Kim, Chih-Cheng Hung, and Jiman Hong, editors, Symposium on Applied Computing, SAC 2014, Gyeongju, Republic of Korea - March 24 - 28, 2014 , pages 1279–1286. ACM, 2014. 28. Srinivas Pinisetty, Yliès Falcone, Thierry Jéron, Hervé Marchand, Antoine Rol-let, and Omer Nguena-Timo. Runtime enforcement of timed properties revisited. 
+
+Formal Methods Syst. Des. , 45(3):381–422, 2014. 29. Srinivas Pinisetty, Partha S. Roop, Steven Smyth, Nathan Allen, Stavros Tripakis, and Reinhard von Hanxleden. Runtime enforcement of cyber-physical systems. 
+
+ACM Trans. Embed. Comput. Syst. , 16(5s):178:1–178:25, 2017. 30. Srinivas Pinisetty, Partha S. Roop, Steven Smyth, Stavros Tripakis, and Reinhard von Hanxleden. Runtime enforcement of reactive systems using synchronous en-forcers. In Hakan Erdogmus and Klaus Havelund, editors, Proceedings of the 24th ACM SIGSOFT International SPIN Symposium on Model Checking of Software, Santa Barbara, CA, USA, July 10-14, 2017 , pages 80–89. ACM, 2017. 31. Srinivas Pinisetty, Gerardo Schneider, and David Sands. Runtime verification of hyperproperties for deterministic programs. In Stefania Gnesi, Nico Plat, Paola Spoletini, and Patrizio Pelliccione, editors, Proceedings of the 6th Conference on Formal Methods in Software Engineering, FormaliSE 2018, collocated with ICSE 2018, Gothenburg, Sweden, June 2, 2018 , pages 20–29. ACM, 2018. 32. Amir Pnueli. The temporal logic of programs. In 18th Annual Symposium on Foundations of Computer Science, Providence, Rhode Island, USA, 31 October -1 November 1977 , pages 46–57. IEEE Computer Society, 1977. 33. Amir Pnueli and Roni Rosner. On the synthesis of a reactive module. In Conference Record of the Sixteenth Annual ACM Symposium on Principles of Programming Languages, Austin, Texas, USA, January 11-13, 1989 , pages 179–190. ACM Press, 1989. 34. Martin C. Rinard. Acceptability-oriented computing. In Ron Crocker and Guy L. Steele Jr., editors, Companion of the 18th Annual ACM SIGPLAN Conference on Object-Oriented Programming, Systems, Languages, and Applications, OOP-SLA 2003, October 26-30, 2003, Anaheim, CA, USA , pages 221–239. ACM, 2003. 35. Fred B. Schneider. Enforceable security policies. ACM Trans. Inf. Syst. Secur. ,3(1):30–50, 2000. 36. A. Prasad Sistla, Milos Zefran, and Yao Feng. Runtime monitoring of stochastic cyber-physical systems with hybrid state. In Sarfraz Khurshid and Koushik Sen, editors, Runtime Verification - Second International Conference, RV 2011, San Francisco, CA, USA, September 27-30, 2011, Revised Selected Papers , Lecture Notes in Computer Science, pages 276–293. Springer, 2011. 
+
+22 A Appendix- Illustration of execution of the enforcement algorithm                                                                                                                                                                  
+
+> tOutput Current Current values Enforced Next Mode Remark Event Mode (d, v, a )Event
+> 0.0stutter InitMode 95 ,10 ,0stutter InitMode System dwelling
+> 1.0acc InitMode 98 .89 ,10 ,0stutter InitMode Suppress/delay
+> 1.29 −InitMode 100 .02 ,10 ,1acc AccelerateMode Event delayed
+> 2.0acc AccelerateMode 100 .56 ,10 .72 ,2acc AccelerateMode Event executed
+> 3.0acc AccelerateMode 104 .74 ,12 .72 ,3acc AccelerateMode Event executed
+> 4.0stutter AccelerateMode 104 .42 ,15 .72 ,3stutter AccelerateMode System dwelling
+> 5.0stutter AccelerateMode 101 .11 ,18 .72 ,3stutter AccelerateMode System dwelling
+> 5.22 −AccelerateMode 99 .98 ,19 .38 ,0cru CruiseMode Event inserted
+> 6.0cru CruiseMode 95 .64 ,19 .38 ,0cru CruiseMode Event executed
+> 7.0stutter CruiseMode 9.15 ,19 .38 ,0stutter CruiseMode System dwelling
+> 8.0stutter CruiseMode 84 .82 ,19 .38 ,0stutter CruiseMode System dwelling
+> 9.0acc CruiseMode 79 .17 ,19 .38 ,0stutter CruiseMode Suppressed
+> 10 .0stutter CruiseMode 73 .84 ,19 .38 ,0stutter CruiseMode System dwelling
+> 10 .67 −CruiseMode 69 .99 ,19 .38 ,−1dec DecelerateMode Event inserted
+> 11 .0stutter DecelerateMode 68 .18 ,19 .04 ,−1stutter DecelerateMode System dwelling
+> 12 .0stutter DecelerateMode 63 .53 ,18 .04 ,−1stutter DecelerateMode System dwelling
+> 13 .0stutter DecelerateMode 59 .87 ,17 .04 ,−1stutter DecelerateMode System dwelling
+> 14 .0stutter DecelerateMode 57 .22 ,16 .04 ,−1stutter DecelerateMode System dwelling
+> 15 .0stutter DecelerateMode 55 .56 ,15 .04 ,−1stutter DecelerateMode System dwelling
+
+Table 1: Presents the enforced events that satisfy the safety property φ for the event sequence from the system shown in Figure 2b. N.B. stutter represents a stutter event. A detailed execution of the enforcement algorithm (Algorithm 1) is presented in Table 1. t and Output Event represent the physical time, and at which an event comes from the system, respectively. Current Mode and Current Values signify the current location where control resides and current state of the automaton. 
+
+Enforced Event presents the rectified events from the enforcer. Next Mode shows the transition of the control in the automaton after the enforced event. Remark 
+
+provides comments on the execution. 
+
+## B Appendix- Proof of Proposition 1 
+
+Proof (Correctness of the enforcement algorithm). The correctness of the algo-rithm is established via induction over the discrete execution steps of the enforced output sequence σ′. Let E∗ 
+
+> φ
+
+denote the enforcement function. Inductive Hypoth-esis: Assume that up to time t, the enforcer has processed an input stream σ to produce a sound output sequence σ′ = E∗
+
+> φ
+
+(σ) such that σ′ |= φ.We analyze the inductive step during the transition to time t + 1 under three exhaustive cases: 
+
+– Case 1 (No modification): A new event e is observed at time t. If the extension of the trace satisfies the property, i.e., σ′ · e |= φ, Algorithm 1 outputs the event without modification. Thus, E∗
+
+> φ
+
+(σ · e) = σ′ · e |= φ.23 – Case 2 (Suppression/Substitution): If the incoming event causes a violation, i.e., σ′ · e̸ |= φ, the enforcer intercepts and suppresses e, substituting it with a safe stutter event d. This ensures that E∗
+
+> φ
+
+(σ · e) = σ′ · d |= φ.
+
+– Case 3 (Proactive Inter-tick Insertion): If no boundary event causes a vi-olation, but continuous state evolution within the dense-time interval τ ∈
+
+(t, t +1) threatens a state invariant violation, the proactive look-ahead mech-anism is triggered. At the critical moment τ , Algorithm 1 inserts a corrective event e′ to steer the trajectory back into the safe space, ensuring σ′ · e′ |= φ.Consequently, for all valid transitions, the output trace at t + 1 preserves safety (E∗ 
+
+> φ
+
+|= φ), completing the proof. □
+
+24

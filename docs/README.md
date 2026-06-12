@@ -6,29 +6,35 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-11
-- 运行时间：2026-06-11 21:55:31 UTC
+- 最新运行日期：2026-06-12
+- 运行时间：2026-06-12 20:53:04 UTC
 - 运行状态：成功
-- 本次总论文数：3
+- 本次总论文数：5
 - 精读区：1
-- 速读区：2
+- 速读区：4
 
 ### 今日简报（AI）
-今日精读一篇高分论文，聚焦基于控制障碍函数（CBF）的驾驶辅助技术，旨在稳定交通流。最值得关注的是CBF方法的有效性（9.0/10），以及速读中深度Koopman预测控制和LTLf约束强化学习两个方向。建议优先深入理解CBF在交通流中的应用，后续可尝试将其与其他控制策略结合。
-- 详情：[/202606/11/README](/202606/11/README)
+今日精选5篇论文，聚焦非线性控制稳定性与安全验证；最值得关注精读论文提出带稳定性保证的非线性结构化状态空间控制器自由参数化方法；建议优先精读该文，其理论成果可直接应用于机器人或自动驾驶控制设计。
+- 详情：[/202606/12/README](/202606/12/README)
 
 ### 精读区论文标签
-1. [CBF-based Driving Assistance for Traffic Flow Stabilization](/202606/11/2606.11883v1-cbf-based-driving-assistance-for-traffic-flow-stabilization)  
-   标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：基于控制屏障函数的驾驶辅助交通流稳定
+1. [Free Parametrization of L_2-Bounded Structured State-Space Controllers for Nonlinear Control with Stability Guarantees](/202606/12/2606.11049v1-free-parametrization-of-l2-bounded-structured-state-space-controllers-for-nonlinear-control-with-stability-guarantees)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：使用神经网络对非线性系统进行稳定控制
 
 ### 速读区论文标签
-1. [Learning Predictive Control with Deep Koopman Operators for Autonomous Vehicle Motion Planning](/202606/11/2606.08136v1-learning-predictive-control-with-deep-koopman-operators-for-autonomous-vehicle-motion-planning)  
+1. [Who Earns the Safety? Intervention-Aware Quantum Predictive Control with Safety Attribution](/202606/12/2606.09778v1-who-earns-the-safety-intervention-aware-quantum-predictive-control-with-safety-attribution)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：干预感知量子控制实现安全归因
+2. [Runtime Enforcement of Hybrid System Properties](/202606/12/2606.12022v1-runtime-enforcement-of-hybrid-system-properties)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：混合系统安全性的运行时强制执行
+3. [A constrained symbolic regression approach for Lyapunov function discovery](/202606/12/2606.10045v1-a-constrained-symbolic-regression-approach-for-lyapunov-function-discovery)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：深度Koopman算子和强化学习的学习预测控制在自动驾驶中的运用
-2. [Neuro-Symbolic Injection of LTLf Constraints in Autoregressive Reinforcement Learning Policies](/202606/11/2606.08312v1-neuro-symbolic-injection-of-ltlf-constraints-in-autoregressive-reinforcement-learning-policies)  
+   evidence：Lyapunov函数发现用于安全关键控制
+4. [Embodiment-conditioned Generalist Control for Multirotor Aerial Robots](/202606/12/2606.10857v1-embodiment-conditioned-generalist-control-for-multirotor-aerial-robots)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：神经符号强化学习结合LTLf约束以实现安全任务满足
+   evidence：神经网络多旋翼控制，与无人机相关
 
 
 <div class="dpr-home-promo-card">
