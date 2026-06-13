@@ -6,35 +6,31 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-12
-- 运行时间：2026-06-12 20:53:04 UTC
+- 最新运行日期：2026-06-13
+- 运行时间：2026-06-13 21:22:29 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：1
-- 速读区：4
+- 本次总论文数：3
+- 精读区：2
+- 速读区：1
 
 ### 今日简报（AI）
-今日精选5篇论文，聚焦非线性控制稳定性与安全验证；最值得关注精读论文提出带稳定性保证的非线性结构化状态空间控制器自由参数化方法；建议优先精读该文，其理论成果可直接应用于机器人或自动驾驶控制设计。
-- 详情：[/202606/12/README](/202606/12/README)
+1) 今日精读两篇高分论文：时变扰动下的收缩系统安全镇定方案与基于高斯变分方程的航天器轨道转移/交会约束镇定，速读一篇Koopman数据驱动非线性输出反馈控制。
+2) 最值得关注方向：收缩系统对时变扰动的鲁棒性分析框架，以及高斯变分方程在带约束航天器控制中的严密解法。
+3) 建议优先精读两篇8.0分论文，掌握其理论工具后可用于无人机或机器人等安全关键系统的镇定设计与验证。
+- 详情：[/202606/13/README](/202606/13/README)
 
 ### 精读区论文标签
-1. [Free Parametrization of L_2-Bounded Structured State-Space Controllers for Nonlinear Control with Stability Guarantees](/202606/12/2606.11049v1-free-parametrization-of-l2-bounded-structured-state-space-controllers-for-nonlinear-control-with-stability-guarantees)  
+1. [Time-Varying Perturbations of Contractive Systems With an Application to Safe Stabilization](/202606/13/2606.09035v1-time-varying-perturbations-of-contractive-systems-with-an-application-to-safe-stabilization)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：使用神经网络对非线性系统进行稳定控制
+   evidence：针对时变扰动下的收缩系统提出安全滤波器，实现安全镇定
+2. [Constrained Lyapunov Stabilization based on Gauss Variational Equations: From Spacecraft Orbital Transfers to Rendezvous](/202606/13/2606.12108v1-constrained-lyapunov-stabilization-based-on-gauss-variational-equations-from-spacecraft-orbital-transfers-to-rendezvous)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：使用势垒函数（Barrier Functions）强制执行状态和控制约束，用于Lyapunov稳定
 
 ### 速读区论文标签
-1. [Who Earns the Safety? Intervention-Aware Quantum Predictive Control with Safety Attribution](/202606/12/2606.09778v1-who-earns-the-safety-intervention-aware-quantum-predictive-control-with-safety-attribution)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：干预感知量子控制实现安全归因
-2. [Runtime Enforcement of Hybrid System Properties](/202606/12/2606.12022v1-runtime-enforcement-of-hybrid-system-properties)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：混合系统安全性的运行时强制执行
-3. [A constrained symbolic regression approach for Lyapunov function discovery](/202606/12/2606.10045v1-a-constrained-symbolic-regression-approach-for-lyapunov-function-discovery)  
+1. [Koopman meets input-output data: Data-driven output-feedback control of nonlinear systems with closed-loop guarantees](/202606/13/2606.07758v1-koopman-meets-input-output-data-data-driven-output-feedback-control-of-nonlinear-systems-with-closed-loop-guarantees)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：Lyapunov函数发现用于安全关键控制
-4. [Embodiment-conditioned Generalist Control for Multirotor Aerial Robots](/202606/12/2606.10857v1-embodiment-conditioned-generalist-control-for-multirotor-aerial-robots)  
-   标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：神经网络多旋翼控制，与无人机相关
+   evidence：带闭环保证的数据驱动控制，可应用于安全控制
 
 
 <div class="dpr-home-promo-card">
