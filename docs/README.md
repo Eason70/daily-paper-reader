@@ -6,31 +6,29 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-13
-- 运行时间：2026-06-13 21:22:29 UTC
+- 最新运行日期：2026-06-14
+- 运行时间：2026-06-14 21:24:10 UTC
 - 运行状态：成功
 - 本次总论文数：3
 - 精读区：2
 - 速读区：1
 
 ### 今日简报（AI）
-1) 今日精读两篇高分论文：时变扰动下的收缩系统安全镇定方案与基于高斯变分方程的航天器轨道转移/交会约束镇定，速读一篇Koopman数据驱动非线性输出反馈控制。
-2) 最值得关注方向：收缩系统对时变扰动的鲁棒性分析框架，以及高斯变分方程在带约束航天器控制中的严密解法。
-3) 建议优先精读两篇8.0分论文，掌握其理论工具后可用于无人机或机器人等安全关键系统的镇定设计与验证。
-- 详情：[/202606/13/README](/202606/13/README)
+今日收录3篇论文，聚焦安全控制与机器人协作，其中2篇精读、1篇速读。最值得关注的方向是控制障碍函数引导扩散模型实现离线多智能体强化学习安全，以及将ISO安全标准嵌入机器人控制。建议后续深入研读控制障碍函数在安全合规与人机交互中的实际部署方法。
+- 详情：[/202606/14/README](/202606/14/README)
 
 ### 精读区论文标签
-1. [Time-Varying Perturbations of Contractive Systems With an Application to Safe Stabilization](/202606/13/2606.09035v1-time-varying-perturbations-of-contractive-systems-with-an-application-to-safe-stabilization)  
+1. [Individual Control Barrier Functions-Guided Diffusion Model for Safe Offline Multi-Agent Reinforcement Learning](/202606/14/2606.12640v1-individual-control-barrier-functions-guided-diffusion-model-for-safe-offline-multi-agent-reinforcement-learning)  
+   标签：评分：10.0/10、query:safe-rl-cbf
+   evidence：将神经个体控制屏障函数嵌入扩散模型实现安全离线多智能体强化学习
+2. [Embedding ISO 10218 Safety Compliance in Robots via Control Barrier Functions for Human-Robot Collaboration](/202606/14/2606.13203v1-embedding-iso-10218-safety-compliance-in-robots-via-control-barrier-functions-for-human-robot-collaboration)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：针对时变扰动下的收缩系统提出安全滤波器，实现安全镇定
-2. [Constrained Lyapunov Stabilization based on Gauss Variational Equations: From Spacecraft Orbital Transfers to Rendezvous](/202606/13/2606.12108v1-constrained-lyapunov-stabilization-based-on-gauss-variational-equations-from-spacecraft-orbital-transfers-to-rendezvous)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：使用势垒函数（Barrier Functions）强制执行状态和控制约束，用于Lyapunov稳定
+   evidence：使用控制屏障函数实现人机协作安全合规，符合ISO 10218
 
 ### 速读区论文标签
-1. [Koopman meets input-output data: Data-driven output-feedback control of nonlinear systems with closed-loop guarantees](/202606/13/2606.07758v1-koopman-meets-input-output-data-data-driven-output-feedback-control-of-nonlinear-systems-with-closed-loop-guarantees)  
-   标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：带闭环保证的数据驱动控制，可应用于安全控制
+1. [Patching Control Lyapunov Barrier Functions for Temporal Logic Specifications with Bounded Controls](/202606/14/2606.12768v1-patching-control-lyapunov-barrier-functions-for-temporal-logic-specifications-with-bounded-controls)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：使用控制李雅普诺夫屏障函数实现安全控制
 
 
 <div class="dpr-home-promo-card">

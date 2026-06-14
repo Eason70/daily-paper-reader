@@ -1,0 +1,403 @@
+Title: Embedding ISO 10218 Safety Compliance in Robots via Control Barrier Functions for Human-Robot Collaboration
+
+URL Source: https://arxiv.org/pdf/2606.13203v1
+
+Published Time: Fri, 12 Jun 2026 00:49:11 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+> 1
+
+# Embedding ISO 10218 Safety Compliance in Robots via Control Barrier Functions for Human-Robot Collaboration 
+
+Federico Parma 1,2, Cesare Tonola 3, Nicola Pedrocchi 3, Manuel Beschi 2,3
+
+Abstract —Human-Robot Collaboration (HRC) requires strict adherence to safety standards, such as ISO 10218, to prevent harmful interactions. Standard Speed and Separation Monitoring (SSM) filters calculate safe robotic speeds based on conservative assumptions, such as constant human velocity, which prevents accurate predictions of minimum separation distances and causes unnecessary operational halts. This paper proposes a Control Barrier Function (CBF) that explicitly incorporates human acceleration data to analytically forward-predict the minimum human-robot separation distance during a worst-case robotic stopping trajectory. To guarantee safety at the control level, this predictive CBF is integrated as an inequality constraint within a Sequential Quadratic Programming (SQP) framework. Specif-ically, two methods are proposed: Method I, a CBF-constrained PD safety filter; and Method II, a task-scaling SQP controller that enforces a spatial tube constraint. Simulated and real-world experiments on a UR10e robot evaluate the two proposed methods against a standard industrial SSM module baseline. Results demonstrate that Method II dynamically modulates execution speed and confines spatial deviations. Compared to Method I, Method II achieves a 63% reduction in mean trajectory error and avoids excessive evasive manoeuvres, ensuring high task throughput while complying with ISO 10218 SSM guidelines. 
+
+Index Terms —Human-Robot Collaboration, Safety in HRI, Motion Control, Control Barrier Function, Speed and Separation Monitoring 
+
+I. I NTRODUCTION 
+
+Human-Robot Collaboration (HRC) has become increas-ingly popular in domains such as industry, healthcare, and social robotics. However, enabling safe and effective collab-oration introduces significant challenges. HRC requires strict adherence to safety standards, most notably ISO 10218 [1], which recently incorporated the former ISO/TS 15066 [2]. This standard defines collaborative operations, among which 
+
+Power and Force Limiting (PFL) and Speed and Separation 
+
+> 1
+
+Dept. of Electrical and Information Engineering, Polytechnic of Bari, Italy. 
+
+f.parma@phd.poliba.it 
+
+> 2
+
+Dipartimento di Ingegneria Meccanica e Industriale, University of Brescia, Italy. 
+
+> 3
+
+Institute of Intelligent Industrial Technologies and Systems, National Research Council of Italy, STIIMA-CNR, Milan, Italy. This work was supported by the European Union – Next Generation Eu - under the National Recovery and Resilience Plan (NRRP), Mission 4 Component 2, Investment 3.3 – Decree no. 630 (24th April 2024) of the Italian Ministry of University and Research; Concession Decree no. 1956 05th December 2024, adopted by the Italian Ministry of University and Research, CUP D93D24000270003, within the national PhD Programme in Autonomous Systems (XL cycle). This work was supported by the PLAN4ARI project (CUP: B43C25000520001), funded by the Italian Ministry of University and Research under the Fondo Italiano per le Scienze Applicate 2024 programme, pursuant to Ministerial Directorial Decree No. 1075 of 18th July 2024. The experiments involving human participants were conducted in accor-dance with the ethical principles of the Declaration of Helsinki and did not require formal ethics committee approval under local regulations 
+
+Monitoring (SSM) are commonly used in workspace sharing. While PFL limits impact forces during contact, SSM prevents contact by dynamically reducing the robot’s speed to ensure a protective separation distance is never breached. Classical SSM safety filters [3] calculate the maximum permissible speed based on conservative assumptions: the human moves at a constant velocity and the minimum distance is expected only after the robot has fully stopped. Recently, thanks to the publication of the standard IEC TS 61496-4-3:2022 [4], the market has started to offer perception systems that can provide certified real-time tracking of humans, and advances in radar technologies have been remarkable, leading to the possibility of integrating acceleration estimation in SSM computations to increase productivity dramatically. To ensure safety without sacrificing task efficiency, every robot command must embed ISO 10218 compliance at the motion control level. Over the years, several optimal control and Model Predictive Control (MPC) schemes have been proposed to maximise productivity while maintaining separa-tion distances [5], [6]. Other approaches explicitly incorporate ISO/TS 15066 limits by retiming the robot trajectory [7], mod-ulating robot speed based on SSM rules [8], or evaluating tra-jectories within a receding horizon using safe motion units [9], [10]. While MPC frameworks are highly effective at handling constraints, they often impose a significant computational burden. Conversely, trajectory retiming methods are computa-tionally lighter but bind the robot to the nominal path, forcing complete operational halts when a human approaches. Control Barrier Functions (CBFs) [11] have emerged as a highly effective mathematical framework to guarantee the forward invariance of a predefined safe set [12], [13]. In robotics, CBFs have been widely adopted for dynamic obstacle avoidance in mobile navigation [14], correcting unsafe deep reinforcement learning policies [15], and adapting Cartesian compliance for kinesthetic teaching [16], [17]. However, these generalised approaches model obstacles using generic geometric bounds. They lack the specific deterministic kinematic constraints mandated by industrial SSM regulations. Recent frameworks have begun embedding ISO 10218 safety compliance directly into robot control via CBFs. For instance, [18] designed a CBF constraint for PFL operations that modulates robotic velocity based on the instantaneous human-robot distance. Because PFL is designed to limit contact forces during a physical impact, evaluating the instantaneous distance is sufficient. However, to enable high-throughput, contactless collaboration via SSM, relying exclusively on instantaneous distance is overly restrictive. Furthermore, while the PD-based safety filter proposed in [18] mathematically prevents collisions, it fails to inherently constrain the robot’s spatial deviation dur-
+
+> arXiv:2606.13203v1 [cs.RO] 11 Jun 2026 2
+
+ing evasive safety manoeuvres. In real-world manufacturing, unconstrained path deviations pose serious risks, potentially causing collisions with static infrastructure or confusing the human operator. To bridge this gap, this paper proposes a CBF that analyt-ically forward-predicts the minimum human-robot separation distance during a worst-case robotic stopping trajectory, ex-plicitly incorporating human acceleration data. The controller embeds safety guarantees by integrating the CBF as an in-equality constraint within a Sequential Quadratic Program-ming (SQP) framework utilising task-scaling and spatial tube constraints. The main contributions are:  
+
+> •
+
+We derive a predictive CBF from ISO 10218 kinematic limits that accounts for real-time human acceleration, overcoming the over-reactivity of standard SSM.  
+
+> •
+
+We propose a task-scaling SQP controller with a spatial tube constraint, enabling the robot to modulate speed and safely deflect from its path without chaotic manoeuvres. The algorithms have been validated in simulation and real-world scenarios, demonstrating a 63% reduction in mean trajectory error compared to nominal safety filters. II. P RELIMINARIES 
+
+A. Control Barrier Functions 
+
+Consider the nonlinear control-affine system 
+
+˙χ = f (χ) + g(χ)u, 
+
+where χ ∈ S ⊂ Rs is the system state and u ∈ U ⊂ Rl is the control input, having S as the set of reachable system states and U as the set of admissible control values. By choosing an appropriate continuous and piecewise dif-ferentiable function h : S → R, it is possible to define the set of admissible system states C and its border ∂C as follows: 
+
+C = { χ ∈ Rs | h(χ) ≥ 0 },∂C = { χ ∈ Rs | h(χ) = 0 }. (1) Following standard CBF theory [11], the forward invariance of C is guaranteed if there exists a control action u such that 
+
+Lf h(χ) + Lg h(χ)u ≥ − α(h(χ)) for all χ ∈ C , where α is an extended class K function and Lf , Lg are the Lie derivatives of h along f and g.
+
+B. Human-Robot Distance and Velocity Evaluation 
+
+Let the kinematic Cartesian state of a single point be denoted by the tuple (p, v, ˙v) ∈ R9, comprising its Cartesian position p, velocity v and acceleration ˙v. Accordingly, the hu-man state H (consisting of m key points) and the robot state R
+
+(consisting of k points of interest) can be defined synthetically as: H = {(phi , v hi , ˙vhi )}mi=1 and R = {(prj , v rj , ˙vrj }kj=1 .The Cartesian position, velocity, and acceleration of the j-th robot point are obtained via standard forward kinematics and the translational Jacobian Jtj . Let dij (t) = ∥prj (t) − phi (t)∥
+
+be the distance between two points at time t. To evaluate SSM rules, velocities are projected along the human-robot direction unit vector uij (r):
+
+urh,ij (t) = prj (t) − phi (t)
+
+dij (t) (2) The projected velocities are vr∥j (t) = vrj (t) · urh,ij (t) and 
+
+vh∥i(t) = vhi (t) · urh,ij (t).A positive vr∥j indicates the robot is moving away from the human, while a positive vh∥i indicates the human is moving towards the robot. Initial quantities at time t0 are denoted as 
+
+d0, vr∥0, and vh∥0.
+
+C. Choice of System State and Control Action 
+
+The system state χ ∈ R15 for a ij -tuple 1 chosen to include human dynamics can be written as: 
+
+χ = [ pTr pTh vTr vTh ˙vTh ]T , (3) To facilitate interpretation, a state mapping is introduced: 
+
+ψ(χ) : R15 → R4, ψ(χ) = [ d0, v r∥0, v h∥0, ˙vh∥]T (4) The analytical Jacobian of the state mapping, ∂ψ ∂χ , is derived algebraically to compute the Lie derivatives for the CBF constraint. The robot Cartesian acceleration ˙vr = μ has been chosen as the control action for the CBF design. III. CBF APPLIED TO SPEED AND SEPARATION 
+
+MONITORING CONSTRAINT 
+
+To embed SSM constraints directly into the control frame-work, we define the CBF h(ψ(χ)) based on the minimum human-robot separation distance dmin . Relying solely on the instantaneous distance d0 is non-conservative because the true minimum distance during a braking manoeuvre may be significantly smaller, depending on relative dynamics. To rigorously guarantee ISO 10218 compliance, the CBF estimation forward-predicts this worst-case minimum distance over the bounded horizon of the robot’s stopping trajectory. We assume a constant human acceleration along the human-robot direction ( ˙vh|| (t) = ˙vh|| ). While real-world human motion is inherently jerky, the positional error introduced by unmodeled variations in human acceleration during this short deceleration phase is absorbed into the minimum admissible distance parameter C [3]. Furthermore, since the control loop operates at 500 Hz , the prediction is continually updated, mitigating error accumulation. The general form of the CBF is defined as: 
+
+h(ψ(χ)) = dmin − C (5) For context, the classical reactive SSM implementation [3] restricts the instantaneous robot speed vmax under the assump-tion 2 vh < 0 with vh constant: 
+
+vmax =
+
+q
+
+v2 
+
+> h
+
++ ( asTr )2 − 2as(C − d0) − asTr − vh (6) To determine dmin , we need to study how d(t) varies in the hypothetical braking time. If vr∥0 < 03, the robot moves at a constant velocity vr∥0 during the system reaction time 
+
+Tr , then decelerates uniformly at −as until stopping. If 
+
+vr∥0 ≥ 0, no braking is necessary as the robot is already     
+
+> 1Subscripts iand jare omitted hereafter for brevity.
+> 2human is approaching the robot at a constant speed in the hypothetical braking time.
+> 3namely, the robot is moving away.
+
+3Time [s]          
+
+> Velocity [m/s]
+> Robot moving towards human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> Time [s]
+> Velocity [m/s]
+> Robot moving away from human
+> vr∥vh∥t1t2t3Distance decreasing Distance increasing
+
+Fig. 1. Plots of vr∥ and vh∥ behavior over all the possible CBF evaluation scenarios. When the area between the two lines is red, the distance is decreasing; when the area is blue, the distance is increasing. 
+
+moving away. To determine the expression of dmin , it is useful to define the relative velocity between human and robot as 
+
+˙d(t) = vr∥(t) − vh∥(t). The predicted human-robot distance is 
+
+d(t) = d0 + R tt0
+
+˙d(τ )dτ . Its minimum dmin over the stopping trajectory can occur at the interval boundaries or where the relative velocity ˙d(t) crosses zero. We define tmin as the time instant that minimizes this distance: tmin = arg min( d(t)) The key candidate time instants for tmin are: 
+
+• t0: the initial time. 
+
+• t1, t3: the first and second intersection times where 
+
+vh∥(t) = vr∥(t), if they exist positive. 
+
+• t2 = t0 + Tr : the end of the reaction time. 
+
+• t4 = t2 + |vr∥0|/a s: the final time when the robot fully stops. When vr∥0 < 0 all the key times have significance, while when vr∥0 ≥ 0 only t0, t1 and t2 are considered, since there is no need for the manipulator to brake. Given that 
+
+vr∥ (t) and vh∥(t) are linear and monotonic over the intervals 
+
+[t0, t 2] and ]t2, t 4], respectively, t1 and t3 are unique whenever they exist. Figure 1 shows how the relative velocities and the human-robot distance vary in each case. By evaluating the sign of the relative velocity at the bound-aries of each phase ( ˙d(t0), ˙d(t2), and ˙d(t4)), we establish a set of increasing-distance conditions. Table I summarises the logical configurations to pinpoint tmin . The value of dmin is then obtained by evaluating the analytical integral of d(t) at the identified tmin .IV. I NTEGRATION OF THE CBF IN THE CONTROL PROBLEM 
+
+To guarantee the forward invariance of the admissible set C,the CBF constraint of each ij −tuple is mapped from Cartesian to joint space. Substituting the robot Cartesian acceleration 
+
+˙vr = μ = Jtj ¨q + ˙Jtj ˙q into the standard CBF derivative condition yields the control constraint: 
+
+Lf h + Lg h(Jtj ¨q + ˙Jtj ˙q) + γh (ψ(χ)) ≥ 0 (7) 
+
+TABLE I DETERMINATION OF tmin BASED ON RELATIVE VELOCITY CONDITIONS 
+
+( ˙d(t) > 0). 
+
+Case vr∥0 ˙d(t0) > 0 ˙d(t2) > 0 ˙d(t4) > 0 tmin 
+
+a) < 0 T T T t0
+
+b) < 0 T T F t0 ∨ t4
+
+c) < 0 T F T t0 ∨ t3
+
+d) < 0 T F F t0 ∨ t4
+
+e) < 0 F T T t1
+
+f) < 0 F T F ∄tmin 
+
+g) < 0 F F T t3
+
+h) < 0 F F F t4
+
+i) ≥ 0 T T N/A t0
+
+j) ≥ 0 T F N/A t0 ∨ t2
+
+k) ≥ 0 F T N/A t1
+
+l) ≥ 0 F F N/A t2
+
+where γ ∈ R>0 modulates the responsiveness of the safety filter: a larger value allows the robot to approach the minimum safety distance more aggressively before intervening, whereas a smaller value results in earlier, more conservative braking be-haviour. This constraint is evaluated for each relevant human-robot point pair. We propose two SQP-based control schemes that integrate (7). 
+
+A. Method I (CBF-Constrained PD Controller) 
+
+The first framework serves as a minimally invasive safety filter based on the architecture in [18], but adapted to enforce SSM rather than PFL. It solves a standard optimisation prob-lem to track a nominal PD Cartesian acceleration reference as closely as possible: 
+
+min 
+
+u
+
+¨¯x − ˙Jt ˙q − Jtu 2
+
+(8) where the minimisation problem (8) is subject to the of constraints (7) for each ij −tuple and the physical bounds of the actuators: joint positions ( qmin ≤ q ≤ qmax ), velocities ( ˙qmin ≤ ˙q ≤ ˙qmax ), and accelerations ( ¨qmin ≤ u ≤ ¨qmax ). 4−0.4 −0.2 0.0 0.2 0.4 0.6      
+
+> x [m]
+> −1.0
+> −0.8
+> −0.6
+> −0.4
+> −0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> y [m]
+> Task-Scaling Controller
+> End effector trajectory
+> Human trajectory
+> Reference trajectory
+> −0.4 −0.2 0.0 0.2 0.4 0.6
+> x [m]
+> −1.0
+> −0.8
+> −0.6
+> −0.4
+> −0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> y [m]
+> CBF Constrained PD Controller
+> End effector trajectory
+> Human trajectory
+> Reference trajectory
+> End Effector Trajectories comparison
+
+Fig. 2. Comparison of end-effector trajectories on the xy -plane during a test run. Method II (left, in blue) and Method I (right, in red) are compared against the nominal reference path (black) and the recorded human trajectory (grey). The Baseline controller was not considered in this analysis because its formulation does not allow any deviation from the original path. TABLE II CONTROLLER AND SAFETY PARAMETERS 
+
+Method II Method I & Baseline 
+
+γ 9.65 C 0.25 m
+
+¯δ 4.43 rad Tr 0.15 s
+
+˙¯ξ 1.0 as 2.5 m/s 2
+
+¨ξmax 1.0 vh 1.6 m/s 
+
+[λpos , λ vel ] [1 .08 × 10 3, 0.02] KP diag (37 , 37 , 37) × 10 3
+
+[λacc , λ scale ] [9 .68 × 10 −8, 88 .92] KD diag (65 , 65 , 65) 
+
+B. Method II (Task-Scaling Controller) 1) Task-Scaling Method: We propose a task-scaling frame-work [19] to improve path tracking during evasive manoeu-vres. A scaling parameter ˙ξ ∈ (0 , 1] is introduced to modulate the progression along the nominal trajectory parametrised by the curvilinear abscissa ξ. Let us use the nominal time as 
+
+ξ, the actual (possibly slowed down) trajectory execution is 
+
+˙¯q(t) = ˙ξ d¯q(ξ(t))  
+
+> dξ
+
+. The derivative of the scaling factor ¨ξ is introduced as an additional control variable and is upper-bounded ¨ξ < ¨ξmax to limit the scaling factor increment after a safety event and to obtain bounded accelerations. An SQP is then formulated to minimise deviations from the reference position, velocity, and reference scaling factor (¯q, ˙¯q, ˙¯ξ): 
+
+min  
+
+> u, ¨ξ
+
+λpos ∥q − ¯q∥22 + λvel ∥ ˙q − ˙¯q∥22
+
++ λacc ∥u∥22 + λscale ∥ ˙ξ − ˙¯ξ∥22
+
+(9) 
+
+2) Optimization Problem Constraints: The optimisation is subject to a spatial tube constraint, etraj < δ nom , to prevent evasive deviations from the nominal path that could cause collisions with the environment. Here, etraj = |q − ¯q| is the element-wise joint position error, and δnom ∈ Rn>0 is the parameter vector that defines the maximum admissible spatial deviation from the geometric path. Alongside this tube constraint, the SQP strictly enforces the CBF safety boundary (7), the bounds on the path scaling parameter ( 0 < ˙ξ ≤ 1), and the physical limits of the robotic actuators previously introduced for the Method I framework. 
+
+3) Unfeasible State Recovery Strategy: Due to unexpected events (i.e. sensor delay, sudden path obstructions...), the optimisation problem may not be feasible. In such cases, the controller temporarily switches to a fallback strategy that minimises velocity (maximising braking) subject only to the physical actuator limits. This fallback ensures fail-safe behaviour: when a safe control action u cannot be computed, commanding maximum deceleration to bring the manipulator to a complete halt is the safest response. If the system state breaches the spatial bound δnom during this evasive stop, the tube constraint is dynamically relaxed to accommodate the cur-rent tracking error magnitude: δtemp i (t) = max( δnom i , e i(t)) .During this recovery phase , progression along the nominal trajectory is halted ( ˙ξ = 0 ), and the temporary bound δtemp i (t)
+
+is forced to be strictly non-increasing over time. The nominal tube constraint and the trajectory scaling resume only when the error shrinks back within δnom .V. E XPERIMENTS 
+
+A. Experimental Setup 
+
+The proposed control architectures ( Method I and II ) were validated and compared with a standard industrial baseline in both simulation and real-world environments. The hardware setup comprises a ceiling-mounted Universal Robots UR10e, a Stereolabs ZED 2 camera for human skeletonisation using the BODY 18 algorithm, which extracts 18 human keypoints based on the COCO18 skeleton topology, and an Inxpect X-300 radar-camera sensor for redundant operator position validation. The architecture is orchestrated via ROS2 on Ubuntu 22.04. Controller parameters (summarised in Table II) were selected via Optuna [20] to maximise path scaling while minimising tracking errors and safety violations. To balance path fidelity and algorithm flexibility, the spatial bound vector is defined progressively for joints 0 to 5: δnom =[¯δ, ¯δ, 2¯δ, 2¯δ, 4¯δ, 4¯δ]T .5Task-Scaling Controller CBF Constrained PD Controller  
+
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> Trajectory Error
+> Simulation trial
+> Task-Scaling controller
+> Mean: 0.0142 | Std: 0.0289
+> CBF Constrained PD Controller
+> Mean: 0.0384 | Std: 0.0783
+> Mean Value
+> Median Value
+> Task-Scaling Controller CBF Constrained PD Controller
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> Trajectory Error
+> Real world trial
+> Task-Scaling controller
+> Mean: 0.0113 | Std: 0.0341
+> CBF Constrained PD Controller
+> Mean: 0.0232 | Std: 0.0387
+> Mean Value
+> Median Value
+
+Trajectory Error Comparison 
+
+Fig. 3. Comparison of trajectory errors registered along a test run for Method I and Method II . The Baseline controller was not considered in this analysis because its formulation does not allow any deviation from the original path. 
+
+B. Baseline - External SSM Module 
+
+For the benchmark baseline, we choose a controller that solves the same SQP formulation of (9), but without the CBF constraint. Instead, safety is ensured by strictly mod-ulating the reference scaling factor ˙¯ξ according to the clas-sical reactive SSM velocity limit defined in (6): ˙¯ξ(t) =
+
+min (1 , v max /v r∥(t)) . To ensure a fair comparison, all algo-rithms processed the same pre-recorded human dataset and followed identical continuous pick-and-place trajectories. 
+
+C. Trajectory Tracking and Efficiency 
+
+To evaluate system performance, continuous 15,000-second simulation runs were conducted. Performance is assessed via three metrics: the number of completed laps (overall produc-tivity), the percentage of trajectory waypoints reached (spatial precision), and the mean scaling factor (fluidity of motion). Table III shows that the Baseline controller achieves com-plete spatial fidelity but is highly inefficient in dynamic HRC scenarios; its rigid halting behaviour yields a severely low mean scaling of 0.15, allowing only 41 laps to be completed. 
+
+Method I algorithm, which lacks a scaling parameter for-mulation (N.D.), achieves the highest throughput (994 laps) but suffers from severe spatial deviations (62.91% waypoint accuracy) and an excessive evasive footprint that invades the operator’s workspace (as illustrated in Figure 2). In contrast, Method II strikes an optimal balance. It main-tains a high throughput of 789 laps while successfully reaching 92.91% of the designated waypoints. Crucially, it records a mean scaling factor of 0.81, vastly outperforming the external module (0.15) and demonstrating its ability to dynamically modulate speed rather than triggering the frequent complete stops that cripple traditional reactive filters. 68 70 72 74 76 78 80 82 
+
+> time [s]
+> −0.4
+> −0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> h [m]
+> Real world Experiments:
+> CBF and relative velocity values for Task-Scaling Controller
+> CBF value
+> relative velocity [m/s]
+> −0.4
+> −0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> Relative velocity
+
+Fig. 4. End effector relative velocity (green line) and CBF value (blue line), recorded for Method II during a real-world test TABLE III COMPARISON OF LONG -DURATION TESTS (15 , 000 s)
+
+Metric Method II Method I Baseline 
+
+Number of laps 789 994 41 Waypoints reached (%) 92.91% 62.91% 100% Mean scaling 0.81 N/A 0.15 
+
+This efficiency does not compromise spatial accuracy. In simulation, Method II reduced the mean trajectory error by 63% compared to Method I (0.0143 m vs 0.0384 m), with a significantly narrower variance. This performance success-fully transitions to physical hardware: real-world experiments confirm a tight error distribution for Method II (mean error 
+
+0.0113 m, std 0.0081 m) against Method I (mean error 
+
+0.0232 m, std 0.0287 m), validating the robustness of the tube constraint against unmodeled hardware dynamics and sensor noise, as shown in Figure (3). Furthermore, an analysis of the computational performance confirmed real-time feasibility: the SQP solver 4 failed to find a solution within the 2ms control period in 0.0004% of the control cycles. In such instances, the previously computed control input u is maintained as a fallback strategy. 
+
+D. Safety and CBF Validation 
+
+Figure 4 illustrates the end-effector relative velocity and the computed CBF value h(ψ(χ)) during a real-world test, using live human skeletonisation data. For visual clarity, only a portion of the motion is shown. However, the data remain con-sistent throughout the entire test execution. Yellow-highlighted zones in the plot indicate intervals where the computed CBF value is negative while the end-effector relative velocity is positive. This demonstrates that when the controller cannot maintain a positive CBF, i.e. when the human moves at high speed toward the robot, it enforces a corrective motion, driving the robot in the opposite direction of the operator. Conversely, red areas highlight instances where both 
+
+h(ψ(χ)) and the relative velocity are negative, meaning the 
+
+> 4
+
+implemented in Python using Numba and quadprog libraries on a 5.6 GHz 13th Gen Intel Core i9-13900F×32 CPU. 6
+
+robot is moving toward the human. At the same time, the sep-aration distance is below the minimum admissible threshold. While this represents a potentially hazardous state, the plot shows that as the CBF decreases, the end-effector relative velocity consistently increases, indicating that the robot is braking or attempting an evasive manoeuvre. In these red zones, h(ψ(χ)) decreases too rapidly with respect to the esti-mation of the human’s act of motion. Thus, the robot cannot invert its motion immediately due to physical acceleration constraints. Consequently, a red zone is frequently followed by a yellow zone, indicating the point at which the controller successfully reverses the velocity vector to move away from the human. It is worth noting that the parameter C can be increased to account for uncertainties in human velocity and acceleration estimates to address this problem. VI. C ONCLUSIONS 
+
+This study presented a control framework that embeds ISO 10218 SSM safety regulations directly into the robotic control layer, using a CBF that accounts for human motion prediction rather than assuming constant speed. By explicitly accounting for human acceleration, the framework analytically forward-predicts the absolute minimum distance during a worst-case stopping manoeuvre, avoiding the severe conservatism of instantaneous distance metrics. Evaluating this CBF across different control architectures highlighted strict performance trade-offs in dynamic HRC scenarios. A traditional baseline external SSM module ensured safety but led to frequent operational halts (mean scaling of 0.15) and severe inefficiency. Method I , a CBF-Constrained PD controller achieved high throughput but exhibited tracking errors due to unconstrained evasive manoeuvres. Integrating the predictive CBF into Method II , a task-scaling SQP architecture, with a spatial tube constraint provided the optimal balance. This approach successfully minimised trajec-tory error (63% reduction compared to Method I ) and main-tained high spatial accuracy (92.91% of waypoints reached) while guaranteeing dynamic, fluid human-robot interaction (mean scaling of 0.81). The results confirm that coupling pre-dictive human kinematics with a task-scaling CBF framework mathematically guarantees safety while maximising spatial fidelity and task productivity. Future work will address two current limitations of the framework. First, while the constant human acceleration as-sumption is effective, it requires a conservative safety buffer C
+
+to absorb prediction errors. Integrating probabilistic models for human motion forecasting could tighten this bound and further optimise throughput [21]. Second, system performance relies on static SQP cost-function weights, which create a trade-off between path fidelity and safety responsiveness. We plan to develop an adaptive weighting strategy dynamically modulated by the instantaneous CBF value to address this trade-off. ACKNOWLEDGMENTS 
+
+The authors would like to gratefully acknowledge Inxpect S.p.a. for their generous support in providing the X-300 sensor utilised in our experimental setup. REFERENCES [1] International Organization for Standardization, “ISO 10218:2025 -Robotics — Safety requirements,” 2025. [2] ——, “ISO/TS 15066:2016 - Robots and robotic devices – Collaborative robots,” 2016. [3] C. Byner, B. Matthias, and H. Ding, “Dynamic speed and separation monitoring for collaborative robot applications – concepts and perfor-mance,” vol. 58, no. C, 2019. [4] IEC, “Safety of machinery - electro-sensitive protective equipment - part 4-3: Particular requirements for equipment using vision based protective devices (vbpd),” International Electrotechnical Commission, Technical Specification 61496-4-3, September 2022. [5] M. Faroni, M. Beschi, and N. Pedrocchi, “An MPC Framework for Online Motion Planning in Human-Robot Collaborative Tasks,” in 2019 24th IEEE Int Conf on Emerging Technologies and Factory Automation (ETFA) , 2019, pp. 1555–1558. [6] J. Jung, S. Sim, and S. Han, “Safe motion planning for industrial manipulators in dynamic environments,” in 2024 24th Int Conf on Control, Automation and Systems (ICCAS) , 2024, pp. 681–685. [7] A. Vysock´ y, H. Wada, J. Kinugawa, and K. Kosuge, “Motion plan-ning analysis according to iso/ts 15066 in human–robot collaboration environment,” in 2019 IEEE/ASME Int Conf on Advanced Intelligent Mechatronics (AIM) , 2019, pp. 151–156. [8] A. Pupa and C. Secchi, “Efficient ISO/TS 15066 Compliance through Model Predictive Control,” in 2024 IEEE Int Conf on Robotics and Automation (ICRA) , 2024, pp. 17 358–17 364. [9] A. Palleschi, M. Hamad, S. Abdolshah, M. Garabini, S. Haddadin, and L. Pallottino, “Fast and Safe Trajectory Planning: Solving the Cobot Performance/Safety Trade-Off in Human-Robot Shared Environments,” 
+
+IEEE Robotics and Automation Letters , vol. 6, no. 3, pp. 5445–5452, 2021. [10] S. Haddadin, S. Haddadin, A. Khoury, T. Rokahr, S. Parusel, R. Burgkart, A. Bicchi, and A. Albu-Sch¨ affer, “On making robots understand safety: Embedding injury knowledge into control,” The International Journal of Robotics Research , vol. 31, no. 13, pp. 1578– 1602, 2012. [11] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, “Control Barrier Function Based Quadratic Programs for Safety Critical Systems,” IEEE Transactions on Automatic Control , vol. 62, no. 8, pp. 3861–3876, 2017. [12] L. Knoedler, O. So, J. Yin, M. Black, Z. Serlin, P. Tsiotras, J. Alonso-Mora, and C. Fan, “Safety on the fly: Constructing robust safety filters via policy control barrier functions at runtime,” IEEE Robotics and Automation Letters , vol. 10, no. 10, pp. 10 058–10 065, 2025. [13] M. Rauscher, M. Kimmel, and S. Hirche, “Constrained robot control us-ing control barrier functions,” in 2016 IEEE/RSJ Int Conf on Intelligent Robots and Systems (IROS) , 2016, pp. 279–285. [14] Z. Jian, Z. Yan, X. Lei, Z. Lu, B. Lan, X. Wang, and B. Liang, “Dynamic control barrier function-based model predictive control to safety-critical obstacle-avoidance of mobile robot,” in 2023 IEEE Int Conf on Robotics and Automation (ICRA) , 2023, pp. 3679–3685. [15] L. Marzari, F. Trotti, E. Marchesini, and A. Farinelli, “Designing control barrier function via probabilistic enumeration for safe reinforcement learning navigation,” IEEE Robotics and Automation Letters , vol. 10, no. 10, pp. 9630–9637, 2025. [16] J. M. S. Ducaju, B. Olofsson, A. Robertsson, and R. Johansson, “Robot cartesian compliance variation for safe kinesthetic teaching using safety control barrier functions,” in 2022 IEEE 18th Int Conf on Automation Science and Engineering (CASE) , 2022, pp. 2259–2266. [17] J. M. Salt Ducaju, B. Olofsson, and R. Johansson, “Model-based pre-dictive impedance variation for obstacle avoidance in safe human–robot collaboration,” IEEE Transactions on Automation Science and Engineer-ing , vol. 22, pp. 9571–9583, 2025. [18] F. Ferraguti, M. Bertuletti, C. T. Landi, M. Bonf` e, C. Fantuzzi, and C. Secchi, “A Control Barrier Function Approach for Maximizing Performance While Fulfilling to ISO/TS 15066 Regulations,” IEEE Robotics and Automation Letters , vol. 5, no. 4, pp. 5921–5928, 2020. [19] F. Flacco, A. De Luca, and O. Khatib, “Control of redundant robots under hard joint constraints: Saturation in the null space,” IEEE Trans-actions on Robotics , vol. 31, no. 3, pp. 637–654, 2015. [20] T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama, “Optuna: A next-generation hyperparameter optimization framework,” in Proceedings of the 25th ACM SIGKDD Int Conf on Knowledge Discovery and Data Mining , 2019. [21] E. Valls Mascar´ o, H. Ahn, and D. Lee, “A unified masked autoencoder with patchified skeletons for motion synthesis,” Proceedings of the AAAI Conference on Artificial Intelligence , no. 6, p. 5261–5269, Mar. 2024.
