@@ -6,29 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-14
-- 运行时间：2026-06-14 21:24:10 UTC
+- 最新运行日期：2026-06-15
+- 运行时间：2026-06-15 22:58:14 UTC
 - 运行状态：成功
-- 本次总论文数：3
+- 本次总论文数：8
 - 精读区：2
-- 速读区：1
+- 速读区：6
 
 ### 今日简报（AI）
-今日收录3篇论文，聚焦安全控制与机器人协作，其中2篇精读、1篇速读。最值得关注的方向是控制障碍函数引导扩散模型实现离线多智能体强化学习安全，以及将ISO安全标准嵌入机器人控制。建议后续深入研读控制障碍函数在安全合规与人机交互中的实际部署方法。
-- 详情：[/202606/14/README](/202606/14/README)
+今日聚焦强化学*安全性与可扩展性研究，共精读两篇高分论文。  
+最值得关注的可证明安全强化学*及自动驾驶安全效率统一框架。  
+建议优先阅读精读论文，把握安全强化学*前沿方向。
+- 详情：[/202606/15/README](/202606/15/README)
 
 ### 精读区论文标签
-1. [Individual Control Barrier Functions-Guided Diffusion Model for Safe Offline Multi-Agent Reinforcement Learning](/202606/14/2606.12640v1-individual-control-barrier-functions-guided-diffusion-model-for-safe-offline-multi-agent-reinforcement-learning)  
-   标签：评分：10.0/10、query:safe-rl-cbf
-   evidence：将神经个体控制屏障函数嵌入扩散模型实现安全离线多智能体强化学习
-2. [Embedding ISO 10218 Safety Compliance in Robots via Control Barrier Functions for Human-Robot Collaboration](/202606/14/2606.13203v1-embedding-iso-10218-safety-compliance-in-robots-via-control-barrier-functions-for-human-robot-collaboration)  
+1. [Provably Safe, Yet Scalable Reinforcement Learning](/202606/15/2606.14536v1-provably-safe-yet-scalable-reinforcement-learning)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：基于证书函数的可证明安全强化学习，与控制屏障函数等价
+2. [Safe Reinforcement Learning of Autonomous Highway Driving: A Unified Framework for Safety and Efficiency](/202606/15/2606.14609v1-safe-reinforcement-learning-of-autonomous-highway-driving-a-unified-framework-for-safety-and-efficiency)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：使用控制屏障函数实现人机协作安全合规，符合ISO 10218
+   evidence：基于DQN和奖励机的自动驾驶安全强化学习框架
 
 ### 速读区论文标签
-1. [Patching Control Lyapunov Barrier Functions for Temporal Logic Specifications with Bounded Controls](/202606/14/2606.12768v1-patching-control-lyapunov-barrier-functions-for-temporal-logic-specifications-with-bounded-controls)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：使用控制李雅普诺夫屏障函数实现安全控制
+1. [Autonomous Aerial Manipulation via Contextual Contrastive Meta Reinforcement Learning](/202606/15/2606.08533v1-autonomous-aerial-manipulation-via-contextual-contrastive-meta-reinforcement-learning)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：使用神经网络进行无人机操作
+2. [MODIP: Efficient Model-Based Optimization for Diffusion Policies](/202606/15/2606.10825v1-modip-efficient-model-based-optimization-for-diffusion-policies)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：使用神经扩散策略结合世界模型和MPC
+3. [Utility-Constrained Policy Optimization](/202606/15/2606.14029v1-utility-constrained-policy-optimization)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：约束RL，风险敏感约束，与安全RL相关
+4. [Contract-Based Compositional Shielding for Safe Multi-Agent Reinforcement Learning](/202606/15/2606.14130v1-contract-based-compositional-shielding-for-safe-multi-agent-reinforcement-learning)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：安全多智能体强化学习运行时屏蔽
+5. [Robustness without Wrinkles: Parallel Simulation and Robust MPC for Certified Deformable Manipulation](/202606/15/2606.14188v1-robustness-without-wrinkles-parallel-simulation-and-robust-mpc-for-certified-deformable-manipulation)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：使用鲁棒MPC和基于模型的强化学习及神经策略进行实时安全可变形操作
+6. [CSPO: Constraint-Sensitive Policy Optimization for Safe Reinforcement Learning](/202606/15/2606.14415v1-cspo-constraint-sensitive-policy-optimization-for-safe-reinforcement-learning)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：安全强化学习方法，约束敏感策略优化，与安全RL和CBF相关
 
 
 <div class="dpr-home-promo-card">

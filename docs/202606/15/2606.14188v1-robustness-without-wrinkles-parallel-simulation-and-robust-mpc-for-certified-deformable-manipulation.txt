@@ -1,0 +1,2169 @@
+Title: Robustness without Wrinkles: Parallel Simulation and Robust MPC for Certified Deformable Manipulation
+
+URL Source: https://arxiv.org/pdf/2606.14188v1
+
+Published Time: Mon, 15 Jun 2026 00:40:16 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Robustness without Wrinkles: Parallel Simulation and Robust MPC for Certified Deformable Manipulation 
+
+Wei-Chen Li ⋆, Jeffrey Fang ⋆, Sasanka Polisetti, Yuexi Song, Glen Chou 
+
+Georgia Institute of Technology, Atlanta, GA 30308 
+
+{wli777, jfang301, spolisetti6, ysong644, chou }@gatech.edu  
+
+> ⋆
+
+Equal contribution, order selected by coin flip 
+
+ Website § Code Å Video 
+
+Abstract: We present CORD-SLS, a real-time control method for safe deformable object manipulation, with a focus on ropes and cloth. At its core is a GPU-parallel differentiable simulator with contact smoothing which enables efficient gradient-based planning through intermittent contact. To robustly satisfy constraints un-der model and sensing uncertainty, we develop a real-time, GPU-parallel output-feedback robust model predictive control (MPC) algorithm that plans with this simulator. We further show that the simulator accelerates model-based RL for training neural manipulation policies. To improve real-world robustness, we use conformal prediction to calibrate visual-feedback and perception-error bounds for MPC, producing reachable tubes that enable high-probability safe control. We evaluate CORD-SLS on high-dimensional, contact-rich rope and cloth manipu-lation tasks in simulation and hardware, including obstacle avoidance, routing, folding, and smoothing. Across settings, CORD-SLS achieves millisecond-speed planning, exceeding baselines in safety, speed, and task success. 
+
+Keywords: manipulation, differentiable simulation, model-based control and RL c) Cloth Folding      
+
+> a) Rope Manipulation
+> b) Robust Tubes
+>   
+> 
+> 
+> 
+> 
+> 
+> 
+>   
+> 
+> 
+> 
+> 
+> 
+> 
+>   
+> 
+> 
+> 
+> 
+> 
+> 
+>   
+> 
+> 
+> 
+> 
+> 
+> 
+>   
+> 
+> 
+> 
+> 
+> 
+> 
+
+Figure 1: Hardware results showcase CORD-SLS’s real-world efficacy. In a) , CORD-SLS robustly solves a constrained rope manipulation task, lifting the rope and navigating over an obstacle with our contact-smoothed differentiable simulator. In b) , we show the associated robust tubes computed by CORD-SLS when avoiding the obstacle (red). In c) , CORD-SLS extends to cloth folding. 
+
+> arXiv:2606.14188v1 [cs.RO] 12 Jun 2026
+
+1 Introduction 
+
+Manipulation of deformable objects, like ropes and cloth, is important for safety- and performance-critical applications in home robots, logistics, and surgery [1]. Yet controlling these objects is dif-ficult: deformable objects often lack compact state representations, and convenient approximations, such as mesh-based cloth, require planning over many degrees of freedom and high-dimensional nonlinear dynamics. Manipulation also requires deciding where and when to make contact, as well as constraint satisfaction, e.g., obstacle avoidance, goal reaching, and task requirements, despite uncertainty in dynamics and perception. Simulators can provide useful models to plan such behav-ior, if they are sufficiently fast, accurate, and planner-friendly. However, prior work leaves a gap between scalable planning, deformable contact dynamics, and robustness. Classical methods plan tractably via geometric abstractions, but produce open-loop plans with limited robustness. Learned policies can plan in visual or latent spaces, but lack robustness assurances and require slow training. Differentiable simulators enable fast gradient-based planning, but discontinuous gradients arising from na¨ ıve contact formulations can prevent efficient contact discovery, required for manipulation. To close these gaps, we propose CORD-SLS (Contact-smoothed Output-feedback Robust control of Deformables via System Level Synthesis), a framework for real-time differentiable simulation and robust perception-based manipulation planning for deformable objects. We first develop a GPU-parallel differentiable simulator with contact smoothing, providing planning-friendly gradients at real-time simulation rates. We then plan with this simulator via a GPU-parallel robust MPC method based on system level synthesis (SLS), enabling real-time planning in high-dimensional settings. To handle perception uncertainty, we introduce a GPU-parallel output-feedback SLS formulation for robust vision-based control. We also show that the simulator can accelerate model-based reinforce-ment learning (MBRL) by enabling neural control policies to be trained in a sample-efficient fashion via analytical policy gradients. Finally, we calibrate data-driven worst-case uncertainty bounds for robust MPC, yielding probabilistic robustness guarantees in realistic settings. Our contributions are: • A GPU-parallel, differentiable, real-time, contact-smoothed deformable object simulator. • A GPU-parallel method for real-time synthesis of robust output-feedback control policies for de-formable manipulation via reachability-constrained SLS, along with an MBRL method for train-ing neural control policies that is accelerated via analytical policy gradients from the simulator. • A real-world vision-based implementation using keypoint tracking, together with calibration of perception and model-error bounds via conformal prediction (CP) for high-probability safety. • Evaluation on contact-rich rope and cloth manipulation tasks in simulation and hardware (obstacle avoidance, folding, and flattening), outperforming baselines in safety, speed, and task success. 
+
+2 Related Work 
+
+Deformable Object Simulation Position-based dynamics (PBD) and its extension, XPBD, simu-late deformable objects by projecting particles onto geometric constraints, enabling fast and stable simulations [2–4]. However, PBD-based methods achieve robustness at the expense of physical fidelity: effective stiffness depends on the timestep and the number of solver iterations, and exist-ing differentiable variants do not fully address rigid-deformable contact and friction. More phys-ically grounded models have been developed for deformable linear objects (DLOs). In particular, Cosserat rod and discrete elastic rod formulations capture bending, twisting, stretching, and shear-ing, and have been extended to handle frictional contact [5–8]. Differentiable rod simulators support system identification, but are less suited to contact-rich control because planning requires explicit contact-mode discovery [9]. For cloth simulation, methods based on discrete shells, Kirchhoff-Love shells, and projective dynamics efficiently model thin surfaces and can incorporate dry frictional contact [10–12]. However, the nonconvexity of contact resolution often leads to inconsistent gradi-ents in differentiable cloth simulators [13, 14]. Our method uses a convex formulation of contact and smoothed dynamics to improve contact discovery during planning, producing contact-seeking gradi-ents, while forward rollouts and execution use the nonsmooth dynamics to preserve fidelity [15–17]. 
+
+Planning Deformable-object planning is difficult because perception, dynamics, and control are tightly coupled [1], and models must trade off fidelity and speed [18, 19]. Unlike imitation learning 2[20, 21], planners do not require expert data. Classical planners use reduced geometric abstractions for speed [22, 23], and recent hybrids combine global planning with local control or simplified dy-namics [24, 25]. These methods improve tractability but yield open-loop plans with limited robust-ness. Learned models predict perceptual or latent dynamics [26–30] for planning, but require exten-sive training and lack robustness guarantees. Higher-level abstractions such as latent roadmaps ex-tend planning horizons and can encode contact transitions [31–33], but rely on task-specific skill li-braries. Differentiable simulators enable gradient-based planning [34–37], but discontinuous gradi-ents impede contact discovery for planning [15, 17, 36]. Our method instead uses contact smoothing to plan through contact without bespoke skills, while handling bounded sim-to-real model error [38]. Safety and robustness are less-studied. Some methods plan nominally-safe motions [35, 39] or use barrier functions to override unsafe actions [40, 41]; however, these rely on approximate models without accounting for model error, provide only local corrections, and do not address contact discovery. Reachability methods evaluate DLO safety [42] but do not consider contact-rich planning or cloth manipulation under perception error. Other methods improve robustness through model trust regions [43], gradient refinement on perturbed DLO systems [44], or MPC demonstrations [45], but lack formal guarantees and contact-rich planning. While safe output-feedback control has been considered in recent work [46–48], these methods struggle to scale to the high-dimensional state spaces of deformable objects. In contrast, we unify differentiable simulation, contact smoothing, and output-feedback robust MPC via SLS, producing contact-seeking gradients while robustly accounting for model and perception uncertainty. We build on GPU-parallel reachability [49] via SLS [50, 51], extending it beyond full-state feedback. Unlike existing slow CPU-bound output-feedback SLS methods [52], our GPU-parallel solver enables real-time robust control. 
+
+3 Problem Statement 
+
+We consider a known state representation q ∈ Q ⊆ Rnq for a deformable object of interest (e.g., 3D positions of links for rope, or of mesh node positions for cloth) actuated by control input u ∈ U ⊆ 
+
+Rnu and governed by uncertain dynamics (1a), where f : Q × U → Q . To account for perception latency, we model the system as being observed with uncertain time-delayed measurements y ∈Y ⊆ Rny according to an observation map h : Q → Y (1b), 
+
+qk+1 = f (qk, u k) + E(qk)wk, (1a) yk+1 = h(qk) + F (qk)ek, (1b) where E : Q → Rnq ×nq and F : Q → Rny ×ny and w ∈ B nq := {w ∈ Rnq | ∥ w∥2 ≤ 1} and 
+
+e ∈ B ny are bounded disturbances. We aim to design 1) a differentiable deformable object simulator that approximates the dynamics (1a) while remaining friendly for planning and learning, and 2) an efficient and robust planning and control algorithm that uses this simulator to solve reachability-aware MPC problems for safe deformable object manipulation. We consider two specific problems: 
+
+Problem 1. Differentiable contact-smoothed deformable simulator. Develop a simulator for de-formable linear objects and cloth that 1) is differentiable, 2) GPU-parallel, and 3) provides informa-tive gradients for planning and policy learning through contact, defining the planner dynamics 
+
+qk+1 = f (qk, u k). (2) 
+
+Problem 2. Reachability-informed MPC for robust deformable manipulation. Optimize a nominal length-N state z := {zk}Nk=0 and control v := {vk}N −1 
+
+> k=0
+
+trajectory that is feasible for the simulator dynamics (2), together with a causal output-feedback controller π := (π0, . . . , π N −1), where 
+
+πt : Yt+1 → U stabilizes the true deformable dynamics (1a) about (z, v) using the history of observations, and ensures closed-loop satisfaction of state and control constraints S ⊆ Q × U .
+
+4 Method 
+
+We develop a differentiable deformable-object simulator with contact smoothing for gradient-based planning (Sec. 4.1), a GPU-parallel output-feedback SLS framework that uses it to enable real-time robust control under perception uncertainty (Sec. 4.2), a sample-efficient model-based RL strategy for learning neural manipulation policies that is accelerated by analytical policy gradients from the 3differentiable simulator (Sec. 4.3), and a CP-based calibration procedure for translating learned perception errors into high-probability reachable-tube guarantees (Sec. 4.4). 
+
+4.1 Differentiable Deformable Object Simulator with Contact Smoothing 
+
+Existing deformable simulators often assume that deformable objects remain attached to the robot or rely on explicit time-stepping schemes that require small time steps for numerical stability. In con-trast, we introduce a novel simulator that correctly captures switching between inactive and active constraints while leveraging an implicit time-stepping scheme, all while retaining differentiability. Consider a nodal system with nv nodes, whose 3D coordinates, together with the nu actuated de-grees of freedom (DoFs), form the configuration vector q ∈ Rnq , where nq = 3 nv + nu. For an elastic energy E(q), the corresponding internal elastic force is given by −∂E (q)/∂q . Under a quasi-static assumption, the system satisfies 
+
+M q+ − qδt 2 + ∂E (q+)
+
+∂q + = τ (u) + 
+
+> nc
+
+X
+
+> i=1
+
+Ji(q)⊤ λi, (3) where M is the mass matrix, τ (u) are the external generalized forces, including gravity acting on the nodal system and actuation forces applied to the actuated DoFs, λi ∈ R3 is the ith constraint force, 
+
+δt is the discrete timestep, and Ji ∈ R3×nq is the corresponding constraint Jacobian. Both the elastic and constraint forces are evaluated at the next time step, yielding an implicit time-stepping scheme for improved numerical stability. For holonomic constraints, such as a gripper rigidly interacting with the nodal system, we suppose an active constraint ci(q) = 0 ∈ R3 enforces the gripper attach-ment. The next configuration q+ and constraint force λi must satisfy the complementarity condition 
+
+0 = Ji(q) ( q+ − q) + ci(q) ⊥ λi ∈ R3, (4) where the constraint Jacobian is defined as Ji(q) := ∂c i(q)/∂q . For contact constraints, we adopt Anitescu’s convex relaxation [53]. Here, the next step configuration q+ and contact force λi satisfy 
+
+F∗ 
+
+> μ
+
+∋ Ji(q) ( q+ − q) + [ ϕi(q) 0 0] ⊤ ⊥ λi ∈ F μ, (5) where ϕi(q) is the signed distance of contact pair i, Fμ is the friction cone, and F∗ 
+
+> μ
+
+is its dual cone. 
+
+Simulation Solver We solve the dynamics in (3) subject to the holonomic and contact constraints in (4) and (5) using a two-stage procedure. The first stage computes the system response under the holonomic constraints, while the second stage resolves contact interactions. In the first stage, we solve for an intermediate configuration q∗ satisfying 
+
+F (q∗; q, u ) := M q∗ − qδt 2 + ∂E (q∗)
+
+∂q ∗ − τ (u) + 
+
+> nh
+
+X
+
+> i=1
+
+Ji(q)⊤Di
+
+ Ji(q) ( q∗ − q) + ci(q) = 0 , (6) where nh denotes the number of holonomic constraints, and Di ∈ R3×3 is a diagonal stiffness matrix associated with the ith holonomic constraint. When the constraint is active, Di is chosen sufficiently large to enforce (4); otherwise, Di = 0 . (6) is solved using Newton’s method and implicitly defines a mapping from the current configuration q to the intermediate configuration q∗.In the second stage, we solve the optimization problem 
+
+min 
+
+> q+
+
+12 (q+ − q∗)⊤ M + ∂2E(q∗)
+
+∂(q∗)2 +
+
+> nh
+
+X
+
+> i=1
+
+Ji(q)⊤DiJi(q)
+
+| {z }
+
+> P
+
+ (q+ − q∗)
+
+s.t. Ji(q∗) ( q+ − q∗) + [ ϕi(q∗) 0 0] ∈ F ∗ 
+
+> μ
+
+, ∀i = nh +1 , . . . , n c.
+
+(7) The KKT conditions of (7) recover the contact constraint in (5) together with P (q+ − q∗) = Pnc 
+
+> i=nh+1
+
+Ji(q)⊤ λi, which corresponds to a linearization of the dynamics about the intermediate configuration q∗. Given a (q, u ) pair, solving (6)–(7) gives the next configuration q+. The solvers for (6)–(7) are implemented in JAX, allowing GPU-accelerated matrix factorizations. 4Differentiating Through Simulation To obtain gradients through the dynamics, we differentiate through the optimization problems in (6) and (7). Rather than differentiating through the unrolled iterative solvers, we employ implicit differentiation. For the first-stage problem (6), let θ := ( q, u )
+
+denote the inputs to the dynamics. Differentiating the implicit equation defining q∗ yields 
+
+∂F ∂q ∗
+
+∂q ∗
+
+∂θ + ∂F ∂θ = 0 = ⇒ ∂q ∗
+
+∂θ = −
+
+ ∂F ∂q ∗
+
+−1 ∂F ∂θ . (8) For the second-stage problem (7), we differentiate its KKT conditions, denoted by G(q+, λ ; q∗) = 0 ,with respect to q∗. This gives 
+
+K
+
+" ∂q +
+
+> ∂q ∗
+> ∂λ ∂q ∗
+
+#
+
++ ∂G ∂q ∗ = 0 = ⇒ ∂q +
+
+∂q ∗ = − [I 0] K−1 ∂G ∂q ∗ , (9) where K denotes the KKT matrix of the optimization problem. The simulator can thus be treated as a differentiable layer. For a scalar objective L, the adjoint with respect to θ = ( q, u ) is given by 
+
+∂L
+
+∂θ = ∂L
+
+∂q +
+
+∂q +
+
+∂q ∗
+
+∂q ∗
+
+∂θ =
+
+ ∂L
+
+∂q + 0
+
+
+
+K−1 ∂G ∂q ∗
+
+ ∂F ∂q ∗
+
+−1 ∂F ∂θ . (10) This expression naturally defines a custom backward pass for the simulator layer. Starting from the adjoint of q+, we first solve a linear system involving K⊤ and compute a vector-Jacobian product with ∂G/∂q ∗ to obtain the adjoint of q∗. We then solve a second linear system involving (∂F/∂q ∗)⊤
+
+and compute a vector-Jacobian product with ∂F/∂θ to obtain the adjoint of θ. Since the factorization of K and ∂F/∂q ∗ are byproducts of the forward solve, the backward pass incurs no additional cost. 
+
+Contact Smoothing Contact dynamics often exhibit a vanishing-gradient issue: prior to contact activation, the control inputs associated with the actuated DoFs have no influence on the state of the deformable object [17]. As a result, gradient-based optimizers may stagnate due to the absence of informative gradient signals, failing to reach the goal. To address this issue, we adopt the idea of surrogate gradients [54], in which the gradient used for planning is replaced by a surrogate estimator that does not correspond to the true gradient obtained by differentiating through the physical rollout. This introduces a controlled bias in exchange for improved gradient information in regimes where the true gradient is uninformative. The holonomic constraint in (4) is active only when ci(q) = 0 , at which point a nonzero stiffness matrix Di is used in (6) to enforce the constraint. This switching between inactive and active constraints intro-duces both discontinuities and vanishing gradients. To smooth this transition, we redefine Di as 
+
+Di = Di, max exp( −∥ ci(q)∥2/κ ), where κ is a smoothing parameter. As κ → 0, this formulation approaches the original indicator-like activation behavior. The contact constraint in (5), which encodes non-contact, stiction, and sliding regimes, similarly introduces discontinuous and vanishing gradients. We smooth this by relaxing the complementarity condition in (5) to (Ji(q) ( q+ − q) + [ ϕi(q) 0 0]) ⊤λi = κ, which recovers the original comple-mentarity constraint when κ = 0 . The smoothed dynamics is used solely for gradient computation and the nonsmooth dynamics are used for forward rollouts, preserving model accuracy. 
+
+4.2 Simulator-Informed GPU-Parallel Output Feedback SLS 
+
+To plan robust output feedback policies for the deformable object, we wish to approximately solve the idealized optimization (11) to obtain the output-feedback policy π := ( π0(·), . . . π N −1(·)) ,
+
+min  
+
+> π
+
+J(π)
+
+s.t. qk+1 = f ∗(qk, u k) + E(qk)wk, ∀k ∈ [N ], q0 ∈ Q 0,yk+1 = h(qk) + F (qk)ek, ∀k ∈ [N ], uk = πk(y0, . . . , y k), ∀k ∈ [N ],
+
+(qk, u k) ∈ S , ∀wk ∈ B nq , ∀ek ∈ B ny , ∀k ∈ [N ].
+
+(11) where [N ] := {0, . . . , N − 1}, Q0 denotes the set of possible initial conditions, S =(q, u ) ∈ Rnq +nu c⊤ 
+
+> i
+
+(q, u ) + bi ≤ 0, i = 1 , . . . , n c defines the safe set. While we consider non-linear constraints in Sec. 5, to simplify notation, we describe the method for the case of affine 5constraints. Nonlinear constraints can be robustly enforced following the approach of [55]. The dynamics and observations are as defined in (1). To efficiently solve (11), we extend GPU-SLS [49], which is limited to state-feedback (i.e., requires perfect state knowledge), to the output-feedback setting by building on [52]. Following [52], the output-feedback SLS synthesis problem can be written as, 
+
+min  
+
+> z,v,Φ,τ
+
+J(z, v, τ , Φ) (12a) s.t. zk+1 = f (zk , v k ), ∀k ∈ [N ] (12b) 
+
+I − ZA (z, v), −ZB (z, v) Φ = I, 0 , Φ (I − ZA (z, v)) ⊤
+
+, (−ZC (z, v)) ⊤⊤ = I, 0⊤
+
+, (12c) 
+
+Pk−1 
+
+> j=0
+
+c⊤ 
+
+> i
+
+Φw 
+
+> k,j
+
+Ej 2,r + c⊤ 
+
+> i
+
+Φe 
+
+> k,j
+
+Fj 2,r + c⊤
+
+> i
+
+zk
+
+vk
+
+
+
+≤ − bi, ∀i ∈ [nc], ∀k ∈ [N ] (12d) 
+
+Pk−1 
+
+> j=0
+
+Φw 
+
+> k,j
+
+Ej 2,r + Φe 
+
+> k,j
+
+Fj 2,r ≤ τk , ∀k ∈ [N ] (12e) 
+
+where A(z, v), B(z, v) and C(z, v) denote the linearizations of the dynamics and observation mod-els about the nominal trajectory (z, v), ∥ · ∥ 2,r denotes the row-wise two norm, and Ej and Fj are the corresponding linearized state and observation disturbance scalings. The matrix Z denotes the block downshift operator, with Inq on the first subdiagonal and zeros elsewhere. The closed-loop re-sponse operators Φw and Φe characterize the propagation of process and observation disturbances, respectively, via constraint (12c), and τk defines the reachable tube width. (12d)–(12e) compute output-feedback reachable tubes under disturbances wk and ek, and use them to tighten the con-straints so the closed-loop reachable set remains inside S. To solve (12), [52] decomposes the optimization into three stages: 1) a nominal trajectory generation (z, v), 2) state feedback controller optimization ¯Φ, and lastly 3) an output feedback controller optimization ˆΦ. The first two stages are handled directly by GPU-SLS [49]. We therefore focus on the parallel implementation of the third stage by expressing the observer recursions as associative operators, enabling GPU-parallel prefix scans. An optimal solution of the output controller can be found by one backward Kalman recursion, 
+
+Πk, 0 = ΞΞ ⊤; Lk,j +1 = −(Fj F ⊤ 
+
+> j
+
++ Cj Πk,j C⊤ 
+
+> j
+
+)−1Cj Πk,j A⊤
+
+> j
+
+Πk,j +1 = Ej E⊤ 
+
+> j
+
++ Aj Πk,j A⊤ 
+
+> j
+
++ Aj Πk,j C⊤ 
+
+> j
+
+Lk,j +1 , (13) where Ξ denotes the initial state uncertainty, and N independent forward propagations, 
+
+ˆΦxk,k = I; ˆΦyk,j = ˆΦxk,j L⊤ 
+
+> k,j
+
+, ˆΦxk,j = ˆΦxk,j +1 (Aj + L⊤ 
+
+> k,j
+
+Cj ), ∀k ∈ [N ], ∀j ∈ [k], (14) The matrices Φw and Φe can then be assembled by using M = I − ZA and 
+
+Φxw = ¯Φx + ˆΦx − ¯ΦxM ˆΦx, Φuw = ¯Φu(I − M ˆ Φx), Φxe = ˆΦy − ¯ΦxM ˆΦy, Φue = − ¯ΦuM ˆΦy. (15) 
+
+Both (13) and (14) require dense matrix multiplications serially through the planning horizon. As such, we use parallel associative scans on the GPU. We define the conditional value function, 
+
+Vi→l(Φk,i , Φk,l ) = max γ 12 Φ⊤ 
+
+> k,i
+
+˜Pi,l Φk,i − 12 γ⊤ ˜Di,l γ − γ⊤(Φk,l − ˜Ai,l Φk,i ), and combination rules, ˜Pi,l = ˜Pi,m ⊗ ˜Pm,l := ( ˜A⊤
+
+> i,m
+
+(I + ˜Pm,l ˜Di,m )−1 ˜Pm,l ˜Ai,m + ˜Pi,m ,
+
+˜Ai,l = ˜Ai,m ⊗ ˜Am,l := ˜Am,l (I + ˜Di,m ˜Pm,l )−1 ˜Ai,m ,
+
+˜Di,l = ˜Di,m ⊗ ˜Dm,l := ˜Am,l (I + ˜Di,m ˜Pm,l )−1 ˜Di,m ( ˜Am,l )⊤ + ˜Dm,l ,
+
+(16) with the initial values as 
+
+˜Ai+1 ,i = A⊤ 
+
+> i
+
+, ˜Di+1 ,i = C⊤ 
+
+> i
+
+(FiF ⊤ 
+
+> i
+
+)−1Ci, ˜Pi+1 ,i = EiE⊤ 
+
+> i
+
+, ˜P1,0 = ΞΞ ⊤, ˜A1,0 = ˜D1,0 = 0 . (17) 
+
+We can then recover Kalman gains Lk,j through a forward parallel associative scan using (16)–(17) to recover Πk,j = ˜P0,j := ˜P0,1 ⊗ ˜P1,2 ⊗ · · · ⊗ ˜Pj−1,j , and then Lk,j from (13). To retrieve ˆΦ,we use a similar procedure and define the conditional observer propagation ˆN (k)
+
+> i→l
+
+( ˆΦxk,i , ˆΦxk,l ) = ˆΦxk,i ˆA(k) 
+
+> i,l
+
+for each disturbance injection k with combination rule ˆA(k) 
+
+> m,l
+
+ˆA(k) 
+
+> i,m
+
+and initialization 
+
+ˆA(k) 
+
+> i+1 ,i
+
+= Ai + L⊤
+
+> k,i
+
+Ci. We obtain the solution to (14) by a forward parallel associative scan, 
+
+ˆΦxk,i = ˆN (k) 
+
+> j+1 →j
+
+⊗ ˆN (k) 
+
+> j→j−1
+
+⊗ · · · ⊗ ˆN (k)
+
+> i+1 →i
+
+, and ˆΦyk,j = ˆΦxk,j L⊤ 
+
+> k,j
+
+, solving the observer-dependent closed-loop response in logarithmic time, analogous to the complexity of GPU-SLS. 64.3 Accelerating Model-Based RL via Analytical Policy Gradients (APG) 
+
+The differentiable simulator proposed in Sec. 4.1 can be used to support model-based reinforcement learning (RL) in multiple ways; we point out two ways here. First, it can generate expert trajec-tories to guide policy learning. This is especially beneficial in contact-rich deformable manipula-tion, where sparse rewards and intermittent contact can make exploration from scratch prohibitively sample-inefficient. Second, by incorporating the contact-smoothed simulator as a differentiable layer (10), direct policy gradients can guide policies toward discovering and maintaining contact with reduced reliance on stochastic exploration, improving the stability and sample efficiency of policy learning. We denote this model-based RL (MBRL) variant of our method as APG, as it leverages analytical policy gradients to accelerate policy learning, and is evaluated in Sec. 5. 
+
+4.4 Calibrated Reachability Guarantees via Conformal Prediction (CP) 
+
+The SLS formulation in Sec. 4.2 requires uncertainty sets for the closed-loop dynamics and obser-vation model to certify safety for the real system (1). On hardware, however, independent labels for the true process disturbance or state-estimation error are typically unavailable. Instead, we measure the discrepancy between the model-predicted next observation and the next observation returned by perception, and use CP to calibrate an aggregate one-step prediction error in the controller coor-dinates. In our implementation (Sec. 5), the perception estimates the full rope state from RGB-D images. Thus, in (1b), we take h(q) = q, so yk+1 = qk + ek with ∥ek∥2 ≤ ρ, where ρ is a worst-case measurement-error bound from camera accuracy specifications. We define the perceived state 
+
+¯qk := yk+1 as the noisy full-state estimate used by the controller. Although the physical system evolves on latent qk, our SLS implementation plans over ¯qk; the CP-calibrated residual certifies tubes for ¯qk, which are conservatively inflated by ρ to obtain true-state tubes. Let Dcal := {(¯ qi, u i, ¯q+ 
+
+> i
+
+)}ni=1 be a held-out calibration set of perceived-state transitions, where ¯q+ 
+
+> i
+
+is the next perceived state; equivalently, a sample is (yk+1 , u k, y k+2 ). We define nonconformity scores 
+
+si := ∥¯q+ 
+
+> i
+
+− f (¯ qi, u i)∥2, and let s(1) ≤ · · · ≤ s(n) be the sorted scores. For trajectory-level miscov-erage δ over horizon T , set ¯δ := δ/T and q := s(⌈(n+1)(1 −¯δ)⌉), with q = + ∞ if the index exceeds 
+
+n. The CP set for the next perceived state is C(¯ q, u ) := {¯q+ ∈ Q | ∥ ¯q+ − f (¯ q, u )∥2 ≤ rCP }. We instantiate SLS on the perceived-state surrogate ¯qk+1 = f (¯ qk, u k) + rCP Iw k, with wk ∈ B nq . This is a calibrated model of the full-state estimate used by the controller, rather than an independently identified process-noise model for the latent state qk. Let ¯T qk and T uk denote the resulting perceived-state and control reachable tubes. Assuming exchangeability between closed-loop residual scores 
+
+∥¯qk+1 − f (¯ qk, u k)∥2 and the calibration scores, CP and robust SLS ensure (proof in App. A): 
+
+Theorem 1 (True-state containment from CP tubes) . Let yk+1 = qk + ek with ∥ek∥2 ≤ ρ, and define ¯qk := yk+1 . Suppose conformal calibration and robust SLS synthesis yield perceived-state and control tubes ¯T qk and T uk satisfying P ¯qk ∈ ¯T qk , u k ∈ T uk , k = 0 , . . . , N  ≥ 1 − δ. Then the true state and control trajectories satisfy P qk ∈ ¯T qk ⊕ ρBnq , u k ∈ T uk , k = 0 , . . . , N  ≥ 1 − δ.
+
+Accordingly, we define the true-state tube as T qk := ¯T qk ⊕ ρBnq . Thus, to enforce true-state safety constraints qk ∈ Q safe , it suffices to impose the tightened perceived-state condition ¯T qk ⊆ Q safe ⊖
+
+ρBnq . State-dependent uncertainty bounds can be incorporated by replacing the scalar radius rCP 
+
+with a calibrated state-dependent bound, e.g., by adapting [56] to the perceived-state setting. 
+
+5 Results 
+
+We compare CORD-SLS and APG against MPPI [57] and model-free RL methods (namely, PPO [58]) on deformable manipulation, empirically validate the robustness of our output-feedback solver, and evaluate the efficacy of our method on hardware. 
+
+Simulation Benchmark Comparison See App. F for baseline comparisons of our differentiable simulator against prior simulators [9, 36] in terms of accuracy and runtime. We show that our sim-ulator achieves comparable accuracy while accelerating forward simulation and Jacobian computa-tion by up to 700 × and 2000 ×, respectively. This efficiency, along with the integration of contact smoothing, enables real-time control rates and low goal error in our deformable object planning experiments, which we discuss next. 7Task Method Dynamics Evaluations Count Execution Time Per-Step [s] Safety Rate [%] Goal Error [m] Lift Rope Ours 5400 0.050 ± 0.001 100.0 ± 0.0 0.0548 ± 0.0003 MPPI 1024000 0.177 ± 0.043 100.0 ± 0.0 0.0681 ± 0.0038 PPO 16000000 0.0004 ± 0.0001 96.5 ± 0.2 0.0587 ± 0.0016 APG 16000000 0.0004 ± 0.0001 100.0 ± 0.0 0.0573 ± 0.0017 Drag Rope Ours 13500 0.070 ± 0.012 99.9 ± 0.1 0.0360 ± 0.0077 MPPI 2560000 0.234 ± 0.018 1.0 ± 0.1 0.0814 ± 0.0034 PPO 40000000 0.0004 ± 0.0001 97.0 ± 0.4 0.0320 ± 0.0092 APG 40000000 0.0004 ± 0.0001 93.0 ± 0.4 0.0302 ± 0.0061 Fold cloth Ours 3400 0.758 ± 0.107 100.0 ± 0.0 0.0611 ± 0.0072 MPPI 64000 18.81 ± 6.11 64.0 ± 6.1 0.0738 ± 0.0079 Flatten cloth Ours 3400 0.711 ± 0.077 100.0 ± 0.0 0.0234 ± 0.0089 MPPI 64000 11.10 ± 4.66 80.0 ± 0.2 0.0526 ± 0.0102 
+
+Table 1: Runtime and performance metrics across tasks.   
+
+> (a) (b)
+> (c) (d)
+
+Figure 2: Timelapse of our method on each task. (a) Rope lifting, (b) Rope dragging around an obstacle with uncertainty tubes, (c) Cloth folding, (d) Cloth flattening. By formulating control as trajectory optimization, our method generalizes across diverse tasks without task-specific retraining. 
+
+Planning Benchmark Comparison on Deformable Manipulation Tasks We benchmark our ap-proach on four deformable manipulation tasks shown in Fig. 2. In the lift rope task, a pair of grip-pers must establish contact with the rope to activate the holonomic constraint required to lift it. Our method leverages gradients from the dynamics to guide actions toward making contact. In contrast, MPPI requires substantially more dynamics evaluations to identify contact-making actions, result-ing in higher execution times. Among the RL methods, APG leverages differentiable dynamics to compute policy gradients, whereas PPO is warm-started with 10 expert demonstrations generated by CORD-SLS to enable it to solve the task within the same interaction budget. Without this warm start, the PPO policy fails to make contact with the rope after the same number of environment interactions, and thus fails to complete the task. In the drag rope task, the gripper must establish contact with the rope and transport it to a goal location while avoiding an obstacle. CORD-SLS explicitly accounts for disturbances and computes trajectory tubes (Fig. 2b, see App. D for full tube snapshots), enabling robust obstacle avoidance. Although obstacle avoidance is encoded as a penalty in the MPPI cost function, the best sampled trajectories often pass through the obstacle, leading to a very low safety rate. Increasing the obstacle penalty further causes the rope to remain near its initial position. APG finds a lower-cost policy than PPO with fewer simulator samples (Fig. 6b, App. C), but both RL methods exhibit constraint violations because they do not explicitly account for disturbances during execution. For the cloth folding and flattening tasks, despite the high-dimensional state space (300 DoF), the GPU-parallelized simulator and SLS solver allow each MPC update to be computed in under one second (see App. D for reachable tubes). MPPI, by comparison, requires significantly more dy-namics evaluations to achieve comparable performance, resulting in longer execution times as well as higher goal error and constraint violation rates. We do not include RL baselines for these tasks because the 300-DoF cloth system lies in a regime where online trajectory optimization remains tractable, while learning a neural policy becomes prohibitively sample-intensive. 8                 
+
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+>       
+> 
+> 
+> 
+>   
+> 
+> 
+>   
+>   
+>  
+> 
+> 
+> 
+>   
+>   
+>  
+> 
+> 
+>   
+>    
+
+(a) (b) Figure 3: (a) : Solved trajectory for a rope manipulation task using CORD-SLS. (b) : Robust tubes for four rope nodes and their corresponding rollouts. All rollouts remain within their tubes, demon-strating robustness to both dynamical error and measurement uncertainty. See App. E for reachable tubes for all state dimensions. 
+
+Output Feedback In Fig. 3, we task the controller with robustly navigating a rope over an obsta-cle with simulated measurement and dynamical noise. In Fig. 3 (a) we show the robust tubes and trajectory computed by our solver, which account for dynamical and measurement uncertainty. In Fig. 3 (b) we show a subset of the robust tubes for 4 rope nodes and their rollouts, further illustrating the controller remains robust to both measurement and dynamical noise throughout execution. 
+
+Hardware Lastly, we validate our approach on hardware. As shown in Fig. 1, we consider two deformable manipulation tasks: obstacle rope manipulation and cloth folding. For both tasks, we estimate the state using RGB-D observations, where SAM [59] initializes and grounds keypoints that are then tracked in real time by TAPNext++ [60]. We then use these keypoint poses to fit and reconstruct the full object state. See App. B for more details on the perception pipeline. The experiments are conducted with two KUKA LBR iiwa manipulators with the MPC solver running on an NVIDIA RTX4070 Ti GPU. To calibrate the CP bound, we apply 100 random controls on hardware and compare the predicted and measured one-step state transitions. We then use a rounded empirical error radius of 0.03 m, which covers 87% of the calibration residuals. In Fig. 1 (a) , we show that, due to the contact-smoothness and differentiability of our simulator, the manipulators are able to make contact with the rope and navigate it over the obstacle. In Fig. 1 (b) we visualize the robust tubes generated at selected timestamps which account for both dynamical and measurement uncertainty, showing that we remain safe despite uncertainty. Finally, in Fig. 1 (c) we show the manipulators successfully completing a cloth folding task, demonstrating that our simulator and solver extend to high-dimensional deformable object tasks. 
+
+6 Discussion, Limitations, and Conclusion 
+
+This paper presents CORD-SLS, a framework for safe, contact-rich deformable object manipulation that integrates differentiable simulation, robust GPU-accelerated output-feedback control, and data-driven uncertainty calibration. Through smooth contact dynamics, differentiable simulation, and conformal prediction, CORD-SLS enables real-time trajectory optimization for high-dimensional deformable objects through intermittent contact, while maintaining high-probability safety. 
+
+Limitations Contact smoothing introduces errors near contact transitions, which can be handled by [17]. Deformable-object perception remains challenging under occlusion and complex topolo-gies, which can be addressed through more sophisticated perception pipelines, such as multi-view RGB-D sensing or learned output equations. Lastly, memory usage for higher-dimensional systems and long horizons becomes a bottleneck, motivating the use of low-rank SLS response operators. 9References 
+
+[1] H. Yin, A. Varava, and D. Kragic. Modeling, learning, perception, and control methods for deformable object manipulation. Science Robotics , 6(54):eabd8803, 2021. [2] M. M¨ uller, B. Heidelberger, M. Hennix, and J. Ratcliff. Position based dynamics. Journal of Visual Communication and Image Representation , 18(2):109–118, 2007. [3] M. Ruan, D. McConachie, and D. Berenson. Accounting for directional rigidity and con-straints in control for manipulation of deformable objects without physical simulation. In 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 512–519. IEEE, 2018. [4] F. Liu, E. Su, J. Lu, M. Li, and M. C. Yip. Differentiable robotic manipulation of deformable rope-like objects using compliant position-based dynamics. arXiv preprint arXiv:2202.09714 ,2022. [5] M. Gazzola, L. H. Dudte, A. G. McCormick, and L. Mahadevan. Forward and inverse problems in the mechanics of soft filaments. Royal Society Open Science , 5(6):171628, 2018. [6] W.-C. Li and G. Chou. A convex formulation of compliant contact between filaments and rigid bodies. arXiv preprint arXiv:2509.13434 , 2025. [7] M. Bergou, M. Wardetzky, S. Robinson, B. Audoly, and E. Grinspun. Discrete elastic rods. In 
+
+ACM Siggraph 2008 Papers , pages 1–12. 2008. [8] M. Bergou, B. Audoly, E. Vouga, M. Wardetzky, and E. Grinspun. Discrete viscous threads. 
+
+ACM Transactions on graphics (TOG) , 29(4):1–10, 2010. [9] Y. Chen, Y. Zhang, Z. Brei, T. Zhang, Y. Chen, J. Wu, and R. Vasudevan. Differentiable discrete elastic rods for real-time modeling of deformable linear objects. arXiv preprint arXiv:2406.05931 , 2024. [10] E. Grinspun, A. N. Hirani, M. Desbrun, and P. Schr¨ oder. Discrete shells. In Proceedings of the 2003 ACM SIGGRAPH/Eurographics symposium on Computer animation , page 62–67. Eurographics Association, 2003. [11] J. Wen and J. Barbiˇ c. Kirchhoff-love shells with arbitrary hyperelastic materials. ACM Trans-actions on Graphics , 42(6):Article 174, 2023. [12] M. Ly, J. Jouve, L. Boissieux, and F. Bertails-Descoubes. Projective dynamics with dry fric-tional contact. ACM Transactions on Graphics , 39(4):Article 57, 2020. [13] J. Liang, M. Lin, and V. Koltun. Differentiable cloth simulation for inverse problems. In 
+
+Advances in Neural Information Processing Systems , volume 32, 2019. [14] Y. Li, T. Du, K. Wu, J. Xu, and W. Matusik. Diffcloth: Differentiable cloth simulation with dry frictional contact. ACM Transactions on Graphics , 42(1):Article 2, 2022. [15] H. J. Suh, M. Simchowitz, K. Zhang, and R. Tedrake. Do differentiable simulators give better policy gradients? In International Conference on Machine Learning , pages 20668–20696. PMLR, 2022. [16] H. J. T. Suh, T. Pang, and R. Tedrake. Bundled gradients through contact via randomized smoothing. IEEE Robotics and Automation Letters , 7(2):4000–4007, 2022. [17] W.-C. Li and G. Chou. Certified gradient-based contact-rich manipulation via smoothing-error reachable tubes. arXiv preprint arXiv:2602.09368 , 2026. [18] P. Jim´ enez. Survey on model-based manipulation planning of deformable objects. Robotics and computer-integrated manufacturing , 28(2):154–163, 2012. 10 [19] V. E. Arriola-Rios, P. Guler, F. Ficuciello, D. Kragic, B. Siciliano, and J. L. Wyatt. Modeling of deformable objects for robotic manipulation: A tutorial and review. Frontiers in Robotics and AI , 7:82, 2020. [20] D. Seita, P. Florence, J. Tompson, E. Coumans, V. Sindhwani, K. Goldberg, and A. Zeng. Learning to rearrange deformable cables, fabrics, and bags with goal-conditioned transporter networks. In 2021 IEEE International Conference on Robotics and Automation (ICRA) , pages 4568–4575. IEEE, 2021. [21] G. Salhotra, I.-C. A. Liu, M. Dominguez-Kuhne, and G. S. Sukhatme. Learning deformable object manipulation from expert demonstrations. IEEE Robotics and Automation Letters , 7(4): 8775–8782, 2022. [22] O. B. Bayazit, J.-M. Lien, and N. M. Amato. Probabilistic roadmap motion planning for deformable objects. In Proceedings 2002 IEEE International Conference on Robotics and Automation (Cat. No. 02CH37292) , volume 2, pages 2126–2133. IEEE, 2002. [23] M. Saha and P. Isto. Motion planning for robotic manipulation of deformable linear objects. In 
+
+Proceedings 2006 IEEE International Conference on Robotics and Automation, 2006. ICRA 2006. , pages 2478–2484. IEEE, 2006. [24] D. McConachie, A. Dobson, M. Ruan, and D. Berenson. Manipulating deformable objects by interleaving prediction, planning, and control. The International Journal of Robotics Research ,39(8):957–982, 2020. [25] S. Wang, M. Leonetti, and M. Dogar. Goal-conditioned model simplification for 1-d and 2-d deformable object manipulation. IEEE Transactions on Robotics , 2025. [26] B. Shen, Z. Jiang, C. Choy, S. Savarese, L. J. Guibas, A. Anandkumar, and Y. Zhu. Action-conditional implicit visual dynamics for deformable object manipulation. The International Journal of Robotics Research , 43(4):437–455, 2024. [27] Z. Zhang, X. Chu, Y. Tang, L. Zhao, J. Huang, Z. Jiang, and K. S. Au. Manipulating elasto-plastic objects with 3d occupancy and learning-based predictive control. IEEE Robotics and Automation Letters , 2025. [28] W. Yan, A. Vangipuram, P. Abbeel, and L. Pinto. Learning predictive representations for deformable objects using contrastive estimation. In Conference on Robot Learning , pages 564–574. PMLR, 2021. [29] X. Ma, D. Hsu, and W. S. Lee. Learning latent graph dynamics for visual manipulation of deformable objects. In 2022 International Conference on Robotics and Automation (ICRA) ,pages 8266–8273. IEEE, 2022. [30] C. Li, Z. Ai, T. Wu, X. Li, W. Ding, and H. Xu. Deformnet: Latent space modeling and dynam-ics prediction for deformable object manipulation. In 2024 IEEE International Conference on Robotics and Automation (ICRA) , pages 14770–14776. IEEE, 2024. [31] M. Lippi, P. Poklukar, M. C. Welle, A. Varava, H. Yin, A. Marino, and D. Kragic. Latent space roadmap for visual action planning of deformable and rigid object manipulation. In 
+
+2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 5619–5626. IEEE, 2020. [32] J. Yamada, S. Zhong, J. Collins, and I. Posner. D-cubed: Latent diffusion trajectory optimisa-tion for dexterous deformable manipulation. arXiv preprint arXiv:2403.12861 , 2024. [33] X. Lin, C. Qi, Y. Zhang, Z. Huang, K. Fragkiadaki, Y. Li, C. Gan, and D. Held. Planning with spatial-temporal abstraction from point clouds for deformable object manipulation. arXiv preprint arXiv:2210.15751 , 2022. 11 [34] S. Chen, Y. Xu, C. Yu, L. Li, and D. Hsu. Differentiable particles for general-purpose de-formable object manipulation. arXiv preprint arXiv:2405.01044 , 2024. [35] Y. Zhang, F. Liu, X. Liang, and M. Yip. Achieving autonomous cloth manipulation with optimal control via differentiable physics-aware regularization and safety constraints. In 2024 IEEE International Conference on Robotics and Automation (ICRA) , pages 9931–9938. IEEE, 2024. [36] S. Chen, Y. Xu, C. Yu, L. Li, X. Ma, Z. Xu, and D. Hsu. Daxbench: Benchmarking deformable object manipulation with differentiable physics. arXiv preprint arXiv:2210.13066 , 2022. [37] E. Yoshida, K. Ayusawa, I. G. Ramirez-Alpizar, K. Harada, C. Duriez, and A. Kheddar. Simulation-based optimal motion planning for deformable object. In 2015 IEEE international workshop on advanced robotics and its social impacts (ARSO) , pages 1–6. IEEE, 2015. [38] D. Blanco-Mulero, O. Barbany, G. Alcan, A. Colom´ e, C. Torras, and V. Kyrki. Benchmarking the sim-to-real gap in cloth manipulation. IEEE Robotics and Automation Letters , 9(3):2981– 2988, 2024. [39] J. Huang, X. Chu, X. Ma, and K. W. S. Au. Deformable object manipulation with constraints using path set planning and tracking. IEEE Transactions on Robotics , 39(6):4671–4690, 2023. [40] Y. Tang, X. Chu, J. Huang, and K. S. Au. Learning-based mpc with safety filter for constrained deformable linear object manipulation. IEEE Robotics and Automation Letters , 9(3):2877– 2884, 2024. [41] B. Aksoy and J. T. Wen. Planning and control for deformable linear object manipulation. IEEE Transactions on Automation Science and Engineering , 2025. [42] Y. Zhang and S. Li. Certifiably safe manipulation of deformable linear objects via joint shape and tension prediction. arXiv preprint arXiv:2505.13889 , 2025. [43] P. Mitrano, D. McConachie, and D. Berenson. Learning where to trust unreliable models in an unstructured world for deformable object manipulation. Science Robotics , 6(54):eabd8170, 2021. [44] J. Envall and S. Coros. Robust manipulation of deformable linear objects. IEEE Robotics and Automation Letters , 2026. [45] H. Wang, Z. Dong, T. Zhu, H. Lei, W. Shi, Z. Zhang, W. Luo, W. Wan, X. Chen, and J. Huang. Robot deformable object manipulation via nmpc-generated demonstrations in deep reinforce-ment learning. IEEE Transactions on Automation Science and Engineering , 22:23566–23578, 2025. [46] S. Yang, G. J. Pappas, R. Mangharam, and L. Lindemann. Safe perception-based control under stochastic sensor uncertainty using conformal prediction. In 2023 62nd IEEE Conference on Decision and Control (CDC) , pages 6072–6078. IEEE, 2023. [47] G. Chou, N. Ozay, and D. Berenson. Safe output feedback motion planning from images via learned perception modules and contraction theory. In International Workshop on the Algorithmic Foundations of Robotics , pages 349–367. Springer, 2022. [48] G. Chou and R. Tedrake. Synthesizing stable reduced-order visuomotor policies for nonlinear systems via sums-of-squares optimization. In 2023 62nd IEEE Conference on Decision and Control (CDC) , pages 624–631. IEEE, 2023. [49] J. Fang and G. Chou. Safe large-scale robust nonlinear MPC in milliseconds via reachability-constrained system level synthesis on the GPU. arXiv preprint arXiv:2604.07644 , 2026. 12 [50] J. Anderson, J. C. Doyle, S. H. Low, and N. Matni. System level synthesis. Annual Reviews in Control , 47:364–393, 2019. [51] A. P. Leeman, J. K¨ ohler, A. Zanelli, S. Bennani, and M. N. Zeilinger. Robust nonlinear optimal control via system level synthesis. IEEE Transactions on Automatic Control , 2025. [52] A. P. Leeman, S. Zhan, M. N. Zeilinger, and G. Chou. Vision-SLS: Safe perception-based control from learned visual representations via system level synthesis. arXiv preprint arXiv:2604.24894 , 2026. [53] M. Anitescu. Optimization-based simulation of nonsmooth rigid multibody dynamics. Math-ematical Programming , 105(1):113–143, 2006. [54] O. Devolder, F. Glineur, and Y. Nesterov. First-order methods of smooth convex optimization with inexact oracle. Mathematical Programming , 146(1):37–75, 2014. ISSN 1436-4646. [55] S. Zhan, C.-Y. Chiu, A. P. Leeman, and G. Chou. Robustly constrained dynamic games for uncertain nonlinear dynamics. arXiv preprint arXiv:2509.16826 , 2025. [56] A. Srinivasan, A. Leeman, and G. Chou. Safety beyond the training data: Robust out-of-distribution mpc via conformalized system level synthesis. arXiv preprint arXiv:2602.12047 ,2026. [57] G. Williams, A. Aldrich, and E. A. Theodorou. Model predictive path integral control: From theory to parallel computation. Journal of Guidance, Control, and Dynamics , 40(2):344–357, 2017. [58] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017. [59] N. Carion, L. Gustafson, Y.-T. Hu, S. Debnath, R. Hu, D. Suris, C. Ryali, K. V. Alwala, H. Khedr, A. Huang, et al. Sam 3: Segment anything with concepts. arXiv preprint arXiv:2511.16719 , 2025. [60] S. Jung, A. Zholus, M. Sundermeyer, C. Doersch, R. Goroshin, D. J. Tan, S. Chandar, R. Triebel, and F. Tombari. Tapnext++: What’s next for tracking any point (tap)? arXiv preprint arXiv:2604.10582 , 2026. [61] A. P. Leeman, J. K¨ ohler, and M. N. Zeilinger. Guaranteed robust nonlinear mpc via disturbance feedback. arXiv preprint arXiv:2509.18760 , 2025. 13 Appendices 
+
+In the following, we provide an overview of our appendices. In App. A, we provide a proof of Theo-rem 1, which shows how perceived-state conformal tubes imply true-state containment after inflating the tubes by the perception-error bound. In App. B, we provide additional details on the hardware perception pipelines used for the rope manipulation and cloth folding experiments, including the camera setup, SAM3-based segmentation, TAPNext++ keypoint tracking, RGB-D reconstruction, spline fitting, and state reconstruction procedures. In App. C, we provide additional reinforcement learning training results comparing PPO and APG on the Lift Rope and Drag Rope tasks, demon-strating the improved sample efficiency enabled by differentiating through our simulator. In App. D, we provide additional state-feedback MPC tube visualizations for the drag rope and fold cloth tasks, and discuss how replanning affects the relationship between executed trajectories and previ-ously computed robust tubes. In App. E, we provide additional output-feedback tube visualizations for the rope manipulation task, showing rollouts under random dynamical and measurement dis-turbances when controlled by the robust perception-based controller synthesized by CORD-SLS. In App. F, we compare our differentiable simulator against prior methods in terms of simulation accuracy and speed. 
+
+A Proofs 
+
+For convenience, we restate Theorem 1 and then provide the proof. 
+
+Theorem A.1 (True-state containment from perceived-state conformal tubes) . Let yk+1 =
+
+qk + ek with ∥ek∥2 ≤ ρ, and define ¯qk := yk+1 . Suppose conformal calibra-tion and robust SLS synthesis yield perceived-state and control tubes ¯T qk and T uk satisfying 
+
+P ¯qk ∈ ¯T qk , u k ∈ T uk , k = 0 , . . . , N  ≥ 1 − δ. Then the true state and control trajectories sat-isfy P qk ∈ ¯T qk ⊕ ρBnq , u k ∈ T uk , k = 0 , . . . , N  ≥ 1 − δ.Proof. On the event that ¯qk ∈ ¯T qk and uk ∈ T uk for all k, we have 
+
+qk = ¯ qk − ek.
+
+Since ∥ek∥2 ≤ ρ,
+
+qk ∈ ¯T qk ⊕ ρBnq
+
+for all k. The perceived-state containment event has probability at least 1 − δ, so the inflated true-state containment event has the same probability lower bound. 
+
+B Perception 
+
+We describe in more detail the hardware experimental setups and perception architecture for the rope manipulation experiment, followed by the cloth folding experiment. For both experiments, we use two Kuka iiwa manipulators with Schunk actuators for gripping. We use two computers, one equipped with a NVIDIA RTX4090, in charge of running the perception pipeline and communicat-ing with the manipulators, and another equipped with an NVIDIA RTX4070 Ti Super dedicated to running the solver. The two computers communicate via ROS2 through an Ethernet connection. We mount two Orbbec Gemini 336L depth cameras to the workspace, with one camera facing the front of the workspace and the other facing the back. Both cameras and manipulators are calibrated to report measurements in a common workstation frame. 14 B.1 Rope a) Raw Image b) SAM Segmentation c) Skeletonize d) TAPNext ++    
+
+> e) Depth Map f) Spline Fitting g) Node Sampling h) Simulation
+
+Figure 4: Perception pipeline for rope state estimation. Raw front-camera images (a) are processed by a SAM3 segmentation network (b). The resulting mask is skeletonized (c), and skeleton points are tracked using TAPNext++ (d). RGB points are then associated with their corresponding RGB-D depth map (e). A spline is fit through the recovered 3D points (f), and fixed inter-node distances are sampled along the spline (g) to reconstruct the rope state (h). We use an approximately 1 cm diameter braided rope with a total length of 1.5 meters. In order to fit the rope within the workspace, we tie both ends of the rope, reducing its effective length to approximately 0.8 m. For our simulation model, we use 10 links. Our primary perception pipeline combines semantic segmentation with keypoint tracking. In Fig. 4, we show snapshots of our perception pipeline. First, we use Segment Anything Model 3 (SAM3) with the prompt “rope” to segment the rope in the RGB image. The resulting mask is skeletonized to produce a one-pixel-wide centerline through the rope. We then sample a fixed number of points along this centerline and use these points to initialize and periodically re-ground a TapNext++ tracker. Given these RGB pixels, TapNext++ tracks the motion of these keypoints across video frames, enabling continuous tracking of rope keypoints between segmentation updates. This hybrid design helps balance semantic robustness and runtime efficiency. While SAM3 provides concept-grounded rope detection, we found in our experiments that a single inference takes approx-imately 200ms, which introduces too much latency for real-time hardware control. TapNext++, on the other hand, runs at lower latency and tracks the rope keypoints frame by frame, but can drift over time as it is not grounded by language or object semantics. We therefore use SAM3 intermittently to reinitialize or reground TapNext++, while TapNext++ provides higher-rate keypoint tracking be-tween SAM3 updates. The tracked 2D keypoints are then corresponded with the depth image to recover their 3D positions in the workstation frame. To reduce noise and convert these measurements into the state represen-tation used by our simulator, we fit a spline through the 3D points and resample along the spline according to the desired rope segment length. As a result, we obtain our full rope state estimate as an ordered sequence of 3D nodes with fixed segment spacing. We found that the frequency of SAM3 re-grounding creates a tradeoff between robustness and run-time. Running SAM3 once every second results in TapNext++ running at approximately 15 Hz, while running SAM3 once every 5 seconds allows TapNext++ to run at approximately 25 Hz. This slowdown is likely due to SAM3 competing with TapNext++ for GPU memory and kernel resources. While this pipeline works empirically, the resulting perception rate is still slower than the solver, whose solve time averages less than 20 ms. As a result, the solver must sometimes be delayed to allow the perception to catch up. To address this latency bottleneck, we also implement a faster rope reconstruction pipeline that trades some perception accuracy for higher control rates. During the initial pickup phase, when the 15 rope is static, we use the full segmentation-and-tracking pipeline to estimate the rope state. After the manipulators grasp the rope, we reconstruct the rope using the known gripper poses and the known rope length between the two manipulators. This reconstruction assumes that the rope shape is dominated by gravitational sag. While this approximation is less accurate than direct perception, it provides a sufficiently reasonable estimate of the rope configuration at substantially higher rates, making it more suitable for closed-loop control. 
+
+B.2 Cloth a) Raw Image b) SAM Segmentatio n c) Depth Map  
+
+> d) Spline Fitting f) Simulation e) Grid Fitting
+
+Figure 5: Perception pipeline for cloth state estimate. Raw front-camera images (a) are processed by a SAM3 segmentation network (b). The resulting RGB mask is associated with the depth map to recover a partial 3D point cloud of the cloth (c). A spline is fit to the observed boundary and extended to account for occluded portions, ensuring that the spline’s length is consistent with the known cloth length (d). Grid points are then fit to the point cloud and points in occluded regions are generated according to the spline (e). This results in a complete cloth state representation that is provided to the simulator (f). We use an approximately 38 cm x 38 cm cloth. For our simulation model, the cloth is discretized into a 7 x 7 grid of cells, corresponding to an 8 x 8 lattice of nodes and yielding 64 cloth nodes in total. The full state has dimension ( 64 × 3 + 3 × 2 = 198 ), consisting of the 3D positions of the cloth nodes and two 3D gripper positions. Estimating the cloth state is more challenging than estimating the rope state due to its higher di-mensionality, highly deformable, and often self-occluding nature. To make the state estimation for cloth folding more tractable, we simplify perception by assuming that the (x)- and (z)-coordinates are constant along each row of the cloth. In other words, each row is represented as a straight line spanning the cloth width in the (y)-direction, reducing the state estimation problem to recovering the row-wise centerline geometry. To make the physical task consistent with this approach, we constrain the positions of the grippers in the optimization to differ in the (x)- and (z)-plane by at most 5 cm. We summarize and show snapshots of the perception pipeline (Fig. 5). Our cloth perception pipeline follows the same general structure as the rope perception pipeline. First, we pass the raw images through a SAM3 segmentation pipeline prompted with “cloth.” The resulting segmentation mask is corresponded with the depth map to recover 3D points on the visible cloth surface. However, during folding, portions of the cloth may be occluded by the folded layer and therefore not visible to the front camera and its depth camera. To handle this, we project the recovered points onto the (x)-(z) plane, yielding a 2D point distribution, and fit a centerline spline 16 through these points. Using this spline, we calculate the total arclength and compare this with the expected length of the cloth. If the arclength is significantly shorter than the known cloth length, we treat the missing length as the occluded portion of the cloth. Lastly, we fit grid points corresponding to the cloth lattice to the visible point cloud and add addi-tional grid points behind the visible cloth to account for occluded regions. This reconstructed state is then passed to the simulator for planning. 
+
+C RL training convergence 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6  
+
+> Steps 1e7
+> 30
+> 35
+> 40
+> 45
+> 50
+> 55
+> 60
+> Cost
+> PPO
+> APG
+
+(a) 0.0 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0   
+
+> Steps 1e7
+> 1200
+> 1400
+> 1600
+> 1800
+> 2000
+> 2200
+> Cost
+> PPO
+> APG
+
+(b) 
+
+Figure 6: RL training convergence for the (a) Lift Rope task, and (b) Drag Rope task. In Fig. 6, we compare the convergence rates of PPO and APG on the Lift Rope and Drag Rope tasks. Because of the differentiability of our simulator, APG can exploit analytical policy gradients obtained by differentiating through the simulator, which accelerates training efficiency. PPO, on the other hand, cannot utilize this gradient information. In both tasks, APG converges to a lower cost faster than PPO. This improvement is due to the contact-smoothed dynamics, which provide lower-variance gradient estimates and improve sample efficiency. Specifically, in the Lift Rope task, APG converges to the same cost as PPO on average in 45.95% (median 36.01%) fewer steps than PPO and in 16.63% (median 27.43%) fewer steps for the Drag Rope task. These results demonstrate that our differentiable simulator can be used to accelerate RL policy learning. 17 D State Feedback MPC Tubes 0.4 
+
+> 0.2
+> 0.0
+> 0.2
+> [m]
+
+Node 0 px
+
+> 0.25
+> 0.00
+> 0.25
+
+Node 0 py
+
+> 0.5
+> 0.0
+> 0.5
+
+Node 0 pz
+
+> 0.4
+> 0.2
+> 0.0
+> 0.2
+
+Node 1 px
+
+> 0.2
+> 0.0
+> 0.2
+
+Node 1 py
+
+> 0.5
+> 0.0
+> 0.5
+
+Node 1 pz
+
+> 0.4
+> 0.2
+> 0.0
+> 0.2
+> [m]
+
+Node 2 px
+
+> 0.2
+> 0.0
+> 0.2
+
+Node 2 py
+
+> 0.2
+> 0.0
+> 0.2
+
+Node 2 pz
+
+> 0.4
+> 0.2
+> 0.0
+> 0.2
+
+Node 3 px
+
+> 0.2
+> 0.0
+> 0.2
+
+Node 3 py
+
+> 0.2
+> 0.0
+> 0.2
+
+Node 3 pz
+
+> 0.4
+> 0.2
+> 0.0
+> 0.2
+> [m]
+
+Node 4 px
+
+> 0.0
+> 0.2
+
+Node 4 py
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 4 pz
+
+> 0.4
+> 0.2
+> 0.0
+> 0.2
+
+Node 5 px
+
+> 0.0
+> 0.2
+
+Node 5 py
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 5 pz
+
+> 0.2
+> 0.0
+> 0.2
+> [m]
+
+Node 6 px
+
+> 0.0
+> 0.2
+
+Node 6 py
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 6 pz
+
+> 0.2
+> 0.0
+> 0.2
+
+Node 7 px
+
+> 0.0
+> 0.2
+
+Node 7 py
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 7 pz
+
+> 0.2
+> 0.0
+> 0.2
+> [m]
+
+Node 8 px
+
+> 0.0
+> 0.2
+
+Node 8 py 
+
+> 0.05
+> 0.00
+> 0.05
+> 0.10
+
+Node 8 pz
+
+> 0.2
+> 0.0
+> 0.2
+
+Node 9 px
+
+> 0.0
+> 0.2
+
+Node 9 py
+
+> 0.05
+> 0.00
+> 0.05
+
+Node 9 pz
+
+> 0.2
+> 0.0
+> 0.2
+> [m]
+
+Node 10 px
+
+> 0.0
+> 0.2
+
+Node 10 py
+
+> 0.025
+> 0.000
+> 0.025
+> 0.050
+
+Node 10 pz
+
+> 0.2
+> 0.0
+> 0.2
+
+Node 11 px
+
+> 0.1
+> 0.0
+> 0.1
+> 0.2
+
+Node 11 py
+
+> 0.02
+> 0.00
+> 0.02
+> 0.04
+
+Node 11 pz
+
+> 0.2
+> 0.0
+> 0.2
+> [m]
+
+Node 12 px
+
+> 0.1
+> 0.0
+> 0.1
+> 0.2
+
+Node 12 py
+
+> 0.02
+> 0.00
+> 0.02
+
+Node 12 pz 
+
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+
+Node 13 px
+
+> 0.1
+> 0.0
+> 0.1
+> 0.2
+
+Node 13 py
+
+> 0.01
+> 0.00
+> 0.01
+> 0.02
+
+Node 13 pz
+
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+> [m]
+
+Node 14 px
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 14 py
+
+> 0.00
+> 0.01
+
+Node 14 pz
+
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+
+Node 15 px
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 15 py
+
+> 0.00
+> 0.01
+
+Node 15 pz
+
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+> [m]
+
+Node 16 px
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 16 py
+
+> 0.005
+> 0.000
+> 0.005
+> 0.010
+
+Node 16 pz
+
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+
+Node 17 px
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 17 py
+
+> 0.000
+> 0.005
+> 0.010
+
+Node 17 pz
+
+> 0.25
+> 0.00
+> 0.25
+> [m]
+
+Node 18 px
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 18 py
+
+> 0.000
+> 0.005
+> 0.010
+
+Node 18 pz
+
+> 0.25
+> 0.00
+> 0.25
+
+Node 19 px
+
+> 0.1
+> 0.0
+> 0.1
+
+Node 19 py
+
+> 0.000
+> 0.005
+> 0.010
+
+Node 19 pz    
+
+> 0.0 2.5 5.0 7.5 10.0
+
+time (s) 
+
+> 0.25
+> 0.00
+> 0.25
+> 0.50
+> [m]
+
+Node 20 px    
+
+> 0.0 2.5 5.0 7.5 10.0
+
+time (s) 
+
+> 0.1
+> 0.0
+
+Node 20 py    
+
+> 0.0 2.5 5.0 7.5 10.0
+
+time (s) 
+
+> 0.000
+> 0.005
+> 0.010
+
+Node 20 pz    
+
+> 0.0 2.5 5.0 7.5 10.0
+
+time (s) 
+
+> 0.4
+> 0.2
+> 0.0
+
+Manipulator px    
+
+> 0.0 2.5 5.0 7.5 10.0
+
+time (s) 
+
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+
+Manipulator py    
+
+> 0.0 2.5 5.0 7.5 10.0
+
+time (s) 
+
+> 0.25
+> 0.00
+> 0.25
+
+Manipulator pz
+
+Rollouts MPC tube bounds 
+
+Figure 7: Forward reachable tubes under MPC for the drag rope task for all 66 states. Fig. 7 shows the forward reachable tubes of the drag rope task in Fig. 2b at selected MPC steps, overlaid with the trajectory (dark line) realized by closed-loop MPC with replanning. We note that in an MPC setting, the executed trajectory may not coincide with the tubes computed at previous time steps because the controller replans after each execution step. Disturbances and the finite prediction horizon can cause subsequent optimizations to select a lower-cost trajectory that deviates from the previously planned path and its associated robust tube. For guaranteed robust recursive feasibility, an approach such as [61] can be applied. Alternatively, rollouts using the robust feedback controller generated by SLS are guaranteed to remain within the computed tubes, but only over the finite horizon for which the controller was synthesized, such as in Fig. 9, which presents full-horizon tubes. Fig. 8 shows the forward reachable tubes for the fold cloth task in Fig. 2c at selected MPC steps. A constraint limits the cloth height to 3 cm in the z direction. Because MPC replans after each exe-cution step, the executed trajectory does not necessarily remain within tubes computed at previous time steps. Nevertheless, by enforcing constraints on the tube-valued predictions during each replan, the controller robustly satisfies the z-height constraint throughout the task. 18 0.00 
+
+0.02 
+
+> [m]
+
+Node 0 pz
+
+0.00 
+
+0.02 
+
+Node 1 pz
+
+0.00 
+
+0.02 
+
+Node 2 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 3 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 4 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 5 pz
+
+0.00 
+
+0.02 
+
+> [m]
+
+Node 6 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 7 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 8 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 9 pz
+
+0.00 
+
+0.02 
+
+Node 10 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 11 pz
+
+0.00 
+
+0.02 
+
+> [m]
+
+Node 12 pz
+
+0.00 
+
+0.02 
+
+Node 13 pz
+
+0.00 
+
+0.02 
+
+Node 14 pz
+
+0.00 
+
+0.02 
+
+Node 15 pz
+
+0.00 
+
+0.02 
+
+Node 16 pz
+
+0.00 
+
+0.02 
+
+Node 17 pz
+
+0.02 
+
+0.00 
+
+0.02 
+
+> [m]
+
+Node 18 pz
+
+0.02 
+
+0.00 
+
+0.02 
+
+Node 19 pz
+
+0.00 
+
+0.02 
+
+Node 20 pz
+
+0.00 
+
+0.02 
+
+Node 21 pz
+
+0.02 
+
+0.00 
+
+0.02 
+
+Node 22 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 23 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 24 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 25 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 26 pz
+
+0.00 
+
+0.02 
+
+Node 27 pz
+
+0.00 
+
+0.02 
+
+Node 28 pz
+
+0.00 
+
+0.02 
+
+Node 29 pz
+
+0.00 
+
+0.02 
+
+> [m]
+
+Node 30 pz
+
+0.02 
+
+0.00 
+
+0.02 
+
+Node 31 pz
+
+0.02 
+
+0.00 
+
+0.02 
+
+Node 32 pz
+
+0.02 
+
+0.00 
+
+0.02 
+
+Node 33 pz
+
+0.00 
+
+0.02 
+
+Node 34 pz
+
+0.00 
+
+0.02 
+
+Node 35 pz
+
+0.00 
+
+0.02 
+
+> [m]
+
+Node 36 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 37 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 38 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 39 pz
+
+0.00 
+
+0.02 
+
+Node 40 pz
+
+0.00 
+
+0.02 
+
+Node 41 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 42 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 43 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 44 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 45 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 46 pz
+
+0.00 
+
+0.02 
+
+Node 47 pz
+
+0.00 
+
+0.02 
+
+> [m]
+
+Node 48 pz
+
+0.00 
+
+0.02 
+
+Node 49 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 50 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 51 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 52 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 53 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 54 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 55 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 56 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 57 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 58 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 59 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 60 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 61 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 62 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 63 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 64 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 65 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 66 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 67 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 68 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 69 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 70 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 71 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 72 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 73 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 74 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 75 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 76 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 77 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 78 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 79 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 80 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 81 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 82 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 83 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 84 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 85 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 86 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 87 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 88 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 89 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 90 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 91 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 92 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 93 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 94 pz
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 95 pz
+
+0 1 2 3
+
+time (s) 
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+> [m]
+
+Node 96 pz
+
+0 1 2 3
+
+time (s) 
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 97 pz
+
+0 1 2 3
+
+time (s) 
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 98 pz
+
+0 1 2 3
+
+time (s) 
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Node 99 pz
+
+0 1 2 3
+
+time (s) 
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+Manipulator 1 pz
+
+0 1 2 3
+
+time (s) 
+
+0.00 
+
+0.02 
+
+Manipulator 2 pz
+
+Rollouts MPC tube bounds Figure 8: Forward reachable tubes under MPC for the fold cloth task for the z-coordinate states. 19 E Output Feedback Tubes 
+
+We show the tubes for all 39 states for the output feedback experiment in Fig. 3. The rollouts are evaluated under random dynamical and measurement disturbances, while control inputs are gener-ated by the robust observer-based controller synthesized by CORD-SLS. -0.100                                                
+
+> -0.075
+> [m]
+> Node 0 px
+> 0.0
+> 0.2
+> Node 0 py
+> 0.2
+> 0.3
+> Node 0 pz
+> -0.08
+> -0.06
+> Node 1 px
+> 0.0
+> 0.2
+> Node 1 py
+> 0.1
+> 0.2
+> 0.3
+> Node 1 pz
+> -0.06
+> -0.05
+> [m]
+> Node 2 px
+> 0.0
+> 0.2
+> Node 2 py
+> 0.1
+> 0.2
+> 0.3
+> Node 2 pz
+> -0.04
+> -0.03
+> Node 3 px
+> 0.0
+> 0.2
+> Node 3 py
+> 0.1
+> 0.2
+> 0.3
+> Node 3 pz
+> -0.02
+> -0.01
+> [m]
+> Node 4 px
+> 0.0
+> 0.2
+> Node 4 py
+> 0.1
+> 0.2
+> 0.3
+> Node 4 pz
+> 0.00
+> 0.01
+> Node 5 px
+> 0.0
+> 0.2
+> Node 5 py
+> 0.1
+> 0.2
+> 0.3
+> Node 5 pz
+> 0.02
+> 0.03
+> [m]
+> Node 6 px
+> 0.0
+> 0.2
+> Node 6 py
+> 0.1
+> 0.2
+> 0.3
+> Node 6 pz
+> 0.04
+> 0.05
+> Node 7 px
+> 0.0
+> 0.2
+> Node 7 py
+> 0.1
+> 0.2
+> 0.3
+> Node 7 pz
+> 0.05
+> 0.06
+> 0.07
+> [m]
+> Node 8 px
+> 0.0
+> 0.2
+> Node 8 py
+> 0.1
+> 0.2
+> 0.3
+> Node 8 pz
+> 0.06
+> 0.08
+> Node 9 px
+> 0.0
+> 0.2
+> Node 9 py
+> 0.1
+> 0.2
+> 0.3
+> Node 9 pz
+> 0.075
+> 0.100
+> [m]
+> Node 10 px
+> 0.0
+> 0.2
+> Node 10 py
+> 0.2
+> 0.3
+> Node 10 pz
+> -0.100
+> -0.075
+> Manipulator 0 px
+> 0.0
+> 0.2
+> Manipulator 0 py
+> 0.2
+> 0.3
+> Manipulator 0 pz
+> 0.0 0.5 1.0
+> time (s)
+> 0.075
+> 0.100
+> [m]
+> Manipulator 1 px
+> 0.0 0.5 1.0
+> time (s)
+> 0.0
+> 0.2
+> Manipulator 1 py
+> 0.0 0.5 1.0
+> time (s)
+> 0.2
+> 0.4 Manipulator 1 pz
+> Rollouts Tube bounds
+
+Figure 9: Forward reachable tubes for the output-feedback rope manipulation task for all 39 states. The red trajectories represent the states corresponding to the x dimension, green the y dimension, and blue the z dimension. 
+
+F Simulator Comparison 
+
+Table 2 reports the runtime of forward simulation and dynamics Jacobian computation for a 20-node rope and a 100-node cloth. Our simulator consistently achieves the fastest execution time among the compared differentiable simulators. Furthermore, matrix prefactorization significantly reduces the overhead of gradient computation, making dynamics Jacobian computation time comparable to forward simulation. DEFORM [9] exhibits slower simulation performance because its computation pipeline is not com-piled into GPU-native code. DaXBench [36] employs different simulation methods for ropes and cloth, using the Material Point Method (MPM) for ropes and a mass-spring model for cloth, which leads to different computational costs. Forward simulation [ms] Dynamics Jacobian computation [ms] Rope Ours 1.095 ± 0.162 5.198 ± 2.533 DEFORM [9] 49.03 ± 20.04 2128.81 ± 55.14 DaXBench [36] 786.48 ± 76.23 11561.57 ± 122.07 Cloth Ours 15.08 ± 1.209 10.06 ± 0.983 DaXBench [36] 21.71 ± 0.722 110.19 ± 2.663 Table 2: Comparison of simulation time across different differentiable simulators. 20 We next benchmark the simulation accuracy of our method against DEFORM. To construct the benchmark dataset, we collect 100 samples of randomized manipulation actions on hardware while running our perception pipeline to estimate the rope state. For each sample, we record the current state, control action, and resulting next state, i.e. ( x+ = f (x, u )). We note that due to the latency in the perception pipeline, we are unable to directly observe the instantaneous post-action state and therefore cannot reliably capture transient swinging or momentum-driven dynamics. Instead, the recorded next state corresponds to the settled configuration of the rope after the motion has dissipated, making the dataset more representative of quasi-static behavior. We evaluate both simulators under two settings. First, we report the one-step prediction accuracy of the base simulator, measured as the mean L2 distance between the predicted and observed next states. Second, we evaluate each simulator with an augmented learned residual model. The original DEFORM framework employs a learned residual consisting of a network architecture to compensate for modeling errors. To ensure a fair comparison, we train an identical residual architecture for both simulators using the same training procedure and hyperparameters. The dataset is split into 70% training and 30% validation data, and we report the mean validation error for the residual-corrected models. For all experiments, we set the rope length to 0.8m and discretize it into 10 links. A key difference between our method and the DEFORM simulator is that DEFORM is formulated as a fully dynamic simulator, whereas our method assumes quasi-static behavior. Consequently, directly comparing a single forward simulation step would be unfair, since the recorded hardware data corresponds to settled equilibrium configurations rather than transient dynamics. Therefore, to account for this discrepancy when evaluating DEFORM, after the commanded action, we repeatedly propagate the dynamics with zero control input until the rope converges to an equilibrium config-uration. This produces predictions that are consistent with the quasi-static states observed by our perception system. Table 3 summarizes the resulting one-step prediction accuracy. DEFORM achieves approximately 7% lower prediction error than our simulator. This performance gap is expected, as DEFORM models additional physical degrees of freedom, including twisting deformation, through the discrete elastic rods formulation, whereas our simulator uses an elastic energy model that captures only stretching and bending deformation. As a result, certain higher-order deformation effects are not explicitly represented, leading to a loss in model fidelity. However, we note that the computational efficiency of our simulator and planner enables rapid replanning during execution, allowing the system to quickly compensate for modeling inaccuracies and disturbances. Finally, we show that both simulators benefit from the learned residual correction model, with DEFORM maintaining a slight advantage due to its stronger underlying physical model. Mean L2 Error [m] Rope Ours 0.0150 ± 0.0040 DEFORM [9] 0.0139 ± 0.0029 Ours with learned Residual 0.0075 ± 0.0068 DEFORM with learned Residual [9] 0.0071 ± 0.0032 Table 3: Comparison of simulation accuracy of our method against DEFORM. 21
