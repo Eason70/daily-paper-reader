@@ -1,0 +1,802 @@
+Title: Elastic ODYN: Differentiable Optimization for Infeasible Control and Learning in Robotics
+
+URL Source: https://arxiv.org/pdf/2606.16564v1
+
+Published Time: Tue, 16 Jun 2026 02:07:23 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# ELASTIC ODYN : Differentiable Optimization for Infeasible Control and Learning in Robotics 
+
+Aristotelis Papatheodorou 1 Jose Rojas 2 Ioannis Havoutis 1 Carlos Mastalli 2
+
+Abstract —Robotic systems routinely encounter conflicting ob-jectives, modeling errors, and degenerate contact conditions that render quadratic programs (QPs) infeasible. Yet most optimization solvers and differentiable QP layers assume feasi-bility, leading to numerical failures, unstable gradients, or solver breakdown when constraints cannot be simultaneously satisfied. We present E LASTIC ODYN , a primal–dual non-interior-point QP solver that handles infeasibility through smooth squared-
+
+ℓ2 elastic relaxations. The resulting formulation remains well posed under ill-conditioning and degeneracy, supports warm starting, and converges to closest-to-feasible solutions when no feasible point exists. A lightweight refinement stage recovers physically meaningful dual variables from the elastic solution. Building on this framework, we develop E LASTIC ODYN LAYER ,a differentiable QP layer with stable gradients under infeasibility, and E LASTIC ODYN SQP, an infeasibility-aware SQP method that resolves inconsistent subproblems and intrinsically infea-sible optimal control tasks through selective constraint relax-ation. We evaluate the framework on benchmark QPs, singular contact mechanics, differentiable parameter identification, and quadrupedal and humanoid trajectory optimization. Across all settings, E LASTIC ODYN consistently outperforms state-of-the-art elastic QP solvers in robustness, warm-start performance, and convergence reliability, enabling optimization, simulation, control, and learning beyond the feasibility assumptions of existing methods. 
+
+Index Terms —infeasible optimization, elastic constraints, smooth constraint relaxation, differentiable optimization, contact simulation, optimization-based robotics 
+
+I. I NTRODUCTION 
+
+Quadratic programming (QP) is a fundamental tool across science and engineering. In robotics and artificial intelligence (AI) [1] optimization problems are often large-scale and numerically stiff, placing stringent requirements on solver robustness, scalability, and numerical stability. Despite its central role, there is currently no QP solver that is simulta-neously robust to infeasibility, numerically stable for complex problems, and compatible with differentiable optimization. Robotics provides a particularly demanding setting. Robots must plan their actions in dynamic and uncertain environ-ments while enforcing safety-critical constraints. Decisions are made in real time and often over long horizons, leading to high-dimensional optimization problems with several con-straints [2]. In practice, feasibility is frequently violated due 
+
+> 1
+
+Aristotelis Papatheodorou and Ioannis Havoutis are with the Department of Engineering Science, University of Oxford, Oxford, UK. A.P. is supported by Oxford’s Clarendon Fund and the JPMorgan Chase AI PhD Fellowship. 
+
+> 2
+
+Jose Rojas and Carlos Mastalli are with the Robot Motor Intelligence (RoMI) Lab, Heriot-Watt University, Edinburgh, UK. J.R. is supported by the Advancing MANipulation skills in Legged Robots (AMAN) project, funded by Tata Consultancy Services. 
+
+> ∗
+
+Open-source implementation will be released upon acceptance. 
+
+to modeling errors, external disturbances, or conflicting task requirements. As a result, the quadratic subproblems arising in control pipelines may themselves become infeasible. Model predictive control (MPC) [3] computes control ac-tions in a principled way, handling dynamics and constraints by repeatedly solving structured quadratic programs. However, MPC scales poorly and becomes increasingly ill-conditioned with longer prediction horizons. Moreover, MPC solvers are not designed to handle infeasible constraint sets gracefully, which can lead to failure or unpredictable behavior in prac-tice [4]. Within sequential quadratic programming (SQP) methods, infeasibility is typically addressed through restora-tion stages [5]. In contrast, elastic mechanisms provide a unified and computationally efficient means of recovering feasibility while resolving the problem. Differentiable optimization has emerged as a promising paradigm for learning-based methods, where the forward pass solves a constrained problem and the backward pass propa-gates loss gradients through its solution. These gradients are governed by the Karush–Kuhn–Tucker (KKT) system, which couples primal and dual variables and enforces stationarity and complementarity, but not primal feasibility, since intermediate gradient-based iterates may be infeasible. As a result, differen-tiable optimization layers are highly sensitive to infeasibility and ill-conditioning, exposing a fundamental deficiency of standard differentiable QP frameworks. 
+
+A. Contributions 
+
+This paper introduces E LASTIC ODYN ∗, a framework for robust and differentiable quadratic programming under infea-sibility. Our main contributions are: (i) Elastic O DYN . We develop E LASTIC ODYN , a smooth 
+
+ℓ2-elastic non-interior point QP solver based on ODYN [6], for robustly handling infeasible, degenerate, and ill-conditioned QPs. (ii) Dual recovery. We introduce a refinement procedure that recovers interpretable dual variables for infeasible QPs. (iii) Differentiable optimization under infeasibility. We de-velop E LASTIC ODYN LAYER , a differentiable QP layer with stable gradients for both feasible and infeasible problems. (iv) Infeasibility-aware SQP. We develop E LASTIC ODYN -SQP, an SQP framework that resolves inconsistent subproblems and intrinsically infeasible optimal control tasks through selective constraint relaxation. By unifying infeasibility handling, numerical robustness, and differentiability, E LASTIC ODYN opens new possibilities for 
+
+> arXiv:2606.16564v1 [cs.RO] 15 Jun 2026
+
+optimization-based robotics and AI pipelines. II. R ELATED WORK 
+
+Quadratic programming has been extensively studied, giving rise to a wide range of solvers with different trade-offs in scalability, robustness, and differentiability. We review the main classes of optimization approaches, with a focus on infeasibility handling and differentiable structure. 
+
+A. Optimization approaches and available solvers 
+
+Active-set methods are among the earliest approaches to quadratic programming [7]. Solvers such as QP OASES [8] and the SQP solver S NOPT [9] maintain the active constraint set and solve a sequence of equality-constrained subproblems. They are effective at small to medium scale and warm-startable, but scale poorly as constraint counts grow, due to exponential active-set combinatorics. Discrete active-set changes also induce nonsmooth solution mappings, compli-cating differentiation and hindering training. Augmented Lagrangian methods (ALMs) handle con-straints via penalty terms and iterative dual updates, ex-hibiting strong robustness to rank-deficient equalities and ill-conditioning. Solvers such as L ANCELOT [10], O SQP [11], and PROX QP [12] extend this framework to inequality-constrained problems, typically enforcing inequalities through projection or proximal operators. However, these strategies introduce nonsmoothness detrimental to numerical robustness and gradient-based training. Despite strong theoretical guaran-tees, reliance on penalty tuning and repeated inner solves limits ALM efficiency in real-time and learning-based settings. Interior-point methods (IPMs) dominate large-scale con-vex and nonlinear optimization. Solvers such as I POPT [13], GUROBI [14], and P IQP [15] use barrier functions and pri-mal–dual KKT systems to handle inequalities without explicit active-set enumeration, scaling well in feasible regimes. How-ever, IPMs follow a central path that is well defined only when the problem is strictly feasible, which makes warm starting difficult and causes failures or numerical instabilities when problems become infeasible or nearly infeasible. Motivated by these limitations, non-interior-point meth-ods (NIPMs) [6], [16] have emerged as alternatives that remain well defined outside the feasible set. Generally, they can be categorized into two families. Semismooth meth-ods such as FB STAB [17] reformulate the KKT conditions via nonlinear complementarity problem (NCP) functions like Fischer–Burmeister [18], with applications in contact simula-tion and control [19]. Path-following methods instead track smoothed KKT systems as the smoothing parameter vanishes, operating robustly under infeasibility [20] and yielding regular solution mappings well suited to implicit differentiation. Yet no existing method simultaneously addresses infeasibility and robustness within a unified differentiable framework. 
+
+B. Differentiable optimization and limitations 
+
+Differentiable optimization enables training optimization layers within learning pipelines by exposing reverse-mode gradients of the solution map. O PT NET [21] pioneered this for quadratic programs by analytically differentiating the KKT conditions of an interior-point solver, and CVXPYLAYERS [22] extends it to general convex programs, but both inherit the strict feasibility requirements and numerical sensitivity of IPMs. QP LAYER [23], built on PROX QP [12], admits infeasible problems through an elastic ALM formulation, but its nonsmooth solution mapping forces differentiation through the extended conservative Jacobian (ECJ) framework [24] and inflates the backward pass with elastic relaxation variables. Tracy and Manchester [25] recover smooth gradients from a primal–dual IPM by relaxing central-path solutions with a tunable smoothing parameter, but inherit barrier pathologies such as parameter sensitivity and poor warm-startability, so their gradients reflect barrier-induced smoothing rather than true constrained sensitivities. ELASTIC ODYN is instead designed for the degenerate and ill-conditioned regimes through barrier–penalty functions ,supporting warm starting and explicitly resolving primal infea-sibility. Its differentiable counterpart, E LASTIC ODYN LAYER ,is the first projection-free, fully smooth QP layer that yields well-defined derivatives even when no feasible point exists, producing more regular solution mappings than existing lay-ers in the robotics and AI regimes where infeasibility and numerical stiffness are routine. III. I NFEASIBILITY IN QUADRATIC PROGRAMMING 
+
+We consider convex quadratic programs of the form 
+
+min  
+
+> x
+> 12
+
+x⊺Q x + c⊺x
+
+subject to A x = b,
+
+G x ≤ h,
+
+(1) with primal variables x ∈ Rn, symmetric positive semidefinite cost matrix Q ∈ Rn×n, linear cost c ∈ Rn, and constraints defined by A ∈ Rm×n, b ∈ Rm for the equalities and 
+
+G ∈ Rp×n, h ∈ Rp for the inequalities. Under standard regularity assumptions such as Slater’s condition, optimal solutions of Eq. (1) are characterized by the KKT conditions, derived from the Lagrangian 
+
+L(x, y, z) = 12 x⊺Q x +c⊺x+y⊺(Ax −b)+ z⊺(Gx −h), (2) where y ∈ Rm and z ∈ Rp are the multipliers associated with the equality and inequality constraints. Combining primal and dual feasibility, complementary slackness, and stationarity, the KKT conditions admit the equivalent variational form 
+
+0 ∈ Qx + c + NF (x), (3) with feasible set F := {x ∈ Rn | Ax = b, Gx ≤ h}
+
+and normal cone NF (x). This inclusion provides a unified representation that underpins the notions of primal and dual feasibility developed below. 
+
+A. Primal infeasibility 
+
+A point x is primal infeasible if it violates at least one constraint, i.e., x /∈ F . The geometric infeasibility is captured by dist( x, F) = inf x′∈F ∥x − x′∥, but is generally intractable to evaluate. We instead use the computable constraint violation 
+
+viol( x) = max  ∥Ax − b∥, ∥x − ΠI (x)∥, (4) where ∥ · ∥ is the Euclidean norm, I = {x ∈ Rn | Gx ≤
+
+h}, and ΠI (x) denotes the Euclidean projection onto I. This quantity vanishes if and only if x ∈ F and provides a tractable surrogate for dist( x, F). For x /∈ F , the variational inclusion cannot be satisfied, meaning that the KKT inclusion cannot hold: 
+
+0 /∈ Qx + c + NF (x), (5) because the normal cone is empty, i.e., NF (x) = ∅ for x /∈F. Under standard constraint qualifications, the normal cone admits a representation in terms of dual multipliers 
+
+NF (x) = {A⊺y + G⊺z | y ∈ Rm, z ∈ Rp
+
+> +
+
+, z⊺(Gx − h) = 0},
+
+(6) from which the KKT conditions follow, with z ≥ 0 and 
+
+z⊺(Gx − h) = 0 corresponding to dual feasibility and complementary slackness. In practical robotics applications, primal infeasibility com-monly arises from over-constrained kinematic tasks or conflict-ing contact conditions. Moreover, in differentiable QP layers, primal feasibility cannot be enforced during training, since intermediate iterates produced by gradient-based updates are generally infeasible. In the following subsection, we distinguish between viola-tions of dual feasibility at the multiplier level and true dual infeasibility in the optimization-theoretic sense. 
+
+B. Dual infeasibility 
+
+Dual feasibility concerns the existence of Lagrange multi-pliers (y, z) compatible with the normal-cone representation of Eq. (3). It requires non-negativity of the inequality multi-pliers z ≥ 0, defining the dual set D = {(y, z) ∈ Rm × Rp |
+
+z ≥ 0}. A pair (y, z) is dual infeasible if (y, z) /∈ D , and we quantify the violation by the Euclidean distance to D,
+
+dist(( y, z), D) = ∥z − ΠRp 
+
+> +
+
+(z)∥, (7) where ΠRp 
+
+> +
+
+(·) denotes the Euclidean projection onto the nonnegative orthant. When z̸ ≥ 0, the vector A⊺y + G⊺z
+
+no longer lies in NF (x), so the stationarity inclusion 0 ∈
+
+Qx + c + NF (x) fails to characterize a valid KKT point, even when x is primal feasible. Dual feasibility is therefore necessary for the KKT system to be well defined. Under standard regularity assumptions such as Slater’s condition [26], dual infeasibility manifests as primal unbound-edness, meaning the objective decreases without bound along a feasible direction, inf x∈F 12 x⊺Q x + c⊺x = −∞ . When 
+
+Q ⪰ 0, this requires a nonzero ∆x in the recession cone of 
+
+F along which the quadratic term vanishes, i.e. Q∆x = 0,
+
+A∆x = 0, G∆x ≤ 0, and c⊺∆x < 0. Such directions are rare in well-posed robotics problems and typically signal a modeling pathology, such as missing bounds, or a differen-tiable QP layer whose learned Q has drifted from positive semidefiniteness during training. A small regularization term suffices in both cases. Indefinite Q is qualitatively different, since the problem leaves the convex setting altogether, and the resulting unboundedness reflects a loss of numerical validity rather than dual infeasibility in any meaningful sense. 
+
+C. About certifying infeasibility 
+
+Reliable infeasibility detection is challenging, since residual-based criteria often stagnate in ill-conditioned or degenerate problems. Formal detection relies on Farkas-type certificates [27], which prove unsolvability geometrically but are numerically fragile and expensive to compute post hoc. A common alternative is the homogeneous self-dual formula-tion [28], embedding the KKT system into a skew-symmetric system where optimality and infeasibility appear as distinct limit points of a single central path. Neither approach aligns with the best-effort solutions required in robotics and control, where approximate feasibility and numerical robustness out-weigh exact infeasibility proofs. IV. E LASTIC ODYN 
+
+A. Algorithmic foundations 
+
+Elastic formulations address infeasibility by relaxing hard constraints and penalizing violations in the objective. A pro-totypical elastic QP with explicit infeasibility relaxation reads 
+
+min    
+
+> x,se,si
+> 12
+
+x⊺Qx + c⊺x + 12γe ∥se∥2 + 12γi ∥si∥2
+
+subject to Ax − b = se, Gx − h ≤ si,
+
+(8) where se ∈ Rm and si ∈ Rp are elastic relaxation variables relaxing the equality and inequality constraints, and γe, γ i ∈
+
+R+ balance optimality against constraint satisfaction. Closed-form elimination of se and si yields the unconstrained problem 
+
+min  
+
+> x
+> 12
+
+x⊺Qx + c⊺x + 12γe ∥Ax − b∥2 + 12γi ∥(Gx − h)+∥2 ,
+
+(9) with (·)+ the componentwise positive part. Variationally, the two penalties are Moreau–Yosida regularizations of the indi-cators δ{0} and δRp 
+
+> −
+
+composed with the constraint maps, 
+
+min  
+
+> x
+> 12
+
+x⊺Qx + c⊺x + δγe
+
+> {0}
+
+(Ax − b) + δγi
+
+> Rp
+> −
+
+(Gx − h), (10) where δγ 
+
+> C
+
+(x) := min x′ δC (x′) + 12γ ∥x′ − x∥2 = 12γ dist 2(x, C)
+
+is the Moreau envelope of δC [29]. Its gradient ∇δγ 
+
+> C
+
+(x) = 
+
+γ−1(x − ΠC (x)) is the Yosida approximation of the normal cone NC , so the elastic objective is C1 with semismooth gradient, and the first-order optimality condition becomes the semismooth stationarity equation 
+
+0 = Qx + c + 1 
+
+> γe
+
+A⊺(Ax − b) + 1 
+
+> γi
+
+G⊺(Gx − h)+, (11) a single-valued surrogate of the original KKT inclusion. Whereas ℓ1 penalties enforce constraints exactly at finite parameters but produce nonsmooth, set-valued optimality con-ditions, the squared ℓ2 penalties we adopt preserve smoothness and yield well-defined proximal KKT systems, which are particularly suited to differentiable optimization layers and implicit Newton-type solvers. B. An elastic path-following NIPM for QP 
+
+ELASTIC ODYN is a primal–dual QP solver based on a non-interior-point formulation that handles both feasible and infeasible QPs, supports warm starting, and remains robust to degeneracy. It combines all-shifted NCP functions with proximal primal–dual regularization, yielding a smooth, well-conditioned KKT system under Slater’s condition alone: 
+
+min      
+
+> x,s,se,si,ξ
+
+f (x) − μ
+
+> p
+
+X
+
+> j=1
+
+log( ξj ) + 12γe ∥se∥2 + 12γi ∥si∥2
+
+subject to Ax − b = se, Gx + s − h = si, s = ξ,
+
+(12) with f (x) := 12 x⊺Qx + c⊺x, inequality slack s ∈ Rp, and consensus variable ξ ∈ Rp. The barrier acts on ξ rather than 
+
+s, allowing iterates to leave the interior of {Gx ≤ h} while preserving a well-defined primal–dual structure. We refer to this as a penalty–barrier formulation .The associated Lagrangian augments the consensus con-straint quadratically, 
+
+PE ( ˜U; μ, γ) = f (x) − μ
+
+> p
+
+X
+
+> j=1
+
+log( ξj ) + 12γe ∥se∥2 + 12γi ∥si∥2
+
++ 12 ∥s − ξ∥2 − w⊺(s − ξ)+ y⊺(Ax − b − se) + z⊺(Gx + s − h − si),
+
+(13) where y ∈ Rm, z ∈ Rp, w ∈ Rp are multipliers for the equality, inequality, and consensus constraints, μ ∈ R+ is the barrier parameter, and ˜U := ( x, s, ξ, w, y, z, se, si).For robustness under degeneracy, we add proximal penal-ties on primal and dual variables, yielding the perturbed Lagrangian 
+
+˜PE ( ˜U; μ, γ, ρ, ˜UE ) = PE ( ˜U; μ, γ) + ρd 
+
+> 2
+
+∥x − xE ∥2
+
+− ρe 
+
+> 2
+
+∥y − yE ∥2 − ρi 
+
+> 2
+
+∥z − zE ∥2 + ρn 
+
+> 2
+
+∥s − sE ∥2
+
+− ρn 
+
+> 2
+
+∥w − wE ∥2 − ρn 
+
+> 2
+
+(s − sE )⊺(w − wE ),
+
+(14) with reference estimates ˜UE := ( xE , sE , wE , yE , zE ) and proximal weights ρ := ( ρd, ρ e, ρ i, ρ n) ∈ R4+. The opposing signs on dual variables reflect the saddle structure of the primal–dual formulation. Its first order optimality conditions in (15) form the basis for E LASTIC ODYN ’s Newton system. 
+
+∇x ˜PE = Qx + c + A⊺y + G⊺z + ρd(x − xE ),
+
+∇y ˜PE = Ax − b − se − ρe(y − yE ),
+
+∇z ˜PE = Gx + s − h − si − ρi(z − zE ),
+
+∇w ˜PE = s − ξ + ρn 
+
+> 2
+
+(s − sE ) + ρn 
+
+> 2
+
+(w − wE ),
+
+∇ξ ˜PE = −μ ξ−1 − (s − ξ) + w,
+
+∇s ˜PE = s − ξ + ρn 
+
+> 2
+
+(s − sE ) − ρn 
+
+> 2
+
+(w − wE ) − w + z,
+
+∇se
+
+˜PE = y − γ−1 
+
+> e
+
+se, ∇si
+
+˜PE = z − γ−1 
+
+> i
+
+si,
+
+(15) 
+
+C. Elastic Newton system 
+
+Following O DYN ’s reduction strategy [6], we first elimi-nate the consensus variable ξ in closed form by substituting 
+
+∇wPE = 0 into ∇sPE = 0, simplifying the correspond-ing KKT residuals. The elastic relaxation variables are likewise eliminated via the identities se ≡ γey and si ≡ γiz in Eq. (15). This twofold elimination both reduces the system to the hard-constrained dimensions and removes the need for an explicit non-negativity constraint on si, which inherits non-negativity from the inequality multiplier z.These reductions yield the following set of reduced elas-tic KKT residuals: 
+
+˜r(U; Π) = 
+
+
+
+˜rd
+
+˜re
+
+˜ri
+
+˜rg
+
+ =
+
+
+
+Qx + c + A⊺y + G⊺z + ρd(x − xE )
+
+Ax − b − γey − ρe(y − yE )
+
+Gx + s − h − γiz − ρi(z − zE )
+
+ϕ(s, z; μ) + ρn(s − sE ) + ρn(z − zE )
+
+
+
+(16) where ϕ : Rp × Rp → Rp is an NCP function, U := (x, s, y, z) ∈ Rn+m+2 p is the reduced set of primal and dual variables, and Π := ( μ, γ, ρ, UE ) denotes the set of parameters of the elastic penalty–barrier formulation. Eq. (16) is then solved by applying Newton’s method: 
+
+
+
+˜Q A⊺ G⊺
+
+A − (ρe + γe) IG − (ρi + γi) I I
+
+˜Φz ˜Φs
+
+
+
+∆x
+
+∆y
+
+∆z
+
+∆s
+
+ = −
+
+
+
+˜rd
+
+˜re
+
+˜ri
+
+˜rg
+
+ ,
+
+(17) where ˜Φz = Φz + ρnI and ˜Φs = Φs + ρnI are diagonal matrices in which Φz,s ∈ Rp×p denotes the NCP Jacobians. From Eq. (16), the elastic formulation penalizes equality and inequality violations through scaled Lagrange multipliers, whereas in Eq. (17) these penalties act as adaptive regulariza-tion terms whose magnitudes are governed by the current KKT residuals. E LASTIC ODYN factorizes this system and accepts the resulting search directions via a non-monotone line search (see Section IV.D in [6]). 
+
+Barrier, estimates, and elastic penalty updates: The barrier parameter smooths the NCP functions and is updated by the centering procedure of [30]. Proximal estimates are refreshed at each iteration’s end by interpolating between the current iterate U and the next U+, yielding Newton-like behavior under sufficient progress and a more conservative, gradient-descent-like update when convergence degrades [6]. This adap-tive switching mirrors the behavior of Levenberg–Marquardt schemes. The interpolation parameters and the elastic penalties 
+
+γe, γ i follow a feasibility-driven rule, tightening when progress toward feasibility is sufficient and remaining unchanged oth-erwise. 
+
+D. Stopping Criteria 
+
+We combine absolute and relative tolerances to certify con-vergence in both feasible and infeasible regimes. Unlike stan-dard QPs solvers, E LASTIC ODYN ’s stopping criteria remain well defined under infeasibility and guarantee convergence to the closest feasible problem when exact feasibility cannot be attained. The primal residuals (∥re∥∞ , ∥ri∥∞) and dual residual 
+
+∥rd∥∞ are scaled to reflect the elastic relaxation. Primal relative tolerances incorporate γe∥y∥∞ and γi∥z∥∞, matching the relaxed residuals via the identities se = γey and si = γiz
+
+in Eq. (15). The dual relative tolerance is symmetrically aug-mented by γ−1 
+
+> e
+
+∥se∥∞ and γ−1 
+
+> i
+
+∥si∥∞, ensuring that feasibility and optimality are evaluated consistently with the relaxed problem throughout the iteration. To certify convergence to the closest-feasible QP, we further enforce a least-violation optimality condition, 
+
+∥rc∥∞ ≤ ϵa + ϵr max 
+
+
+
+∥A⊺Ax + G⊺(Gx + s)∥∞ ,
+
+∥A⊺b∥∞ , ∥G⊺h∥∞ , ∥A⊺y + G⊺z∥∞
+
+
+
+,
+
+(18) where rc is the gradient of the squared constraint violation, 
+
+rc = ∇x
+
+ 12 ∥Ax − b∥2 + 12 ∥Gx + s − h∥2 
+
+(19) This certifies optimality in the least-violation squared ℓ2 sense. Combined with the elastic primal and dual scalings, these criteria guarantee convergence to the optimally shifted problem while preserving a meaningful primal–dual solution under infeasibility. 
+
+E. Warm-started refining stage 
+
+The elastic formulation robustly recovers a primal solution for the closest-feasible QP, but its dual variables are shaped by the elastic stationarity in Eq. (15) and encode penalized violations rather than true sensitivities of the shifted feasible constraints. These elastic duals therefore lack physical inter-pretability, making them unsuitable as Lagrange multipliers in contact-physics settings, where multipliers represent quantities like contact forces. We address this with a lightweight refine-ment stage that warm-starts from the elastic primal, shifts the constraints with the optimal elastic relaxation variables, and re-solves the hard-constrained problem. Converging in only a few iterations (see Section V-B), it yields a well-conditioned primal–dual pair with physically meaningful multipliers and sensitivities consistent with the closest-feasible problem. 
+
+F. Differentiable optimization under infeasibility 
+
+ELASTIC ODYN LAYER extends differentiable optimization to infeasible QPs. Whereas existing layers [21], [22] require strict feasibility and break down when constraints conflict, our layer remains strictly convex and C1 throughout, exposing infeasibility itself as a differentiable signal so that gradients propagate even when no feasible point exists. We consider the parameterized elastic QP 
+
+min  
+
+> x,se,si
+> 12
+
+x⊺Q(θ)x + c(θ)⊺x + 12γe ∥se∥2 + 12γi ∥si∥2
+
+subject to A(θ)x − b(θ) = se, G(θ)x − h(θ) ≤ si,
+
+(20) where θ ∈ Rr collects all learnable parameters. 
+
+a) Forward pass: The layer solves (20) via E LASTIC 
+
+ODYN , optionally followed by the refinement stage of Sec-tion IV-E. The optimal elastic relaxation variables 
+
+s⋆e = Ax ⋆ − b, s⋆i = ( Gx ⋆ − h)+,
+
+serve as differentiable indicators of constraint inconsistency: both vanish in the feasible regime and grow continuously with the degree of violation otherwise. 
+
+b) Backward pass: Gradients with respect to θ com-bine two complementary contributions: (i) implicit gradients 
+
+through the KKT system, and (ii) elastic relaxation-induced corrections that propagate sensitivities of any infeasibility-aware loss through s⋆e and s⋆i . Together they yield stable, well-defined gradients across feasible and infeasible regimes. 
+
+1) Implicit gradients via the implicit function theorem: 
+
+From the elastic KKT residual in Eq. (16), the implicit function theorem gives ∂U⋆/∂ θ = −[∂˜r/∂ U⋆]−1 ∂˜r/∂ θ. To avoid explicit Jacobian inversion, we solve the adjoint system 
+
+ ∂˜r
+
+∂U⋆
+
+⊺
+
+λ = − ∂ℓ ∂U⋆ (21) for λ ∈ Rn+m+2 p, yielding the implicit contribution ∂ℓ/∂ θ =
+
+λ⊺∂˜r/∂ θ as in [21]. Because Eq. (16) remains well condi-tioned even under infeasibility, this system is solvable without the regularization heuristics required by interior-point-based layers. 
+
+2) Elastic relaxation-induced gradient corrections: Infea-sibility introduces additional gradient pathways through the elastic relaxation variables, with upstream sensitivities ge := 
+
+∂ℓ/∂ s⋆e and gi := ∂ℓ/∂ s⋆i . Differentiating the closed-form expressions for s⋆e , s⋆i yields, for the equality constraints, 
+
+∂ℓ ∂b += −ge, ∂ℓ ∂A += ge(x⋆)⊺, ∂ℓ ∂x⋆ += A⊺ge,
+
+(22) and for the inequality constraints, 
+
+∂ℓ ∂h += −(m ⊙ gi), ∂ℓ ∂G += ( m ⊙ gi)( x⋆)⊺,∂ℓ ∂x⋆ += G⊺(m ⊙ gi), m := 1Gx ⋆−h>0.
+
+(23) The mask m activates corrections only on violated inequali-ties, propagating subgradients through the positive-part nons-moothness. These accumulate on top of the implicit gradients from the adjoint system, with x⋆-contributions flowing into the upstream loss. In the feasible regime, s⋆e = s⋆i = 0 and the corrections vanish, recovering the standard KKT-based differentiation of [21]. Otherwise, they provide a principled gradient signal for losses penalizing inconsistency or driving parameters toward feasibility. V. R ESULTS 
+
+This section evaluates E LASTIC ODYN on Maros–M´ esz´ aros benchmarks, infeasible problems, contact mechanics, learning dynamics, and trajectory optimization. 
+
+A. The Maros–M´ esz´ aros test set of hard QPs 
+
+We benchmark ELASTIC ODYN against state-of-the-art solvers with ℓ2 elastic formulations, namely ELASTIC 
+
+PROX QP, which naturally converges to the closest-feasible QP under contradicting constraints, and G UROBI , which employs a two-stage restoration process. We compare convergence and warm-starting performance. 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00   
+
+> log 10 ()
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Fraction of problems  s( )
+> Elastic ODYN
+> ODYN
+> ProxQP
+> Elastic ProxQP
+> OSQP
+
+(a) Perturbation ∆ = 0 .10.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00    
+
+> log 10 ()
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Fraction of problems  s( )
+> Elastic ODYN
+> ODYN
+> ProxQP
+> Elastic ProxQP
+> OSQP
+
+(b) Perturbation ∆ = 0 .01 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00    
+
+> log 10 ()
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Fraction of problems  s( )
+> Elastic ODYN
+> ODYN
+> ProxQP
+> Elastic ProxQP
+> OSQP
+
+(c) Perturbation ∆ = 0 .001 
+
+Fig. 1. Warm-start performance on the perturbed Maros–M´ esz´ aros test set under high-accuracy settings. We compare E LASTIC ODYN , O DYN , P ROX QP, ELASTIC PROX QP, and OSQP. E LASTIC ODYN consistently outperforms all competing solvers, both hard-constrained and elastic variants. TABLE I PERFORMANCE FOR HARD AND ELASTIC SOLVER VARIANTS .
+
+Failure Rates [%] ODYN PROX QP GUROBI 
+
+Hard Elastic Hard Elastic Hard Elastic 
+
+Medium [10 −6] 15.5 3.9 40.8 9.7 15.5 10.7 
+
+High [10 −9] 16.5 15.5 44.7 10.7 16.5 7.8 Median per iter. [ms] 0.48 0.51 1.88 
+
+Mean per iter. (±σ) [ms] 4.5±14 .0 30 .2±80 .5 41 .9±49 .0
+
+1) Convergence: Table I reports failure rates under medium- and high-accuracy settings for both hard and elas-tic formulations across solvers supporting elastic constraint handling. E LASTIC ODYN attains the lowest failure rate at medium accuracy, indicating strong robustness in the moder-ately accurate regimes typical of robotics and AI applications. At higher accuracy, G UROBI outperforms P ROX QP, while the convergence deficit of E LASTIC ODYN stems largely from its lack of iterative refinement and preconditioning, which both competitors employ. On the 81 problems that all solvers con-verge, E LASTIC ODYN attains the best per-iteration runtime. 
+
+2) Warm-starting performance: We evaluate warm-start performance of ELASTIC ODYN against ODYN , OSQP, PROX QP, and E LASTIC PROX QP on Maros–M´ esz´ aros prob-lems at high accuracy. Interior-point solvers such as G UROBI 
+
+are excluded for lacking warm-start support, and OSQP is restricted to hard constraints. Following the protocol of [6], each problem is solved from a cold start, then re-solved on perturbed instances of magnitude δ ∈ {10 −3, 10 −2, 10 −1}
+
+that preserve sparsity and symmetry, warm-started from the original primal–dual solution. Performance is measured via the warm-to-cold iteration ratio. Fig. 1 shows that E LASTIC 
+
+ODYN achieves the lowest warm-start iteration counts among all compared methods. 
+
+TABLE II CONVERGENCE COMPARISON OF ODYN , P ROX QP AND GUROBI 
+
+Problem ODYN PROX QP GUROBI 
+
+tolerance: 10 −9 iterations + refinement iterations iterations 
+
+F1 28 + 1 MaxIter MaxIter 
+
+F2 98 + 10 MaxIter MaxIter 
+
+F3 102 + 1 MaxIter MaxIter 
+
+F4 87 + 2 MaxIter 56 
+
+F5 92 + 4 MaxIter 22 
+
+B. Ill-conditioned and degenerate infeasible QPs 
+
+We evaluate E LASTIC ODYN on a set of deliberately infea-sible and ill-conditioned QPs designed to stress numerical ro-bustness, conditioning, and convergence. We compare against PROX QP and G UROBI , both of which feature ℓ2 restoration and resolution stages. Each test isolates a specific failure mode, namely inconsistent constraints, poor scaling, degeneracy, and mixed equality and inequality structures. Table II reports convergence and solution quality, highlighting the robustness of E LASTIC ODYN under infeasibility. The constraint sets are, 
+
+F1 := (x1, x 2) ∈ R2 x1 = 1 , x 1 = −2, x 2 = 1 , x 2 = 10 3
+
+F2 := (x1, x 2) ∈ R2 x1 ≤ 2, x 1 ≥ 1,200 ,000 
+
+F3 := 
+
+(
+
+(x1, x 2) ∈ R2 x1 = 3 , x 1 = −2, x 2 = 1 ,x2 = 200 , x 1 ≤ 2, x 1 ≥ 10 
+
+)
+
+F4 := (x1, x 2) ∈ R2 x1 = 1 , x 1 = 1 , x 1 ≥ 2, x 1 ≥ 32 
+
+F5 := {x1 + x2 ≥ 2.5, (x1, x 2) ∈ [0 , 1] } ,
+
+where F2 exhibits significant scaling mismatches, F4 contains linearly dependent constraints, and F5 pairs an infeasible linear program with the objective min x1,x 2 (x1 + x2), isolating infeasibility arising solely from conflicting bounds under a linear cost. To verify that E LASTIC ODYN returns the genuine closest-feasible solution, we compare its primal solutions against the analytical least-squares solution of each Fi. The mean squared errors range from 10 −4 on the severely scaled 
+
+F2 down to near machine precision ( 10 −20 ) on F5, confirming that Eq. (19) certifies optimality in the least-violation ℓ2 sense. t = 0.0                
+
+> (x,x) = (-0.5, 0.25)
+> t = 2 +
+> (x,x) = (0 +, -0.25)
+> t = 3.2
+> (x,x) = (-0.3, -0.25) 0.4
+> 0.2
+> 0.0
+> x [m]
+> 01234
+> Time [s]
+> 0.2
+> 0.0
+> 0.2
+> x [m/s] 250
+> 0
+> fx [N]  fcx
+> 20
+> 0
+> 20
+> fy [N]  fcyfg
+> 01234
+> Time [s]
+> 0.00
+> 0.02
+> si top
+> bottom
+
+Fig. 2. Frictionless disc-in-tube simulation . The disc moves with ˙x =0.25 and reaches a constriction at x = 0 , where the contact normals are linearly dependent and cannot generate a net force along x. E LASTIC ODYN 
+
+resolves this elastic impact through a controlled violation si, permitting slight penetration that restores force generation along the x-direction. 
+
+C. Contact mechanics 
+
+Contact mechanics provide a canonical setting where infea-sibility arises frequently. At the acceleration level, sustained contact and impulsive impact are described by the same QP, 
+
+min 
+
+p, si
+
+12 ∥p − p0∥2
+
+M + 12γi
+
+∥si∥2
+
+subject to Jp + b + si ≥ 0,
+
+(24) differing only in the temporal interpretation of the con-straint geometry. The variables specialize to (p, p0, b) =(a, afree , ˙Jv ) for sustained contact, with generalized acceler-ation a ∈ Rn, generalized velocity v ∈ Rn, unconstrained acceleration afree = M−1(τ − h), and contact Jacobian J ∈
+
+Rp×n. For impact, (p, p0, b) = ( v+, v−, e Jv −) with pre- and post-impact velocities v−, v+ ∈ Rn and restitution coefficient 
+
+e ∈ [0 , 1] . Sustained contact enforces non-penetration over a finite time step, while impact enforces it instantaneously through impulses. In both cases, infeasibility arises when J
+
+becomes rank-deficient or geometrically inconsistent, prevent-ing the constraints from generating admissible reaction forces. The elastic variable si relaxes the non-penetration constraint and penalizes infeasibility in an ℓ2 sense. Its complementarity-slackness condition yields the regularized linear complemen-tarity problem (LCP) 
+
+0 ≤ (JM −1J⊺ + γiI)
+
+| {z }
+
+> reg. Delassus operator
+
+z + Jp 0 + b
+
+| {z }
+
+> contact bias
+
+⊥ z ≥ 0, (25) where z ∈ Rp collects the contact forces in sustained-contact models or the collision impulses in impact scenarios. The diagonal regularization γiI, together with the proximal-point perturbation on z, resolves rank deficiencies in the Delassus operator and enables robust contact-implicit MPC [31] and rigid-body simulation. We illustrate this on a classical example from Featherstone (Fig. 11.3 in [32]), where a two-dimensional disc is con-strained inside a frictionless tube of equal radius. As the disc reaches the constriction at x → 0−, the upper and lower contact normals become linearly dependent and J loses rank (see Fig. 2). At the degenerate configuration x = 0 the contact model is singular. With the tube contracting and no tangential forces available, no admissible contact forces can prevent further penetration. E LASTIC ODYN resolves the singularity by admitting a small penetration beyond x = 0 , which tilts the contact normals away from collinearity and restores Jacobian rank. The impact dynamics are then captured by Eq. (24). 10 1             
+
+> Loss  Train
+> OOD Test
+> 010 20 30 40 50 60 70 80
+> Epoch
+> 1
+> 0
+> 1
+> e
+> Ground truth ( e= 1)
+> Fig. 3. Restitution coefficient training . The loss (top, log-scale) and restitution coefficient e(bottom) converge smoothly over 50 epochs, with the latter recovering the ground truth ( e= 1 ) for fully elastic collisions.
+
+D. ELASTIC ODYN LAYER for infeasible learning problems 
+
+We evaluate the differentiable contact capabilities of E LAS - 
+
+> TIC
+
+ODYN by extending the previous contact simulation, treating the restitution coefficient e as a learnable parameter in an elastic impact setting. The training set comprises 1000 
+
+one-dimensional elastic collision trajectories (e = 1) with pre-impact velocities ˙x ∼ Uniform(0 .2, 5) , while generalization is assessed on an out-of-distribution test set of 1000 higher-velocity trajectories, ˙x ∼ Uniform(7 , 9) . The P YTORCH loss 10 3              
+
+> 10 1
+> 10 1
+> 10 3
+> walk
+> Elastic OdynSQP
+> Hard OdynSQP
+> Elastic ProxSQP
+> Hard ProxSQP
+> 010 20 30
+> iterations
+> 10 3
+> 10 1
+> 10 1
+> 10 3
+> trot
+> feasibility  1-norm
+> forward-dynamics formulation 10 3
+> 10 1
+> 10 1
+> 10 3
+> walk
+> 010 20 30
+> iterations
+> 10 3
+> 10 1
+> 10 1
+> 10 3
+> trot
+> feasibility  1-norm
+> inverse-dynamics formulation
+> Fig. 4. Feasibility evolution for elastic and hard formulations in a highly constrained quadrupedal locomotion task. (Top) Snapshots of the ANYmal walking motion computed using our SQP framework. (Bottom) Forward and inverse-dynamics optimal control feasibilities.
+
+ℓ(e) = ∥v+pred −v+target ∥2 +∥si∥ penalizes post-impact velocity errors and constraint violations. Initializing e0 = −1 places the coefficient in an infeasible regime that preserves kinetic energy magnitude but induces incorrect velocity direction and nonphysical contact impulses, so QP learning is driven by gradients from both directional errors and elastic constraint violations. As shown in Fig. 3, the loss decreases smoothly and converges to e = 1 , demonstrating that E LASTIC ODYN enables stable gradient-based parameter identification in non-smooth, infeasible contact dynamics. 
+
+E. ELASTIC ODYN SQP for infeasible optimal control 
+
+We extend O DYN SQP (see Section V in [6]) to handle both inconsistent SQP linearizations and intrinsically infeasible optimal control problems. The former produces infeasible QP subproblems despite a feasible nonlinear problem, while the latter arises from conflicting nonlinear constraints. In contrast to standard methods that often stall, E LASTIC ODYN SQP robustly handle both cases. 
+
+Elastic inner relaxation. For inconsistent linearizations of otherwise feasible nonlinear problems, the outer loop behaves as standard O DYN SQP, while the inner E LASTIC ODYN re-solves infeasible QP subproblems. On a quadrupedal locomo-tion task with dynamics, contact, torque, and kinematic hard constraints , elastic relaxation consistently reduces feasibility violations in both forward- and inverse-dynamics formulations where hard-constrained methods stall (Fig. 4). While the ℓ2
+
+relaxation yields only medium-accuracy feasibility, causing minor artifacts such as slight foot penetration, it nevertheless produces usable trajectories instead of solver failure. Under a 5-hour runtime limit, P ROX SQP variants either diverged or timed out, while iterative refinement was required to avoid im-mediate divergence. In contrast, O DYN SQP converged within a few seconds. 
+
+Selective outer relaxation. For infeasible problems with no feasible trajectory, a chosen subset of constraint categories, e.g. dynamics, path equalities, inequalities, or terminal targets, is routed to the elastic ℓ2 block of E LASTIC ODYN , with the rest enforced as hard constraints. This spans a continuum from 0.8 0.6 0.4                             
+
+> y[m]
+> 0.75
+> 0.90
+> 1.05
+> 1.20
+> z [m]
+> 10 20 30 40
+> iteration
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> 10 1
+> feasibility  1-norm 0.8 0.6 0.4
+> y[m]
+> 0.75
+> 0.90
+> 1.05
+> 1.20
+> z [m]
+> elastic
+> hard
+> 10 20 30 40
+> iteration
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> 10 1
+> feasibility  1-norm
+> hard SQP
+> elastic SQP 0.8 0.6 0.4
+> y[m]
+> 0.75
+> 0.90
+> 1.05
+> 1.20
+> z [m]
+> 10 20 30 40
+> iteration
+> 10 7
+> 10 5
+> 10 3
+> 10 1
+> 10 1
+> feasibility  1-norm
+
+Fig. 5. Infeasible trajectory optimization of Talos. Per column a constraint is relaxed elastically or kept hard. The E LASTIC ODYN SQP converges where hard O DYN SQP stalls, settling at the least-squares midpoint solution or the hard targets. Full video: https://youtu.be/2MM5Y5IS5NE. 
+
+full restoration, where all constraints are elastic, to minimal relaxation of only the conflicting ones, isolating infeasibility without sacrificing accuracy elsewhere. Fig. 5 illustrates this on an infeasible Talos task with two contradictory targets, where E LASTIC ODYN SQP converges, settling at the midpoint or a hard target, while hard O DYN SQP stalls. 
+
+Merit and globalization. Elastic violations enter the merit function as a squared ℓ2 penalty consistent with inner relax-ation, while hard residuals are carried by an adaptive ℓ1 term, 
+
+ΦE (w) = J(w) + VE (w) + υH cH (w), with w := ( X, U),
+
+J = P 
+
+> k
+
+lk, hard residual norm cH , and elastic penalty 
+
+VE = 12γe ∥hel ∥22 + 12γi ∥[gel ]+∥22. The parameters γe, γi are tightened as elastic feasibility improves, while υH follows a generalized Nocedal-Wright rule [5] whenever J + VE is predicted to worsen, guaranteeing a descent direction for 
+
+ΦE . The predicted elastic decrease along the step, ∆V a+ 
+
+> E
+
+= 
+
+> 12γe
+
+∥hel + aJhδw∥22 − 12γi ∥[gel + aJg δw]+∥22 − VE , augments the expected cost decrease in a non-monotone line search that accepts when progress is realistic. VI. C ONCLUSION 
+
+We introduced E LASTIC ODYN , a smooth ℓ2-based exten-sion of a primal–dual non-interior-point QP solver that remains robust under infeasibility, degeneracy, and ill-conditioning. The method computes closest-to-feasible solutions, supports efficient warm starting, and recovers interpretable dual vari-ables through a lightweight refinement stage. Its smooth formulation further enables stable differentiation through in-feasible optimization problems, yielding a differentiable QP layer suitable for learning-based applications. Building on this foundation, E LASTIC ODYN SQP extends these capabilities to nonlinear optimal control, enabling reliable convergence in the presence of inconsistent linearizations and intrinsically infeasible tasks. Together, these results establish a unified framework for optimization, simulation, control, and learning beyond the feasibility assumptions of existing methods. REFERENCES [1] M. Diehl, H. G. Bock et al. , “A real-time iteration scheme for nonlinear optimization in optimal feedback control,” SIAM J. Control Optim. ,2005, doi: 10.1137/S0363012902400713. [2] A. Papatheodorou, W. Merkt et al. , “Momentum-aware trajectory optimi-sation using full-centroidal dynamics and implicit inverse kinematics,” in 
+
+Proc. IEEE/RSJ IROS , 2024, doi: 10.1109/IROS58592.2024.10801374. [3] C. Mastalli, W. Merkt et al. , “Agile maneuvers in legged robots: A predictive control approach,” 2022. [4] W. Jallet, A. Bambade et al. , “Constrained differential dynamic pro-gramming: A primal-dual augmented lagrangian approach,” in Proc. IEEE/RSJ IROS , 2022. [5] J. Nocedal and S. J. Wright, Numerical Optimization . Springer, 2006. [6] J. Rojas, A. Papatheodorou et al. , “ODYN: An all-shifted non-interior-point method for quadratic programming in robotics and AI,” 2026. [7] D. Goldfarb and A. Idnani, “A numerically stable dual method for solving strictly convex quadratic programs,” Math. Program. , 1983. [8] H. J. Ferreau, C. Kirches et al. , “qpOASES: A parametric active-set algorithm for quadratic programming,” Math. Program. Comput. , 2014. [9] P. E. Gill, W. Murray et al. , “SNOPT: An SQP algorithm for large-scale constrained optimization,” SIAM Rev. , 2005. [10] A. R. Conn, N. I. M. Gould et al. , Lancelot: A Fortran Package for Large-Scale Nonlinear Optimization . Springer, 2010. [11] B. Stellato, G. Banjac et al. , “OSQP: An operator splitting solver for quadratic programs,” Math. Program. Comput. , 2020, doi: 10.1007/s12532-020-00179-2. [12] A. Bambade, F. Schramm et al. , “ProxQP: An efficient and versatile quadratic programming solver for real-time robotics applications and beyond,” IEEE TRO , 2025, doi: 10.1109/TRO.2025.3577107. [13] A. W¨ achter and L. T. Biegler, “On the implementation of an interior-point filter line-search algorithm for large-scale nonlinear programming,” 
+
+Math. Program. , 2006. [14] Gurobi Optimizer Reference Manual , Gurobi Optimization, LLC, 2024. [15] R. Schwan, Y. Jiang et al. , “PIQP: A proximal interior-point quadratic programming solver,” in Proc. IEEE CDC , 2023, doi: 10.1109/CDC49753.2023.10383915. [16] D. Liao-McPherson, M. Huang et al. , “A regularized and smoothed fischer–burmeister method for quadratic programming with ap-plications to model predictive control,” IEEE TAC , 2019, doi: 10.1109/TAC.2018.2872201. [17] D. Liao-McPherson and I. Kolmanovsky, “FBstab: A proximally stabi-lized semismooth algorithm for convex quadratic programming,” Auto-matica , 2020. [18] L. Qi and J. Sun, “A nonsmooth version of newton’s method,” Math. Program. , 1993, doi: 10.1007/BF01581275. [19] E. Todorov, “Implicit nonlinear complementarity: A new approach to contact dynamics,” in Proc. IEEE ICRA , 2010. [20] R.-J. Zhang, X.-W. Liu et al. , “IPRQP: A primal-dual interior-point relaxation algorithm for convex quadratic programming,” J. Global Optim. , 2023. [21] B. Amos and J. Z. Kolter, “OptNet: Differentiable optimization as a layer in neural networks,” in Proc. ICML , 2017. [22] A. Agrawal, B. Amos et al. , “Differentiable convex optimization layers,” in Adv. Neural Inf. Process. Syst. (NeurIPS) , 2019. [23] A. Bambade, F. Schramm et al. , “Leveraging augmented-lagrangian techniques for differentiating over infeasible quadratic programs in machine learning,” in Proc. ICLR , 2024. [24] J. Bolte and E. Pauwels, “Conservative set-valued fields, automatic differentiation, stochastic gradient methods and deep learning,” Math. Program. , 2020, doi: 10.1007/s10107-020-01501-5. [25] K. Tracy and Z. Manchester, “On the differentiability of the primal-dual interior-point method,” 2024. [26] T. H. Kjeldsen and G. Giorgi, Eds., Traces and Emergence of Nonlinear Programming . Birkh¨ auser, 2014. [27] G. Banjac, P. Goulart et al. , “Infeasibility detection in the alternating direction method of multipliers for convex optimization,” J. Optim. Theory Appl. , 2019. [28] Y. Ye, M. J. Todd et al. , “An O(√nL )-iteration homogeneous and self-dual linear programming algorithm,” Math. Oper. Res. , 1994. [29] N. Parikh and S. Boyd, “Proximal algorithms,” Found. Trends Optim. ,2013. [30] C. Kanzow, “Some noninterior continuation methods for linear comple-mentarity problems,” SIAM J. Matrix Anal. Appl. , 1996. [31] G. Kim, D. Kang et al. , “Contact-implicit model predictive control: Controlling diverse quadruped motions without pre-planned contact modes or trajectories,” IJRR , 2025, doi: 10.1177/02783649241273645. [32] R. Featherstone, Rigid Body Dynamics Algorithms . Springer, 2007.
