@@ -1,0 +1,721 @@
+Title: Safe, Real-Time Active Model Discrimination and Fault Diagnosis for Nonlinear Systems via Differentiable Reachability
+
+URL Source: https://arxiv.org/pdf/2606.19590v1
+
+Published Time: Fri, 19 Jun 2026 00:13:33 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Safe, Real-Time Active Model Discrimination and Fault Diagnosis for Nonlinear Systems via Differentiable Reachability 
+
+Xinpei Ni 1 Melkior Ornik 2 Glen Chou 1 Samuel Coogan 1
+
+Abstract — We present a safe, real-time algorithm for ac-tive fault diagnosis and model discrimination for uncertain continuous-time nonlinear systems with process and measure-ment disturbances. Given a finite set of candidate models representing nominal and faulty modes, including actuator and sensor faults, we formulate an output-feedback, time-varying policy optimization problem that (i) robustly enforces state-input safety constraints over a finite horizon and (ii) drives the system to produce sampled measurements consistent with at most one model, enabling deterministic diagnosis. To solve this problem in real time, we develop a tractable approximation us-ing interval over-approximations of reachable state and output sets, and encode diagnosability via a differentiable objective that penalizes overlap between the reachable output sets of possible models. The resulting optimization is solved efficiently online with gradient-based methods using JAX and differentiable reachability primitives. We evaluate our method on sensor and actuator fault diagnosis (up to 11 fault modes) in several high-dimensional nonlinear robotic systems, including a simulated quadrotor and fighter-jet model, a hardware differential-drive robot, and quadrupedal navigation. Across these case studies, our approach achieves reliable model discrimination in under 50 ms, outperforming baselines in discrimination success rate and speed while providing formal safety guarantees. 
+
+> 1
+
+X. Ni, G. Chou and S. Coogan are with the Institute of Robotics and Intelligent Machines (IRIM), Georgia Institute of Technology, Atlanta, GA 30332, USA {xni32, chou, sam.coogan }@gatech.edu 
+
+> 2
+
+Melkior Ornik is with the Department of Aerospace Engineer-ing, University of Illinois Urbana-Champaign, Urbana, IL 61801, USA 
+
+mornik@illinois.edu 
+
+I. I NTRODUCTION 
+
+Faults are inevitable in long-duration robotic deployments. For instance, sensors can drift or saturate, actuators gradually lose effectiveness, and unmodeled dynamics can emerge as hardware wears. In safety-critical settings, delayed or incorrect diagnosis can be catastrophic: controllers that trust biased measurements or command degraded actuators may quickly violate safety constraints or destabilize the system. Thus, robots must not only detect that a fault has occurred, but also isolate which fault mode is valid quickly enough to enable reconfiguration or fail-safe behavior. A standard formalization of fault isolation is model dis-crimination [1]: given a finite set of candidate dynamical models (e.g., a nominal model and multiple fault models), determine which model is consistent with observed behav-ior. This task is difficult because diagnosis must be per-formed from noisy, partial measurements under disturbances and uncertainty. Moreover, many distinct candidate models can produce similar measurement signals. For instance, a quadruped with a degraded leg may appear similar to a healthy quadruped with a biased IMU when commanded to walk straight. Control synthesis, however, can simplify diag-nosis: for the quadruped, a carefully chosen turning maneu-ver may generate sensor measurements that disambiguate the failure mode. This motivates active fault diagnosis (AFD): rather than passively monitoring outputs, we design control inputs or policies that deliberately excite the system to make 0.0               
+
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> px (m)
+> 12345
+> Time (s)
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> py (m)
+> 0.0
+> 0.5
+> 1. 0
+> 1.5
+> 2.0
+> 2.5
+> px (m)
+> 12345
+> Time (s)
+> 0 0 .
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> Original Output-reachable Intervals Nominal vs Actuator Fault After Refinement
+> Nominal Actuator Fault Sensor Fault Intersection Trajectory (Actuator Fault,
+> α=0.25)
+> py (m)
+
+(A) (B) 
+
+(C) 
+
+Fig. 1: (A) Illustration of output reachable intervals with and without sensor anticipating refinement. Using output-anticipating refinement allows the intersections of output reachable intervals to shrink faster and enables faster diagnosis. (B) Top view of a hardware experiment in which a separating output-feedback controller is computed by (9) and applied on a unicycle system. The controller successfully discriminates a sensor fault from an actuator fault in 5 seconds while ensuring that the system’s true position avoids an obstacle shaded in gray. While the output reachable set for sensor fault (in green) overlaps with the obstacle, this is caused by the sensor fault’s output corruption and the robot’s true state i.e. position remains clear of the obstacle at all times. (C) Angled view of a hardware experiment where a separating controller is computed by (8) and applied on a quadruped to diagnose actuator and sensor faults in two separate runs. Frames corresponding to the actuator fault are tinted in red, and frames corresponding to the sensor fault are tinted green. The controller successfully diagnoses the fault in 2 seconds. 
+
+> arXiv:2606.19590v1 [cs.RO] 17 Jun 2026
+
+the true model identifiable. However, designing such informative inputs online is chal-lenging. The policy must robustly satisfy state–input safety constraints under every candidate fault model and uncertainty realization, while also ensuring that sampled measurements become consistent with at most one model so that diagnosis is deterministic. For high-dimensional nonlinear continuous-time systems, exact reachable-set computation is intractable, and most set-based AFD methods are restricted to lin-ear/affine dynamics or require expensive offline computation [2], [3]. Conversely, statistical and learning-based approaches can scale but typically lack formal guarantees on safety and correct isolation under worst-case uncertainty. In this paper, we bridge this gap with a safe, real-time method for active model discrimination and fault diagnosis in uncertain nonlinear systems with process and measurement disturbances. We formulate AFD as an output-feedback, time-varying policy optimization problem that couples ro-bust safety with a diagnosability requirement over sampled outputs. To make the problem tractable, we compute interval over-approximations of reachable state and output sets and encode discrimination via a differentiable objective that penalizes overlap between the reachable output sets of the possible models. This yields an optimization amenable to efficient gradient-based solution, enabling fast replanning as candidate models are pruned online. Our contributions are:  
+
+> •
+
+An output-feedback policy optimization formulation for safe active fault diagnosis in uncertain nonlinear systems.  
+
+> •
+
+Tractable, differentiable over-approximations of reach-able output sets and a separation objective for model discrimination.  
+
+> •
+
+A novel output-aware algorithm to optimize for a sep-arating controller, with improved performance resulting from intersection refinements.  
+
+> •
+
+A fast GPU-parallelized implementation enabling online replanning and model pruning.  
+
+> •
+
+Experiments on high-dimensional robotic case studies, including sensor/actuator faults (up to 11 modes) on a simulated fighter-jet model, a hardware differential-drive robot, and quadrupedal navigation in under 50 ms. II. R ELATED WORK 
+
+A. Statistical, Data-Driven, and Discrete Methods 
+
+Fault detection and model discrimination are ubiquitous tasks across science and engineering, and have therefore been studied extensively. Early work on model discrimination emerged in the chemistry community in the 1970s, where Bayesian methods were used to probabilistically distinguish among candidate mathematical models of chemical processes [1]. In reliability engineering, fault trees [4] are commonly used for fault detection, but they primarily adopt a discrete-event perspective; in contrast, we consider fault diagnosis for systems with continuous state spaces. Related probabilistic approaches to fault detection and diagnosis have also been explored in the control and robotics communities [5]–[9]. However, these methods are fundamentally statistical and typically do not provide formal guarantees on either fault identifiability or safety. Other approaches leverage deep learning by training classifiers to detect faults [10]–[12]. While such methods can be highly effective within the training distribution, they are largely heuristic and generally lack formal guarantees. In contrast, our method ensures safety while performing active fault detection in real time with formal correctness guarantees on detection. 
+
+B. Verification and Set-Based Methods 
+
+Set-based approaches have been proposed for both pas-sive [13] and active [14] fault diagnosis. These methods compute (over-approximations of) reachable sets under dif-ferent fault hypotheses and eliminate hypotheses that are inconsistent with the measured outputs. By reasoning over sets, they can rule out fault modes deterministically, rather than probabilistically as in Bayesian formulations (Sec. II-A). Due to the computational challenges of reachability anal-ysis, most existing set-based techniques are limited to linear or affine dynamics. For example, [14] uses a zonotope-based observer and a mixed-integer program to design active inputs for linear systems, and [15] establishes guaranteed T -detectability for distinguishing affine models. Moreover, [16] considers affine systems under output measurements but re-quires costly multi-parametric optimization, which precludes real-time use. Several works address nonlinear systems but remain passive: [17], [18] study set-based fault detection for nonlinear dynamics, while [2] provides guaranteed passive discrimination for polynomial dynamics via moment relax-ations, at the cost of solving expensive optimization problems that are not amenable to real-time operation. Other nonlinear safety-oriented methods, such as barrier-function approaches [19], [20], can ensure safety under faults but do not directly enable active discrimination; in particular, they typically only passively detect faults or can only detect faults that drive the system toward constraint violation. Only a small number of papers study set-based active 
+
+model discrimination for nonlinear systems. The approach in [3] designs informative inputs for nonlinear dynamics but relies on integer programming and does not scale well with dimension. The method of [21] addresses polynomial and rational dynamics via a computationally expensive bilevel program, and is therefore restricted to small systems and to discriminating between two candidate models. A cen-tral difficulty in set-based model discrimination methods is computing reachable output sets under output-feedback control, i.e., bounding the set of measurement outputs that can arise under uncertainty, which is needed to certify fault diagnosis and safety under faulty conditions. While there has been progress on reachable-set computation for nonlinear systems under output feedback [22]–[25], these methods remain too slow for real-time deployment or are not differentiable. In contrast to the methods above, in this work, we build on recent advances in efficient reachable state -set computation [26] to enable real-time set-based active model discrimination and fault detection for nonlinear systems via fast and differentiable GPU-accelerated reachability analysis. III. P ROBLEM FORMULATION 
+
+We consider a set of M uncertain nonlinear continuous-time dynamical systems fm and measurement output maps hm
+
+˙xm(t) = fm(xm(t), u (t), w (t), θ a), (1a) 
+
+ym(t) = hm(xm(t), u (t), v (t), θ o), (1b) indexed by m ∈ { 0, . . . , M −1}, with state xm ∈ X , control 
+
+u ∈ U , process noise w ∈ W , measurement output y ∈ Y ,and measurement noise v ∈ V . Here, fm : X ×U ×W× Θa →X and hm : X × U × V × Θo → Y are differentiable functions. We denote actuator parameters as θa ∈ Θa and output parameters as θo ∈ Θo. We let (f0, h 0), i.e., m = 0 ,denote the nominal model which defines the state evolution and measurements of the healthy system, with parameters 
+
+θ∗ 
+
+> a
+
+∈ Θa and θ∗ 
+
+> o
+
+∈ Θo. The remaining models (fm, h m),for m ∈ { 1, . . . , M − 1}, denote various fault modes. We denote the set of systems as M := {(fm, h m)}M −1 
+
+> m=0
+
+and consider the following fault modes:  
+
+> •
+
+Actuator fault : where there is a deviation in the dy-namics function fm(x, u, w, θ a), i.e., fm̸ = f0 and 
+
+hm = h0, 
+
+> •
+
+Sensor fault : where there is a deviation in the output function hm(x, u, v, θ o), i.e., fm = f0 and hm̸ = h0, 
+
+> •
+
+Simultaneous fault : where there are deviations in both the dynamics and output, i.e., fm̸ = f0 and hm̸ = h0.
+
+Definition 1. Sampled measurement set. We assume that over a time interval [0 , T ], measurements are collected from the system at a discrete set of Nt pre-determined time instants ˆT := {ˆt1, . . . , ˆtNt } ⊂ [0 , T ]. Assuming the system is operating under the true model m∗ ∈ { 0, . . . , M − 1},this yields the sampled measurement set ˆY := {ˆyi := 
+
+ym∗ (ˆ ti)}Nt
+
+> i=1
+
+. Let ˆY denote the set of all possible ˆY that can be realized under different disturbances w(·) and v(·).
+
+Definition 2. Consistency set. We define I( ˆY ) as the set of models consistent with the sampled measurement set ˆY as 
+
+I( ˆY ) := {m ∈ { 0, . . . , M − 1} | ∃ x(0) ∈ X 0,
+
+∃w(·) ∈ W , ∃v(·) ∈ V ,
+
+s.t. ym(ˆ ti) = ˆ yi, ∀i ∈ { 1, . . . , N t}} .
+
+(2) We consider these guaranteed fault diagnosis problems: 
+
+Problem 1. Passive Model Discrimination. Given M, W,
+
+V, a set of possible initial states X0, and a control input sequence u(·), we wish to identify which model m ∈ M is consistent with the system’s recorded outputs, or none exists. This problem can be solved by Alg. 1. An ideal u(·) for solving Prob. 1 is one that can reduce 
+
+M to a singleton, and computing such an optimal control sequence u that solves Prob. 1 requires solving the active fault diagnosis problem: 
+
+Problem 2. Active Fault Diagnosis. Given M, W, V,and a set of possible initial states X0, we wish to design a piecewise continuous, time-varying control policy π :[0 , T ] × Y → U which ensures that 1) any possible resulting 
+
+Algorithm 1 Fault Diagnosis  
+
+> 1:
+
+Input: Initial model set M, observation intervals Ry,i ,control sequence u(·) = {u0, u 1, . . . u N } 
+
+> 2:
+
+Apply u0 to system  
+
+> 3:
+
+for k = 1 , . . . , N do  
+
+> 4:
+
+Measure output y(tk) 
+
+> 5:
+
+for m ∈ M do  
+
+> 6:
+
+if y(tk) /∈ R my (tk, u k) then  
+
+> 7:
+
+M ← M \ { m} ▷ Prune inconsistent model  
+
+> 8:
+
+end if  
+
+> 9:
+
+end for  
+
+> 10:
+
+if |M| ≤ 1 then  
+
+> 11:
+
+return M ▷ Diagnosis complete  
+
+> 12:
+
+end if  
+
+> 13:
+
+Apply uk to system  
+
+> 14:
+
+end for 
+
+sampled measurement set ˆY is consistent with at most one model in M and 2) a prescribed set of state-control constraints S ⊆ X × U encoding, e.g., collision avoidance and actuator limits, is robustly satisfied for all t ∈ [0 , T ], i.e. ,for all w ∈ W , v ∈ V , and all models in M. We formalize this problem as the following feasibility problem (3): find π (3a) s.t. ˙xm(t) = fm(xm(t), π (t, y m(t)) , w (t), θ ma ),
+
+∀t ∈ [0 , T ], ∀m ∈ { 0, . . . , M − 1}, (3b) 
+
+ym(t) = hm(xm(t), , π (t, y m(t)) , v (t), θ mo ),
+
+∀t ∈ [0 , T ], ∀m ∈ { 0, . . . , M − 1}, (3c) 
+
+xm(0) ∈ X 0, ∀m ∈ { 0, . . . , M − 1}, (3d) 
+
+(xm(t), π (t, y m(t))) ∈ S , ∀t ∈ [0 , T ],
+
+∀w(·) ∈ W , ∀v(·) ∈ V ,
+
+∀m ∈ { 0, . . . , M − 1}, (3e) 
+
+|I ( ˆY )| ≤ 1, ∀ ˆY ∈ ˆY. (3f) The algorithm for solving (3) must be:  
+
+> •
+
+efficient enough to compute in real time,  
+
+> •
+
+scalable to high-dimensional nonlinear systems, and  
+
+> •
+
+sound; i.e., it identifies that the system is operating under model m if and only if model m is truly active. In practice, exactly solving (3) is intractable, since com-puting exact state and output reachable sets for nonlinear systems is itself intractable, and these sets are required to en-force (3e) and (3f). In what follows, we provide preliminary background in Sec. IV and then describe our approximate solution method for (3) in Sec. V. IV. P RELIMINARIES 
+
+A. State and Output Reachable Sets 
+
+Given (fm, h m) for some model m ∈ { 0, . . . , M − 1} as defined in (1) and an initial state set X0, we define its state reachable set at time T as: 
+
+X mT := {x(T ) ∈ X | x(0) ∈ X 0, ˙xm = fm(xm, u, w ),u(τ ) ∈ U , w (τ ) ∈ W , ∀τ ∈ [0 , T )}. (4) Similarly, the output reachable set is defined as the image of the state reachable set under the observation map hm:
+
+YmT := {hm(x, u, v ) | x ∈ X mT , u ∈ π(t, Xt), v ∈ V} . (5) Because computing (4) and (5) exactly is difficult, we exploit mixed monotonicity [27] to efficiently compute their overapproximations. For the above system, we leverage in-terval analysis [28], [29] to obtain inclusion functions Fm =[Fm, F m], Hm = [Hm, H m] over a given interval [x] =[x, x ], [v] = [ v, v ], [w] = [ w, w ] such that Fm([ x], u, [v]) ≤
+
+fm(x) ≤ Fm([ x], u, [v]]) and Hm([ x], u, [w]) ≤ hm(x) ≤
+
+Hm([ x], u, [w]]) for all x ∈ [x], v ∈ [v], w ∈ [w]. This set of inclusion functions induces an embedding system [30] 
+
+(Fm, Hm) for the system (fm, h m).
+
+B. Approximating Reachable Sets with immrax 
+
+To efficiently compute such embedding systems, we turn to immrax [26], a parallelizable and differentiable JAX-based Python toolbox that facilitates interval analysis and mixed monotone reachability through composable function transforms. immrax leverages core features of JAX, aPython package for high-performance computation, such as just-in-time (JIT) compilation, GPU acceleration, and auto-matic differentiation, to efficiently compute sound reachable set over-approximations. This process is highly scalable, as it allows for rapid reachable set refinement via paral-lelized state-space partitioning on GPUs. In prior work [26], 
+
+immrax has been used to compute state reachable sets; we extend it to compute output reachable sets for use here. 
+
+Definition 3. Interval Approximation of Output Reachable Set. Given a system model like (1), a time horizon T ,inclusion functions Fm for fm and Hm for hm, and an interval overapproximation of state reachable set at time T ,
+
+Rx(T ), a corresponding interval approximation of its output reachable set at time T is defined as Ry (T, Rx, u, [v]) := [Hm(Rx(T ), u, [v]) , H m(Rx(T ), u, [v])] when it is subject to measurement noise v ∈ [v] and input u over all t ∈ [0 , T ].
+
+Proposition 1. Ry as given in Definition 3 overapproximates the true output-reachable set Y; i.e., Y ⊆ R y .
+
+Proof. For any y ∈ Y, there exists x ∈ X , v ∈ V
+
+such that y = hm(x, u, v ) given control input 
+
+u. Because Rx overapproximates X , X ⊆ Rx.As a property of inclusion functions, we have 
+
+Hm(Rx, u, V) ≤ hm(x, u, v ) ≤ Hm(Rx, u, V). Because 
+
+Ry = [Hm(Rx, u, V), H m(Rx, u, V)] , it follows that 
+
+y = hm(x, u, v ) ∈ R y , and hence Y ⊆ R y . □
+
+Relative to (3), robust safety constraint satisfaction is enforced via the reachable set over-approximations Rx, and the consistency constraint (3f) is relaxed to a cost penalty. V. M ETHOD 
+
+We now describe our method, which conservatively solves (3). First, we show how to encode the model-discrimination constraint (3f) as a differentiable objective (Sec. V-A). Us-ing a tractable over-approximation of the state and output reachable sets (Sec. IV-B) to obtain an optimization problem that can be implemented efficiently in JAX (Sec. V-B), we formulate an uninformed but functional algorithm for solving separating controllers online (Sec. V-C). We then explore a output-anticipating refinement scheme that reduces conservatism and hence discriminates models faster in Sec. V-D, and discuss its prerequisites for use in Sec. V-E. 
+
+A. Discrimination Objective via Output Set Overlap 
+
+To efficiently solve (3), one of the core difficulties is in encoding (3f). To encode this, we note that any feasible solution of (3f) guarantees that any realization of π under disturbance is a separating input sequence usep := {ˆui := 
+
+π(ti, y (ˆ ti)) }Nt 
+
+> i=1
+
+for model set M, i.e., executing usep ensures that for all i ∈ { 0, . . . , M − 1} and j ∈ { 0, . . . , M − 1} \ i,
+
+Yi ∩ Y j = ∅.For (1), and Nt outputs taken at times t ∈ ˆT ⊂ T := [0 , T ], denoting the set of all model pairs q := {j, k } as 
+
+Q := {{ j, k } | j, k ∈ M , j ̸ = k}, we would like to find a control policy π(t, y (t)) such that for all pairs q ∈ Q ,there exists a time t∗ ∈ ˆT such that the intersection of the fault cases’ corresponding output reachable sets at t under controller π(·) is empty; i.e., 
+
+∀q = {j, k } ∈ Q , ∃ti ∈ ˆT :
+
+Yj (ti, π (t, y )) ∩ Y k(ti, π (t, y )) = ∅, (6) while requiring that u satisfies input constraints and that the system satisfies collision avoidance constraints. Since there are cases where there does not exist a separating controller, we include (6) as a term to be minimized in the objective J:
+
+J(π) := X
+
+> q∈Q
+
+Jq (π)
+
+Jq (π) := min  
+
+> t∈ˆT
+
+Vol \
+
+> m∈q
+
+Ym(t, π (t, y )) 
+
+!
+
+.
+
+(7) We justify the use of (7) through the following theorem. 
+
+Proposition 2. If a system admits a separating controller π
+
+for the model set M, then π is a global minimizer of cost function defined in (7) .
+
+Proof . By definition, the separating control u satis-fies that for each pair of models q = {j, k } ∈Q, there exists a time t such that Yj ∩ Y k = ∅, which sets 
+
+Jq (π) = 0 . As a result, the summation (7) is zero. Since this summation is non-negative, zero is its global minimum, and thus this π minimizes J(π). □
+
+This theorem shows that any separating input yields zero objective value according to (7). In particular, this is achieved when all pairs of possible models i, j , where j̸ = i,have disjoint output reachable sets at some measured time instant t ∈ ˆT . This implies that over the full horizon 
+
+[0 , T ], the resulting output sequence is contained only in the output reachable set of a single model. While the reverse is not true for general systems, for any solution with a separating input u, the solution to (7) will ensure that for any pair q = {j, k } ∈ Q, there exists a time ti ∈
+
+ˆT , when Vol (Yj (ti, π (t, y )) ∩ Y k(ti, π (t, y ))) = 0, which means the intersection of these models’ output reachable sets will be of measure zero. In practice, this is often sufficient for robust discrimination. It shall be noted that the volumetric overlap Vol used in (8) can be substituted by many other metrics that can measure separation between two compact sets, such as Hausdorff distance [28], that are not used in this paper. We leave evaluation of these metrics as future work. 
+
+B. Differentiable, Parallel Volumetric Overlap in immrax 
+
+To solve (8) efficiently, we utilize the fact that immrax 
+
+provides differentiable inclusion functions. While it is difficult to compute volumes of exact reachable sets and their intersections, their interval overapproximations are much easier to work with. Any two intervals [a] =[a, a ] and [b] = [ b, b ] intersect if and only if max( a, b ) ≤
+
+min( a, b ) componentwise. The volume of their intersection is Vol ([ a] ∩ [b]) = Π i[min( a, b ) − max( a, b )] i. Then, given any two interval overapproximations of reachable sets, we can substitute them into the previous formula to calculate their intersection in a quick, differentiable, and parallelizable manner using an efficient JAX implementation. See [26] for discussion on conservativeness of these approximations. This allows us to compute the gradient of the reachable set bounds with respect to the control parameters ∂Ry
+
+> ∂u
+
+using JAX’s automatic differentiation. We solve (8) to local optimality using a gradient-based optimizer (e.g., Adam), where the state trajectories for all nm models are simulated in parallel on a GPU. 
+
+C. Uninformed, Single-Pass Reachability Optimization for Model Discrimination 
+
+Directly implementing the components established so far in JAX, we arrive at an optimization problem that is effective in practice. In particular, it integrates interval reachable-set propagation, the overlap-volume discrimination objective, and robust safety constraints within a single formulation. We now present an optimization problem for active fault diagnosis. We name this formulation the uninformed algo-rithm because it does not explicitly leverage the fact that sensor measurements will be taken along the execution of the control sequence when computing a controller. 
+
+min  
+
+> u
+
+J(u) := X
+
+> q∈Q
+
+Jq (u) (8a) s.t. Jq (uk) = min   
+
+> tk∈ˆT
+
+Vol 
+
+" \
+
+> m∈q
+
+[y]m(tk)
+
+#
+
+(8b) 
+
+[x]m(tk+1 ) = Rmx (tk+1 , [x]m(tk), u k, [w]) (8c) 
+
+[y]m(tk) = Rmy (tk, [x]m(tk), u k, [v]) = Hm([ x]m(tk), u k, [v]) (8d) 
+
+Rmx (t) ⊆ S , ∀t ∈ [0 , T ], ∀m ∈ M (8e) 
+
+u(t) ∈ U , ∀t ∈ T (8f) 
+
+[y]j /[y]k
+
+[y]k /[y]j
+
+[y]j ∩ [y]k
+
+## A
+
+## B
+
+## C
+
+[x]qj
+
+[x]qk
+
+H−1
+
+> j
+
+H−1
+
+> k
+
+Compute output interval Refine state interval                          
+
+> Fig. 2: Illustration of output-anticipating refinement process. Output trajec-tories that land in only one of the two models’ output reachable interval such as Regions A and C will be instantly discriminated at this output, and only those landing in the intersection (Region B) require further separation. Region B, which can be expressed as [y]q= [ y]j∩[y]k, can then be transformed into refined state intervals [x]qj=H−1
+> j([ y]q)∩[x]jand
+> [x]qk=H−1
+> k([ y]q)∩[x]k, each model jhaving a possibly different [x]qj
+> for each pair qcontaining it. The output-anticipating refinement scheme reduces conservatism by conditioning future computation on this fact.
+
+D. Output-Anticipating Refinement for Tighter Model Dis-crimination 
+
+Starting from (8), we refine the state set used for forward propagation by focusing on ambiguity-relevant states. Notic-ing that finding a controller tsatisfying (6) is equivalent to separating each pair at any time when an output is measured, we argue that when computing a control sequence, only states that will lead to unseparated outputs require further separation. Specifically, at time tk, we keep only states whose outputs lie in pairwise intersections of reachable output sets. Assuming a closed-form expression of preimage of output map H : X → Y exists, we map this set back to a state in-terval, which is then used to initialize subsequent reachable-set propagation. Fig. 2 provides a visual explanation of this process. To further reduce conservatism, we maintain a separate interval for each model pair q ∈ Q . This pairwise construction directly targets the separation condition in (3f). The resulting multistep optimization problem is: for any time step k ∈ { 0, 1, ..., K }, where K denotes the horizon or the number of control steps we wish to solve for, the optimal control uk is found as: 
+
+min   
+
+> uk∈U
+
+J(uk) = X 
+
+> q∈Q (tk)
+
+Jq (uk) (9a) s.t. Jq (uk) = min   
+
+> tk∈ˆT
+
+Vol 
+
+" \
+
+> m∈q
+
+[y]mq (tk)
+
+#
+
+(9b) 
+
+[x]m(tk+1 ) = (8 c), [y]m(tk) = (8 d) (9c) 
+
+˜[y]mq (tk) = \
+
+> m∈q
+
+[y]mq (tk) (9d) 
+
+˜[x]mq (tk) = H−1 
+
+> m
+
+( ˜[y]qm(tk)) ∩ [x]qm(tk) (9e) 
+
+[x]mq (tk+1 ) = Rmx (tk+1 | ˜[x]mq (tk), u k, [w]) (9f) 
+
+[x]m(τ ) ⊆ S , ∀τ ∈ [tk, t k+1 ], ∀m ∈ M (9g) 
+
+u(τ ) ∈ U , ∀τ ∈ [tk, t k+1 ] (9h) 
+
+Q(tk+1 ) = {q ∈ Q (tk) | Jq (u∗
+
+> k
+
+) > 0} (9i) where [y]mq is the output reachable set for model m under pair q, and H−1 is the preimage of model m’s output map. This optimization differs from (8) only in (9e), (9d), and (9f), which describe our output-anticipating refinement. E. Requirements for Using Output-Anticipating Refinement 
+
+The process of computing a preimage of H is NP-hard for general functions h [29]. To compute H−1([ y]( tk)) , one may employ subpaving refinement algorithms such as Sivia [28], which takes an initial guess ˇX, ˆX such that ˇX ⊂
+
+H−1([ y]( tk)) ⊂ ˆX and recursively refines ˇX, ˆX to return a tighter estimate of H−1([ y]( tk)) [28]. For a general h, the time complexity of finding H−1([ y]( tk)) in such a fashion is high, thus defeating Algorithm (9)’s purpose of finding a separating controller in real-time speed. Devising fast set-inversion algorithms is an open research topic in interval analysis and is beyond the scope of this paper. Hence, for the sake of this paper, (9) is only used if there exists a closed form expression for an interval overapproximation 
+
+ˆX(tk) ⊇ H−1([ y]( tk)) . Additionally, if it can be estab-lished that the estimate ˆX(tk) guarantees that [x]( tk) ⊆
+
+H−1([ y]( tk)) at all times tk, (8) should be used. Fortunately, many robotic sensors can be modeled by affine output maps of the form y = h(x, u, v ) = Cx + Du + v. In this case, the relevant preimage can be written as x = h−1(y, u, v ) = 
+
+C†(y − Du − v), where C† is left-inverse of C, and can be efficiently computed or overapproximated. VI. R ESULTS 
+
+We present hardware and simulation experiments of our proposed active model discrimination scheme on three dif-ferent systems. The goals for these experiments are:  
+
+> •
+
+Unicycle shows (9) can run in milliseconds on a phys-ical nonlinear system with a small set of models.  
+
+> •
+
+ADMIRE demonstrates (9) can be applied on a high-dimensional nonlinear system with many candidate models and solves at real-time rates.  
+
+> •
+
+Go2 shows (8) is a valid choice for sensor fault models involing unobserved states while enforcing safety. Notice that both (8) and (9) are able to handle input and state constraints. We only showcased a safety constraint on Go2 because we believe maintaining safety under a fault that causes non-measureability yields the strongest result. 
+
+Baselines: Very few works are capable of performing active model discrimination on nonlinear systems, and none can formulate output-feedback control policies. To the best of our knowledge, the only method that performs active model discrimination for nonlinear systems and has an open-source implementation is [3]. We use it as a baseline and provide runtime comparisons in Sec. VI-D. 
+
+A. Unicycle Model 
+
+We first validate our method on a standard Unicycle system [31] governed by the following dynamics: 
+
+˙px = v cos ϕ, ˙py = v sin ϕ, ˙v = u1 + w1, ˙ϕ = u2 + w2,
+
+where (px, p y ) is the car’s position, v is its velocity, θ is its heading angle, u1 and u2 are control inputs, and w1, w 2 are disturbances. For this system, only position (px, p y ) can be directly observed. We consider two fault scenarios:  
+
+> •
+
+Actuator Fault : partial to full loss of turning rate control, modeled as ˙ϕ = θau2 + w2 where θa ∈ [0 , 1) 
+
+represents the degradation factor.  
+
+> •
+
+Sensor Fault : a constant bias is applied to position readings, modeled as y = [px, p y ]T + θo where θo
+
+represents the sensor bias. Measurements contain random noise with magnitude less than 0.05 m, i.e., || w|| ∞ ≤ 0.05 . We compute an open-loop separating controller π(t) and a separating output-feedback controller of the form π∗(t, y ) = K(t)( y − ˆy) + uf f (t),
+
+where ˆy is a pre-planned straight-line reference trajectory from start to the obstacle, according to (9) and validate it through hardware experiments, whose results are highlighted in Figure 1(A). Solving for a controller takes 47.2ms ±766 μs. In the hardware experiments, the robot’s position consis-tently falls within the refined output reachable sets of the true fault model by the end of the trial, successfully distinguishing between the two fault scenarios while avoiding the obstacle. 
+
+B. ADMIRE Fighter Jet Model 
+
+We also validate our proposed method on a simplified version of the ADMIRE Fighter Jet Model [32]. Due to the system’s complexity, we refer readers to the original technical report and associated C++ code for the full system dynamics. The simplified model has 9 states and 10 inputs: 
+
+˙x = f (x) + g(x, θ au), y = xx = VT α β pb qb rb ψ θ ϕT ∈ R9,f (x) = 
+
+
+
+˙VT
+
+˙α
+
+˙β
+
+˙pb
+
+˙qb
+
+˙rb
+
+˙ψ
+
+˙θ
+
+˙ϕ
+
+
+
+=
+
+
+
+(ub ˙ub + vb ˙vb + wb ˙wb)/V T
+
+(ub ˙wb − wb ˙ub)/(u2 
+
+> b
+
++ w2 
+
+> b
+
+)( ˙ vbVT − vb ˙VT )/(V 2 
+
+> T
+
+cos( β)) (C1rb + C2pb)qb
+
+C5pbrb − C6(p2 
+
+> b
+
+− r2 
+
+> b
+
+)(C8pb − C2rb)qb
+
+(qb sin ϕ + rb cos ϕ)/ cos θqb cos ϕ − rb sin ϕpb + tan θ(qb sin ϕ + rb cos ϕ)
+
+
+
+ub = VT cos α cos β, v b = VT sin β, w b = VT sin α cos β
+
+˙ub = rbvb − qbwb − g sin θ
+
+˙vb = −rbub + pbwb + g sin ϕ cos θ
+
+˙wb = qbub − pbvb + g cos θ cos ϕu ∈ R10 , θ a ∈ R10 ×10 , θ ∗ 
+
+> a
+
+= I10 
+
+The mapping g(x, θ au) is nonlinear and thus modeled in the full system as linear interpolation of values contained in multiple aerodynamics datasheets. While it is certainly possible to implement the full datasheet and immrax is fully capable of producing linear embedding for these otherwise piecewise linear realizations of actuator model, to simplify implementation of the model, we linearize the system’s actuator dynamics around the operating point Mach 0.3 and altitude 2000m [33]. This yields a locally linear actuator dynamics of the form ˆg = ¯Bu . We impose an input constraint -0.1 
+
+> 0.0
+> 0.1
+> 0.2
+> roll rate (rad/s)
+> -0.4
+> -0.3
+> -0.2
+> -0.1
+> 0.0
+> pitch rate (rad/s)
+> -0.2
+> -0.1
+> 0.0
+> Nominal
+> Right Canard Fault
+> Left Canard Fault
+> Right Outboard Elevon Fault
+> Right Inboard Elevon Fault
+> Left Inboard Elevon Fault
+> Left Outboard Elevon Fault
+> Flap Fault
+> Rudder Fault
+> Yaw Thrust Vectoring Fault
+> Pitch Thrust Vectoring Fault Fig. 3: Visualization of the time history of output reachable intervals for the separating controller computed by solving (9) for the ADMIRE fighter jet system. Our controller fully separates every model pair in 5 seconds.
+
+|| u|| ∞ ≤ 0.05 to ensure linearization validity. Hence, the system as implemented has the following form: 
+
+˙x = f (x) + ¯Bdiag (θa)u, y = x (10) We define the fault set M = {m0, m 1, . . . , m 10 }, where 
+
+m0 is the nominal case and mk for k ∈ {1, . . . , 10 }
+
+represents a total loss of control authority in the k-th control surface. Specifically, the actuator effectiveness matrix is defined as θa,k = diag (v) where vk = 0 and vj = 1 for 
+
+j̸ = k. We assume that an output can be sampled from the system and a new input signal applied every 1s. Running a GPU-parallelized version of the proposed output-anticipating refinement algorithm computes a 5s long sequence of open-loop control inputs that fully separates the 11 fault cases for a runtime of 45.3ms±71.7 μs on a laptop equipped with Intel i7-13700HX, 32GB RAM, and an RTX4070 with 8GB GPU memory, enabling real-time computation of separating inputs on a physical system. The observed increase in runtime com-pared to Unicycle is due to both the higher dimensionality of the ADMIRE system model and an increase in number of model pairs considered for discrimination. The mixed integer program baseline method in [3] takes 301s to run on the same device, and fails to find a separating input. TABLE I: Output-anticipating refinement (9) discriminates models faster than uninformed method (8).                   
+
+> Number of Unseparated Model Pairs 0s 1s 2s 3s 4s 5s Uninformed Algorithm (8) 55 17 12 854Output-Anticipating Refinement (9) 55 11110
+
+C. Quadrupedal Navigation 
+
+We extend this framework to model potential actuator and sensor failures in a quadrupedal navigation. The dynamics of a Unitree Go2 quadruped controlled using its high-level SDK can be modeled as a planar rigid body with augmented state 
+
+x = [ px, p y , ˜px, ˜py , ϕ ]T and control u ∈ R3, where px, p y
+
+denote true horizontal and lateral positions in meters, vx, v y
+
+denote commanded body-frame velocities in m/s, ϕ denotes yaw angle in radians, and ω is yaw rate in rad/s. Addition-ally, the states ˜px, ˜py , ˜vy denote odometer measurements of horizontal and lateral positions and velocity, which comes with hardware noise. Its dynamics can be expressed as: 
+
+˙px = vx cos ϕ − vy sin ϕ, ˙py = vx sin ϕ + vy cos ϕ
+
+˙˜px = vx cos ϕ − ˜vy sin ϕ, ˙˜py = vx sin ϕ + ˜ vy cos ϕ
+
+˜vy = (1 − ω2)vy + ω2ν, ˙ϕ = ω, y = θox
+
+vx, v y , ω  = ( diag (θa)u)T
+
+θnominal  
+
+> o
+
+= [ I2×2 02×2 02×1], θ fault  
+
+> o
+
+= [ 02×2 I2×2 02×1]
+
+θa ∈ [θa, θ a], ν ∈ [ν, ν ], θ ∗ 
+
+> a
+
+= 13, θ ∗ 
+
+> o
+
+= 12
+
+The system’s actuator fault is represented by modifying the actuator outputs: a loss-of-efficiency fault scales the com-manded input by a factor θa ∈ [θa, θ a], so that θa,i = 0 cor-responds to a stuck actuator and 0 < θ a,i < 1 models partial degradation. For sensor fault, this simplified model captures our observation that the quadruped’s onboard odometer drifts over time due to inaccuracies in vy measurements, whose magnitude depends on the magnitude of yaw rate. Hence, we use ˜vy = (1 − ω2)vy + ω2ν to model this inaccuracy in measured lateral velocities, which is excited only when a turn is commanded to the robot. To demonstrate our proposed algorithm’s ability to handle constraints, we add a collision avoidance constraint to the optimization problem. Assuming there exists a static obstacle at a position po = [ −1, 0] m, we use a circular constraint function h := ( pr −po)2 −r2 
+
+> o
+
+and penalize intersection in the optimization. Because the collision avoidance constraint is imposed on px, p y , which are not observed in sensor fault, (8) must be used in place of (9). Solving (8) with this collision avoidance constraint in place of (8e) yields a controller with guaranteed obstacle avoidance. This optimization problem can be compiled and solved on a laptop equipped with Intel i7-13700HX, 32GB RAM, and an RTX4070 with 8GB GPU Memory in 40.2 ms ± 25.2 μs, demonstrating that our active fault diagnosis algorithm can be solved in real time on a nonlinear system while also respecting safety constraints. 
+
+D. Runtime Comparison 
+
+We compare the runtimes of our implementation against the mixed integer program baseline in [3] across the three robotic systems with different sets of constraints. The run-times reported for our method use (9) except for Go2 open loop, where the need to use unmeasured states to satisfy collision avoidance constraint requires the use of (8). When setting up the baseline, we use the same system dynamics and set of candidate models for each case, but restrict the control horizon to one step as the baseline can only solve for a single open loop control input. Since the baseline is only capable of solving a single-step open-loop controller, we do not provide a comparison for the case of unicycle output feedback. 0.0 0.2 0.4 0.6 0.8 1.0 1.2 
+
+> py(m)
+> −0.1
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> px (m)
+> Initial set Nominal Actuator Fault Sensor Fault Simultaneous Fault Obstacle Hardware trajectory - Sensor Fault Hardware trajectory - Actuator Fault
+
+Fig. 4: Hardware validation of active fault diagnosis on Go2. The solution to (8) results in full separation between output intervals at T = 2 s. Both sensor fault and actuator fault scenarios are implemented on hardware, and the system’s final output sets fall within predicted intervals. Notice that the collision avoidance constraint is modelled in state space, not output space. 
+
+TABLE II: Runtime comparison between our method and baseline. 
+
+Task/Run Time Ours Baseline 
+
+Unicycle Open Loop 3.84ms solver fails Unicycle Output Feedback with Collision Avoidance 47.2ms -ADMIRE Open Loop 45.3ms 301s Go2 Open Loop 40.2ms 22.6s 
+
+VII. C ONCLUSION 
+
+This paper presented a safe, real-time framework for active model discrimination and fault diagnosis in uncertain nonlinear systems. By combining interval reachable-set over-approximations with a differentiable overlap-based objective, the proposed method computes informative control inputs that improve fault separability while explicitly enforcing safety constraints. Across simulation and hardware case studies, the approach demonstrated fast runtimes and reliable discrimination performance for both sensor and actuator fault scenarios. A key contribution is the output-anticipating refinement strategy (9), which reduces conservatism by prop-agating ambiguity-relevant state intervals. A natural next step is to explore this idea by allowing a different controller to be assigned to each model pair, rather than optimizing a shared control law across all pairs. REFERENCES [1] P. Reilly, “Statistical methods in model discrimination,” The Canadian journal of chemical engineering , vol. 48, no. 2, pp. 168–173, 1970. [2] F. Harirchi, Z. Luo, and N. Ozay, “Model (in) validation and fault detection for systems with polynomial state-space models,” in 2016 American Control Conference (ACC) . IEEE, 2016, pp. 1017–1023. [3] K. Singh, Y. Ding, N. Ozay, and S. Z. Yong, “Input design for nonlin-ear model discrimination via affine abstraction,” IFAC-PapersOnLine ,vol. 51, no. 16, pp. 175–180, 2018. [4] A. H. de Andrade Melani and G. F. M. de Souza, “Obtaining fault trees through sysml diagrams: A mbse approach for reliability analysis,” in 
+
+2020 Annual reliability and maintainability symposium . IEEE, 2020. [5] F. Xu, Y. Wan, Y. Wang, and V. Puig, “Observer-based asymptotic active fault diagnosis: Separate and joint design of observer gain and input,” Automatica , vol. 183, p. 112548, 2026. [6] M. G. Patan and I. Ustoglu, “Robust augmented state extended kalman filter for actuator/sensor fault detection and isolation in quadrotor un-manned aerial vehicles,” Journal of Dynamic Systems, Measurement, and Control , vol. 148, no. 1, p. 011001, 2026. [7] E. Khalastchi and M. Kalech, “A sensor-based approach for fault detection and diagnosis for robotic systems,” Autonomous Robots ,vol. 42, no. 6, pp. 1231–1248, 2018. [8] R. Golombek, S. Wrede, M. Hanheide, and M. Heckmann, “Online data-driven fault detection for robotic systems,” in IEEE/RSJ Interna-tional Conference on Intelligent Robots and Systems (IROS) , 2011. [9] S. Streif, F. Petzke, A. Mesbah, R. Findeisen, and R. D. Braatz, “Op-timal experimental design for probabilistic model discrimination using polynomial chaos,” IFAC Proceedings Volumes , vol. 47, no. 3, 2014. [10] K. Garg, C. Dawson, K. Xu, M. Ornik, and C. Fan, “Model-free neural fault detection and isolation for safe control,” IEEE Control Systems Letters , vol. 7, pp. 3169–3174, 2023. [11] J.-H. Park and D. E. Chang, “Data-driven fault detection and isolation of system with only state measurements and control inputs using neural networks,” in 2021 21st International Conference on Control, Automation and Systems (ICCAS) . IEEE, 2021, pp. 108–112. [12] B. Wang, Y. Shen, and Y. Zhang, “Active fault-tolerant control for a quadrotor helicopter against actuator faults and model uncertainties,” 
+
+Aerospace Science and Technology , vol. 99, p. 105745, 2020. [13] P. Rosa and C. Silvestre, “Fault detection and isolation of lpv systems using set-valued observers: An application to a fixed-wing aircraft,” 
+
+Control Engineering Practice , vol. 21, no. 3, pp. 242–252, 2013. [14] J. K. Scott, R. Findeisen, R. D. Braatz, and D. M. Raimondo, “Input design for guaranteed fault diagnosis using zonotopes,” Automatica ,vol. 50, no. 6, pp. 1580–1589, 2014. [15] F. Harirchi and N. Ozay, “Guaranteed model-based fault detection in cyber–physical systems: A model invalidation approach,” Automatica ,vol. 93, pp. 476–488, 2018. [16] G. R. Marseglia and D. M. Raimondo, “Active fault diagnosis: A multi-parametric approach,” Automatica , vol. 79, pp. 223–230, 2017. [17] B. Mu and J. Scott, “Set-based fault diagnosis for uncertain nonlinear systems,” Computers & Chemical Engineering , vol. 180, 2024. [18] B. Rego, J. Scott, D. Raimondo, M. Terra, and G. Raffo, “Zeta: a library for zonotope-based estimation and fault diagnosis of discrete-time systems,” in IEEE Conference on Decision and Control , 2025. [19] L. Ballotta, A. Peruffo, R. Ferrari, and M. Mazo Jr, “Fault detection via output-based barrier functions,” European Journal of Control , 2025. [20] H. Zhang, Z. Li, and A. Clark, “Safe control for nonlinear systems under faults and attacks via control barrier functions,” IEEE Transactions on Automatic Control , 2025. [21] N. Rudolph, S. Streif, and R. Findeisen, “Set-based experiment design for model discrimination using bilevel optimization,” IFAC-PapersOnLine , vol. 49, no. 26, pp. 295–299, 2016. [22] S. Dean, A. Taylor, R. Cosner, B. Recht, and A. Ames, “Guaranteeing safety of learned perception modules via measurement-robust control barrier functions,” in Conference on Robot Learning , 2021. [23] G. Chou and R. Tedrake, “Synthesizing stable reduced-order visuomo-tor policies for nonlinear systems via sums-of-squares optimization,” in 2023 62nd IEEE Conference on Decision and Control (CDC) , 2023. [24] G. Chou, N. Ozay, and D. Berenson, “Safe output feedback motion planning from images via learned perception modules and contraction theory,” in International Workshop on the Algorithmic Foundations of Robotics . Springer, 2022, pp. 349–367. [25] A. P. Leeman, S. Zhan, M. N. Zeilinger, and G. Chou, “Vision-sls: Safe perception-based control from learned visual representations via system level synthesis,” arXiv preprint arXiv:2604.24894 , 2026. [26] A. Harapanahalli, S. Jafarpour, and S. Coogan, “immrax: A paralleliz-able and differentiable toolbox for interval analysis and mixed mono-tone reachability in jax,” IFAC-PapersOnLine , vol. 58, no. 11, 2024. [27] S. Coogan, “Mixed monotonicity for reachability and safety in dynamical systems,” in 2020 59th IEEE Conference on Decision and Control (CDC) . IEEE, 2020, pp. 5074–5085. [28] L. Jaulin and E. Walter, “Set inversion via interval analysis for nonlinear bounded-error estimation,” Automatica , vol. 29, no. 4, 1993. [29] O. Didrit, L. Jaulin, M. Kieffer, and E. Walter, “Applied interval analysis,” Springer-Verlag , 2001. [30] M. Abate and S. Coogan, “Computing robustly forward invariant sets for mixed-monotone systems,” in Conf. on Dec. Ctrl. (CDC) , 2020. [31] S. LaValle, Planning algorithms . Cambridge university press, 2006. [32] L. Forssell and U. Nilsson, ADMIRE the aero-data model in aresearch environment version 4.0, model description , 2005. [33] J.-B. Bouvier and M. Ornik, “Resilience of linear systems to partial loss of control authority,” Automatica , vol. 152, p. 110985, 2023.

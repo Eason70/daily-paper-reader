@@ -1,0 +1,670 @@
+Title: Sensitivity Shaping for Latent Modeling
+
+URL Source: https://arxiv.org/pdf/2606.14585v1
+
+Published Time: Mon, 15 Jun 2026 01:13:49 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Sensitivity Shaping for Latent Modeling 
+
+Hongzhan Yu 1, Chenghao Li 1, Ruipeng Zhang 1, Henrik Christensen 1, Sicun Gao 1
+
+> 1
+
+University of California San Diego 
+
+{hoy021, chl235, ruz019, hichrist, sig049 }@ucsd.edu 
+
+Abstract: Generative dynamics models enable planning in challenging robotic systems, but safe deployment requires reliably detecting policy-induced out-of-distribution (OOD) transitions. Existing methods typically treat the learned dy-namics as fixed and attach post hoc support surrogates. We show that these surro-gates can fail when the dynamics are locally insensitive to critical action choices: unsupported control actions may produce latent predictions that resemble demon-strated transitions, suppressing OOD signals despite large true predictive errors. To address this, we introduce support-conditioned control-sensitivity regulariza-tion, which promotes sensitive local response to control input changes in learned dynamics in high-support training regions. This preserves control-induced varia-tion while limiting unstable extrapolation due to weak empirical support. Experi-ments in vision-based obstacle avoidance, manipulation, and real-robot navigation show improved OOD detection and safer closed-loop planning. 
+
+Keywords: Generative dynamics model; Out-of-distribution detection 
+
+# 1 Introduction 
+
+Generative models that capture system dynamics through latent representations (such as world mod-els [1]) have emerged as promising components for robotics. These models aim to support predictive reasoning beyond reactive control prediction, by mapping high-dimensional observations into a la-tent manifold that preserves transition-relevant structure. They have enabled planning and control in challenging systems where analytical dynamics are unavailable, including vision-based manipu-lation [2, 3] and robot navigation under partial observability in dynamic environments [4, 5, 6]. A critical bottleneck of generative dynamics models is that they are vulnerable to deployment-time distribution shift [7, 8]. Such shift arises when the model is queried on out-of-distribution (OOD) state-action inputs, often due to the deviation between deployed policies from the behavior pol-icy which induces changes to the state-visitation distribution [7, 8]. In such OOD cases, bounding prediction errors is challenging. Prior work mitigates this issue by broadening the training distri-bution, for example through web-scale multimodal data [9, 10, 11, 12, 13] or foundation-model priors [14, 15, 16]. However, there is a consensus on the scarcity of robot interaction data relative to other domains [17, 18, 19, 20], and the scale of the training data alone does not guarantee coverage of task-critical counterfactuals or reliable generalization beyond the training manifold. These limitations motivate uncertainty-aware analysis that aims to detect transitions that depart from the training support [21]. Existing methods typically design surrogate scores to measure uncertainty, such as: ensembles use inter-model disagreement [22], density models estimate likelihood under a learned data distribution [23], and nearest-neighbor methods measure distance to observed transi-tions [24]. During planning, these scores are incorporated as penalties to discourage unsupported controls [25]. However, most approaches treat OOD analysis as a post hoc diagnostic, and calibrate surrogates scores with conformal prediction which bounds the false rejection rate for in-distribution inputs at a prescribed level [26]. Yet, safe model-based control also requires the complementary property: genuinely unsupported transitions should be reliably rejected. This property is not guaran-teed by calibration alone; it depends on whether the surrogate score captures true support mismatch 
+
+> arXiv:2606.14585v1 [cs.RO] 12 Jun 2026
+
+Figure 1: Overview of sensitivity shaping for reliable OOD detection in generative dynamics models. Control-insensitive models respond weakly to control inputs, yielding inaccurate yet in-distribution-looking predictions that obscure OOD detection. (Left) At a safety-critical state ot, different controls lead to distinct outcomes, e.g., a safe transition under u1 and an unsafe one under u2. However, the vanilla model trained on failure-free data fail to capture true system consequences due to control-insensitivity which flattens the dynamics landscape over controls, making the predicted next latent states z1 and z2 nearly indistinguishable. Our sensitivity regularizer promotes nontrivial control responses, measured via the Frobenius norm of the control-Jacobian within learned dynamics, and improves detectability of unsupported transitions in the latent space. (Right) On undemonstrated failure rollouts in manipulation and real-robot navigation, the vanilla model fails to detect OOD before failure, with scores remaining below the calibrated threshold. In contrast, the sensitivity-regularized model flags OOD earlier, with red shading marking steps classified as OOD. 
+
+along rollout distributions and thereby provides an informative proxy for prediction error. Impor-tantly, surrogate-measured support mismatch need not align with actual prediction error (Figure 1). In this paper, we improve OOD analysis for generative dynamics models by shaping the local sensi-tivity in the learned dynamics landscape. We identify control insensitivity as a critical failure mode, where learned dynamics respond too weakly to control inputs and underrepresent the true responses. Under this failure mode, undemonstrated controls yield predictions that spuriously resemble the training distribution despite large true predictive errors, causing standard support-based OOD surro-gates to fail. To address this, we introduce a sensitivity regularizer applied to well-supported regions of the training distribution. The regularizer encourages nontrivial Frobenius norms on the control Jacobian, encouraging locally responsive dynamics without attempting to guarantee accurate pre-diction for arbitrary unseen controls. By preventing control-induced predictions from collapsing to overly similar latent transitions, the method makes unsupported transitions easier to detect. Overall, we make the following contributions. First, we analyze control sensitivity in generative dynamics models through a vision-based obstacle-avoidance case study, demonstrating how con-trol insensitivity degrades OOD detection (Section 3). Second, we propose a support-conditioned sensitivity regularizer that promotes local responsiveness of the learned dynamics and improves detectability of unsupported transitions (Section 4). Finally, we show that this method enhances control sensitivity, improves OOD detection, and enables more reliable OOD-aware planning across simulated and real-robot experiments (Section 5). 
+
+Related Work. Generative dynamics models learn latent representations and transition dynamics from high-dimensional observations for prediction, planning, and control [1]. Recurrent State-Space Models (RSSMs) [27], trained with variational objectives [28, 29, 30], form the basis of the Dreamer family [31, 32, 33, 34], which optimizes policies through imagined latent rollouts. These models have been applied to embodied robotic tasks such as manipulation, navigation, and locomotion [2, 4, 35, 5, 36]. However, learned dynamics can become unreliable under deployment-time distribution 2shift [37, 38], which is especially problematic for safety-critical control [39, 40, 41]. Existing out-of-distribution (OOD) analysis methods monitor such failures using distance-based scores [42, 43, 44, 45], density- or energy-based criteria [46, 47, 48, 49], or ensemble uncertainty [8, 38, 7], often to trigger runtime interventions or safety filters [50, 51, 52, 25]. These approaches are largely post hoc and depend on the learned representation. In contrast, we show that OOD detectability can be limited by the learned latent dynamics themselves, and propose to improve it by shaping control sensitivity during dynamics learning. 
+
+# 2 Preliminaries 
+
+Generative Dynamics Models. Consider a discrete-time dynamical system. At each time step t, the agent observes ot ∈ O , applies ut ∈ U , and transitions to ot+1 = f (ot, u t) where f : O × U → O .Generative dynamics models approximate f in a lower-dimensional latent space Z involving Encoder: zt ∈ Z ∼ ϕθ (· | ot), Dynamics: ˆzt+1 ∈ Z ∼ Fθ (· | zt, u t). (1) The key training objective is latent predictive consistency: the dynamics prior predicted from (zt, u t)
+
+should align with the encoder posterior of the next observation, i.e, Fθ (· | zt, u t) ≈ ϕθ (· | ot+1 ).
+
+Out-of-Distribution (OOD) Analysis. OOD analysis studies whether a learned model is queried outside the support of its training data. We use an OOD surrogate: Ψ : Z × U → R+, where larger values indicate lower support. Common choices include: k nearest neighbor (kNN) distances to training latent transitions [24], Flow Matching negative log-density estimated via a learned flow to a Gaussian base [23], and Ensemble disagreement across independently dynamics models [22]. Inductive conformal prediction (ICP) [26] provides a principal way to convert a chosen surrogate into an OOD boundary: on a held-out in-distribution calibration set, for a prescribed level α, τα is chosen as the the empirical (1 −α)-quantile of Ψ. A pair (zt, u t) is classified as OOD if Ψ( zt, u t) >τα, yielding a false rejection probability for in-distribution samples bounded by α.
+
+# 3 Analysis: Control-Conditioned Sensitivity in Latent Dynamics 
+
+Control insensitivity creates a fundamental failure mode for OOD analysis: when the learned dy-namics depend weakly on controls, they may produce inaccurate predictions that nevertheless appear compatible with the training distribution. Since OOD surrogates measure support rather than transi-tion correctness, such errors can evade detection. We study this issue in safety-critical systems [53], where failure-free data often provide limited control diversity near critical regions, making control-dependent transitions weakly identifiable and inducing local control insensitivity. 
+
+3.1 Running Example: Vision-Based Dubins Obstacle Avoidance 
+
+Figure 2: Dubins system. (Left) RGB obesrvations. Over-lays show that model-predicted future states accurately tracks the ground-truth. (Middle) Training-data density over the spatial map, showing denser coverage near the obstacle and sparser coverage farther away. (Right) Spatial control-variance map for heading π/ 2. Low variance near the obsta-cle indicates limited control diversity under safe constraints. 
+
+We illustrate this failure mode in a vision-based obstacle-avoidance case study. The agent follows constant-speed Dubins dy-namics with a scalar steering-rate input and observes bird’s-eye-view images. We train generative dynamics models using DreamerV3 [33] on collision-free trajecto-ries collected with expert and random con-trols. Figure 2-Left shows that the trained model can accurately predict future states for demonstrated state-control pairs. 
+
+Training Data Analysis . Figure 2-Middle shows that samples concentrate near the central obstacle, while regions farther away are comparatively sparse. In contrast, the empirical control variance is low near the obstacle (Figure 2-Right), since the exclusion of failure trajectories 3Figure 3: Sensitivity analysis in the obstacle-avoidance system. From left to right: (a,b) Control-Jacobian norms for demonstrated latent state-control pairs, project onto the 2D position space and averaged within dis-cretized bins; blue indicates lower sensitivity and red indicates higher sensitivity. Low sensitivity regions arise from limited control diversity or sparse data coverage. (c) The vanilla, control-insensitive dynamics deviate from the true system responses even under small perturbations. (d) The sensitivity-regularized dynamics better match the true response, substantially reducing small-perturbation mismatch. 
+
+restricts near-boundary demonstrations to controls that remain safe. This reduced control diversity weakens the identifiability of control-dependent dynamics in safety-critical regions. 
+
+3.1.1 Control Sensitivity of the Learned Dynamics 
+
+Measuring Control Sensitivity . We first formalize the sensitivity measure. For an arbitrary latent state-control pair (zt, u t), we fix zt and view the learned transition as a differential function of the control input: Fθ (zt, ·) : U ⊆ R|U| → Z ⊆ R|Z| . Its Jacobian JuFθ (zt, u t) ∈ R|Z|×|U| maps a control perturbation direction δu to the first-order change in the predicted next latent state: 
+
+dFθ (zt, u t)[ δu ] = JuFθ (zt, u t) · δu := ddε Fθ (zt, u t + ε ∂u ) ε=0 
+
+. (2) We measure control sensitivity by the Frobenius norm of this Jacobian, i.e., ∥JuFθ (zt, u t)∥F =(P|Z| 
+
+> i=1
+
+P|U| 
+
+> j=1
+
+(JuFθ (zt, u t)) 2 
+
+> ij
+
+)1/2. This norm aggregates first-order responses across control direc-tions, serving as a continuous analogue of average sensitivity for Boolean functions [54], and a standard measure of neural network sensitivity [55]. 
+
+Sensitivity Results . Figure 3-(a,b) visualizes control-Jacobian Frobenius norms over demonstrated state-control pairs. The results shows two low-sensitivity regimes: sparse outer regions near the position-space boundary, and near-obstacle regions with substantial state coverage but limited con-trol diversity. Low sensitivity indicates that the learned dynamics respond weakly to changes in the control input, producing similar next-latent predictions for distinct controls. However, the true Dubins dynamics (see Appendix) demand stronger sensitivity: the steering-rate input affects the heading with state-independent gain, while constant forward speed induces position changes of fixed magnitude. Thus, for a fixed control perturbation, the true response should be comparable across states and should not vanish near the safety boundary. To quantify this mismatch, we compare the model-predicted dynamics response with the true system response. For an arbitrary latent-valued transition map H, define its control-induced response as 
+
+∆H (x, u ; ∂u ) ≜ H(x, u + δu ) − H(x, u ). This measures the change in H at input x induced by perturbing the control from u to u + ∂u . Let G : O × U → O denote the one-step observation transition, and write HO (o, u ) ≜ ϕθ (G(o, u )) . For (ot, u t), with zt ∼ ϕθ (· | ot), we measure 
+
+EFθ (zt, u t; δu ) ≜ ∆Fθ (zt, u t; ∂u )∥22, EO (ot, u t; δu ) ≜ ∆HO (ot, u t; ∂u )∥22, (3) where EFθ is the model-predicted response and EO is the true response in the same latent space. Figure 3-c shows that, over near-obstacle low-sensitivity samples identified in Figure 2, the gap between EFθ and EO grows with ∥δu ∥, indicating that learned dynamics increasingly underestimate control-induced variation away from demonstrated controls. Importantly, since the gap appears even for small perturbations, the mismatch is local and can compound rapidly under recursive rollouts, showing that the learned control-insensitive dynamics underrepresents the true system dynamics. 4Figure 4: OOD surrogate responses to perturbations. (Left) Average surrogate scores over near-obstacle sam-ples as demonstrated controls are perturbed. Dashed horizontal lines denote conformal thresholds at coverage levels 0.75 , 0.90 , and 0.95 ; shaded regions indicate perturbations classified as OOD under the 0.90 -coverage threshold. Although scores generally increase with ∥δu ∥, each misses some safety-critical perturbations to varying degrees. (Right) Qualitative sample-level responses. In Scenario A, the ensemble score decreases un-der perturbations because shared control-insensitive dynamics cause disagreement to overlook transition error. 
+
+3.1.2 Impact on OOD Analysis 
+
+We next discuss how control insensitivity degrades OOD analysis. The failures stem from a mis-match between latent transition geometry and prediction error: if perturbed controls yield predicted transitions close to the demonstrated distribution, support-based scores may not reflect the true tran-sition error as these surrogates mainly assess compatibility with the training distribution. 
+
+Figure 5: Flow-matching scores for the state      
+
+> otin Figure 1. Dashed lines indicate calibrated thresholds. For the unsafe control u2, vanilla dynamics (left) assigns an in-distribution score due to control-insensitivity, whereas the pro-posed sensitivity-regularized dynamics (right)
+> correctly identifies the transition as OOD.
+
+Empirical Results . Over near-obstacle, low-sensitivity samples, we perturb demonstrated controls by δu and measure scores as ∥δu ∥ increases; Figure 4 reports re-sults, showing that OOD scores need not track increas-ing control deviation. For kNN which measures latent distance to training samples, control-insensitive pre-dictions can falsely resemble training distribution and therefore receive small nearest-neighbor distances. Ac-cordingly, its average scores remain below the 0.90 -coverage OOD threshold across the full range of ∥δu ∥.
+
+Ensemble scores appear more responsive on average but can be non-monotonic at the sample level: when mem-bers share the same control-insensitive bias, disagree-ment reflects inter-model variance rather than shared transition error and may even decrease with ∥δu ∥. Flow matching performs best, but perturbed transitions near the training manifold may still be mapped through well-trained regions of the flow and assigned high likelihood. Iterative flow integration can further smooth small deviations, reduc-ing the contrast between perturbed and demonstrated transitions and causing some safety-critical perturbations to be missed (Figure 5). These results show that post hoc OOD surrogates cannot fully compensate for collapsed control-conditioned transitions. 
+
+# 4 Method: Support-Conditioned Control Sensitivity Regularization 
+
+We mitigate control insensitivity to facilitate OOD detection by regularizing the learned dynamics to maintain nontrivial control-Jacobian norms in well-supported regions of the training distribution. The goal is not to guarantee accurate prediction under arbitrary controls, but to prevent undemon-strated controls from collapsing to overly similar latent transitions. For a latent state–control pair 
+
+(zt, u t) and valid control perturbations δu , a first-order expansion shows that the average local re-sponse to control perturbations is governed by the control Jacobian: 
+
+Eδu 
+
+"
+
+∆Fθ (zt, u t; ∂u )
+
+> 22
+
+#
+
+≈ Eδu 
+
+h
+
+∥JuFθ (zt, u t) δu ∥22
+
+i
+
+= ¯σ2
+
+> u
+
+|U| ∥JuFθ (zt, u t)∥2 
+
+> F
+
+, (4) 5Figure 6: Sensitivity analysis with sensitivity-regularized dynamics. From left to right: (a) Control-Jacobian norms of the regularized dynamics, showing increased responsiveness in near-obstacle regions that were pre-viously control-insensitive. (b,c) PCA+t-SNE visualizations of latent transitions under demonstrated controls (red) and undemonstrated controls (blue). The vanilla model (b) exhibits substantial overlap, indicating under-represented control-induced variation, whereas the regularized model (c) shows improved separation achieved by the proposed non-contrastive sensitive regularization. (d) Annotated states for marked points in (b,c). 
+
+where ¯σu = E∂u [∥∂u ∥2] is the expected perturbation magnitude. While the Frobenius norm does not lower-bound every perturbation direction, enforcing a non-vanishing norm promotes aggregate control responsiveness and mitigate collapse onto demonstrated transitions. 
+
+Support-Conditioned Targeting . Uniformly enforcing strong local responsiveness across the train-ing manifold can degrade prediction in weakly supported regions: a global Jacobian constraint may increase local Lipschitz constants and amplify extrapolation errors through sensitive transitions [56]. We therefore apply sensitivity regularization only in high-supported regions, where empirical obser-vations sufficiently constrain the latent dynamics. To identify these regions, we use kNN surrogate on in-distribution samples as a parameter-free proxy for local support. Since this assessment ranks demonstrated inputs, it is not subject to the control-insensitivity artifacts. 
+
+Control Sensitivity Regularization . Since the encoder evolves during training, we periodically up-date the high-support set, denoted as ¯D, by retaining the β-fraction of samples with the smallest latent-space kNN distances. On this set, we promote local control sensitivity with 
+
+Lreg = E (ot,u t)∼¯D 
+
+> zt∼ϕθ(·| ot)
+
+"
+
+g − ∂F θ (zt, u t)
+
+∂u t
+
+> 2
+> F
+
+!
+
+> +
+
+#
+
+, (5) where (·)+ = max( ·, 0) and g > 0 sets the lower bound on the squared norm, penalizing vanishing sensitivity while avoiding unbounded growth. To reduce computational cost, we estimate the Frobe-nius norm using Hutchinson’s identity [57]. The final objective is: L = Ldyn + λreg Lreg , where 
+
+Ldyn denotes the standard generative dynamics training loss and λreg is the regularization weight. 
+
+# 5 Experiments 
+
+5.1 Dubins Obstacle Avoidance 
+
+We first evaluate the proposed method on the Dubins system introduced in Section 3; training con-figurations are provided in the Appendix. We evaluate whether the regularized dynamics recover stronger control sensitivity and improve downstream OOD-aware planning. 
+
+Sensitivity Analysis. Figure 6-a shows that, compared to the unregularized model (Figure 3), the proposed sensitivity-regularized dynamics exhibits substantially stronger responsiveness in near-obstacle regions. To inspect the induced latent geometry, Figure 6-(b,c) visualizes predicted next-latent states for the top 20% high-support training samples. For each sample, we construct an un-demonstrated transition by replacing its control with the one farthest from the empirical control distribution. Given the pairs (zt, u t), we unroll the learned dynamics and and project the pre-dicted next-latent states zt+1 ∼ Fθ (· | zt, u t) using PCA followed by t-SNE. For the unregularized model, demonstrated and undemonstrated transitions substantially overlap, indicating that control-insensitive dynamics map distinct controls to overly similar latent predictions. In contrast, the regu-6larized model yields improved separation despite using a non-contrastive Jacobian regularizer. The remaining overlap typically corresponds to common near-initial or near-terminal states. Figure 3-d shows that the regularized model more closely tracks the ground-truth latent response EO .
+
+OOD-Aware Planning. We use calibrated OOD thresholds as one-step safety filters for a random reference controller. At each time step, we reject the proposed control uref  
+
+> t
+
+if its induced transition has an OOD score above the calibrated threshold. Upon rejection, we execute the sampled alternative with the lowest OOD score. We report: ρsucc , the fraction of safe trajectories; ρfilt , the fraction of rejected reference control; and ρviol , the fraction of executed transitions classified as OOD.                         
+
+> Method Ψρsucc ↑ρfilt ρviol ↓
+> Vanilla
+> kNN 0.600 0.340 0.273 FM 0.910 0.309 0.153 ENS 0.380 0.459 0.327 Ours
+> kNN 0.800 0.323 0.166 FM 0.960 0.323 0.104
+> ENS 0.440 0.425 0.297
+
+Table 1: Obstacle-avoidance with filtering of a random policy ( 200 trials). 
+
+Results . Table 1 compares safety filters built from vanilla and the proposed regularized dynamics. Flow matching outperforms kNN, consistent with the preceding analy-sis showing that flow matching is most responsive. En-semble consistently underperforms, likely due to spurious inter-member agreement on far-OOD inputs [45, 24]; this issue is amplified in the one-step filtering where the sur-rogate must provide reliable local rankings of candidate controls. Across all three surrogates, filters based on the regularized dynamics improve over their vanilla counter-parts, achieving higher success rates and lower OOD vi-olation rates. These results indicate that enhanced control sensitivity improves OOD-aware safety filtering by increasing detectability of unsupported candidate controls. 
+
+5.2 Block Plucking Manipulation 
+
+Setup . We next consider a manipulation task in which a Franka arm extracts the middle block from a three-block stack without dropping the top block (Figure 7). Observations are RGB images from wrist-mounted and tabletop cameras, together with 7-dimensional proprioception. The controls are a 6-DoF end-effector pose increment and a discrete gripper command. 
+
+Figure 7: Observations in block-plucking. 
+
+We evaluate OOD-aware planning using the ensemble surrogate and a reachability-based safety filter [25]. Unlike the one-step filter, this filter is trained on imagined latent rollouts to reason about long-horizon OOD risk. Given an OOD surrogate Ψ and a calibrated threshold τα at calibration level 
+
+α, the reachability filter learns to avoid trajectories that enter latent states 
+
+z from which all admissible controls are OOD, i.e., min u∈U Ψ( z, u ) > τ α.
+
+Because trajectories may remain safe but fail to complete the task, we re-place success rate with the failure rate ρfail and the incompletion rate ρinc .We also report the reconstruction error Erecon , defined as the negative log-likelihood of the observations under the trained decoder’s reconstruction distribution, as a proxy for how closely executed trajectories remain within the training support. 
+
+Results . Table 2 evaluates a mediocre reference policy with ρfail ≈ 0.25 . Compared with the filter trained on vanilla dynamics, the filter trained on sensitivity-regularized dynamics achieves a lower failure rate with moderate intervention. It also produces the lowest reconstruction error, suggesting that the filtered trajectories remain the closest to the training support. Table 7 filters a policy trained on imagined rollouts to maximize the learned reward [33]. This setting evaluates the full offline pipeline: learning dynamics and rewards from data, then training both policy and OOD filter entirely through latent imagination. We note that larger α tightens the OOD threshold, yielding a more conservative filter: α = 0 .2 minimizes reconstruction error and failures, but maximizes task incompletions by suppressing progressive controls. Conversely, a smaller α improves in-distribution coverage but enables aggressive, risker planning when the learned dynamics or OOD surrogates are imperfect. Notably, the filter built from sensitivity-regularized dynamics at α = 0 .05 outperforms the vanilla-dynamics filter at α = 0 .1, suggesting that improved control sensitivity preserve safety while reducing the need for overly conservative calibration. 7Filter α ρfail ↓ ρinc ρfilt Erecon ↓                                          
+
+> None N/A 0.243 0.096 0.000 2335.99 Vanilla 0.10 0.196 0.047 0.242 2215.32 Ours 0.10 0.150 0.047 0.269 2196.11 Filter αρfail ↓ρinc ρfilt Erecon ↓
+> Vanilla 0.10 0.118 0.013 0.154 2207.55 Ours 0.20 0.046 0.157 0.322 2036.50
+> Ours 0.10 0.047 0.053 0.199 2146.66 Ours 0.05 0.085 0.007 0.100 2204.37
+
+Table 2: Block-plucking with filtering of a medi-core policy ( 100 trials). 
+
+Table 3: Block-plucking with filtering of the policy trained from the same dynamics model ( 100 trials). 
+
+5.3 Real-Robot Static-Obstacle Avoidance 
+
+Figure 8: Real-robot obstacle avoidance system. The unfiltered trajectory (red) re-sults in failure, whereas the flow-matching filter (blue) avoids it. Bottom-right insets show body-camera observations.                         
+
+> Method Ψρsucc ↑ρfilt ρviol ↓
+> Vanilla
+> kNN 0.240 0.047 0.027 FM 0.900 0.343 0.155 ENS 0.150 0.543 0.507 Ours
+> kNN 0.380 0.040 0.026
+> FM 1.000 0.326 0.154 ENS 0.750 0.592 0.557
+
+Table 4: Real-robot with filtering of a random policy ( 50 trials). 
+
+Setup . Lastly, we study a real-robot obstacle-avoidance sys-tem using images from two body-mounted cameras (Fig-ure 8). We collect 60 minutes of collision-free teleoperation using three discrete commands: turn left, move straight, and turn right, all executed at a fixed forward speed of 0.5 m /s.Despite the discrete control space, the control-sensitivity view still applies, as control insensitivity is data-induced limitation of learned dynamics and discrete commands are embedded as continuous inputs to the learned dynamics. 
+
+Results . Table 4 reports filtering results for a random refer-ence policy, using one-step filters for kNN and flow match-ing and a reachability-based filter for ensemble. The kNN surrogate provides limited performance, reflecting the diffi-culty of using latent distances in real-world visual settings where covering all observation variations is impossible. Flow matching performs best under the available data bud-get and improves further when paired with the sensitivity-regularized dynamics, suggesting that parametric density surrogates can effectively model high-dimensional support without exhaustive coverage. The ensemble filter incurs frequent interventions because long-horizon imagined roll-outs can amplify spurious OOD classification. Nevertheless, its large ρsucc improvement with regularized dynamics indicates that reachability-based filtering is particularly sensitive to control-conditioned transition collapse. We interpret ρviol cautiously, as unmodeled camera variations can induce observation-level OOD events orthogonal to our focus. Overall, we show that that enhancing control sensitivity improves OOD detection and OOD-aware planning on hardware. Supplementary videos provide comparisons of the resulting behavioral differences. 
+
+# 6 Conclusion 
+
+This work identifies control insensitivity in generative dynamics models as a key failure mode for OOD analysis. We show that weak sensitivity can cause unsupported controls to produce in-distribution-looking predictions, systematically suppressing OOD signals. To mitigate this, we in-troduce a support-conditioned sensitivity regularizer that enforces non-vanishing control-Jacobian norms in high-support regions of the training distribution. Through sensitivity analyses and safety-filtering experiments, we demonstrate improved OOD detection and safer model-based control. 
+
+Limitations . The proposed regularizer relies on latent kNN-based support estimates; poor represen-tations or distance metric may lead to misidentified support regions. Periodic support-set updates also add computational cost for large datasets. Future work should study scalable and adaptive support estimation, richer visual representations, and broader hardware validation. 8References 
+
+[1] D. Ha and J. Schmidhuber. World models. arXiv preprint arXiv:1803.10122 , 2(3), 2018. [2] P. Wu, A. Escontrela, D. Hafner, P. Abbeel, and K. Goldberg. Daydreamer: World models for physical robot learning. In Conference on robot learning , pages 2226–2240. PMLR, 2023. [3] J. Guo, X. Ma, Y. Wang, M. Yang, H. Liu, and Q. Li. Flowdreamer: A rgb-d world model with flow-based motion representations for robot manipulation. IEEE Robotics and Automation Letters , 11(3):2466–2473, 2026. [4] S. Shanks, J. Embley-Riches, J. Liu, A. M. Delfaki, C. Ciliberto, and D. Kanoulas. Dream-ernav: learning-based autonomous navigation in dynamic indoor environments using world models. Frontiers in Robotics and AI , 12:1655171, 2025. [5] H. Lai, J. Cao, J. Xu, H. Wu, Y. Lin, T. Kong, Y. Yu, and W. Zhang. World model-based perception for visual legged locomotion. In 2025 IEEE International Conference on Robotics and Automation (ICRA) , pages 11531–11537. IEEE, 2025. [6] J. Y. Koh, H. Lee, Y. Yang, J. Baldridge, and P. Anderson. Pathdreamer: A world model for indoor navigation. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 14738–14748, 2021. [7] T. Yu, G. Thomas, L. Yu, S. Ermon, J. Y. Zou, S. Levine, C. Finn, and T. Ma. Mopo: Model-based offline policy optimization. Advances in Neural Information Processing Systems , 33: 14129–14142, 2020. [8] R. Kidambi, A. Rajeswaran, P. Netrapalli, and T. Joachims. Morel: Model-based offline re-inforcement learning. Advances in neural information processing systems , 33:21810–21823, 2020. [9] A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell, P. Mishkin, J. Clark, et al. Learning transferable visual models from natural language supervi-sion. In International conference on machine learning , pages 8748–8763. PmLR, 2021. [10] S. Y. Gadre, G. Ilharco, A. Fang, J. Hayase, G. Smyrnis, T. Nguyen, R. Marten, M. Wortsman, D. Ghosh, J. Zhang, et al. Datacomp: In search of the next generation of multimodal datasets. 
+
+Advances in Neural Information Processing Systems , 36:27092–27112, 2023. [11] C. Jia, Y. Yang, Y. Xia, Y.-T. Chen, Z. Parekh, H. Pham, Q. Le, Y.-H. Sung, Z. Li, and T. Duerig. Scaling up visual and vision-language representation learning with noisy text supervision. In 
+
+International conference on machine learning , pages 4904–4916. PMLR, 2021. [12] C. Schuhmann, R. Beaumont, R. Vencu, C. Gordon, R. Wightman, M. Cherti, T. Coombes, A. Katta, C. Mullis, M. Wortsman, et al. Laion-5b: An open large-scale dataset for training next generation image-text models. Advances in neural information processing systems , 35: 25278–25294, 2022. [13] O. Sim´ eoni, H. V. Vo, M. Seitzer, F. Baldassarre, M. Oquab, C. Jose, V. Khalidov, M. Szafraniec, S. Yi, M. Ramamonjisoa, et al. Dinov3. arXiv preprint arXiv:2508.10104 ,2025. [14] D. Driess, F. Xia, M. S. Sajjadi, C. Lynch, A. Chowdhery, A. Wahid, J. Tompson, Q. Vuong, T. Yu, W. Huang, et al. Palm-e: An embodied multimodal language model. 2023. [15] M. Ahn, A. Brohan, N. Brown, Y. Chebotar, O. Cortes, B. David, C. Finn, C. Fu, K. Gopalakr-ishnan, K. Hausman, et al. Do as i can, not as i say: Grounding language in robotic affordances. 
+
+arXiv preprint arXiv:2204.01691 , 2022. 9[16] K. Black, N. Brown, D. Driess, A. Esmail, M. Equi, C. Finn, N. Fusai, L. Groom, K. Haus-man, B. Ichter, S. Jakubczak, T. Jones, L. Ke, S. Levine, A. Li-Bell, M. Mothukuri, S. Nair, K. Pertsch, L. X. Shi, J. Tanner, Q. Vuong, A. Walling, H. Wang, and U. Zhilinsky. π0: A vision-language-action flow model for general robot control, 2026. URL https://arxiv. org/abs/2410.24164 .[17] A. O’Neill, A. Rehman, A. Maddukuri, A. Gupta, A. Padalkar, A. Lee, A. Pooley, A. Gupta, A. Mandlekar, A. Jain, et al. Open x-embodiment: Robotic learning datasets and rt-x models: Open x-embodiment collaboration 0. In 2024 IEEE International Conference on Robotics and Automation (ICRA) , pages 6892–6903. IEEE, 2024. [18] A. Brohan, N. Brown, J. Carbajal, Y. Chebotar, J. Dabis, C. Finn, K. Gopalakrishnan, K. Haus-man, A. Herzog, J. Hsu, et al. Rt-1: Robotics transformer for real-world control at scale. arXiv preprint arXiv:2212.06817 , 2022. [19] B. Zitkovich, T. Yu, S. Xu, P. Xu, T. Xiao, F. Xia, J. Wu, P. Wohlhart, S. Welker, A. Wahid, et al. Rt-2: Vision-language-action models transfer web knowledge to robotic control. In 
+
+Conference on Robot Learning , pages 2165–2183. PMLR, 2023. [20] Y. Ma, Z. Song, Y. Zhuang, J. Hao, and I. King. A survey on vision-language-action models for embodied ai. arXiv preprint arXiv:2405.14093 , 2024. [21] J. Yang, K. Zhou, Y. Li, and Z. Liu. Generalized out-of-distribution detection: A survey. CoRR ,abs/2110.11334, 2021. URL https://arxiv.org/abs/2110.11334 .[22] K. Chua, R. Calandra, R. McAllister, and S. Levine. Deep reinforcement learning in a handful of trials using probabilistic dynamics models, 2018. URL https://arxiv.org/abs/1805. 12114 .[23] Y. Lipman, R. T. Q. Chen, H. Ben-Hamu, M. Nickel, and M. Le. Flow matching for generative modeling, 2023. URL https://arxiv.org/abs/2210.02747 .[24] Y. Sun, Y. Ming, X. Zhu, and Y. Li. Out-of-distribution detection with deep nearest neighbors, 2022. URL https://arxiv.org/abs/2204.06507 .[25] J. Seo, K. Nakamura, and A. Bajcsy. Uncertainty-aware latent safety filters for avoiding out-of-distribution failures. arXiv preprint arXiv:2505.00779 , 2025. [26] A. N. Angelopoulos and S. Bates. A gentle introduction to conformal prediction and distribution-free uncertainty quantification. arXiv preprint arXiv:2107.07511 , 2021. [27] D. Hafner, T. Lillicrap, I. Fischer, R. Villegas, D. Ha, H. Lee, and J. Davidson. Learning latent dynamics for planning from pixels. In International conference on machine learning , pages 2555–2565. PMLR, 2019. [28] J. Chung, K. Kastner, L. Dinh, K. Goel, A. C. Courville, and Y. Bengio. A recurrent latent variable model for sequential data. Advances in neural information processing systems , 28, 2015. [29] D. J. Rezende, S. Mohamed, and D. Wierstra. Stochastic backpropagation and approximate inference in deep generative models. In International conference on machine learning , pages 1278–1286. PMLR, 2014. [30] D. P. Kingma and M. Welling. Auto-encoding variational bayes. arXiv preprint arXiv:1312.6114 , 2013. [31] D. Hafner, T. Lillicrap, J. Ba, and M. Norouzi. Dream to control: Learning behaviors by latent imagination. arXiv preprint arXiv:1912.01603 , 2019. 10 [32] D. Hafner, T. Lillicrap, M. Norouzi, and J. Ba. Mastering atari with discrete world models. 
+
+arXiv preprint arXiv:2010.02193 , 2020. [33] D. Hafner, J. Pasukonis, J. Ba, and T. Lillicrap. Mastering diverse domains through world models. arXiv preprint arXiv:2301.04104 , 2023. [34] D. Hafner, W. Yan, and T. Lillicrap. Training agents inside of scalable world models. arXiv preprint arXiv:2509.24527 , 2025. [35] W. Huang, Y.-W. Chao, A. Mousavian, M.-Y. Liu, D. Fox, K. Mo, and L. Fei-Fei. Point-world: Scaling 3d world models for in-the-wild robotic manipulation. arXiv preprint arXiv:2601.03782 , 2026. [36] G. Zhou, H. Pan, Y. LeCun, and L. Pinto. Dino-wm: World models on pre-trained visual features enable zero-shot planning. arXiv preprint arXiv:2411.04983 , 2024. [37] D. Hendrycks and K. Gimpel. A baseline for detecting misclassified and out-of-distribution examples in neural networks. arXiv preprint arXiv:1610.02136 , 2016. [38] B. Lakshminarayanan, A. Pritzel, and C. Blundell. Simple and scalable predictive uncertainty estimation using deep ensembles. Advances in neural information processing systems , 30, 2017. [39] N. Lambert, B. Amos, O. Yadan, and R. Calandra. Objective mismatch in model-based rein-forcement learning. arXiv preprint arXiv:2002.04523 , 2020. [40] W. Huang, J. Ji, C. Xia, B. Zhang, and Y. Yang. Safedreamer: Safe reinforcement learning with world models. arXiv preprint arXiv:2307.07176 , 2023. [41] L. Brunke, M. Greeff, A. W. Hall, Z. Yuan, S. Zhou, J. Panerati, and A. P. Schoellig. Safe learn-ing in robotics: From learning-based control to safe reinforcement learning. Annual Review of Control, Robotics, and Autonomous Systems , 5(1):411–444, 2022. [42] K. Lee, K. Lee, H. Lee, and J. Shin. A simple unified framework for detecting out-of-distribution samples and adversarial attacks. Advances in neural information processing sys-tems , 31, 2018. [43] J. Wong, A. Tung, A. Kurenkov, A. Mandlekar, L. Fei-Fei, S. Savarese, and R. Mart´ ın-Mart´ ın. Error-aware imitation learning from teleoperation data for mobile manipulation. In Conference on Robot Learning , pages 1367–1378. PMLR, 2022. [44] H. Liu, S. Dass, R. Mart´ ın-Mart´ ın, and Y. Zhu. Model-based runtime monitoring with interac-tive imitation learning. In 2024 IEEE International Conference on Robotics and Automation (ICRA) , pages 4154–4161. IEEE, 2024. [45] S. Fort, J. Ren, and B. Lakshminarayanan. Exploring the limits of out-of-distribution detection. 
+
+Advances in neural information processing systems , 34:7068–7081, 2021. [46] E. Nalisnick, A. Matsukawa, Y. W. Teh, D. Gorur, and B. Lakshminarayanan. Do deep gener-ative models know what they don’t know? arXiv preprint arXiv:1810.09136 , 2018. [47] W. Liu, X. Wang, J. Owens, and Y. Li. Energy-based out-of-distribution detection. Advances in neural information processing systems , 33:21464–21475, 2020. [48] W. Morningstar, C. Ham, A. Gallagher, B. Lakshminarayanan, A. Alemi, and J. Dillon. Density of states estimation for out of distribution detection. In International Conference on Artificial Intelligence and Statistics , pages 3232–3240. PMLR, 2021. [49] M. S. Graham, W. H. Pinaya, P.-D. Tudosiu, P. Nachev, S. Ourselin, and J. Cardoso. Denoising diffusion models for out-of-distribution detection. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 2948–2957, 2023. 11 [50] C. Agia, R. Sinha, J. Yang, Z.-a. Cao, R. Antonova, M. Pavone, and J. Bohg. Unpacking failure modes of generative policies: Runtime monitoring of consistency and progress. arXiv preprint arXiv:2410.04640 , 2024. [51] M. Salehi, H. Mirzaei, D. Hendrycks, Y. Li, M. H. Rohban, and M. Sabokrou. A unified survey on anomaly, novelty, open-set, and out-of-distribution detection: Solutions and future challenges. arXiv preprint arXiv:2110.14051 , 2021. [52] R. Sinha, A. Sharma, S. Banerjee, T. Lew, R. Luo, S. M. Richards, Y. Sun, E. Schmerling, and M. Pavone. A system-level view on out-of-distribution data in robotics. arXiv preprint arXiv:2212.14020 , 2022. [53] S. Bansal, M. Chen, S. Herbert, and C. J. Tomlin. Hamilton-jacobi reachability: A brief overview and recent advances. In 2017 IEEE 56th annual conference on decision and control (CDC) , pages 2242–2253. IEEE, 2017. [54] M. Hahn. Theoretical limitations of self-attention in neural sequence models. Transactions of the Association for Computational Linguistics , 8:156–171, 2020. doi:10.1162/tacl a 00306. [55] R. Novak, Y. Bahri, D. A. Abolafia, J. Pennington, and J. Sohl-Dickstein. Sensitivity and generalization in neural networks: an empirical study. arXiv preprint arXiv:1802.08760 , 2018. [56] Q. Zhang, Q. Feng, J. T. Zhou, Y. Bian, Q. Hu, and C. Zhang. The best of both worlds: On the dilemma of out-of-distribution detection. Advances in Neural Information Processing Systems ,37:69716–69746, 2024. [57] M. F. Hutchinson. A stochastic estimator of the trace of the influence matrix for laplacian smoothing splines. Communications in Statistics-Simulation and Computation , 18(3):1059– 1076, 1989. [58] A. R´ enyi. On measures of entropy and information. In Proceedings of the fourth Berkeley symposium on mathematical statistics and probability, volume 1: contributions to the theory of statistics , volume 4, pages 547–562. University of California Press, 1961. [59] Unitree Robotics. Unitree RL Lab. https://github.com/unitreerobotics/unitree_ rl_lab , 2025. Commit a1b2c3d4e5f6, accessed June 2026. 12 Appendix 
+
+In this appendix, we provide details on the out-of-distribution (OOD) surrogates used in the paper (Section 7), present pseudocode for the proposed method (Section 8), and report the experimental setup and ablation studies (Section 9). 
+
+# 7 Out-of-Distribution Analysis 
+
+OOD analysis estimates empirical training support using a non-conformity score 
+
+Ψ : Z × U → R+, (6) which assigns a scalar score to each latent state-control pair. The goal is to measure the compati-bility or typicality of a queried pair (zt, u t) relative to the distribution of training demonstrations, serving as a proxy for whether the dynamics model is evaluated in a data-supported regime. Ideally, this score is informative of predictive reliability: low nonconformity suggests that the model predic-tion is constrained by nearby training data, whereas high nonconformity indicates a higher risk of prediction error without requiring access to the true next state. 
+
+Notations. Denote the training and held-out calibration sets by 
+
+D = {(o(i) 
+
+> t
+
+, u (i) 
+
+> t
+
+)}Ni=1 , Dcal = {(o(j) 
+
+> t
+
+, u (j) 
+
+> t
+
+)}Ncal  
+
+> j=1
+
+(7) where both sets consist of observation-control pairs. For OOD analysis, we treat the learned encoder 
+
+ϕθ : O → Z and latent dynamics model Fθ : Z × U → Z as fixed. Applying the encoder and dynamics model yields the latent transition sets 
+
+Z = {(z(i) 
+
+> t
+
+, u (i) 
+
+> t
+
+, ¯z(i)
+
+> t+1
+
+)}Ni=1 , Zcal = {(z(j) 
+
+> t
+
+, u (j) 
+
+> t
+
+, ¯z(j)
+
+> t+1
+
+)}Ncal  
+
+> j=1
+
+(8) where z(i) 
+
+> t
+
+∼ ϕθ (· | o(i) 
+
+> t
+
+), ¯z(i) 
+
+> t+1
+
+∼ Fθ (z(i) 
+
+> t
+
+, u (i) 
+
+> t
+
+), with analogous definitions for the calibration set. We evaluate OOD surrogate scores on these latent state-control pairs, using the associated predicted successor when required. We next describe the three surrogates used in this work. 
+
+7.1 k-Nearest-Neighbor ( kNN) 
+
+The kNN surrogate [24] measures the latent-space distance from a predicted transition to its k near-est neighbors observed in the training data. Given a query latent state-control pair (z, u ), we compute its predicted successor ¯z = Fθ (z, u ). The kNN surrogate then identifies the k calibration transitions whose predicted successors ¯z(j) 
+
+> t+1
+
+are closest to ¯z in latent space: 
+
+ΨkNN (z, u ) = 1
+
+k
+
+X 
+
+> j∈N k(¯ z)
+
+d(¯ z, ¯z(j)
+
+> t+1
+
+), (9) where Nk(¯ z) denotes the indices of the k nearest neighbors of ¯z in the calibration successor set 
+
+{¯z(j)
+
+> t+1
+
+}Ncal  
+
+> j=1
+
+, measured by Euclidean distance d. A larger value in ΨkNN indicates that the predicted successor lies farther from the empirical latent transition support. 
+
+7.2 Flow Matching (FM) 
+
+The flow-matching surrogate [23] estimates training support through a learned conditional density over predicted successors; i.e., for ¯zt+1 = Fθ (zt, u t), it learns the conditional distribution pγ (¯ zt+1 |
+
+zt, u t). We parameterize this distribution with a conditional flow whose vector field is 
+
+vγ : Z × [0 , 1] × (Z × U ) → Z , (10) where vγ (˜ zs, s | zt, u t) takes an interpolated latent sample ˜zs, a flow time s ∈ [0 , 1] , and condi-tioning context (zt, u t), and outputs the velocity used to transport samples between the predicted-successor distribution and a Gaussian base distribution. 13 For training, given (zt, u t, ¯zt+1 ) ∼ Z, we sample flow time s ∼ Unif([0 , 1]) and a gaussian base 
+
+ϵ ∼ N (0 , I ), and define the linear interpolation ˜zϵs(¯ zt+1 ) = (1 − s)¯ zt+1 + sϵ. The flow model is trained to match the target velocity ϵ − ¯zt+1 :
+
+min  
+
+> γ
+
+; E(zt,u t,¯zt+1 )∼Z,s,ϵ 
+
+h
+
+∥vγ (˜ zϵs(¯ zt+1 ), s | zt, u t) − (ϵ − ¯zt+1 )∥22
+
+i
+
+. (11) To assign an OOD score for a query (z, u ), we compute its predicted successor ¯z = Fθ (z, u ) and integrate the learned flow from ¯z toward the Gaussian base distribution. Let y(0) = ¯ z, choose L
+
+integration steps with ∆s = 1 /L (L = 10 in our implementation) , and set s(l) = l∆s. We iterate 
+
+y(ℓ+1) = y(ℓ) + ∆ s v γ (y(ℓ), s (ℓ) | z, u ), l ∈ 0, . . . , L − 1. (12) The OOD score is defined by the Gaussian negative log-density proxy of the mapped point: 
+
+ΨFM (z, u ) = − log N (y(L); 0 , I ) ∝ 12 y(L) 22 , (13) Larger values indicate that the predicted successor maps to a lower-density region of the Gaussian base distribution and is therefore less supported by the learned transition distribution. The OOD threshold is obtained by evaluating the trained flow on the calibration set Zcal .
+
+7.3 Ensemble 
+
+The ensemble surrogate [22] uses inter-model disagreement as a proxy for low training support. It is built from independently trained transition predictors, each trained to imitate the frozen latent dy-namics Fθ . For M ensemble members ( M = 10 in our implementation), member m parameterizes a Gaussian predictive distribution 
+
+qγ(m) (· | zt, u t) = N (μγ(m) , Σγ(m) ), m = 1 , . . . , M, (14) where the network outputs both the mean and standard deviation, and is trained on Z by minimizing the negative log-likelihood of the model-predicted successor: 
+
+min 
+
+> γ(m)
+
+E(zt,u t,¯zt+1 )∼Z
+
+− log qγ(m) (¯ zt+1 | zt, u t) . (15) For a query (z, u ), let the ensemble predictive mixture be 
+
+¯q(· | z, u ) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+qγ(m) (· | z, u ). (16) We define the ensemble OOD score using the Jensen–R´ enyi divergence: 
+
+ΨENS (z, u ) = Hη (¯ q(· | z, u )) − 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+Hη
+
+ qγ(m) (· | z, u ) , (17) where Hη denotes R´ enyi entropy of order η [58]. Larger values indicate stronger inter-model dis-agreement and therefore lower support under the learned transition distribution. 
+
+# 8 Algorithm 
+
+Algorithm 1 summarizes how the proposed sensitivity regularization is incorporated into standard generative dynamics training. Training first proceeds without regularization until step Nstart , allow-ing the encoder representation to stabilize before computing kNN-based support estimates. During this warm-up phase, the model is trained only with the standard DreamerV3-style dynamics objec-tive Ldyn , which includes latent dynamics consistency and prediction/reconstruction losses. After-ward, the high-support set ¯D is updated periodically by ranking training samples using latent-space kNN distance and retaining the β-fraction with smallest scores (Line 7). The regularization term 
+
+Lreg is then computed on this set and added to the base objective with weight λreg (Line 10). 14 Algorithm 1 Sensitivity Regularization 
+
+Require: Dataset D = {(ot, u t, o t+1 )}, margin g, percentile β, start step Nstart , update interval 
+
+Nupdate , total steps Ntotal , regularization weight λreg  
+
+> 1:
+
+Initialize encoder ϕθ and dynamics model Fθ 
+
+> 2:
+
+for n = 1 , . . . , N total do  
+
+> 3:
+
+Sample minibatch (ot, u t, o t+1 ) ∼ D 
+
+> 4:
+
+Compute base loss Ldyn ▷ Vanilla training objective  
+
+> 5:
+
+if n > N start then  
+
+> 6:
+
+if n mod Nupdate = 0 then  
+
+> 7:
+
+Update high-support set ¯D 
+
+> 8:
+
+end if  
+
+> 9:
+
+Compute the regularization Lreg on ¯D ▷ Eq. (3)  
+
+> 10:
+
+L ← L dyn + λreg Lreg  
+
+> 11:
+
+end if  
+
+> 12:
+
+Update parameters θ using ∇θ L 
+
+> 13:
+
+end for 
+
+Explicitly forming the full control Jacobian for Lreg is costly, since each latent state-control pair requires materializing a JuFθ (zt, u t) ∈ R|Z|×|U| matrix. To reduce this cost, we estimate its Frobe-nius norm using Hutchinson’s identity [57]: 
+
+∥JuFθ (zt, u t)∥2 
+
+> F
+
+= Ev∼N (0 ,I |U | )
+
+h
+
+∥JuFθ (zt, u t) · v∥22
+
+i
+
+,
+
+where v ∈ R|U| is an input-dimensional Gaussian probe vectors. Each Monte Carlo sample only requires a Jacobian–vector product, which can be computed by automatic differentiation without explicitly constructing the full Jacobian. In our implementation, we use 5 probe vectors per training query, yielding a differentiable Monte Carlo estimate of ∥JuFθ (zt, u t)∥2 
+
+> F
+
+for the regularization loss. 
+
+# 9 Experiments 
+
+9.1 Dubins Obstacle Avoidance 
+
+We consider a vision-based obstacle-avoidance system with constant-speed Dubins dynamics. The agent moves at v = 1 m /s with scalar steering-rate control ut ∈ [−1.25 , 1.25] rad /s and a discrete timestep of ∆t = 0 .05 s . The unsafe set is a disk of radius 0.4 m centered at the origin. Observations are bird’s-eye-view RGB images of 128 × 128 × 3.We provide the low-dimensional Dubins dynamics to support the sensitivity discussion in Section 3.1.1. Let (xt, y t, θ t) denote the agent position and heading. The discrete-time dynamics are 
+
+"xt+1 
+
+yt+1 
+
+θt+1 
+
+#
+
+=
+
+"xt
+
+yt
+
+θt
+
+#
+
++ ∆ t
+
+"v cos θt
+
+v sin θt
+
+ut
+
+#
+
+.
+
+The unsafe set is the disk {(x, y, θ ) : x2 + y2 ≤ 0.42}. Since the steering-rate input affects heading with state-independent gain and the speed is constant, the true dynamics do not become inherently control-insensitive near the safety boundary; for a fixed control perturbation, the induced response should remain comparable and non-vanishing across states. 
+
+Architectures. We use DreamerV3 [33] as the generative dynamics backbone. Each image obser-vation is first mapped to an embedding et = Enc θ (ot) using a convolutional encoder with depth 32 ,kernel size 4, and minimum spatial resolution 4, followed by a 5-layer MLP with 1024 hidden units per layer. All layers use SiLU activations and layer normalization. The latent state used for predic-tion and planning is the RSSM state zt = ( ht, s t), where ht ∈ R512 is the deterministic recurrent state and st ∈ R32 is the stochastic latent state. The encoder embedding et = Enc θ (ot) is not itself the latent state; rather, it is used for observation-conditioned inference of the posterior 
+
+qθ (st | ht, e t), et = Enc θ (ot). (18) 15 Figure 9: PCA+t-SNE visualizations of latent transition representations under demonstrated controls (red) and undemonstrated controls (blue) for different support fractions β. Increasing β improves separation between the two sets, while β = 0 .3 already achieves separation comparable to β = 0 .6.
+
+During imagined rollouts, future observations are unavailable, so the model uses the RSSM prior: given zt = ( ht, s t) and control ut, the transition model computes 
+
+ht+1 = fθ (ht, s t, u t), st+1 ∼ pθ (· | ht+1 ), (19) where pθ (st+1 | ht+1 ) is the prior over the next stochastic latent state before observing ot+1 . The next latent state is zt+1 = ( ht+1 , s t+1 ), and we denote this learned latent transition compactly by 
+
+Fθ (· | zt, u t). During training, the prior pθ (st+1 | ht+1 ) is aligned with the posterior qθ (st+1 |
+
+ht+1 , e t+1 ), together with the standard reconstruction and prediction losses. We perform OOD analysis on the full RSSM latent representation, including both ht and posterior st.
+
+Training. We train the gnerative dynamics model for 200 ,000 gradient steps using the standard DreamerV3 objective Ldyn . For the proposed method, support-conditioned regularization is acti-vated after 100 ,000 steps, allowing the encoder representation to stabilize before kNN-based sup-port estimation. The high-support set is then refreshed every 10 ,000 steps by computing latent-space 
+
+kNN distances with k = 20 under the Euclidean metric. Because the latent representation changes during training, we recompute the latent embeddings at each refresh and perform kNN search using FAISS on GPU. Unless otherwise specified, we use support fraction β = 0 .3, sensitivity margin 
+
+g = 8 for the squared control-Jacobian norm, regularization weight λreg = 0 .4, and 5 Hutchinson probe vectors per training sample. OOD thresholds are calibrated with level α = 0 .1.                      
+
+> Method βEz↓Erecon ↓
+> Vanilla N/A 6.29 ×10 −245 .27
+> Ours
+> 0.17.51 ×10 −231 .70
+> 0.36.14 ×10 −235 .88 0.65.92 ×10 −239 .57
+
+Table 5: Predictive performance for Dubins obstacle avoidance. 
+
+Ablation on β. We ablate the support fraction β, which controls the fraction of training samples targeted by the sensitivity regularizer. Figure 9 visualizes predicted la-tent transitions for the vanilla model and regularized mod-els with β ∈ { 0.1, 0.3, 0.6}, following the same PCA+t-SNE protocol as Figure 6-(b,c). Increasing β improves the separation between demonstrated and undemonstrated transitions, indicating stronger control-induced variation in latent space. However, β = 0 .3 already achieves sep-aration comparable to β = 0 .6, while larger β may degrade downstream performance by applying sensitivity regularization to lower-support regions. Table 5 compares the predictive accuracy of the vanilla and sensitivity-regularized models for differ-ent support fractions β. We report: 1) the latent consistency error Ez , measuring the discrepancy be-tween the dynamics prior before observing ot+1 and the encoder posterior after observing ot+1 , and 2) the reconstruction error Erecon , defined as the decoder negative log-likelihood of the observation under the predicted reconstruction distribution. Compared with the vanilla model, the regularized models with β = 0 .3 and β = 0 .6 achieve lower Ez , with Ez decreasing as β increases. Interestingly, 
+
+Erecon worsens consistently as β increases, even though the improvement in Ez suggests better align-ment between the dynamics prior and encoder posterior in latent space. This indicates a trade-off: broader sensitivity regularization sharpens the latent transition geometry and improves identifiability of control-induced variation, but can reduce the smoothness needed for accurate reconstruction. 16 Ψ Method β ρsucc ↑ ρfilt ρviol ↓                          
+
+> kNN Vanilla N/A 0.600 0.340 0.273 Ours 0.1 0.715 0.327 0.184 0.3 0.800 0.323 0.166
+> 0.6 0.705 0.338 0.201 FM Vanilla N/A 0.910 0.309 0.153 Ours 0.1 0.920 0.359 0.171 0.3 0.960 0.323 0.104
+> 0.6 0.925 0.340 0.140
+
+Table 6: Obstacle-avoidance with filtering of a random policy ( 200 trials). 
+
+Table 6 reports one-step safety filtering re-sults for a random policy. The main-paper results use β = 0.3, which gives the best overall performance for both kNN and flow-matching surrogates. We show that even β =0.1 improves over the vanilla model, showing that regularizing a small high-support subset is already beneficial. However, increasing β
+
+from 0.3 to 0.6 degrades performance, con-sistent with the predictive-performance trend in Table 5. Overall, these results support the need for support-conditioned targeting: ap-plying the sensitivity regularizer too broadly can include lower-support regions, sharpen the learned dynamics where extrapolation errors dom-inate, and consequently reduce both reconstruction quality and downstream safety-filtering perfor-mance. Thus, larger β is not necessarily preferable despite stronger latent alignment. 
+
+9.2 Block-Plucking Manipulation 
+
+We consider a vision-based manipulation task in IsaacLab, where a Franka arm extracts the mid-dle block from a three-block stack while keeping the top block stably supported by the bottom block. Observations consist of RGB images from wrist-mounted and tabletop cameras, each of size 
+
+256 × 256 × 3, together with a 7-dimensional proprioceptive input encoding robot state and gripper configuration. The control input consists of a 6-DoF end-effector pose increment, comprising 3-D translation and 3-D rotation, and a discrete gripper open/close command. All continuous control dimensions are normalized to [−0.5, 0.5] .
+
+Architectures. For the manipulation task, we use a Dreamer-style RSSM with a discrete stochas-tic latent state. The latent state is zt = ( ht, s t), where ht ∈ R512 is the deterministic recurrent state, and st = ( s1 
+
+> t
+
+, . . . , s 32  
+
+> t
+
+) consists of 32 categorical variables. Each sjt takes one of 32 one-hot classes, so the stochastic state is represented as a collection of discrete one-hot variables. Given 
+
+zt = ( ht, s t) and control ut, the transition model updates the recurrent state and predicts logits for the next stochastic state: 
+
+ht+1 = fθ (ht, s t, u t), ℓt+1 = gθ (ht+1 ) ∈ R32 ×32 , (20) where ℓjt ∈ R32 denotes the logits for the j-th categorical variable. The prior over the next stochastic latent state is factorized as 
+
+pθ (st+1 | ht+1 ) = 
+
+> 32
+
+Y
+
+> j=1
+
+Cat 
+
+
+
+sjt+1 softmax( ℓjt+1 )
+
+
+
+,
+
+where Cat( ·; π) denotes a categorical distribution over the 32 one-hot classes with probabilities π.Imagined rollouts recursively update ht and sample st+1 from this learned categorical prior. Visual observations are encoded by convolutional encoders, proprioceptive inputs by a 5-layer MLP with 
+
+1024 hidden units, and all networks use SiLU activations with layer normalization. 
+
+Training. We train the generative dynamics model for 250 ,000 gradient steps using the standard DreamerV3 objective. For the proposed method, support-conditioned regularization is activated after 150 ,000 steps, with the high-support set refreshed every 10 ,000 steps using latent-space kNN distances with k = 20 under Euclidean metric. We use support fraction β = 0 .2, sensitivity margin 
+
+g = 8 , and regularization weight λreg = 0 .2. For kNN computation with discrete stochastic latents, distances are computed on the one-hot latent representations rather than the categorical logits. 
+
+Training of reachability filters. We train the reachability filters with Soft Actor-Critic (SAC) en-tirely over imagined latent rollouts generated by the learned dynamics. [25]. Both the actor and critic operate in the latent space: the actor maps latent states z to controls, while the critic estimates latent-17 state-control values. Given an OOD surrogate Ψ and calibrated threshold τα, the reachability objec-tive learns an Hamilton–Jacobi–Isaacs (HJI) safety value function that keeps imagined trajectories away from the avoid set 
+
+Aα =
+
+
+
+z ∈ Z : min  
+
+> u∈U
+
+Ψ( z, u ) > τ α
+
+
+
+. (21) Since τα directly changes Aα, we train a separate reachability policy for each calibration level α
+
+reported in Table 3. The actor and critic each use two hidden layers with 512 units and SiLU activations. Policies are diagonal Gaussians with learned standard deviations clipped to [0 .1, 1.0] .Imagined rollouts have horizon 15 , and policy optimization backpropagates through the learned latent dynamics. We train for up to 200 ,000 updates with discount factor 0.997 and TD-λ = 0 .95 .                        
+
+> Filter gρfail ↓ρinc ρfilt Erecon ↓
+> Vanilla N/A 0.118 0.013 0.154 2207.55 Ours 50.073 0.029 0.360 2134.88
+> 80.047 0.053 0.199 2146.66 12 0.128 0.020 0.225 2237.44
+
+Table 7: Block-plucking filtering results for regularized models with varying sensitivity margin g.
+
+Ablation on g. Table 7 ablates the sensi-tivity margin g, which sets the target lower bound on the control-Jacobian norm. We re-port g = 8 in the main paper, as it achieves the lowest failure rate among the tested val-ues. With g = 5 , the filter still improves safety over the vanilla baseline and even ob-tains the lowest reconstruction error, but re-quires the most frequent intervention. We do not aim to explain this effect in this work, and instead treat g as a task-dependent hyperparame-ter selected by validation performance. Moreover, increasing the margin to g = 12 degrades both failure rate and reconstruction error, suggesting that overly strong sensitivity regularization can over-sharpen the latent dynamics and harm downstream performance. 
+
+9.3 Real-Robot Static-Obstacle Avoidance 
+
+We evaluate on a real-world static-obstacle avoidance task using a Unitree Go2 quadruped. The robot executes one of three discrete high-level commands: turn left, move straight, or turn right, at a fixed forward speed of 0.5, m/s. Because safety filtering requires real-time command overriding, we replace the built-in locomotion interface with a learned low-level Reinforcement Learning (RL) controller trained using [59]. Observations consist of synchronized first-person RGB images from two body-mounted cameras, each of size 256 × 256 × 3. Images are transmitted via UDP to an offboard workstation with an RTX 5090 GPU, where the learned dynamics and safety filter are evaluated; the selected filtered command is then sent back to the robot. The camera acquisition and offboard inference loop operate at 10 , Hz , giving a control timestep of 0.1, s.
+
+Architectures and Training. We use the same Dreamer-style latent dynamics architecture as in the manipulation task, with a 512 -dimensional deterministic recurrent state and a 32 × 32 discrete stochastic latent state. The visual encoders also match the manipulation setup. The model is trained for 200 ,000 gradient steps, with support-conditioned regularization activated after 100 ,000 steps. We use g = 6 , λreg = 0 .2, β = 0 .2 and α = 0 .05 .
+
+Training of reachability filters. Since the control space is discrete, we train the reachability filter using Deep Q-Network (DQN) over imagined latent rollouts following [25]. The Q-network is an MLP with two hidden layers of width 100 and ReLU activations. Training runs for 100 ,000 updates with discount factor 0.9999 , using imagined rollouts of horizon 15 .18
