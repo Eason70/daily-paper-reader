@@ -1,0 +1,532 @@
+Title: Constant Time-Delay Leader Following with Neural Networks and Invariant Extended Kalman Filters for Arbitrary Trajectories
+
+URL Source: https://arxiv.org/pdf/2606.19227v1
+
+Published Time: Thu, 18 Jun 2026 01:11:27 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Constant Time-Delay Leader Following with Neural Networks and Invariant Extended Kalman Filters for Arbitrary Trajectories 
+
+Luka Antonyshyn 1, Paulo Ricardo Marques de Araujo 2, Sidney Givigi 2, Senior Member, IEEE 
+
+Abstract —This paper proposes a constant time-delay trajectory tracking method for vehicle convoys operating without inter-vehicle communication, a common coordinate system, or global positioning. The method integrates a probabilistic sequence-to-sequence (Seq2Seq) neural network with an invariant extended Kalman filter (IEKF) to warm-start the prediction process, allow-ing accurate estimation of a leader vehicle’s relative trajectory on the SE (2) manifold. A geometric model predictive controller is further incorporated to fully exploit the manifold-based trajectory predictions for improved control performance. The system can handle arbitrary nonlinear trajectories with varying speeds and motion profiles while reducing the need for expert-based domain knowledge for the design of trajectory following systems, even under long trajectory delays. The effectiveness of the method is validated through comparisons with a pure IEKF baseline, learning-based methods, and the ground-truth trajectory in kinematic simulations, as well as in experiments using real robotic vehicles. 
+
+Index Terms —Autonomous Vehicle Navigation, Integrated Planning and Learning, Data-based approaches (learning, deep learning, reinforcement learning), Connected and Autonomous Vehicles, Multi-agent systems. 
+
+I. I NTRODUCTION 
+
+Autonomous vehicles are increasingly used in transporta-tion, logistics networks, and military applications. They of-ten operate in convoys or platoons for efficiency or group-based tasks [1]. In civilian settings, convoys often rely on inter-vehicle centralized or decentralized communications for localization and planning. However, to improve scaling to larger number of vehicles and reduce reliance on potentially insecure or unreliable networks, it is of interest to explore non-communicative approaches to this problem. In numerous military scenarios, a vehicle may need to follow directly in the trajectory of a preceding vehicle to avoid some non-perceptible obstacles or to perform reconnaissance on a given target. This is called the leader-follower convoy problem [2]. A wide range of approaches have been consid-ered for the tracking of a leading vehicle trajectory in such scenarios, including vehicle-to-vehicle communication-based approaches [2], [3], [4], [5], [6], and sensor-based relative localization methods [7], [8], [9], [10], [11]. Additionally, it may be desirable to perform this task with-out communications, either to reduce detectability or to protect a system from communication jamming or spoofing [12]. As such, vehicles must be able to keep track of the desired trajectories using only locally observable information, such   
+
+> 1Luka Antonyshyn is with the University of Toronto Institute for Aerospace Studies, Toronto, Canada luka.antonyshyn@utoronto.ca .
+> 2Paulo Ricardo Marques de Araujo and Sidney Givigi are with the School of Computing, Queen’s University, Kingston, Canada {paulo.araujo, sidney.givigi }@queensu.ca .
+
+as the leading vehicle’s speed, relative position, and proprio-ceptive information. This is sometimes referred to as the no-communication autonomous vehicle following problem [7] or the leader-following problem [9]. Many approaches to localization and leader trajectory track-ing problems assume that vehicles exist in a vector space R3,utilizing either overparameterizations of the states or using workarounds, such as switching between orderings of param-eterizations, to avoid singularities [13]. Vehicle configurations are often expressed more naturally on topological spaces, such as the Special Euclidean group SE (2) . Previous works have shown that using an SE (2) representation can result in superior tracking [14] and localization [15]. In this work, we propose a system for no-communication deep learning-based constant time-delay leader-follower tra-jectory estimation on the SE (2) manifold. We further integrate this system with a GMPC to improve the tracking error. Our contributions are as follows:  
+
+> •
+
+We propose a neural network (NN) architecture based on sequence-to-sequence models to track time-delayed trajectories of a leader vehicle in non-communicating convoys, allowing the system to follow arbitrary nonlinear trajectories.  
+
+> •
+
+We detail a process for generating datasets for training a convoy trajectory-following model using simulations.  
+
+> •
+
+We propose modifications to Geometric Model Predic-tive Control (GMPC) for integration with our adaptive trajectory tracking model.  
+
+> •
+
+We evaluate our method using kinematic simulations against baseline methods, and validate it with robot experiments. The paper is structured as follows: Section II explores related works, Section III covers the mathematical and con-ceptual background, Section IV details the proposed system, Section V presents numerical simulations, ablations and com-parisons, and Section VI presents and analyses real-robot experiments. II. R ELATED WORKS 
+
+A. Mobile Robot Convoys 
+
+Autonomous convoying involves several aspects, including preceding vehicle pose estimation, leader trajectory manage-ment and trajectory tracking [1]. As we utilize arbitrary leader trajectories, we focus on pose estimation and trajectory tracking in this review. In many scenarios, vehicle-to-vehicle communication is a viable method for sharing the information necessary to track a leader’s trajectory. Santos et al. [4] propose a fuzzy controller for a decentralized overlapping system in which vehicles 
+
+> arXiv:2606.19227v1 [cs.RO] 17 Jun 2026
+
+communicate with the preceding and following robot to select setpoints in nonlinear trajectories. Wu et al. [3] develop a consensus-based control framework to design a leader-follower convoy formation controller. Zhao et al. [2] integrate computer vision, an extended Kalman filter (EKF), waypoint manage-ment, and distance control for leader-follower tracking. Han et al. [6] design a waypoint-based formation controller to sta-bilize the follower vehicle behaviour after passing a waypoint set by the leader. Zhang et al. [5] address nonholonomic agents tracking parametric curves with a formation controller using Lyapunov stability analysis and directed communication. When inter-vehicle communication is not viable, follower vehicles must track the relative poses of the leader vehicle and their own motion to reconstruct the intended trajectory. In [16], Cheung et al. use behaviour-based methods to ensure tracking in the case of communication jamming through prior waypoint information. Computer vision-based methods for estimating the relative position and movement of a leader vehicle have also been proposed and fall into template-based and model-based. Fries et al. [17] use a template-based computer vision method to initialize model-based particle filters upon tracking loss. Wang et al. [18] combine template-based computer vision with low-power WiFi for trajectory tracking in GPS-denied environments. Denasi et al. [10] apply image processing for fixed-frame localization of a leader and follower micro-robot. Walter et al. [11] employ high-dimensional sensor data in the form of UVDAR and real-time trajectory planning to adapt behaviours based on leader distance. These works tend to focus on the perception of the leader vehicle, thus either discarding the problem of trajectory tracking or assuming a predefined structure in the problem. Non-vision based approaches to estimating the position of a leader vehicle in non-communicative scenarios have also been explored. Petrov [7], [8] derives kinematic equations for a leader-follower convoy problem and develops an adaptive tracking controller to handle unknown leader velocities. Sim-ilarly, Wang et al. [9] use a pairwise Kalman filter to predict leader waypoints with a linear model predictive longitudinal controller that inversely weighs the uncertainty of estimated waypoints. They implement a proportional controller to correct follower orientation and reduce tracking errors. 
+
+B. Neural Network-Based Trajectory Reconstruction 
+
+Several methods reliant on recurrent NNs have been pro-posed for trajectory reconstruction and prediction from sensor observations, primarily for single-vehicle settings. Shrivas-tava et al.[19] use geographically-based clustering, nearest neighbour searches and LSTM networks to reconstruct single vehicle trajectories using partial information. Sun et al. [20] use LSTM networks combined with a extended Kalman filter to predict a phones position and orientation on the SE (2) 
+
+manifold using inertial measurement unit readings. Zamboni et al. [21] instead use convolutional NNs to predict pedes-trian trajectories. Their approach uses data augmentation, and achieves state of the art performance. Using sequence-to-sequence networks for vehicle trajectory prediction and reconstruction has also been explored. Park et al. [22] utilize an LSTM-based Seq2Seq architecture to gener-ate relative occupancy grid maps for multi-vehicle scenarios. Zhang et al. [23] consider trajectory prediction on a ship. They utilize a Seq2Seq network architecture, using information on the ships movement to guide the decoder. These works focus on the reconstruction of ego-vehicle tra-jectories. To our knowledge, no methods have explored SE (2) -based trajectory estimation on a manifold, or deep-learning for leader trajectory prediction in a no-communication, time-delay leader-following setting. By combining these approaches, a GMPC-based system can be designed that uses trajectory information to improve tracking performance while reducing reliance on domain expert knowledge. In our method, we do not directly consider the use of perception models for the explicit observation of the lead vehicle or dynamic obstacle avoidance, instead electing to utilize an abstraction of an observation. This allows us to focus on the development of the core trajectory estimation and control components of the system. III. P RELIMINARIES 
+
+A. Special Euclidean Groups 
+
+A manifold is a topology that locally resembles Euclidean space. In control and robotics, manifolds naturally represent configuration spaces. For planar autonomous vehicles, the configuration exists on the SE (2) group. The configuration 
+
+χ ∈ R3×3 of a rigid body in SE (2) can be represented by a homogeneous transformation matrix 
+
+χ =
+
+cos( θ) − sin( θ) x
+
+sin( θ) cos( θ) y
+
+0 0 1
+
+ ∈ R3×3 (1) with x, y referring to the position of the body in a 2D plane and θ ∈ [0 , 2π] referring to the orientation of the body. Manifolds are curved spaces where traditional addition and subtraction operations are not valid. Hertzberg et al. [13] introduce the boxminus operator, ⊟, to account for these differences in orientations on a manifold. For the Special Orthogonal group SO (2) that represents orientations in 2D, this operator is defined as 
+
+α ⊟ β = vπ (α − β)
+
+with vπ (δ) = δ − 2π δ + π
+
+2π
+
+which defines α ⊟ β as the smallest change in angle needed to rotate β into α. For the SE (2) space, we may take the Cartesian of the vector space R2 and SO (2) and define the ⊟
+
+operation component wise as 
+
+x1 x2
+
+ ⊟ δ1 δ2
+
+ = x1 ⊟ δ1 x2 ⊟ δ2
+
+ (2) with ⊟ for the R2 space being vector subtraction. 
+
+B. Geometric Model Predictive Control 
+
+In [14], Tang et al. consider a problem of a unicycle fol-lowing a trajectory on an SE (2) manifold. By utilizing a more natural representation of the configuration of a robot, they improve tracking performance when compared to approaches that optimize over a vector space. We may state the error between a configuration and a desired trajectory as 
+
+Ψ( t) = χd(t)−1χ(t) ∈ SE (2) (3) with χd(t) being the desired configuration at time t.Following this, we are able to derive the error dynamics on the manifold and state the problem as a continuous-time nonlinear optimization problem: 
+
+min  
+
+> u(t)
+
+ϕ Ψ( T ) +
+
+Z T
+
+> 0
+
+l(Ψ τ, u(τ )) dτ s.t. ˙Ψτ = Ψ( τ )ζ(t)∧ − ζd(t)Ψ( t),
+
+ζ(t) = C(0) u(t),umin ≤ u(t) ≤ umax ,
+
+Ψ(0) = Ψ init 
+
+where ϕ refers to a terminal cost, l refers to a running cost, 
+
+C(0) is a constant matrix, T is a terminal time, umin and 
+
+umax refer to lower and upper bounds on the inputs, and Ψinit 
+
+is the initial error. Using an approximation, the problem is reformulated as a discrete-time convex optimization problem: 
+
+ψ(T )T Qf ψ(T ) +  
+
+> T−1
+
+X
+
+> t=0
+
+ψ(t)T Qψ(t) + uTk Hkuk
+
+s.t. ψt+1 = Atψt + Btut + ct,umin ≤ u(t) ≤ umax ,
+
+ψ(0) = ψinit 
+
+where Q, H, A t, B t, c t can be obtained using numerical inte-gration, ψ refers to the error, and Qf , Q, H are the terminal, running state and running input costs respectively. We omit much of the derivation and details for brevity. A more rigorous treatment of the problem can be found in [14]. 
+
+C. Invariant Extended Kalman Filters 
+
+A filter is an observer method that combines a model of a system’s dynamics and measurements of the system to estimate the true system states. When considering non-linear systems, a common approach is to linearize the system about the current estimated state, resulting in the extended Kalman filter (EKF). While adequate in many cases, when the estimate is far from the true state of the system, the EKF estimate can diverge [15]. Barrau and Bonnabel [15] consider a general nonlinear system, represented on the SE (2) group. We represent the measurement model of the system as 
+
+Yt = h(χt) + Vt (4) with h being an observation function that maps states to system outputs and Vt being unknown measurement noise at time t.Additionally, we state the (left) invariant error, used henceforth in this work, between a predicted and measured state on the SE (2) group as 
+
+η = χ−1 ˆχ (5) with ˆχ being the estimated state. This error can be shown to be independent of the trajectory for a large class of systems, allowing the IEKF to provide stronger local convergence guarantees [15]. Additionally, it directly provides estimates on the SE (2) group, which simplifies integration with geometric control methods. The IEKF is defined through two steps. The first is the propagation step, where the previous posterior estimate ˆχ+
+
+> t−1
+
+of the state and the previous input ut−1 are used to predict the current state prior. This step is 
+
+ddt ˆχ− 
+
+> t
+
+= ˆ χ+
+
+> t−1
+
+u∧ 
+
+> t−1
+
+(6) 
+
+Γ− = FtΓ+
+
+> t−1
+
+F −1 
+
+> t
+
++ Nt (7) where ˆχ− 
+
+> t
+
+refers to the prior estimate of the state at time t,
+
+Γt refers to the covariance matrix, Nt is the covariance of the process noise, and Ft is a matrix representation of 
+
+g(γ−1χ, u) = f (γ, u)−1f (χ, u) (8) for each u such that g(exp( ζ), u) = exp (F ζ ) ∀χ, γ ∈
+
+SE(2) , ζ ∈ se (2) and u ∈ Rj with j representing the number of inputs of the system. Before proceeding to the update step, we first define a first order Taylor expansion of the measurement noise 
+
+h( ˆ χ− 
+
+> t
+
+exp (ξ)) − χ− 
+
+> t
+
+= Ht(ξ) + O(|| ξ|| 2)
+
+with O denoting the order, and ξ denoting some in the Lie algebra. Following the calculation of the prior, we perform the update step, where the current observation of the system 
+
+Yt is used to transform the prior ˆχ− 
+
+> t
+
+into the posterior ˆQ+ 
+
+> t
+
+.These are: 
+
+zt = Yt − h( ˆ χ− 
+
+> t
+
+), (9) 
+
+St = HtP − 
+
+> t
+
+HTt + Rt (10) 
+
+Kt = P − 
+
+> t
+
+HTt S−1 
+
+> t
+
+(11) 
+
+Γ+ 
+
+> t
+
+= ( I − KtHt)Γ − 
+
+> t
+
+(12) 
+
+ˆχ+ 
+
+> t
+
+= ˆ χ− 
+
+> t
+
+exp (Ktzt) (13) with zt being the innovation, Kt being the gain, and ˆχ+ 
+
+> t
+
+being the posterior estimate of the state at time t. Further discussion on the derivation and theoretical properties of the IEKF are explored in [15]. 
+
+D. Sequence-to-Sequence Models 
+
+Sequence-to-sequence, or Seq2Seq, models are an architec-ture of recurrent neural networks with applications in a large range of natural language processing tasks, such as machine translation and image caption generation, among others [24]. They consist of two components, an encoder layer that takes the inputs and outputs the networks hidden values and output values, and a decoder layer, that takes the hidden values of the encoder layer and calculates the overall architecture outputs. Seq2Seq models have also been applied to numerous time-series forecasting problems, such as anomaly detection and financial market prediction, due to their ability to capture complex nonlinear temporal dynamics [25]. These character-istics also make Seq2Seq models suitable for forecasting and trajectory tracking in dynamic systems. x
+
+y
+
+x0
+
+y0 θ0
+
+YP
+
+Y0
+
+Y1
+
+YP −1
+
+> Fig. 1. Leader (gray) and follower (yellow) on a plane. Solid objects represent current poses, while shaded objects represent previous poses.
+
+IV. P ROPOSED METHOD 
+
+A. Problem Description 
+
+The leader-following problem involves controlling a fol-lower vehicle to track a trajectory defined by the traversed path of a leader vehicle [1]. We consider a non-communicating convoy with one following vehicle. Fig. 1 presents a graphical depiction of the problem. Let the vehicle be modeled as a unicycle with the config-uration represented as a vector qt = [ xt, y t, θ t] ∈ R3. The kinematics of the vehicle are 
+
+xt+1 = xt + vt cos( θt)dt yt+1 = yt + vt sin( θt)dt (14) 
+
+θt+1 = θt + ωtdt 
+
+where vt and ωt are the linear and angular velocities and dt 
+
+is the discretization time. Alternatively, we may state the model on the SE (2) group. The velocity of the vehicle lies on the tangent space of the SE (2) group, referred to as the Lie algebra, se (2) , of the Lie group. The map of a velocity vector u to the Lie algebra, (∗)∧,is defined as 
+
+(u)∧ =
+
+
+
+0 −ω vx
+
+ω 0 vy
+
+0 0 0
+
+ . (15) The inverse of the operation is denoted as (∗)∨. We may then describe the motion, with a continuous time model, as 
+
+˙χ(t) = χ(t) u(t)∧ (16) with ˙χ(t) being the speed of the vehicle at time t.In this problem, we consider the control of a follower vehicle that attempts to match an arbitrary trajectory of a leader vehicle with a fixed delay of P timesteps. At each timestep, the follower vehicle receives an observation of the leader relative to itself, its own inputs, and an estimate of the leaders angular and linear velocities 
+
+ot = [ xt, y t, θ t, ut, vLt ] (17) with ut being the ego vehicle’s inputs and vLt being the leader vehicle linear and angular velocities. In the accompanying image, this would be the relative location YP of the leader vehicle in the follower vehicles reference frame. The goal of the follower is to occupy the same spot as the leader with a fixed-time lag denoted by P timesteps. In Fig. 1, the follower would aim to occupy the pose Y0
+
+at t = P , Y1 at t = (1 + P ), and so on. Practically, this is accomplished by collecting the follower vehicle inputs 
+
+ut−P +1: t−1 and observations of leader states ot−P :t in order to generate the predictions of the lagged leader reference poses relative to the current follower vehicle position ˆdt:t+P −1,where the timesteps are shifted to denote that this is the desired future trajectory of the follower. Note that since the motion of the follower vehicle is uncertain and the vehicle does not have access to global (or local, for that matter) positioning, the uncertainty of future desired locations grows with time. Furthermore, note that in Fig. 1, the indices go from 0 to P
+
+because we are assuming that this configuration refers to the start of the run. 
+
+B. Trajectory Estimation Model 
+
+We propose a novel system for trajectory tracking on a manifold for the time-delayed leader-follower convoy prob-lem described in the previous section. Our system utilizes a Seq2Seq neural network to transform a sequence of relative observations into a trajectory on a manifold. An IEKF tracks the ego position of the vehicle, and provide an uncorrected prediction of the leaders state a fixed time in the past. A graphical representation of the proposed system can be seen in Fig. 2. Here, we discuss the internal structure of the proposed architecture, and we detail its inputs and outputs in the sequel. The Seq2Seq network generates an ego-centered trajectory at every timestep. In addition to the standard structure of the system, we add a connection to the latent space of the model to add an initial estimate of the state to the input, obtained using an IEKF. We note that the IEKF tracks only the ego robot’s pose, providing an uncorrected prediction of the initial desired pose. The neural network is then responsible for reconstructing the full trajectory estimates and associated uncertainties. This structure is shown in Fig. 3. An ablation study indicates that the IEKF is not strictly necessary, but improves performance. The neural network is composed of three components: an encoder, a decoder and a probabilistic output module. The encoder is a Gated Recurrent Unit (GRU) layer that receives the last P observations. The hidden values of this layer are passed to the decoder, also composed of a layer of GRUs. The decoder module receives the hidden values of the encoder, and an embedding of the initial estimate of Fig. 2. Graphical description of inputs and outputs of the proposed system, with learned components in green and static components in blue.  
+
+> Fig. 3. Graphical depiction of the proposed neural network architecture. The green components represent the encoder, the red the decoder, the blue the output modules, and the yellow the skip connection that connects an IEKF estimate through an embedding to the latent space of the decoder.
+
+the IEKF, composed of a linear projection to the appropriate dimensionality. Its outputs are passed to the probabilistic output module, composed of a number of feedforward layers, which calculates the means and covariances of the trajectory estimates. The neural network employs the GELU activation function [26]. We provide the code for the neural networks, dataset generation, and evaluation 1.
+
+C. Trajectory Estimation Procedure 
+
+During a forward pass, the Seq2Seq model estimates a tra-jectory using inputs defined in (17) over the last P timesteps, as shown in Fig. 3, as well as an estimate of the initial pose obtained using the IEKF. The IEKF estimate is 
+
+ˆd− 
+
+> t
+
+= ˆ χ+
+
+> t
+
+  ˆχ+
+
+> t−P
+
+−1ot−P (18) or the transformation of the observation of the leader at time 
+
+t − P into the current ego reference frame. This is fed through the skip connection, as shown in the yellow segment on the left of Fig. 3. The network’s prediction at timestep t is given by ˆd+ 
+
+> t:t+P
+
+, Σt:t+P = ˆf θ (ot−P :t, ˆd− 
+
+> t
+
+) (19) 
+
+> 1https://anonymous.4open.science/r/arbitrary-trajectory-seq2seq-8811/
+
+where d+ 
+
+> t:t+P
+
+represents the estimated mean trajectory poses and Σt:t+P the corresponding covariances. In practice, ot−P :t
+
+is given to the initial encoding layer to extract temporal relationships, while ˆd− 
+
+> t
+
+is fed through a dense embedding layer before being added as an input to the initial GRU pass in the encoding. This initial estimate is combined with the trajectory encoding layer outputs and passed to the probabilistic output module. The mean output head computes 
+
+m(x) = [ˆ x, ˆy, sin( ˆθ), cos( ˆθ)] (20) ensuring outputs align with (15). Orientation outputs are clipped to [−1, 1] to respect sin and cos limits. The covariance output head, given the input x, is a function 
+
+c(x) that produces a vector of size (n + n(n − 1) /2) , with 
+
+n being the size of the mean vector, in this case, 4. The components of the vector encode both autocovariances and Pearson correlation coefficients, ensuring valid covariance matrices. The diagonal elements of the covariance matrix are computed as 
+
+Σii = σ2 
+
+> i
+
+= exp  c(x)i
+
+, i ∈ n, (21) while the off-diagonal elements are 
+
+Σij = ρij σiσj = tanh  c(x)n+i
+
+p Σii Σjj (22) where Σij = Σ ji for j < i . For further details on constructing the Σ matrices, see [27]. 
+
+D. Training and Losses 
+
+The neural network is trained using a negative log-likelihood (NLL) loss based on the ⊟ operator [20], [27], adapted for SE(2). The per-timestep loss is defined as 
+
+L(dt, ˆχt, Σt) = 12 (χt ⊟ ˆχt)Σ −1(χt ⊟ ˆχt) + 12 ln |Σt| (23) where χt is the ground-truth state at t, ˆχt the predicted state, and Σt the covariance matrix for the prediction. During training, Gaussian noise is added to the true initial trajectory state to simulate the noisy warm start of the IEKF (yellow block in Fig. 3). Experimentally, we find that this improves robustness to out-of-distribution observations com-pared to using a true IEKF estimate. Through tuning, we find that zero mean input noise with a standard deviation of 0.2m2
+
+performs well. We note that this is a higher standard deviation than the noise sampled in the simulation, detailed in Section V, implying that this improves robustness to systematic biases. 
+
+E. Dataset Generation 
+
+Training the Seq2Seq model requires a dataset mapping sequences of observations to relative desired trajectories. We use a unicycle kinematic model, though the approach is independent of specific kinematics or dynamics. Dataset generation involves a vehicle kinematic model, a controller, and a rapidly-exploring random tree (RRT) path planner. Paths are converted into trajectories via cubic spline interpolation between RRT waypoints. We first generate a map of random static obstacles placed in a workspace. This allows the creation of curved paths that avoid obstacles, simulating a leader that avoids real-world features. An RRT planner computes a path from a randomly sampled start point xinit ∈ free to a randomly sampled end point xgoal ∈ free, which is then converted into a trajectory. The movement of the leader vehicle is simulated by trans-lating future desired trajectory points ( P timesteps ahead) into the ego-centered coordinate frame, adding observation noise. Leader inputs are obtained using a proportional controller with exact feedback linearization [28]. These are combined with the ego vehicle measurements, the ego inputs, to form trajectory segments with inputs ot:t+p and ˆd− 
+
+> t
+
+, as well as targets dt:t+P
+
+corresponding with the NN inputs and outputs in Fig. 3, to train the neural network. To enhance generalization by expanding the input and observation distributions, the ego vehicle is controlled using three different control methods: proportional control with exact feedback linearization, GMPC, and uniform random input sampling. In total, we record 1000 individual trajectories. 
+
+F. Integration with GMPC 
+
+To optimize tracking, we apply a GMPC method [14] that incorporates vehicle kinematics on a manifold, leveraging extended trajectory information for smoother control than a proportional–integral–derivative (PID) controller. Since our system outputs a relative state, we define the tracking error as the negative predicted trajectory: 
+
+Ψ( t) = − ˆd(t) ∈ SE (2) (24) where ˆd(t) is the NN’s output at time t.To constrain acceleration, we limit input differences be-tween timesteps. With this constraint, the optimization prob-lem becomes 
+
+min  
+
+> u(t)
+
+ψ(T )T Qf ψ(T ) +  
+
+> T−1
+
+X
+
+> t=0
+
+ψ(t)T Qψ(t) + uTk Hkuk (25) subject to: 
+
+ψt+1 = Atψt + Btut + ct,umin ≤ u(t) ≤ umax ,
+
+|u(t + 1) − u(t)| ≤ δu max , (26) with δu max as a constant maximum acceleration and ψ(0) = 
+
+− ˆd+0 ∈ SE (2) , 0 ≤ t ≤ T − 1. This reduces transient tracking errors from imperfect Seq2Seq predictions, ensuring smoother motion. We note that, in the current system, we do not make explicit use of the uncertainty estimate. To date, no robust GMPC variants have yet been proposed. Despite this, an ablative study indicates that the incorporation of probabilistic estimations leads to improved performance, in line with conclusions from representation learning [29]. By further exploring the development of robust on-manifold MPC, we plan to extend our work in the future to improve constraint satisfaction and stability by incorporating our uncertainty estimates into the controller.                             
+
+> TABLE I PARAMETERS OF THE SEQ 2S EQ MODEL
+> Parameter Value Learning Rate 0.005
+> Learning Rate Decay 0.995
+> Encoder Layers 1
+> Decoder Layers 1
+> Encoder Hidden State Dimensionality 64
+> Decoder Hidden State Dimensionality 64
+> Output Head Hidden Layer(s) Dimension [64]
+> Dropout 0.1
+> Prediction Horizon ( P)100
+> L2 Regularization 0.0001
+> Training Input Noise N(0,0.2m)
+> TABLE II DATASET GENERATION PARAMETERS
+> Workspace Size 200 m×200 mNumber of Obstacles 20
+> Obstacle Size N(7 m,2m2)
+> RRT Number of Iterations 400
+> RRT Max. Curvature 1.0
+
+V. N UMERICAL EXAMPLES 
+
+We evaluate the proposed system through simulation. Per-formance is benchmarked against an IEKF-based classical estimation technique instantiated with the exact process and measurement noise, a standard GRU-based RNN approach, and a transformer model, both trained using MSE-loss. For state-feedback evaluation, we compare against the true trajec-tory to establish a lower bound on tracking error. Unless stated otherwise, all measurements in simulation have zero-mean Gaussian noise added, with σ = 0 .14 m, providing lower ac-curacy than popular mid-range LiDARs [30]. Similarly, zero-mean Gaussian noise is added to the inputs of the simulated vehicle, equating to standard deviations of 0.14 m/s and 0.14 θ/s for the linear and angular velocity, respectively. We consider a unicycle model with parameters: vmax = 3 ,
+
+vmin = −3, ωmax = 3, ωmin = −3, and dt = 0.1.All vehicles start at rest in the same position. The ego vehicle remains stationary for P timesteps before following the leader’s trajectory with a P -step delay. Performance is evaluated using both the standard Euclidean root mean-squared error (RMSE) and a ⊟-RMSE that accounts for orientation errors: 
+
+⊟-RM SE (y, ˆy) = 
+
+vuut NX
+
+> i=1
+
+(ˆ yi ⊟ yi)2
+
+N (27) where yi and ˆyi are the true and predicted values, respectively, and N is the number of samples. The NN is trained using the parameters in TABLE I. 
+
+A. System Identification 
+
+We evaluate the trajectory models on a dataset of 50 
+
+trajectories not seen during training. The dataset consists of trajectories with a ratio of 40% feedback linearization (FL) controllers, 40% GMPC controllers, and 20% random inputs. Results summarized in TABLE III show that the Seq2Seq TABLE III PREDICTION ERRORS OF TRAJECTORY TRACKING MODELS                          
+
+> Method RMSE ⊟-RMSE Proposed 0.569 0.523
+> IEKF 0.855 0.846
+> Bidirectional-GRU 0.592 0.580
+> Transformer 0.653 0.644
+> TABLE IV CLOSED LOOP PERFORMANCE OF TRAJECTORY -M ODELS
+> Method RMSE ⊟-RMSE True Traj. + GMPC 0.213 0.211
+> Proposed 0.799 0.649
+> IEKF + GMPC 1.035 0.706
+> Bidirectional-GRU + MPC 1.502 1.347
+> Transformer + MPC 1.536 1.388
+
+model achieves a ⊟-RMSE that is approximately 62% of the IEKF, and outperforms both the bidirectional GRU network and the Transformer network. 
+
+B. Closed-Loop Performance 
+
+In closed loop simulations, the IEKF and proposed methods use the GMPC while a nonlinear MPC is used with the RNN and transformer models, as they do not make predictions on the SE (2) manifold. We generate 100 trajectories distinct from the training data, each 150 seconds long, and evaluate each system configuration. Results are displayed in TABLE IV. The Seq2Seq model’s GMPC tracking error is approxi-mately 3 times higher than the noise-free lower bound. It outperforms the IEKF method on both metrics, while reducing expert design requirements. The difference between the Eu-clidean RMSE and the ⊟-RMSE is smaller for the Seq2Seq model than the IEKF model, indicating improved estimation of orientation. Both the IEKF and proposed architecture out-perform the other learning-based baselines, indicating that the proposed structure is necessary to maintain the integrity of the trajectory estimations when utilizing neural networks. Fig. 4 shows the desired trajectory, state history, and control effort for the Seq2Seq model with GMPC. The results were shifted by the predefined fixed delay to compute the errors. Aside from some transient errors in position, the majority of the error is concentrated in the orientation of the ego vehicle. 
+
+C. Ablation Study 
+
+To evaluate the effect of each system component, an ablative study is conducted. We perform four ablations: (i) removing the skip connection, (ii) replacing the proposed ⊟ loss with an R3 MSE loss, (iii) applying both modifications, and (iv) utilizing purely predictions from a motion model to estimate the initial desired pose in place of the IEKF. The resulting trajectory reconstruction errors are reported in Table V. These results indicate that the ⊟ NLL loss has the highest impact on the system’s ability to reconstruct trajectories. To further assess each component, we evaluate the effects of the ablations on path-tracking performance. For this evaluation, 
+
+100 randomly generated trajectories of 150 seconds each are used. We utilize GMPC for the ⊟-loss models, and a nonlinear                 
+
+> Fig. 4. True vehicle states (blue), desired vehicle states (red) and control effort for the GMPC-Seq2Seq model system. TABLE V PREDICTION ERROR ABLATIVE STUDY
+> Method RMSE ⊟-RMSE Proposed Architecture 0.569 0.523
+> Proposed Architecture Seq2Seq +R3-MSE loss 0.829 0.822
+> Seq2Seq +⊟-loss 0.683 0.630
+> Seq2Seq +MSE loss 0.889 0.881
+
+MPC for the R3-loss models. The results of this ablation are summarized in Table VI. The results indicate that the proposed initial prediction is crucial to performance. Without it, the ⊟-loss Seq2Seq network performs worse than the Seq2Seq-MSE baseline. Together with the trajectory errors in Table V, this suggests that the ⊟ improves prediction accuracy, but degrades early-trajectory reconstruction. The addition of the IEKF prediction helps orient the NN, reducing this effect. However, relying only on odometry, rather than an ego-position IEKF, still provides better performance than utilizing the purely classical method. This implies that the neural network is able to synthesize the base prediction with the observations to create more precise trajectories, and that the system can match the performance of a traditional estimation method with no need for corrections from external measurements. 
+
+D. Robustness to Failure Modes 
+
+Here, we evaluate the closed loop system’s robustness to some common failure modes, such as external disturbances and non-Gaussian Noise. We use numerical simulations to perform these evaluations as they provide precise control over the their occurrences.                                      
+
+> TABLE VI CLOSED LOOP PERFORMANCE ABLATIVE STUDY
+> Method RMSE ⊟-RMSE Proposed 0.799 0.649
+> Proposed + Pure Prediction 0.794 0.675
+> Proposed Architecture +R-MSE loss 1.156 1.056
+> Seq2Seq +⊟-loss 1.766 1.629
+> Seq2Seq +R-MSE loss 1.460 1.333 TABLE VII SUMMARY OFPERFORMANCE UNDER INTRODUCED FAILURE MODES
+> FOR 20 TRAJECTORIES .
+> Failure Mode RMSE ⊟-RMSE
+> Nominal Conditions 0.743 0.629
+> Uniform Noise 0.746 0.632
+> Anisotropic Noise 0.750 0.638
+> Constant Disturbances 0.944 0.820
+> Angular Velocity Bias 0.741 0.632
+> Fig. 5. Experiment setup, with the leader (left) and follower (right).
+
+To model physical challenges common in real robot scenar-ios, we inject disturbances into the system. We use two types of disturbances; a globally constant disturbance, and biases on angular velocities [31]. We use a value of 0.1 m/s in in a fixed, arbitrary direction for the constant disturbance, and 0.5 θ/s for the angular velocity bias. Additionally, we vary the the noise applied to the sensor readings, using uniform noise and anisotropic noise. Uniform noise is sampled on the range of 
+
+[−0.2, 0.2] for both the range and heading measurements, and anisotropic noise is modeled by scaling the lateral component of every measurement noise sample by 3.We summarize the evaluation in Table VII. The system performance is robust to most variations in noise and distur-bances. When considering constant disturbances, we observe a larger loss of performance. As the proposed system relies primarily on relative observations, shifts that do not correspond with nominal system dynamics are difficult to account for. However, we still maintain sub-meter tracking errors. VI. E XPERIMENTS 
+
+To validate our method, we deploy our convoy system on real robots in a controlled indoor environment. We note that, despite being known to the operators a priori , the robots have no map of the environment. Experiments are conducted using Clearpath Husky differential drive robots with ROS2 and a Vicon motion capture system. An image of the experiment setup can be seen in Fig. 5. Videos of the experiments are available https://www.youtube.com/watch?v=Reot4X9-ktE. The leader robot is controlled manually, with arbitrary trajectories decided by a human operator. The Vicon system captures the positions of each robot and the velocities of the leader. These are translated into relative distances of the leader vehicle to the follower, which are then passed to the trajectory reconstruction system. We initialize each experiment with the           
+
+> Fig. 6. A leader’s and follower’s trajectories (left) and the separation between the leader’s position and the follower’s position 10 seconds later (right). TABLE VIII SUMMARY OF 9EXPERIMENTS AND THEIR ASSOCIATED ⊟-RMSE S.Trial ⊟-RMSE Max. RMSE 1.005
+> Min. RMSE 0.722
+> Mean 0.876
+> Edge Case 0.979
+
+leader directly in front of the follower. Upon beginning the experiment, the leader is driven by the operator. The follower delays for 10 seconds, and begins following the trajectory of the leader. This continues until the trajectory is completed by the follower, or the experiment is manually terminated. This is repeated 8 times. We conduct an additional experiment where the leader is allowed to move more quickly than the follower, thus giving the follower an infeasible path. This allows us to test the robustness of the system to unexpected scenarios. All observational data has Gaussian noise (matching that used in simulation) added to the Vicon observations. To ensure path feasibility, the leader’s velocity is limited to 0.3 m/s and the follower’s to 0.4 m/s. The most complex trajectory along with its position error are shown in Fig. 6. We report the data from the experiments in Table VIII. Overall, the real-world RMSE is higher than in simulation, due to the Sim2Real gap. We note that the mean difference across the experiments in position between the true robot state and the state predicted using the nominal model is 68 cm, indicating unmodelled system dynamics present in the real robot. These disturbances and system performance, are consistent with the findings of the failure mode analysis in Section V-D. This discrepancy could be mitigated through additional real-world data collection and transfer learning [32]. Nonetheless, the results indicate that the proposed method remains effective in real robotic deployments. In addition to the previously noted experiments, we evaluate a trajectory in which the leader vehicle moves faster than the follower, listed in Table VIII as the “Edge Case”. The follower achieves a ⊟-RMSE of 0.979 m, indicating that the system can withstand paths that are infeasible at the cost of higher tracking errors, showing robustness to operational problems. VII. C ONCLUSION 
+
+In this paper, we proposed and evaluated a novel deep-learning approach for no-communication leader trajectory es-timation for a leader-follower convoy on the SE (2) manifold, integrated with an manifold-based MPC. The method was tested on a simulated unicycle-model with arbitrary nonlinear trajectories. Further, we validated the method using real-world experiments. The system outperformed both classical and learning baselines, and functioned with minor degradation in real experiments despite model mismatch. Ablation studies confirm the inclusion of all components of the system. Real experiments further show that the follower vehicle is robust to non-kinematically feasible leader trajectories. 
+
+1) Future Work: As the proposed model outputs covariance matrices, the use of an uncertainty weighted GMPC cost could improve the tracking error of the method with a small amount of additional computation. The integration of robust manifold-based MPC methods as they become available can aid constraint satisfaction. Integration with template or model-based perception methods, as well as obstacle avoidance methods, could improve the applicability of the method to real systems. REFERENCES [1] S. Nahavandi, S. Mohamed, I. Hossain, D. Nahavandi, S. M. Salaken, M. Rokonuzzaman, R. Ayoub, and R. Smith, “Autonomous Convoying: A Survey on Current Research and Development,” IEEE Access , vol. 10, pp. 13 663–13 683, 2022. [2] X. Zhao, W. Yao, N. Li, and Y. Wang, “Design of leader’s path following system for multi-vehicle autonomous convoy,” in 2017 IEEE International Conference on Unmanned Systems (ICUS) , 2017, pp. 132– 138. [3] S. Wu, Y. Xia, M. Lin, and Y. Luo, “Leader-following consensus and trajectory tracking for nonholonomic mobile robots,” in 2018 Chinese Automation Congress (CAC) , 2018, pp. 3678–3683. [4] C. Santos, F. Espinosa, D. Pizarro, F. Vald´ es, E. Santiso, and I. D´ ıaz, “Fuzzy decentralized control for guidance of a convoy of robots in non-linear trajectories,” in 2010 IEEE 15th Conference on Emerging Technologies & Factory Automation (ETFA 2010) , 2010, pp. 1–8. [5] B. Zhang, X. Shao, H. Zhi, L. Qiu, J. G. Romero, and D. Navarro-Alarcon, “Leader-Follower Formation Control of Perturbed Nonholo-nomic Agents Along Parametric Curves With Directed Communication,” 
+
+IEEE Robotics and Automation Letters , vol. 9, no. 10, pp. 8603–8610, Oct. 2024. [6] S. Han, S. Yang, Y. Lee, M. Lee, J.-i. Park, and K.-S. Kim, “The Leader-Follower Formation Control of Nonholonomic Vehicle With Follower-Stabilizing Strategy,” IEEE Robotics and Automation Letters , vol. 9, no. 1, pp. 707–714, Jan. 2024. [7] P. Petrov, “A mathematical model for control of an autonomous vehicle convoy,” WSEAS TRANSACTIONS on SYSTEMS and CONTROL , vol. 3, pp. 835–848, 01 2008. [8] ——, “Nonlinear Adaptive Control of a Two-Vehicle Convoy,” The Open Cybernetics & Systemics Journal , vol. 3, pp. 70–78, 2009. [9] K. Wang, S. Givigi, and J. A. Marshall, “Monkey see, monkey do: Constant time delay leader following for wheeled mobile robots using uncertainty-tuned model predictive control,” in 2024 IEEE International Systems Conference (SysCon) , 2024, pp. 1–8. [10] A. Denasi and S. Misra, “Independent and Leader–Follower Control for Two Magnetic Micro-Agents,” IEEE Robotics and Automation Letters ,vol. 3, no. 1, pp. 218–225, Jan. 2018. [11] V. Walter, N. Staub, A. Franchi, and M. Saska, “UVDAR System for Visual Relative Localization With Application to Leader–Follower For-mations of Multirotor UAVs,” IEEE Robotics and Automation Letters ,vol. 4, no. 3, pp. 2637–2644, July 2019. [12] J.-P. A. Yaacoub, H. N. Noura, O. Salman, and A. Chehab, “Robotics cyber security: vulnerabilities, attacks, countermeasures, and recommen-dations,” International Journal of Information Security , vol. 21, no. 1, pp. 115–158, Feb 2022. [13] C. Hertzberg, R. Wagner, U. Frese, and L. Schr¨ oder, “Integrating generic sensor fusion algorithms with sound state representations through encap-sulation of manifolds,” Information Fusion , vol. 14, no. 1, pp. 57–77, 2013. [14] J. Tang, S. Wu, B. Lan, Y. Dong, Y. Jin, G. Tian, W.-A. Zhang, and L. Shi, “GMPC: Geometric Model Predictive Control for Wheeled Mobile Robot Trajectory Tracking,” IEEE Robotics and Automation Letters , vol. 9, no. 5, pp. 4822–4829, 2024. [15] A. Barrau and S. Bonnabel, “The invariant extended kalman filter as a stable observer,” IEEE Transactions on Automatic Control , vol. 62, no. 4, pp. 1797–1812, 2017. [16] C. Cheung, S. Rawashdeh, and A. Mohammadi, “Jam mitigation for autonomous convoys via behavior-based robotics,” Applied Sciences ,vol. 12, no. 19, 2022. [17] C. Fries, T. Luettel, and H.-J. Wuensche, “Combining model- and template-based vehicle tracking for autonomous convoy driving,” in 
+
+2013 IEEE Intelligent Vehicles Symposium (IV) , 2013, pp. 1022–1027. [18] Y. Wang, M. Stankovi´ c, A. Smith, and E. T. Matson, “Leader-follower system in convoys:: An experimental design focusing on computer vision,” in 2021 IEEE Sensors Applications Symposium (SAS) , 2021, pp. 1–6. [19] A. Shrivastava, J. P. V. Verma, S. Jain, and S. Garg, “A deep learning based approach for trajectory estimation using geographically clustered data,” SN Applied Sciences , vol. 3, no. 6, p. 597, May 2021. [20] S. Sun, D. Melamed, and K. Kitani, “Idol: Inertial deep orientation-estimation and localization,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 35, no. 7, 2021, pp. 6128–6137. [21] S. Zamboni, Z. T. Kefato, S. Girdzijauskas, C. Nor´ en, and L. Dal Col, “Pedestrian trajectory prediction with convolutional neural networks,” 
+
+Pattern Recognition , vol. 121, p. 108252, 2022. [22] S. H. Park, B. Kim, C. M. Kang, C. C. Chung, and J. W. Choi, “Sequence-to-sequence prediction of vehicle trajectory via lstm encoder-decoder architecture,” in 2018 IEEE Intelligent Vehicles Symposium (IV) ,2018, pp. 1672–1678. [23] Y. Zhang, Z. Han, X. Zhou, L. Zhang, L. Wang, E. Zhen, S. Wang, Z. Zhao, and Z. Guo, “Peso: A seq2seq-based vessel trajectory prediction method with parallel encoders and ship-oriented decoder,” Applied Sciences , vol. 13, no. 7, 2023. [24] Y. Keneshloo, T. Shi, N. Ramakrishnan, and C. K. Reddy, “Deep reinforcement learning for sequence-to-sequence models,” IEEE Trans-actions on Neural Networks and Learning Systems , vol. 31, no. 7, pp. 2469–2489, 2020. [25] S. Du, T. Li, and S.-J. Horng, “Time series forecasting using sequence-to-sequence deep learning framework,” in 2018 9th International Sym-posium on Parallel Architectures, Algorithms and Programming (PAAP) ,2018, pp. 171–176. [26] D. Hendrycks and K. Gimpel, “Bridging nonlinearities and stochas-tic regularizers with gaussian error linear units,” CoRR , vol. abs/1606.08415, 2016. [27] R. L. Russell and C. Reale, “Multivariate uncertainty in deep learning,” 
+
+IEEE Transactions on Neural Networks and Learning Systems , vol. 33, no. 12, pp. 7937–7943, 2022. [28] T. Boukas and T. Habetler, “High-performance induction motor speed control using exact feedback linearization with state and state derivative feedback,” IEEE Transactions on Power Electronics , vol. 19, no. 4, pp. 1022–1028, 2004. [29] T. Lesort, N. D´ ıaz-Rodr´ ıguez, J.-F. Goudou, and D. Filliat, “State representation learning for control: An overview,” Neural Networks , vol. 108, pp. 379–392, 2018. [Online]. Available: https://www.sciencedirect. com/science/article/pii/S0893608018302053 [30] Ouster, Inc., “Os1 mid-range high-resolution imaging lidar,” 2022, accessed: 2026-02-16. [Online]. Available: https://data.ouster.io/ downloads/datasheets/datasheet-rev7-v3p0-os1.pdf [31] M. Prado, A. Sim´ on, A. P´ erez, and F. Ezquerro, “Effects of terrain irregularities on wheeled mobile robot,” Robotica , vol. 21, no. 2, p. 143–152, 2003. [32] W. Zhao, J. P. Queralta, and T. Westerlund, “Sim-to-real transfer in deep reinforcement learning for robotics: a survey,” in 2020 IEEE Symposium Series on Computational Intelligence (SSCI) , 2020, pp. 737–744.
