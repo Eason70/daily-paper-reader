@@ -1,0 +1,670 @@
+Title: pdSTL: Probabilistic Differentiable Signal Temporal Logic for Stochastic Systems
+
+URL Source: https://arxiv.org/pdf/2606.19561v1
+
+Published Time: Fri, 19 Jun 2026 00:11:39 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# pdSTL: Probabilistic Differentiable Signal Temporal Logic for Stochastic Systems 
+
+Bennett Dogbey, IEEE Student Member and Hemanth Manjunatha, IEEE Member 
+
+Abstract — Autonomous robots operating in uncertain envi-ronments must satisfy complex temporal and safety specifi-cations despite stochastic dynamics and sensing noise. While Signal Temporal Logic (STL) offers robustness measures for gradient-based optimization, existing extensions either lack dif-ferentiability or ignore belief-space uncertainty. We introduce pdSTL (probabilistic differentiable Signal Temporal Logic), a framework that unifies probabilistic semantics with differ-entiable robustness over belief trajectories. pdSTL employs interval-valued probabilistic semantics to compute conservative satisfaction bounds, propagated compositionally through the STL syntax tree. We formulate the temporal robustness evalu-ation as a recurrent, LSTM-style unfolding of STL operators, enabling linear-time, differentiable monitoring suitable for end-to-end trajectory optimization. We validate pdSTL on simulated obstacle avoidance, lane-change maneuvers, and real-world Crazyflie quadcopter flight experiments under aerodynamic disturbances. Results demonstrate that pdSTL achieves efficient optimization with formal probabilistic guarantees, significantly outperforming deterministic differentiable STL in maintaining safety margins under real-world uncertainty. 
+
+I. I NTRODUCTION 
+
+Autonomous systems are increasingly deployed in safety-critical, uncertain environments where failures carry signif-icant consequences. To operate reliably, these systems must not only accomplish complex, temporally extended tasks but also provide guarantees about safety and performance despite noise, disturbances, and unpredictable interactions. For example, a service robot in a hospital may need to visit patient rooms in a prescribed order, avoid congested corridors during peak hours, and periodically report to a central station, while contending with localization errors and dynamic human motion. Deterministic planning alone is insufficient in such settings. We therefore require formal specification frameworks that can both express rich temporal requirements and explicitly account for uncertainty, while remaining amenable to efficient computation and learning-based control. Signal Temporal Logic (STL) has emerged as a powerful formal method for specifying and reasoning about spa-tiotemporal properties of continuous-time systems [1]. STL extends Linear Temporal Logic with dense-time, real-valued signals, enabling precise specifications that describe mission objectives. Critically, STL admits quantitative semantics, called the robustness measure, which provides a continuous scalar score of how well a signal satisfies a specification [2]. This quantitative view makes STL particularly attractive for robotics, where it has been successfully applied to motion 
+
+> All Authors are with Dept. of Mechanical and Aerospace Engineering, Oklahoma State University, Stillwater, OK USA Belief Trajectory
+> Nominal Robustness = 1.0 Empirical Robustness = 0.87 Nominal Robustness = 0.93 Empirical Robustness = 0.93
+> Predicate Probability
+> Interval Robustness
+> Differentiable RNN
+> Control Update
+
+Fig. 1: The realization-gap problem in stochastic environ-ments. (Top) Deterministic STL planning assumes a single nominal path, ignoring the ”dispersion” caused by noise. This leads to a false sense of security (Nominal Robustness = 1 .0)while the actual robot executions (Empirical Robustness 
+
+= 0.87 ) collide with obstacles. (Bottom) Our proposed pdSTL framework solves this by optimizing directly over the belief trajectory . By propagating probability intervals through a differentiable LSTM-style RNN roll out, pdSTL ensures that the planned safety margin ( 0.93 ) holds true during actual deployment ( 0.93 ), effectively closing the gap between theory and real-world performance. planning, autonomous driving, and multi-agent coordination [3, 4, 5, 6]. However, real-world robotic and autonomous systems operate under significant uncertainty arising from sensor noise, actuation errors, model mismatch, and unpredictable interactions with dynamic environments. Traditional STL robustness is defined with respect to deterministic system signals and evaluates satisfaction based on nominal exe-cutions, thereby neglecting the stochastic nature of real-world system behavior. As a consequence, specifications that appear robust under deterministic semantics may be violated when deployed on physical systems, limiting their practical applicability. To address this limitation, a growing body of work has extended STL to explicitly reason about uncertainty by in-corporating probabilistic semantics. Early works introduced Probabilistic Signal Temporal Logic, interpreting predicate satisfaction as a random variable and defining satisfaction in terms of the probability that a specification holds, enabling controllers to maximize the likelihood of task completion under uncertainty [7, 8, 9]. Related approaches formulated 
+
+> arXiv:2606.19561v1 [cs.RO] 17 Jun 2026
+
+STL synthesis as a probabilistic inference problem, allowing uncertainty to be propagated through the specification while retaining expressive temporal structure [10]. In parallel, other approaches incorporated risk-aware [11] and chance-constrained semantics [12], enforcing STL specifications with bounded probabilities of violation through predictive or reactive control strategies [13]. More recently, a stochas-tic robustness interval was introduced, defining interval-valued probabilistic robustness semantics over continuous-time systems and taking the lower bound as a robustness measure [14]. However, these methods are typically non-differentiable, preventing their direct use in modern gradient-based learning and optimization pipelines. To make STL applicable in learning-based scenarios, re-searchers have explored differentiable formulations of STL robustness. A key development was the STLCG framework, which translated STL robustness formulas into computation graphs, enabling gradients to be backpropagated through temporal operators using automatic differentiation tools [15, 16]. This formulation allowed STL robustness to be used di-rectly as an optimization objective, enabling learning agents to optimize complex temporal behaviors without manual reward shaping. Subsequent work improved optimization behavior and scalability through smooth robustness approx-imations, efficient parallel evaluation, and tighter integra-tion with deep learning frameworks, including recurrent architectures and neural-symbolic representations [17, 18, 19, 20]. However, these differentiable approaches assume deterministic signals and overlook stochasticity. In this paper, we bridge this gap by introducing probabilis-tic differentiable Signal Temporal Logic (pdSTL). Our cen-tral insight is that probabilistic STL robustness can be formu-lated as a differentiable recurrent computation—analogous to an LSTM-style unfolding of temporal operators over stochas-tic signals—thereby preserving probabilistic soundness while enabling end-to-end gradient-based optimization under un-certainty. This formulation makes STL directly applicable to modern learning-based cyber-physical systems operating in uncertain environments (Fig. 1). 
+
+Contributions. Our contributions are: (i) an interval-valued probabilistic robustness semantics for STL over belief tra-jectories, using conservative probability bounds propagated through the STL syntax; (ii) casting STL evaluation as an LSTM-style RNN, updating lower and upper robustness bounds sequentially for linear-time bounded temporal evalu-ation while preserving interval consistency; and (iii) integrat-ing this recurrent interval monitor into belief-space trajectory optimization, demonstrating effectiveness in robotic motion planning under temporal safety and reachability constraints with uncertainty. II. A PPROACH 
+
+In this section, we first formalize discrete-time belief-space dynamics, then define a stochastic robustness mea-sure for temporal logic specifications. Crucially, we im-plement this evaluation as a recurrent, LSTM-style com-putation graph, enabling end-to-end differentiable trajectory optimization that propagates probability bounds through time efficiently. 
+
+A. Stochastic System Dynamics 
+
+We consider a discrete-time stochastic dynamical system evolving over a finite time horizon t = 0 , 1, . . . , T . The system state xt ∈ Rn evolves under control input ut ∈ Rm
+
+as 
+
+xt+1 = f (xt, u t) + G(xt, u t)wt, yt = h(xt) + vt, (1) where wt and vt represent process and measurement noise, respectively, and h may be nonlinear. The functions f and 
+
+G define the (possibly nonlinear) state transition and noise scaling. Let It denote the information available up to time 
+
+t, including the history of applied controls and observations. Instead of reasoning over individual realizations of xt, we operate in belief space. The belief at time t is the posterior distribution 
+
+bt(x) := p(xt | I t). (2) Given an initial belief b0 and a candidate control sequence 
+
+u = {u0, . . . , u T −1}, the stochastic dynamics and observa-tion model induce a predicted belief trajectory 
+
+B(u) = {b0, b 1, . . . , b T }, (3) which captures the evolution of uncertainty over time. The proposed framework operates directly on B(u) to optimize control sequences under future uncertainty. No parametric assumptions are imposed on the beliefs bt, which may be Gaussian, multimodal, heavy-tailed, or represented non-parametrically (e.g., via particles). 
+
+B. Stochastic Robustness Measure 
+
+Under the discrete-time stochastic dynamics above, each realization of the stochastic state process induced by B
+
+generates a trajectory that may or may not satisfy φ. Sat-isfaction therefore becomes a probabilistic event. A standard approach to uncertainty handling is via chance constraints, which enforce that the probability of violating a constraint remains below a prescribed threshold at each time. However, such formulations do not naturally extend to STL specifica-tions, whose temporal operators couple satisfaction across time intervals. For instance, eventually (♢[a,b ]φ) requires satisfaction at some time in [a, b ], whereas always (□[a,b ]φ)requires satisfaction at all times in that interval. Enforcing independent per-time-step chance constraints fails to capture this structural asymmetry. To address this limitation, we adopt the stochastic robustness interval introduced in [14] and formulate it directly over belief trajectories. 
+
+a) Stochastic Robustness Interval.: Let φ be an STL formula and B = btTt=0 a belief trajectory. Following [14], the stochastic robustness interval (SRI) is defined as 
+
+r(φ, B) = p↓(φ, B), p ↑(φ, B) ⊆ [0 , 1] , (4) with 
+
+0 ≤ p↓(φ, B) ≤ p↑(φ, B) ≤ 1. (5) Downstream Tasks   
+
+> Loss Fn
+> Physical System with Uncertainty
+> Motion Planning
+> Robot Control
+> Safety Certificate ...
+> Differentiable LSTM Unit
+> pSTL
+> Logical Constraints
+> Temporal Constraints
+> Predicates
+> Belief Trajectory
+
+Fig. 2: Differentiable probabilistic STL framework. For a given belief state b, is transformed into probabilistic STL predicate bounds (p↑ 
+
+> t
+
+, p ↓ 
+
+> t
+
+). These bounds are evaluated through a differentiable temporal RNN that computes the conservative STL robustness which could then be used in gradient-based optimization. The lower bound p↓(φ, B) provides a conservative guarantee on the probability that realizations of the stochastic process satisfy φ, while p↑(φ, B) gives an upper bound. The stochas-tic robustness measure (SRM) is then 
+
+SRM( φ, B) := min r(φ, B). (6) By design, the lower bound (p↓) represents a cautious estimate, while the upper bound ( p↑) is an optimistic one. Our system is built so that these two never ”cross over.” If the cautious estimate starts lower than the optimistic one, it will stay that way through every step of the calculation. Intuitively, the stochastic robustness interval propagates probability bounds along the logical and temporal structure of the STL formula, combining atomic predicates using probability inequalities and temporal operators over their cor-responding time windows. If SRM( φ, B) = 1 , the formula is satisfied almost surely; intermediate values quantify the guaranteed probability of satisfaction. Unlike deterministic robustness r(x, φ, t ) ∈ R, which measures geometric dis-tance from violation, stochastic robustness captures confi-dence under uncertainty. 
+
+b) Relation to Prior Work and Our Contribution.: The stochastic robustness interval follows the StoRM framework of [14]. Our contribution extends this foundation by integrat-ing stochastic robustness into a differentiable optimization framework, enabling gradient-based planning and learning directly in belief space. 
+
+C. Differentiable Signal Temporal Logic 
+
+We develop a differentiable framework for evaluating STL specifications over belief trajectories, enabling gradient-based trajectory optimization under probabilistic constraints. The probabilistic semantics in Section II-B define robust-ness intervals via recursive min/max operations, which are conceptually clear but non-differentiable. We extend the STLCG framework [16] to operate on probabilistic intervals instead of scalar traces, replacing min/max with smooth approximations and propagating bounds through a recurrent computation graph, achieving linear complexity and end-to-end differentiability (Fig. 2). For any formula φ and time t,define the stochastic robustness interval as 
+
+rφt := [ p↓ 
+
+> t
+
+(φ), p ↑ 
+
+> t
+
+(φ)] ∈ [0 , 1] 2, (7) where p↓ 
+
+> t
+
+(φ) and p↑ 
+
+> t
+
+(φ) denote lower and upper probability bounds evaluated on the suffix of the predicted belief trajec-tory Bt. For each atomic predicate of the form μ(xt) ≥ 0,we compute the probability of satisfaction under the belief 
+
+bt(x) = p(xt | I t) as 
+
+pt = Px∼bt (μ(x) ≥ 0) , (8) which corresponds to the probability mass of the feasible region under the belief distribution. For Gaussian beliefs, bt = N (μt, Σt), and linear predi-cates a⊤x ≤ c, this probability is available in closed form: 
+
+P(a⊤x ≤ c) = Φ c − a⊤μt
+
+pa⊤Σta
+
+!
+
+. (9) For rectangular goal or obstacle regions, predicates are decomposed into conjunctions of half-space constraints, and Fr´ echet bounds are used to conservatively combine proba-bilities across dimensions without assuming independence. These probabilities serve as inputs to the stochastic robust-ness interval computation described above. All operations are differentiable with respect to (μt, Σt),enabling gradients to propagate from the probabilistic STL objective through belief dynamics to control inputs. 
+
+1) Non-Temporal Operators: Non-temporal operators (negation, conjunction, disjunction) act element-wise oper-ation across the signal and do not require temporal aggrega-tion. Negation swaps and complements the lower and upper bounds of the interval: 
+
+r¬φt = [1 − p↑ 
+
+> t
+
+(φ), 1 − p↓ 
+
+> t
+
+(φ)] (10) Conjunction and disjunction are computed using Fr´ echet bounds to conservatively combine probabilities without in-dependence assumptions: 
+
+rφ1∧φ2 
+
+> t
+
+=
+
+h
+
+max  0, p ↓ 
+
+> t
+
+(φ1) + p↓ 
+
+> t
+
+(φ2) − 1,
+
+min  p↑ 
+
+> t
+
+(φ1), p ↑ 
+
+> t
+
+(φ2)i
+
+,
+
+rφ1∨φ2 
+
+> t
+
+=
+
+h
+
+max  p↓ 
+
+> t
+
+(φ1), p ↓ 
+
+> t
+
+(φ2),
+
+min  1, p ↑ 
+
+> t
+
+(φ1) + p↑ 
+
+> t
+
+(φ2)i
+
+.
+
+(11) To enable smooth differentiable computation, the min and max operations are replaced with the log-sum-exponential approximation [16]. As the smoothing parameter β → ∞ ,the relaxed operators converge to the exact SRI bounds. 2) Temporal Operators: Temporal operators aggregate probability intervals over a bounded window [a, b ]. To main-tain O(T ) complexity while handling the future-looking nature of STL, we reformulate the evaluation as a backward recurrent computation . By leveraging the RNN-style com-putation graph architecture proposed in [16], we compute robustness values in a single pass over the trajectory. Starting from t = T and moving to t = 0 , we maintain a shift-register 
+
+zφt representing the required future window: 
+
+zφt =
+
+
+
+rφt+a
+
+rφt+a+∆ t
+
+...
+
+rφt+b
+
+ =
+
+
+
+cφt+a hφt+a
+
+... ...
+
+cφt+b hφt+b
+
+ (12) where W = ⌊(b − a)/∆t⌋ + 1 is the window size. As t
+
+decreases, the state is updated via: 
+
+zφt−∆t = M z φt + Brφt+a−∆t (13) with B = [1 , 0, . . . , 0] ⊤ and M being the standard down-shift matrix. This sliding window allows the robustness at time t to be computed via a smooth reduction over the current register zφt in constant time. The construction for bounded intervals [a, b ] extends naturally to unbounded cases by modifying the window extraction logic within the recurrent state. 
+
+a) Always and Eventually Operators: The output of bounded temporal operators is obtained by applying a smooth reduction across the hidden state: 
+
+r□[a,b ]φt =
+
+" gmin β {p↓ 
+
+> s
+
+(φ)}s∈[t+a,t +b]
+
+gmin β {p↑ 
+
+> s
+
+(φ)}s∈[t+a,t +b]
+
+#
+
+r♢[a,b ]φt =
+
+ gmax β {p↓ 
+
+> s
+
+(φ)}s∈[t+a,t +b]
+
+gmax β {p↑ 
+
+> s
+
+(φ)}s∈[t+a,t +b]
+
+ (14) This recurrence preserves linear complexity while maintain-ing differentiability via smooth min/max relaxations. 
+
+b) Until Operator: The bounded until operator 
+
+φ1 U[a,b ] φ2 requires that φ2 holds at some future time k ∈
+
+[t + a, t + b], and φ1 holds continuously from the current time t until k. We implement this as a coupled recurrence: 
+
+p↓ 
+
+> t
+
+(φ1U[a,b ]φ2) = gmax k∈[t+a,t +b]
+
+ gmin  p↓
+
+> k
+
+(φ2),
+
+gmin s∈[t,k ]p↓ 
+
+> s
+
+(φ1) (15) An analogous computation is performed for the upper bound 
+
+p↑ 
+
+> t
+
+. By re-using the shifted suffix values in the recurrence, we preserve linear-time evaluation. 
+
+D. Illustrative Example 
+
+To concretely demonstrate the sliding-window computa-tion, we trace the evaluation of □[1 ,2] (x ≥ 50) on a discrete piecewise signal (Fig. 3). Let the predicate probability in-tervals be rt = [ p↓ 
+
+> t
+
+, p ↑ 
+
+> t
+
+]. The Always operator with window 
+
+[1 , 2] dictates a sliding window of size W = 2 . At each step t, the recurrent shift register extracts the future window 
+
+{t + 1 , t + 2 } and applies the gmin reduction to output the aggregated interval bounds, as detailed in Table I. 40       
+
+> 50
+> 60
+> x(t)
+> t0
+> t1
+> t2
+> t3
+> t4
+> t5
+> t6
+> h = 50
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> p , p
+> p
+> p
+> 0123456
+> Time t
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> r [1, 2]
+
+Fig. 3: □[1 ,2] (x ≥ 50) valuation of the probabilistic STL monitor. Top: Piecewise signal with uncertainty bounds and threshold. Middle: Predicate satisfaction probability bounds. Bottom: Temporal operator output computed via recurrent aggregation. TABLE I: Predicate Probability Intervals and Sliding-Window Evaluation for □[1 ,2] φ
+
+t p↓ 
+
+> t
+
+p↑ 
+
+> t
+
+Suffix s ∈ [t + 1 , t + 2] r□[1 ,2] φt
+
+0 0.0002 0.0668 {1, 2} [0.9332, 0.9998] 1 0.9332 0.9998 {2, 3} [0.0228, 0.5000] 2 1.0000 1.0000 {3, 4} [0.0001, 0.0478] 3 0.0228 0.5000 {4, 5} [0.0001, 0.0478] 4 0.0001 0.0478 {5, 6} [0.5000, 0.9772] 5 0.9987 1.0000 {6, 7} —6 0.5000 0.9772 — —
+
+III. R ESULTS AND DISCUSSION 
+
+We now demonstrate the efficacy of the pdSTL framework in three cases. First, we test the framework with obstacle avoidance then test on a lane change maneuver. Finally, we present a real-world validation experiment. 
+
+A. 2D Motion Planning 
+
+We consider a 2D motion planning scenario where an autonomous agent must navigate a cluttered environment under stochastic uncertainty (Fig. 4a)). The agent is modeled as a discrete-time stochastic single integrator: xt+1 = xt +
+
+ut∆t + wt, wt ∼ N (0 , Q ), ut ∈ [−umax , u max ]2, with state xt ∈ R2 and control ut. The workspace contains a goal region, an intermediate visit region V , and static obstacles 
+
+O = O1, . . . , O N . The mission is formalized as the STL specification: 
+
+φ = ♢[0 ,T ](x ∈ G) ∧ ♢[0 ,T ](x ∈ V ) ∧ □[0 ,T ]
+
+^
+
+> Oi∈O
+
+(x / ∈ Oi).
+
+(16) Trajectory synthesis is cast as unconstrained optimization over the control sequence u0: T −1 by minimizing: 
+
+J (u0: T −1) = − log  SRM (φ, B) + ε + λu
+
+X t|ut|2, (17) Given an initial belief b(0) , horizon T , and learning rate η,the control sequence is refined iteratively by backpropagating gradients through the differentiable pdSTL graph. 0 2 4 6 8 10 12   
+
+> x[m]
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> y [m]
+> Goal
+> Visit Region
+> Obstacle
+> Trajectory
+> Uncertainty
+
+Goal 
+
+V
+
+Start         
+
+> 050 100 150 200
+> Planning horizon T(steps)
+> 0
+> 25
+> 50
+> 75
+> 100
+> Time  per gradient step (ms)
+> Linear fit (slope=0.48 ms/step, R2=0.991)
+> Measured
+
+A) 
+
+B) 
+
+Fig. 4: A) Belief-space trajectory optimization under pdSTL. Blue ellipses indicate propagated uncertainty. The differen-tiable monitor maintains a robust satisfaction margin, guiding the trajectory away from obstacles while satisfying temporal objectives. B) Gradient computational time vs. planning horizon varying linearly. We compare pdSTL against a deterministic STLCG base-line. Both planners produce fixed open-loop sequences, which are tested under N = 1000 Monte Carlo rollouts with a process noise ( σq = 0 .03 ). While nominal distances to obstacles are similar, the deterministic plan is brittle (Table II): its probabilistic robustness drops to 0.834 , yield-ing 87–88% success and safety rates. In contrast, pdSTL explicitly optimizes the probability of satisfaction over the belief trajectory, achieving a planning-time guarantee of 
+
+0.930 that aligns with empirical performance (success 97.8%, safety 98.4%), maintaining larger obstacle clearance. Also, TABLE II: Comparison of deterministic (STLCG) vs prob-abilistic (pdSTL) planning ( N = 1000 Monte Carlo trials).                    
+
+> Metric STLCG pdSTL
+> η(nominal distance) 0.200 0.199 SRM (planning) -0.930 SRM deployed 0.834 0.930 MC success rate 87.2% 97.8% MC safety rate 87.7% 98.4% Min obstacle clearance (m) 0.153 ±0.122 0.259 ±0.097
+
+as shown in Fig. 4b), the computation time per gradient step increases linearly with the planning horizon T .
+
+B. Lane-Change for Autonomous Vehicle 0                                        
+
+> 5
+> y [m]
+> Normal Scenario
+> t=0.0s t=1.6s
+> t=3.2s
+> t=4.8s
+> t=6.4s t=8.0s
+> 0510 15 20 25 30 35
+> x [m]
+> 0
+> 5
+> y [m]
+> Aggressive Scenario
+> t=0.0s t=1.8s t=3.8s
+> t=5.6s
+> t=7.6s
+> Ego Vehicle Other Vehicle Uncertainty Goal Lane
+
+Fig. 5: Lane-merging behavior across two scenarios. Top: normal scenario where the obstacle moves at 0.3 m/s. Bot-tom: aggressive scenario where the obstacle moves at 0.8 m/s, reducing the merge opportunity. We consider a lane-merging scenario where an ego vehicle must safely merge into a target lane while avoiding amoving obstacle. The ego vehicle follows stochastic double-integrator dynamics: 
+
+xt = [ px, p y , v x, v y ]⊤,ut = [ ax, a y ]⊤, ∥ut∥∞ ≤ umax = 2 .5 m/s 2. (18) with timestep ∆t = 0 .2 s and additive Gaussian position noise ( σq = 0 .01 m). The obstacle moves at constant velocity (0.3 or 0.8 m/s depending on the scenario) along the target lane from pobs ,0 = [3 .0, 4.0] ⊤ m, and a collision occurs if |p − pobs |2 < 2.25 m. The ego vehicle uses pdSTL in a Model Predictive Control fashion: at each step, a finite-horizon problem ( H = 40 steps) is solved, the first control applied, and the horizon shifted forward, up to Tsim = 100 
+
+steps. Two representative scenarios are evaluated. In the 
+
+normal scenario , the obstacle starts at pobs ,0 = [3 .0, 4.0] ⊤ m. In the aggressive scenario , the obstacle starts further ahead at pobs ,0 = [7 .0, 4.0] ⊤ m and moves faster, reducing the available merge opportunity. The lane-change specification Obstacle 
+
+> Start
+> Goal
+> Crazy fl ie
+> Uncertainty
+> Obstacle
+> Obstacle
+> Disturbance Created by Wind
+> Fan
+> Nominal Path
+
+Fig. 6: Experimental setup for real-world validation of pdSTL. A Crazyflie quadrotor navigates from a Start position to a defined Goal while avoiding multiple Obstacles. To evaluate the system’s robustness under stochastic dynamics, a fan is used to introduce a disturbance across the flight area. is given by: 
+
+φmerge = ♢[0 ,H ](|py −ytarget | ≤ 2) ∧□[0 ,H ](|p−pobs |2 ≥ 2.25) ,
+
+(19) requiring eventual alignment with the target lane while maintaining a probabilistic safety margin. Figure 5 illustrates the closed-loop execution of the lane-change maneuver under the two scenarios. In the normal scenario, the obstacle moves slowly along the target lane, allowing the ego vehicle to merge once sufficient separation is achieved. In contrast, the aggressive scenario reduces the available merge window by introducing a faster-moving obstacle, requiring the planner to reason more carefully about the timing of the maneuver. In both cases, the pdSTL con-troller delays the merge while the predicted belief trajectory overlaps the obstacle’s safety region, initiating the lateral transition only when the probabilistic safety margin becomes feasible. This behavior results in trajectories that naturally adapt to the available space and timing of the maneuver. While the aggressive scenario operates with reduced spatial margins, the optimizer still converges to a solution satisfying 
+
+ρ↓(φ) ≥ 0.90 , certifying that the high-speed maneuver maintains the same probabilistic safety guarantee as the more conservative scenario. For a planning horizon of H = 40 ,a complete forward–backward pass of the pdSTL monitor requires 0.49 ms on an Intel i9 CPU. 
+
+C. Real-World Obstacle Avoidance 
+
+We validate the pdSTL framework using a Crazyflie quadrotor performing an obstacle avoidance task under real aerodynamic disturbances. Experiments were conducted in a 
+
+2 m × 2 m netted arena using Lighthouse-based localization and ROS2 Humble (Fig. 6). By maintaining a constant altitude, the task is reduced to planar motion where the state ˆpt = [ˆ xt, ˆyt]⊤ is estimated via an onboard EKF. To bridge the gap between the physical system and our probabilistic semantics, we modeled the vehicle belief bt
+
+as a Gaussian distribution N (ˆ pt, Σt). While the mean ˆpt
+
+follows the nominal planned state, the covariance Σt was pre-characterized by recording tracking error residuals under TABLE III: Safety rate (%), minimum obstacle clearance (cm), and violation count across 20 runs per fan setting. Safety ( %): = ( N −violations )/N ×100 % . Clearance: mean across runs (violated/crashed runs assigned 0 cm.)                                    
+
+> Deterministic pdSTL (ours) Fan Level Success (%) Clearance (cm, ↑)Viols. Success (%) Clearance (cm, ↑)Viols. 195 .03.4±2.01100 .07.9±1.90
+> 295 .04.4±2.21100 .08.8±1.80
+> 370 .04.6±4.1685 .04.5±4.43
+
+various fan intensities during preliminary flight trials. This empirical noise model allows the pdSTL optimizer to reason over the predicted dispersion of the quadrotor trajectories during the offline optimization phase. The environment con-sists of three rectangular obstacles Oi and a goal region G,with the mission specified as: 
+
+φ = ♢[0 ,T ](ˆ pt ∈ G) ∧ □[0 ,T ]3^
+
+> i=1
+
+(ˆ pt /∈ Oi). (20) We conducted a comparative study between two planning strategies: (i) Deterministic Optimization, a baseline assum-ing noise-free dynamics, and (ii) pdSTL Optimization (Ours), which maximizes the conservative lower-bound satisfaction probability with a target threshold of r↓ ≥ 0.95 . Trajectories were optimized offline and executed on hardware using identical waypoint tracking controllers and gains to ensure the only variable was the robustness formulation. To intro-duce stochasticity, a calibrated fan was placed at the arena boundary ( ≈ 1.5 m from the obstacles) to generate persistent lateral airflow. We evaluated three intensity levels (Settings 1-3), where Setting 1 corresponds to ≈ 1.35 m/s, and Settings 2 and 3 reach ≈ 2 m/s and 3.5 m/s, respectively. Prior to optimization, we initialized the belief state covariance based on empirical disturbance measurements collected for each fan setting, using Σ0 = 0 .001m 2, 0.006m 2, and 0.02m 2
+
+for Settings 1–3, respectively. Performance is summarized in Table III based on success rate (%), mean obstacle clearance (cm), and total safety violations. As disturbance increases, planner performance diverges. Under mild airflow (Fan Levels 1–2), both planners achieve high success rates, but pdSTL consistently maintains larger safety margins. At Fan Level 1, the deterministic planner achieves 95% success with 3.4 ± 2.0 cm mean clearance, whereas pdSTL achieves 100% success with 7.9 ± 1.9 cm. A similar trend appears at Fan Level 2, where both planners succeed frequently but pdSTL maintains nearly double the clearance. At higher disturbance (Fan Level 3), the deterministic planner degrades more rapidly, reaching 70% success with six safety violations, while pdSTL maintains 85% success with only three violations. Although clearance decreases for both planners, the probabilistic approach safely completes more trials, demonstrating that incorporating probabilistic STL semantics improves robustness by explicitly reasoning over belief uncertainty. IV. L IMITATIONS 
+
+While pdSTL provides a differentiable framework for probabilistic reasoning over belief trajectories, several av-enues for refinement remain. First, the current formulation does not explicitly regulate covariance dynamics; the opti-mizer maximizes the lower bound of satisfaction probability based on predicted uncertainty but does not incorporate active covariance-shaping or information-seeking objectives. Consequently, uncertainty is mitigated through path selection rather than being actively reduced via control. Furthermore, the pdSTL’s performance is naturally cou-pled to the accuracy of the noise model Σt. Currently estimated offline, Σt may lead to over-optimistic safety thresholds if abrupt environmental changes exceed pre-characterized residuals. Integrating online adaptive noise estimation or dual-control to update Σt in real-time is a vital extension to maintain probabilistic guarantees under model mismatch. Second, while Fr´ echet bounds ensure compositional soundness without assuming predicate independence, they can introduce excessive conservativeness in the presence of strong state or temporal dependencies. Future work will explore tighter analytical bounds or differentiable sampling-based approximations to reduce this pessimism. Finally, although our recurrent formulation is linear-time, scalability is still constrained by the maximum temporal window size W . For very long-horizon missions with dense constraints, memory overhead remains a challenge; this could be mitigated through hierarchical abstractions or more aggressive receding-horizon schemes. V. C ONCLUSIONS 
+
+In this work, we introduced probabilistic differentiable Signal Temporal Logic (pdSTL), a framework that bridges formal temporal reasoning with gradient-based optimization in belief space. By defining interval-valued probabilistic semantics and implementing them as a recurrent, sliding-window computation, we enabled linear-time, differentiable monitoring of complex specifications under uncertainty. Our validation across simulated motion planning, lane-merging maneuvers, and real-world quadrotor experiments demonstrates that pdSTL effectively helps bridge the ”re-alization gap” inherent in deterministic planners. Unlike traditional differentiable STL approaches, pdSTL produces trajectories where empirical success rates align closely with theoretical satisfaction guarantees. While the current frame-work focuses on optimizing paths within a predicted belief evolution, future research will explore active covariance-shaping and dual-control strategies to proactively reduce uncertainty. APPENDIX 
+
+We state formal properties of the pdSTL monitor and provide brief proof sketches. 
+
+Proposition 1 (Interval validity): Assume every atomic predicate μ yields bounds 0 ≤ p↓ 
+
+> t
+
+(μ) ≤ p↑ 
+
+> t
+
+(μ) ≤
+
+1 for all t. Then for any formula φ constructed using 
+
+¬, ∧, ∨, □[a,b ], ♢[a,b ], pdSTL produces bounds satisfying 
+
+0 ≤ p↓ 
+
+> t
+
+(φ) ≤ p↑ 
+
+> t
+
+(φ) ≤ 1 ∀t. 
+
+The temporal cases follow because bounded temporal op-erators apply min/max reductions to collections of values already lying in [0 , 1] , thereby preserving interval validity. 
+
+Proof: [Proof Sketch] We proceed by structural induc-tion on φ. For negation, [p↓, p ↑] 7 → [1 − p↑, 1 − p↓], which preserves the unit interval and ordering. For conjunction, the Fr´ echet lower bound max(0 , p ↓ 
+
+> 1
+
++ p↓ 
+
+> 2
+
+− 1) and upper bound 
+
+min( p↑
+
+> 1
+
+, p ↑
+
+> 2
+
+) both lie in [0 , 1] . Moreover, since p↓ 
+
+> i
+
+≤ p↑ 
+
+> i
+
+,
+
+max(0 , p ↓ 
+
+> 1
+
++ p↓ 
+
+> 2
+
+− 1) ≤ min( p↑
+
+> 1
+
+, p ↑
+
+> 2
+
+),
+
+so ordering is preserved. The disjunction case is analogous. By definition, the probability bounds are restricted to the unit interval [0 , 1] . Numerical values outside this range due to smooth approximations are projected back onto [0 , 1] via a saturation operator. 
+
+Proposition 2 (Monotonicity of smooth operators): 
+
+Let gmax β denote the log-sum-exp relaxation and define 
+
+gmin β (x) := − gmax β (−x). If xi ≤ yi for all i, then 
+
+gmax β (x1, . . . , x n) ≤ gmax β (y1, . . . , y n),
+
+and similarly for gmin β .
+
+Proof: [Proof Sketch] For each i, exp( βx i) ≤ exp( βy i),hence P 
+
+> i
+
+exp( βx i) ≤ P 
+
+> i
+
+exp( βy i). Taking log( ·) preserves inequality. The min result follows by duality. 
+
+Theorem 5.1 (Consistency with exact SRI as β → ∞ ): 
+
+Let gmax β be defined by gmax β (x1, . . . , x n) = 
+
+> 1
+> β
+
+log P 
+
+> i
+
+eβx i , and gmin β (x) := − gmax β (−x). For any finite input set, 
+
+gmax β (x1, . . . , x n) → max  
+
+> i
+
+xi, gmin β (x1, . . . , x n) → min  
+
+> i
+
+xi
+
+as β → ∞. Consequently, the relaxed pdSTL bounds converge pointwise to the exact SRI bounds for ∧, ∨, □, ♢
+
+as β → ∞ .
+
+Proof: [Proof Sketch] Log-sum-exp satisfies the stan-dard bound 
+
+max  
+
+> i
+
+xi ≤ gmax β (x) ≤ max  
+
+> i
+
+xi + log nβ ,
+
+so gmax β (x) → max i xi as β → ∞ . The min case follows by duality. Since pdSTL composes finitely many such operators over finite windows, convergence holds at each node of the formula tree. 
+
+Proposition 3 (Linear-time bounded monitoring): For afixed STL formula φ with bounded temporal intervals and horizon T , pdSTL evaluation requires O(T |φ|) time and 
+
+O(W |φ|) memory, where 
+
+W = max 
+
+> [a,b ]∈φ
+
+(b − a)/∆t + 1 
+
+
+
+is the maximum window size over all bounded temporal operators in φ.
+
+Proof: [Proof Sketch] Each syntax tree node is evaluated once per time step. Bounded temporal operators reuse a window state (shift register) updated in constant time per step. Thus time is O(T ) per node, giving O(T |φ|) overall. Memory stores window states per node, yielding O(W |φ|).
+
+Theorem 5.2 (Differentiability of pdSTL): Assume the belief dynamics bt+1 = update( bt, u t) are differentiable with respect to ut, and the predicate satisfaction probability 
+
+pt(μ) is continuously differentiable with respect to the belief parameters. Then SRM( φ, B) is almost everywhere smoothly differentiable with respect to the control sequence for any fixed β > 0.
+
+Proof: [Proof Sketch] By assumption, Jacobians of the belief update and predicate probabilities exist. The pdSTL monitor composes affine transformations with smooth log-sum-exp relaxations, which are smooth for β > 0. Therefore the mapping u 7 → SRM( φ, B(u)) is differentiable except at measure-zero points corresponding to coincident smooth extrema in the relaxed reductions. Hence the entire monitor defines a differentiable computation graph supporting back-propagation. REFERENCES 
+
+[1] Alexandre Donz´ e. “On signal temporal logic”. In: 
+
+International conference on runtime verification .Springer Berlin Heidelberg Berlin, Heidelberg. 2013, pp. 382–383. [2] Alexandre Donz´ e and Oded Maler. “Robust satis-faction of temporal logic over real-valued signals”. In: International conference on formal modeling and analysis of timed systems . Springer. 2010, pp. 92–106. [3] Yating Yuan. “Continuous-Time Control Synthesis for Multiple Quadrotors under Signal Temporal Logic Specifications”. In: arXiv preprint arXiv:2505.07240 
+
+(2025). [4] Giuseppe Silano et al. “Power line inspection tasks with multi-aerial robot systems via signal temporal logic specifications”. In: IEEE Robotics and Automa-tion Letters 6.2 (2021), pp. 4169–4176. [5] Fernando S Barbosa et al. “Guiding autonomous exploration with signal temporal logic”. In: IEEE Robotics and Automation Letters 4.4 (2019), pp. 3332–3339. [6] Aniruddh G Puranic, Jyotirmoy V Deshmukh, and Stefanos Nikolaidis. “Learning from demonstrations using signal temporal logic in stochastic and contin-uous domains”. In: IEEE Robotics and Automation Letters 6.4 (2021), pp. 6250–6257. [7] Chanyeol Yoo and Calin Belta. “Control with prob-abilistic signal temporal logic”. In: arXiv preprint arXiv:1510.08474 (2015). [8] Ashish Kapoor, Debadeepta Dey, and Shital Shah. “Probabilistic safety programs”. In: arXiv preprint arXiv:1610.05376 (2016). [9] Mattias Tiger and Fredrik Heintz. “Incremental rea-soning in probabilistic signal temporal logic”. In: 
+
+International Journal of Approximate Reasoning 119 (2020), pp. 325–352. [10] Ki Myung Brian Lee, Chanyeol Yoo, and Robert Fitch. “Signal temporal logic synthesis as probabilistic inference”. In: 2021 IEEE International Conference on Robotics and Automation (ICRA) . IEEE. 2021, pp. 5483–5489. [11] Lars Lindemann, George J Pappas, and Dimos V Dimarogonas. “Reactive and risk-aware control for signal temporal logic”. In: IEEE Transactions on Automatic Control 67.10 (2021), pp. 5262–5277. [12] Susmit Jha et al. “Safe autonomy under perception uncertainty using chance-constrained temporal logic”. In: Journal of Automated Reasoning 60.1 (2018), pp. 43–62. [13] Samira S Farahani et al. “Shrinking horizon model predictive control with chance-constrained signal tem-poral logic specifications”. In: 2017 American Control Conference (ACC) . IEEE. 2017, pp. 1740–1746. [14] Roland B Ilyes, Qi Heng Ho, and Morteza Lahija-nian. “Stochastic robustness interval for motion plan-ning with signal temporal logic”. In: arXiv preprint arXiv:2210.04813 (2022). [15] Karen Leung, Nikos Ar´ echiga, and Marco Pavone. “Backpropagation for parametric STL”. In: 2019 IEEE Intelligent Vehicles Symposium (IV) . IEEE. 2019, pp. 185–192. [16] Karen Leung, Nikos Ar´ echiga, and Marco Pavone. “Backpropagation through signal temporal logic speci-fications: Infusing logical structure into gradient-based methods”. In: The International Journal of Robotics Research 42.6 (2023), pp. 356–370. [17] Yue Meng and Chuchu Fan. “Signal temporal logic neural predictive control”. In: IEEE Robotics and Automation Letters 8.11 (2023), pp. 7719–7726. [18] Parv Kapoor et al. “Stlcg++: A masking approach for differentiable signal temporal logic specification”. In: 
+
+arXiv preprint arXiv:2501.04194 (2025). [19] Yann Gilpin, Vince Kurtz, and Hai Lin. “A smooth robustness measure of signal temporal logic for sym-bolic control”. In: IEEE Control Systems Letters 5.1 (2020), pp. 241–246. [20] Meiyi Ma et al. “STLnet: Signal temporal logic en-forced multivariate recurrent neural networks”. In: 
+
+Advances in Neural Information Processing Systems 
+
+33 (2020), pp. 14604–14614.

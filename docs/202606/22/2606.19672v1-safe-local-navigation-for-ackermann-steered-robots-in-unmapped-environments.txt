@@ -1,0 +1,341 @@
+Title: Safe Local Navigation for Ackermann-Steered Robots in Unmapped Environments
+
+URL Source: https://arxiv.org/pdf/2606.19672v1
+
+Published Time: Fri, 19 Jun 2026 00:19:59 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Safe Local Navigation for Ackermann-Steered Robots in Unmapped Environments 
+
+Christian Schaible , Shahin Sirouspour 
+
+Abstract —A control framework is proposed for safe local navigation of mobile robots equipped with Ackermann steering in unmapped environments where a global goal is absent. Based on local obstacle detections, the safest heading angle is determined along the direction of the largest open space ahead of the vehicle. Guided by this direction, bounding lines are constructed on the left and right sides of the vehicle to achieve obstacle separation. These bounding lines are obtained by solving aconvex quadratic optimization that maximizes vehicle-to-obstacle clearance. Optionally, conditions are imposed on the bounding lines to preserve parallelism and smooth abrupt changes from prior control steps. A feedback-linearizing controller is then used to regulate the vehicle’s distance from one or both bounding lines, effectively enabling tracking of a local reference path that preserves safety through obstacle clearance maximization. Open-source code is included for the application of this control scheme. Experimental results demonstrate that the proposed method produces safer navigation paths with significantly shorter computation times, compared to some existing exploration-based planners. 
+
+I. I NTRODUCTION 
+
+Autonomous navigation in unstructured environments re-quires a holistic framework for real-time decision making that extends to arbitrary settings and applications. However, path planning in autonomous vehicle and mobile robot contexts often incorporates knowledge of a mapped environment or a known global goal position [1], [2]. Certain applications, such as search and rescue, exploration or particular racing situations, require safe, effective local navigation with no prior or global information. In these cases, the objective changes from tracking a global reference path to local planning in the most sensible direction of the largest open space while preserving safety through a high distance to nearby obstacles. This presents a universal foundation for safe local navigation, which can be incorporated in hierarchical planning to achieve full global navigation. For real-time planning to be possible, computation times must be within the control rate at all times, even in the worst case. Faster control rates enable quicker reactions to be made when sudden changes in the environment occur, such that safety and collision-free navigation can be upheld. Improvements in modern processing and computational power have motivated the development of more sophisticated, higher-dimensional predictive planners such as those based on Model 
+
+The authors are with the Department of Electrical and Computer En-gineering, McMaster University, Hamilton, ON L8S 4L8, Canada (e-mail: schaiblc@mcmaster.ca; sirous@mcmaster.ca). 
+
+Code : https://github.com/schaiblc/McMaster AEV MPC Algorithms 
+
+Fig. 1. Local linear reference path (light blue) and obstacle bounding lines (dark blue) at three distinct control steps across varying environments. 
+
+Predictive Control (MPC) [3], [4]. For these planners, exploit-ing insights into the problem is vital for effective solutions to be found in real time [5]. For vehicles approximated by the kinematic bicycle model [6], nonholonomic vehicle constraints cause path planning optimizations to be non-convex and non-linear [4], [7]. This can be addressed through methods such as linearizations [8], which risk compromising accuracy, or optimization stopping criteria to maintain real-time control. Alternatively, simpler non-predictive methods present an opportunity to guarantee fast navigation solutions; however, degradations in performance arise [9] and must be minimized. One low-cost solution is the use of Proportional-Integral-Derivative (PID) [10] or Proportional-Derivative (PD) steering control. Here, navigation performance is subject to gain tuning [11] and the selection of an optimal reference path. This paper presents a framework for generating optimal local ob-stacle bounding lines and thereby reference paths in real-time (Fig. 1) before employing a feedback-linearizing PD controller to ensure vehicle actuation along the reference path. The main contribution of this approach is the ability to achieve standalone local navigation in unknown environments with low planning times while promoting safety through obsta-
+
+> arXiv:2606.19672v1 [cs.RO] 18 Jun 2026
+
+cle clearance maximization. The proposed method outperforms existing exploration-based planners across safety, control ef-fort and computation time metrics in real-world experiments, illustrating its value for navigation in unknown environments. Evaluation is conducted both in simulation and experimentally using a 1/10 th scale RC vehicle, while the C++/ROS code designed for implementation of the control scheme is released as open-source. II. R ELATED WORK 
+
+Given a reference path to track, PID control presents a simple yet effective way to achieve reactive navigation ac-cording to vehicle kinematics. Using lateral and longitudinal dynamic vehicle models, one study designs a robust PID steering controller, which attains path following of simple, simulated curves [10]. Double-axle steering is achieved in a separate path-tracking approach, where for linear or circular arc paths and a constant velocity, a linear, time-invariant, decoupled PID controller is employed [12]. Another approach constructs the path from an initial location to a goal position through piecewise lines between waypoints before approach-ing path following through transverse feedback linearization. Performance of this approach in a simple experiment for a differential drive mobile robot is shown to be comparable to an MPC strategy [13]. Optimal tuning for PID steering control has been explored in heuristic and tracking error-based approaches to achieve improved path following at different speeds [14]. An alternative path tracking method is through pure pursuit [15]. This approach uses a chosen look-ahead distance to determine the necessary curvature that will move the vehicle to the identified point on the reference path. Similar to PID control, computation time and complexity are low. Meanwhile, extensions have attempted to improve tracking error and adaptive performance through varying look-ahead distances [16] and linear velocities [17]. The creation of a reference path is typically done by a global planner, which connects the start and goal points [18], [19], before a local planner revises a local path which tracks the global path while performing obstacle avoidance [20], [21]. In the case of unknown environments, however, a framework for path generation in the absence of a goal is required. One method introduces a diffusion policy incorporating a high-capacity visual transformer encoder to achieve goal-agnostic exploration and navigation towards visually indicated goals in novel settings [22]. Alternatively, the Artificial Potential Field (APF) method determines the best local path for obstacle avoidance through an expression of attractive and repulsive forces [23]. Attractive forces are contingent on a known goal location, though, and APF planning is highly susceptible to falling into local minima solutions where passage failure can arise [24]. Predictive navigation increases planning flexibility at the cost of increased complexity. MPC is prominently used for motion control and path planning, where one open-source MPC local planner [4] can perform collision avoidance while reaching intermediate goal positions along a globally known path. Another method generates front steering angle com-mands by tracking a potential-field-based reference trajectory with multiconstrained MPC [3]. The Dynamic Window Ap-proach (DWA) [25] offers local planning by parameterizing the local path with constant translational and rotational velocity pairs. Vehicle dynamics limit the feasible velocity pairs before each is evaluated in an optimization that prioritizes a heading towards the goal location, clearance of nearby obstacles and a larger forward velocity using fixed cost weights. Another local planning method uses an elastic band al-gorithm, which deforms the global path to avoid obstacles while maintaining its overall shape [26]. The Timed Elastic Band (TEB) planner [27] extends this by incorporating vehicle dynamics constraints, where local solutions are found through large-scale optimizers for sparse systems. Shorter paths are encouraged, risking closer obstacle proximity and higher col-lision likelihood, especially in uncertain, dynamic conditions. III. P ROPOSED LOCAL NAVIGATION METHOD 
+
+This section presents a novel control framework for local navigation in unknown environments. The construction of lo-cal obstacle bounding lines and thereby a local reference path is proposed through a Quadratic Program (QP) for efficient, real-time optimization and obstacle clearance maximization. Path following is then proposed using a PD steering controller with feedback linearization, based on the current speed. 
+
+A. Bounding Lines and Reference Path Formulation 
+
+The unknown environment is constructed in the moving vehicle base frame through a set of detected obstacles (in practice, through a sensor such as LiDAR). The proposed coordinate system assigns +x as the forward vehicle direc-tion, +y as the leftward vehicle direction and +θ as the counterclockwise rotation direction, beginning from the +x
+
+axis. To determine the local reference path, a heading angle is first found, inspired by the Follow the Gap Method (FGM) [28]. Here, obstacles O = {(xi, y i)}Nobs −1 
+
+> i=0
+
+are sorted in order of increasing orientation θi with respect to the ego vehicle before the largest range ri-weighted angular gap containing only obstacles further than a threshold dsafe is found: 
+
+(i∗,k ∗)=arg max         
+
+> (i,k ): θj∈[−π
+> 2,π
+> 2], r j>d safe ∀j∈{ i,...,k }
+> k
+
+X
+
+> j=i
+
+rj(θj+1 −θj−1)2
+
+(1) where only obstacles in the front π radian window are consid-ered. Using the safest angular gap’s start θstart = θi∗ and end 
+
+θend = θk∗ angles, the heading direction θhead becomes: 
+
+θhead = θstart + θend 
+
+2 (2) Now, the obstacle set is divided into left, right and excluded clusters with respect to the heading angle θhead . The Nleft 
+
+obstacles that satisfy θi ∈ [θhead + al, θ head + bl] compose the left cluster Ol while the right cluster Or consists of the Nright 
+
+obstacles where θi ∈ [θhead − br , θ head − ar ] holds. The QP for the local obstacle bounding lines is formulated in a manner analogous to Support Vector Machines (SVMs) [29]. Here, decision boundaries are identified that best separate classes of points by maximizing the margin between them. This method has been applied in global planning to maximize distance to obstacles along paths between start and goal points [30], [31]. In general, an obstacle bounding line can be described as 
+
+wT p+b = 0 , where normalization produces wT p+1 = 0 since the boundary will not pass through the vehicle base frame origin ( b̸ = 0 ). Here, w = [ wx, w y ]T and the obstacle point 
+
+p = [ x, y ]T ∈ O . The distance d from p to the bounding line is: 
+
+d = |wT p + 1 |√wT w (3) where taking p = [0 , 0] T as the base frame origin, the vehicle-to-line distance d0 becomes: 
+
+d0 = 1
+
+√wT w (4) Therefore, the QP that maximizes distance from the origin to the bounding line while ensuring all obstacle points remain on the separated side can be expressed as: 
+
+min 
+
+> w
+
+12 wT w
+
+subject to wT pi + 1 ≤ 0 ∀pi ∈ ˜O
+
+(5) which holds for both ˜O = Ol and ˜O = Or to construct the unique left wl and right wr bounding lines, respectively. To ensure smoothness and prevent sudden changes in bounding lines from the prior control step, an augmented objective for the QP is introduced: 
+
+min 
+
+> wk
+
+12 αw Tk wk + 12 (1 − α)( wk − wk−1)T (wk − wk−1) (6) where k denotes the current time step, wk represents the current bounding line parameters and wk−1 is the known bounding line from the prior time step. The weight α balances between maximizing the current obstacle bounding line clear-ance and minimizing the difference in successive bounding lines. This objective can be simplified, producing the new QP for smoothed changes in bounding lines: 
+
+min 
+
+> wk
+
+12 wTk wk + ( α − 1) wTk−1wk
+
+subject to wTk pi + 1 ≤ 0 ∀pi ∈ ˜O
+
+(7) Considering the unconstrained problem, the closed-form solution can be found by setting the gradient of the objective function in (7) to zero: 
+
+∂∂w k
+
+( 12 wTk wk + ( α − 1) wTk−1wk) = wk + ( α − 1) wk−1 = 0 
+
+(8) Through recursive expansion, the current bounding line can be described using the initial bounding line parameters w0
+
+as the response of a first-order discrete-time system through 
+
+wk = (1 − α)kw0. Equivalently, the continuous-time system is represented by w(t) = e− tτ w0. By setting t = k∆t,where ∆t is the discrete timestep, the discrete-time parameter can be related to the continuous-time time constant τ via 
+
+α = 1 − e− ∆tτ . This formulation allows the smoothness of successive obstacle bounding lines to be adjusted by directly selecting the time constant τ , thereby balancing smooth tran-sitions against obstacle clearance maximization within the optimization. Alternatively, the bounding lines can be constrained to be parallel, as in the standard SVM formulation, to define a consistent maximum margin and preserve symmetry. Now, the left wT p+b = −1 and right wT p+b = 1 bounding lines (Fig. 2) are characterized by the shared parameters w ∈ R2, b ∈ R. The distance between the parallel lines becomes 2√wT w , while the shared line parameters mean the obstacle separating inequali-ties must respect direction in the ensuing optimization: 
+
+min 
+
+> w,b
+
+12 wT w
+
+subject to wT pi + b − 1 ≥ 0 ∀pi ∈ O r
+
+wT pj + b + 1 ≤ 0 ∀pj ∈ O l
+
+− 1 + ϵ ≤ b ≤ 1 − ϵ
+
+(9) Here, b is bounded using a small, positive ϵ to ensure that the vehicle origin remains between the two obstacle bounding lines. In practice, strict convexity is ensured by adding a small quadratic objective term involving b. The center line is defined by wT q + b = 0 , serving as the effective tracking line, where normalization by b leads to only two line parameters. Goldfarb and Idnani’s active-set dual method [32] can be used to solve the QP with linear inequality constraints, producing the bounding and center lines for ensuing PD control.  
+
+> Fig. 2. Left and right parallel bounding lines, obstacle clusters and the optimal center line that maximizes obstacle clearance. The case of independent bounding lines is described similarly.
+
+B. Feedback Linearization-Based Vehicle Control 
+
+Now, PD control regulates the vehicle’s distance from each bounding line, where feedback linearization establishes closed-loop system dynamics corresponding to those of a standard second-order linear time-invariant system. Using independent bounding lines, wl and wr are generated separately as de-scribed, whereas in the parallel bounding line case, variable reduction similarly produces wl = wb+1 and wr = wb−1 . Re-spectively, the left and right vehicle-to-line distances become dl = 1√wTl wl
+
+and dr = 1√wTr wr
+
+. Each normalized vector is subsequently represented by ˆwl = dlwl and ˆwr = dr wr .In order for the left bounding line to remain on the vehicle’s left, wy,l < 0, while similarly for the right bounding line to remain on the right, wy,r > 0. Therefore, each line’s unit normal points inwards, towards the vehicle. Using the coordinate convention, the unit normal vectors are projected onto each axis through: 
+
+sin ϕl = 1 0 · ˆwl, sin ϕr = −1 0 · ˆwr (10) 
+
+cos ϕl = 0 −1 · ˆwl, cos ϕr = 0 1 · ˆwr (11) where ϕl and ϕr respectively describe the left and right bounding line orientations with respect to the +x axis. The rates of change for the left and right vehicle-to-line distances can now be found by projecting the current vehicle speed v in the +x direction back onto the bounding line normal vectors: 
+
+˙dl = v sin ϕl, ˙dr = −v sin ϕr (12) Taking the time derivative of each, the second-order rates of change are: 
+
+¨dl = − v2
+
+l cos ϕl tan δ, ¨dr = v2
+
+l cos ϕr tan δ (13) Here, the current bounding line orientation derivatives are sub-ject to the moving vehicle base frame’s orientation derivative 
+
+˙θ through ˙ϕl = ˙ϕr = − ˙θ. According to the kinematic bicycle model [6], ˙θ = vl tan( δ) with fixed wheelbase l and current steering angle δ.These second-order non-linear dynamics can be employed to either control the desired distance ddes  
+
+> l
+
+to the left bounding line using tracking error ˜dl = dl − ddes  
+
+> l
+
+or ddes  
+
+> r
+
+to the right bounding line with tracking error ˜dr = dr −ddes  
+
+> r
+
+. Alternatively, the vehicle can be controlled to remain midway between the bounding lines using dlr = dl − dr . Using (12), ˙dlr = ˙dl − ˙dr
+
+while through (13), ¨dlr = ¨dl − ¨dr . The second-order linear time-invariant system is constructed using a desired distance 
+
+ddes  
+
+> lr
+
+where ddes  
+
+> lr
+
+= 0 ensures maximum, equal clearance from both bounding lines: 
+
+kpddes  
+
+> lr
+
+= ¨dlr + kd ˙dlr + kpdlr (14) The proportional kp and derivative kd gains influence the system response, while the linear system is obtained from the non-linear dynamics through feedback linearization. Here, the linearizing steering angle control input is derived as: 
+
+δlr = atan( lv2(cos ϕl + cos ϕr ) (kd ˙dlr + kp ˜dlr )) (15) with tracking error ˜dlr = dlr −ddes  
+
+> lr
+
+and v > 0 to avoid the sin-gular case at v = 0 . The independent left and right bounding line control problems take similar forms, where linearization produces δl and δr for vehicle actuation, respectively: 
+
+δl = atan( lv2 cos ϕl
+
+(kd ˙dl + kp ˜dl)) (16) 
+
+δr = atan( −lv2 cos ϕr
+
+(kd ˙dr + kp ˜dr )) (17) The forward speed v of the vehicle is set to a nominal value 
+
+v0, where in the case of high collision-risk obstacles directly ahead, the minimum distance dmin enforces vehicle slowdown: 
+
+v = v0(1 − e− max( dmin −dstop ,0)  
+
+> αv
+
+) (18) with 
+
+dmin = min 
+
+> i∈{ 0,...,N obs −1}−θFOV ≤θi≤θFOV
+
+ri (19) Only obstacles within the front field of vision defined by θFOV 
+
+are considered, where dstop denotes the obstacle distance at which the vehicle is forced to stop. The decay rate αv controls how sharp the speed decrease is as dmin is reduced. Finally, the δcmd and vcmd control inputs are limited to satisfy feasible vehicle dynamics according to magnitude ( ±δmax , v max ) and rate of change ( ±∆δmax , ±∆vmax ) limits. Using this PD control approach, the vehicle steering angle 
+
+δcmd and forward velocity vcmd control inputs are thus gener-ated and applied for vehicle actuation. The process of finding a heading angle, bounding lines and control inputs through feedback linearization and minimum forward obstacle distance is conducted again at the next control step ∆t for real-time local navigation. IV. S IMULATION AND EXPERIMENTAL RESULTS 
+
+A. Evaluation Framework 
+
+To validate performance, the proposed navigation frame-work is evaluated against existing local planners. Testing is conducted both in the f1tenth simulator simulation environ-ment [33] and in real-world conditions on a 1/10 th scale RC vehicle platform motivated by the F1TENTH testbed [34]. The system hardware consists of the NVIDIA Jetson AGX Orin, RPLIDAR A2M8 laser scanner, BNO055 IMU and RealSense D435i RGB-D camera. Fig. 3 depicts the system architecture through a block diagram with interconnected sensing, control, remote interfacing and actuation stages. Here, the LiDAR sensor is primarily used for local obstacle detection, whereas the IMU and RGB-D camera contribute to more comprehensive perception through localization, ground-plane filtering, and obstacle identification. Remote interfacing is used to both initiate operation and enable autonomous nav-igation. The laser scanner, RGB-D camera and IMU module publish data at approximately 10 Hz, 30 Hz and 100 Hz, respectively. Ensuing vehicle actuation based on the control input commands δcmd and vcmd is provided by the electronic speed controller, VESC, at about 10 Hz. The open-source software stack that uses the proposed navigation approach is implemented in C++ using ROS Noetic. The baseline local planning approaches adhere to the stan-dard ROS navigation stack, in which the central move base 
+
+node connects a local and global planner via nav core to per-form navigation and obstacle avoidance using 2D occupancy grid costmaps. Since this paper focuses on navigation in un-mapped environments, no predefined global goal is specified; instead, these planners utilize a common exploration package, 
+
+explore lite , which continuously updates unexplored frontiers. Fig. 3. System integration is represented by a block diagram highlighting the sensors, navigation framework, actuation and remote interface with the target platform. In simulation, the sensor and actuation components are emulated. 
+
+In these tests, the largest frontier located ahead of the vehicle is selected as the immediate goal. The global planner then generates a path toward the time-varying goal, while the local planner handles colli-sion avoidance, producing an optimized trajectory for im-mediate motion. In these tests, three common ROS local planners— dwa local planner [25], teb local planner [27] and mpc local planner [4]—are evaluated with default set-tings, except for those corresponding to the kinematics and physical parameters of the specific experimental vehicle. 
+
+B. Simulation Results 
+
+In the simulation environment, Section III’s navigation approach is evaluated with pertinent parameters l = 0.287 m, 
+
+δmax = 0.4189 rad, v0 = 1.5 m/s, dstop = 0.8 m, αv = 0.5 m, 
+
+θFOV = π 
+
+> 8
+
+rad, kp = 3 .5 s−2 and kd = 4 s−1. For heading angle selection, dsafe = 2 m, al=ar = π 
+
+> 9
+
+rad and bl=br = π 
+
+> 2
+
+rad. The parallel bounding line optimization in (9) is used along with the dual bounding line control problem, culminating in the linearizing control input described by (15). The path traversed by the proposed approach on a simulated course is compared to those of the DWA, TEB and MPC exploration-based planners in Fig. 4. The novel method effec-tively maintains a path near the center of the track throughout, maximizing obstacle clearance according to its formulation. Meanwhile, the exploration methods do not attain central paths along the course, instead cutting corners and risking closer obstacle proximity. Of the exploration planners, local planning using TEB is most effective, as DWA progresses at a lower speed than desired, while MPC occasionally experiences unexpected oscillations due to poor optimization solutions.  
+
+> Fig. 4. Paths obtained by each local navigation strategy in the simulation. Each path starts at the global origin and proceeds clockwise around the map.
+
+Table I measures navigation performance in simulation according to several key metrics. The sample time is denoted by ˜k ∈ { 0, ..., ˜kend }, ranging over the full test, where dmin ,˜k in-dicates the minimum obstacle proximity to the current vehicle position at sample ˜k. The minimum obstacle proximity over the full test is represented by min 
+
+> ˜k
+
+dmin ,˜k, while ¯dmin denotes the average minimum proximity. For both control inputs, the mean ( |δcmd ,˜k|, ¯vcmd ,˜k) and variance ( Var( δcmd ,˜k), Var( vcmd ,˜k))are also reported. Notably, the proposed navigation method achieves superior safety through a higher min 
+
+> ˜k
+
+dmin ,˜k and especially ¯dmin compared to other planners while attaining low control effort and a velocity near the desired nominal value.                              
+
+> TABLE I SIMULATION PERFORMANCE OF THE PROPOSED NAVIGATION METHOD AND EXISTING LOCAL PLANNERS
+> Local Planner min ˜kdmin ,˜k
+> (m)
+> ¯dmin
+> (m)
+> |δcmd ,˜k|
+> (rad)
+> Var( δcmd ,˜k)
+> (rad 2)
+> ¯vcmd ,˜k
+> (m/s)
+> Var( vcmd ,˜k)
+> (m 2/s 2)
+> DWA explore 0.207 1.147 0.060 0.008 0.492 0.011
+> TEB explore 0.521 1.289 0.075 0.011 1.474 0.027
+> MPC explore 0.278 1.268 0.124 0.032 1.246 0.201
+> Proposed Method 0.508 1.677 0.080 0.012 1.482 0.009
+
+C. Experimental Results 
+
+Moreover, testing is conducted using a 1/10 th scale RC vehicle on the course layout illustrated in Fig. 5. Here, local navigation performance is validated in real-world conditions with imperfect sensor capabilities and vehicle dynamics that are not fully captured by the kinematic bicycle model. The same parameter values used in Section IV-B’s simulation are retained in the experiment. Again, the proposed navigation method produces a smooth path, while more effectively max-imizing obstacle clearance compared to the exploration-based planners (Fig. 6). Fig. 5. Experiment course layout and 1/10 th scale RC vehicle.  
+
+> Fig. 6. Paths obtained by each local navigation strategy in the experiment. Each path starts at the global origin and navigates the map counterclockwise.
+
+Using the key metrics detailed in Section IV-B, navigation performance in the experiment is quantified via Table II. Mir-roring the simulation results, the proposed method performs best in terms of obstacle proximity metrics and exhibits low control effort. The average velocity attained is close to the desired nominal value, but lower in practice due to initial acceleration, deceleration upon course completion, and the incorporated vehicle slowdown function. Meanwhile, the DWA and MPC exploration-based local planners attain significantly lower average velocities and poorer minimum obstacle clear-ance measures compared to the best baseline method, TEB. Thus, the proposed navigation scheme is transferable to real-world conditions, where effective performance and safety are maintained.                              
+
+> TABLE II REAL -WORLD PERFORMANCE OF THE PROPOSED NAVIGATION METHOD AND EXISTING LOCAL PLANNERS
+> Local Planner min ˜kdmin ,˜k
+> (m)
+> ¯dmin
+> (m)
+> |δcmd ,˜k|
+> (rad)
+> Var( δcmd ,˜k)
+> (rad 2)
+> ¯vcmd ,˜k
+> (m/s)
+> Var( vcmd ,˜k)
+> (m 2/s 2)
+> DWA explore 0.385 0.654 0.118 0.028 0.491 0.012
+> TEB explore 0.570 0.843 0.157 0.032 1.356 0.139
+> MPC explore 0.313 0.831 0.253 0.073 0.858 0.149
+> Proposed Method 0.587 0.978 0.147 0.032 1.281 0.107
+
+Computation times ( tcomp ,˜k) for each navigation approach are evaluated in terms of both the mean ( ¯tcomp ) and maximum (max 
+
+> ˜k
+
+tcomp ,˜k, abbreviated as max tcomp ) and summarized in Table III. For the exploration-based planners, computation occurs across three stages: updating unexplored frontiers and selecting a new local goal, performing global planning toward this goal and finally, executing local planning to follow this path while avoiding collisions. The third stage varies between the different exploration methods. Computation times for the individual stages are represented as tfrn ,˜k, t glb ,˜k & tloc ,˜k, where their sum equals the total planning computation time tcomp ,˜k.The proposed navigation method achieves the lowest av-erage and worst-case computation times due to the com-putational efficiency of convex optimization and feedback-linearizing control. The computation times of all other planners are, at best, on the order of magnitude greater than that of the proposed approach, although each still satisfies the 100-ms control period on average. MPC-based exploration significantly exceeds this control period in the worst case, when an optimization solution cannot be readily obtained and no optimization timeout is enforced to maintain real-time operation.                                
+
+> TABLE III REAL -WORLD PLANNING COMPUTATION TIMES FOR THE PROPOSED NAVIGATION METHOD AND EXISTING LOCAL PLANNERS
+> Local Planner ¯tfrn
+> (ms)
+> ¯tglb
+> (ms)
+> ¯tloc
+> (ms)
+> ¯tcomp
+> (ms)
+> max tfrn
+> (ms)
+> max tglb
+> (ms)
+> max tloc
+> (ms)
+> max tcomp
+> (ms)
+> DWA explore 3.6 0.9 11.8 16.3 7.4 1.9 27.9 37.1
+> TEB explore 1.9 0.8 3.2 5.9 5.2 1.5 8.3 15.0
+> MPC explore 2.0 1.1 43.7 46.7 3.8 10.2 484.8 498.8
+> Proposed Method 0.5 1.7
+
+V. C ONCLUSION 
+
+This paper outlined a novel approach for safe, local naviga-tion in unknown environments for mobile robots with Acker-mann steering. A process for finding the safest local heading direction was established before obstacle bounding lines were constructed through several unique obstacle clearance maxi-mization schemes. A feedback-linearizing PD controller then regulated the vehicle position relative to either the left, right or both obstacle bounding lines through the steering angle control input. High collision-risk obstacles directly ahead motivated velocity control for vehicle slowdown, before the steering angle and velocity control inputs were constrained by vehicle dynamics and applied for actuation. In simulation and experiment, this navigation method pro-duced the safest paths with low control effort and achieved the lowest computation times compared to some existing exploration-based approaches. Therefore, this method serves as a basis for universal safe local navigation in unmapped set-tings and offers the opportunity for integration in a hierarchical planner for safe global navigation. It should be noted that although the method proposed here was developed for vehicles with Ackermann steering, it could be revised to accommodate mobile robots with different motion kinematics. REFERENCES [1] H. Jafarzadeh and C. H. Fleming, “An exact geometry–based algorithm for path planning,” Int. J. Appl. Math. Comput. Sci. , vol. 28, no. 3, p. 493–504, Sep. 2018. [2] Z. Dong, H. Sun, G. Chen, N. Ma, Q. Wang, and Y. Yan, “Improved A * algorithm for autonomous vehicle path planning under post-disaster rescue scene,” in Proc. 8th IEEE Int. Conf. Robot. Control Autom. , Jan. 2024, p. 206–210. [3] J. Ji, A. Khajepour, W. W. Melek, and Y. Huang, “Path planning and tracking for vehicle collision avoidance based on model predictive control with multiconstraints,” IEEE Trans. Veh. Technol. , vol. 66, no. 2, p. 952–964, Feb. 2017. [4] C. Rosmann, A. Makarow, and T. Bertram, “Online motion planning based on nonlinear model predictive control with non-euclidean rotation groups,” in Eur. Control Conf. , Jun. 2021, p. 1583–1590. [5] D. Lam, C. Manzie, and M. Good, “Model predictive contouring con-trol,” in Proc. 49th IEEE Conf. Decis. Control , Dec. 2010, p. 6137–6142. [6] R. Rajamani, Vehicle Dynamics and Control . Springer, 2012. [7] G. Williams, P. Drews, B. Goldfain, J. M. Rehg, and E. A. Theodorou, “Aggressive driving with model predictive path integral control,” in Proc. IEEE Int. Conf. Robot. Autom. , May 2016, p. 1433–1440. [8] E. Alcal´ a, V. Puig, and J. Quevedo, “LPV-MPC control for autonomous vehicles,” IFAC-PapersOnLine , vol. 52, no. 28, p. 106–113, 2019. [9] A. Anil and V. Jisha, “Trajectory tracking control of an autonomous vehicle using model predictive control and PID controller,” in Proc. IEEE Int. Conf. Control, Commun. Comput. , 2023, pp. 1–6. [10] M. T. Emirler, I. M. C. Uygan, B. Aksun G¨ uvenc ¸, and L. G¨ uvenc ¸, “Robust PID steering control in parameter space for highly automated driving,” Int. J. Veh. Technol. , vol. 2014, p. 1–8, Feb. 2014. [11] A. Mourad and Z. Youcef, “Wheeled mobile robot path planning and path tracking in a static environment using TLBO and PID- TLBO control,” in Proc. 21st IEEE Int. Conf. Sci. Tech. Autom. Control Comput. Eng. , 2022, pp. 116–121. [12] R. DeSantis, “Path-tracking for car-like robots with single and double steering,” IEEE Trans. Veh. Technol. , vol. 44, no. 2, pp. 366–377, 1995. [13] R. S. D’Souza, R. Louwers, and C. Nielsen, “Piecewise linear path following for a unicycle using transverse feedback linearization,” IEEE Trans. Control Syst. Technol. , vol. 29, no. 6, pp. 2575–2585, 2021. [14] W. Farag and Z. Saleh, “Tuning of PID track followers for autonomous driving,” in Proc. IEEE Int. Conf. Innov. Intell. Inform., Comput., Technol. , 2018, pp. 1–7. [15] R. Wallace, A. T. Stentz, C. Thorpe, H. Moravec, W. R. L. Whittaker, and T. Kanade, “First results in robot road-following,” in Proc. 9th Int. Joint Conf. Artif. Intell. , vol. 2, August 1985, pp. 1089 – 1095. [16] Y. Huang, Z. Tian, Q. Jiang, and J. Xu, “Path tracking based on improved pure pursuit model and PID,” in Proc. 2nd IEEE Int. Conf. Civ. Aviat. Saf. Inf. Technol. , Oct. 2020, p. 359–364. [17] S. Macenski, S. Singh, F. Mart´ ın, and J. Gin´ es, “Regulated pure pursuit for robot path tracking,” Auton. Robots , vol. 47, no. 6, p. 685–694, Jun. 2023. [18] S. LaValle and J. Kuffner, “Randomized kinodynamic planning,” in Proc. IEEE Int. Conf. Robot. Autom. , vol. 1, 1999, p. 473–479. [19] L. Kavraki, P. Svestka, J.-C. Latombe, and M. Overmars, “Probabilistic roadmaps for path planning in high-dimensional configuration spaces,” 
+
+IEEE Trans. Robot. Autom. , vol. 12, no. 4, pp. 566–580, 1996. [20] D. Chikurtev, “Mobile robot simulation and navigation in ROS and Gazebo,” in Proc. IEEE Int. Conf. Autom. Inform. , Oct. 2020, p. 1–6. [21] Y. Liang, F. Hu, and X. Zhou, “A two-stage local path planning algorithm based on sampling and optimization methods,” Appl. Sci. , vol. 15, no. 9, 2025. [22] A. Sridhar, D. Shah, C. Glossop, and S. Levine, “NoMaD: Goal masked diffusion policies for navigation and exploration,” in Proc. IEEE Int. Conf. Robot. Autom. , 2024, pp. 63–70. [23] O. Khatib, “Real-time obstacle avoidance for manipulators and mobile robots,” in Proc. IEEE Int. Conf. Robot. Autom. , vol. 2, 1985, p. 500–505. [24] Y. Koren and J. Borenstein, “Potential field methods and their inherent limitations for mobile robot navigation,” in Proc. IEEE Int. Conf. Robot. Autom. , 1991. [25] D. Fox, W. Burgard, and S. Thrun, “The dynamic window approach to collision avoidance,” IEEE Robot. Autom. Mag. , vol. 4, no. 1, p. 23–33, Mar. 1997. [26] S. Quinlan and O. Khatib, “Elastic bands: connecting path planning and control,” in Proc. IEEE Int. Conf. Robot. Autom. , 1993. [27] C. Roesmann, W. Feiten, T. Woesch, F. Hoffmann, and T. Bertram, “Trajectory modification considering dynamic constraints of autonomous robots,” in Proc. ROBOTIK, 7th German Conf. Robot. , 2012, pp. 1–6. [28] V. Sezer and M. Gokasan, “A novel obstacle avoidance algorithm: “Follow the Gap Method”,” Robot. Auton. Syst. , vol. 60, no. 9, p. 1123–1134, Sep. 2012. [29] C. Cortes and V. Vapnik, “Support-vector networks,” Mach. Learn. ,vol. 20, no. 3, p. 273–297, Sep. 1995. [30] J. Miura, “Support vector path planning,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst. , Oct. 2006, p. 2894–2899. [31] N. Morales, J. Toledo, and L. Acosta, “Path planning using a multiclass support vector machine,” Appl. Soft Comput. , vol. 43, p. 498–509, Jun. 2016. [32] D. Goldfarb and A. Idnani, “A numerically stable dual method for solving strictly convex quadratic programs,” Math. Program. , vol. 27, no. 1, p. 1–33, Sep. 1983. [33] V. S. Babu and M. Behl, “f1tenth.dev - an open-source ROS based F1/10 autonomous racing simulator,” in Proc. IEEE Int. Conf. Autom. Sci. Eng. ,Aug. 2020, p. 1614–1620. [34] M. O’Kelly, V. Sukhil, H. Abbas, J. Harkins, C. Kao, Y. V. Pant, R. Mangharam, D. Agarwal, M. Behl, P. Burgio, and M. Bertogna, “F1/10: An open-source autonomous cyber-physical platform,” 2019. [Online]. Available: https://arxiv.org/abs/1901.08567
