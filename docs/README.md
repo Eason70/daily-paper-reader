@@ -6,32 +6,38 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-22
-- 运行时间：2026-06-22 22:04:29 UTC
+- 最新运行日期：2026-06-23
+- 运行时间：2026-06-23 22:19:13 UTC
 - 运行状态：成功
-- 本次总论文数：4
+- 本次总论文数：6
 - 精读区：1
-- 速读区：3
+- 速读区：5
 
 ### 今日简报（AI）
-今日精读1篇高分论文《Stable Transformer-Actor-Critic MPC》，速读3篇覆盖无人车补偿控制、安全导航与随机时序逻辑。最值得关注精读论文的收缩分析理论及其在MPC中的稳定性优化，以及速读中无人车安全局部导航和路径跟踪补偿方法。建议先精读最高分论文理解理论体系，再按应用场景选择速读内容进行实践验证。
-- 详情：[/202606/22/README](/202606/22/README)
+今日聚焦于多目标导航中的冲突感知切换机制，以及无人机通信网络与强化学习控制等前沿方向。最值得关注的是精读论文提出的CBF-CLF框架下解决多目标导航冲突的创新方法，以及速读中结合TD3算法的无人机抗风轨迹优化。建议普通读者优先精读冲突感知切换论文，其理论深度与实践价值突出；速读内容可补充对连续服务可用性与安全分层强化学习的理解。
+- 详情：[/202606/23/README](/202606/23/README)
 
 ### 精读区论文标签
-1. [Stable Transformer-Actor-Critic Model Predictive Control: A Contraction Analysis Approach](/202606/22/2606.20197v1-stable-transformer-actor-critic-model-predictive-control-a-contraction-analysis-approach)  
+1. [Conflict-Aware Switching for CBF-CLF-Based Multi-Goal Navigation](/202606/23/2606.21577v1-conflict-aware-switching-for-cbf-clf-based-multi-goal-navigation)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：使用变压器-演员-评论家MPC和收缩分析提供稳定鲁棒控制策略，与安全强化学习相关
+   evidence：使用控制屏障函数和控制李雅普诺夫函数进行安全多目标导航,并采用冲突感知切换策略
 
 ### 速读区论文标签
-1. [DNN Koopman-Based Deviation Compensation for UGV Path Tracking Control on Coupled Slope and Potholed Road](/202606/22/2606.18630v1-dnn-koopman-based-deviation-compensation-for-ugv-path-tracking-control-on-coupled-slope-and-potholed-road)  
+1. [Wind-Resilient Trajectory Optimization for UAV-BS Networks: TD3 for Continuous Service Availability](/202606/23/2606.18556v2-wind-resilient-trajectory-optimization-for-uav-bs-networks-td3-for-continuous-service-availability)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：利用深度神经网络进行无人车路径跟踪控制
-2. [Safe Local Navigation for Ackermann-Steered Robots in Unmapped Environments](/202606/22/2606.19672v1-safe-local-navigation-for-ackermann-steered-robots-in-unmapped-environments)  
+   evidence：基于深度强化学习（TD3）的无人机安全轨迹控制；虽然未显式使用CBF，但方法可迁移至CBF框架
+2. [Stable Transformer-Actor-Critic Model Predictive Control: A Contraction Analysis Approach](/202606/23/2606.20197v2-stable-transformer-actor-critic-model-predictive-control-a-contraction-analysis-approach)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：提出阿克曼转向机器人在未知环境中的安全局部导航控制框架
-3. [pdSTL: Probabilistic Differentiable Signal Temporal Logic for Stochastic Systems](/202606/22/2606.19561v1-pdstl-probabilistic-differentiable-signal-temporal-logic-for-stochastic-systems)  
+   evidence：基于收缩理论的稳定Transformer-Actor-Critic MPC，与基于神经网络的安全控制高度相关
+3. [Imagine to Ensure Safety in Hierarchical Reinforcement Learning](/202606/23/2606.22509v1-imagine-to-ensure-safety-in-hierarchical-reinforcement-learning)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：层次强化学习中的安全探索
+4. [CRAX: Fast Safe Reinforcement Learning Benchmarking](/202606/23/2606.20376v2-crax-fast-safe-reinforcement-learning-benchmarking)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：为随机系统提供概率可微信号时序逻辑用于安全规约
+   evidence：安全强化学习基准测试
+5. [SafeDojo: Safe Reinforcement Learning for VLA via Interactive World Model](/202606/23/2606.20698v1-safedojo-safe-reinforcement-learning-for-vla-via-interactive-world-model)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：安全强化学习与世界模型
 
 
 <div class="dpr-home-promo-card">
