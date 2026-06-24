@@ -1,0 +1,1046 @@
+Title: A Differentiable Composite Approximation Framework for Autonomous Underwater Vehicle Maneuvering Modeling from Sea-Trial Data
+
+URL Source: https://arxiv.org/pdf/2606.19711v1
+
+Published Time: Fri, 19 Jun 2026 00:22:46 GMT
+
+Number of Pages: 32
+
+Markdown Content:
+# A Differentiable Composite Approximation Framework for Autonomous Underwater Vehicle Maneuvering Modeling from Sea-Trial Data 
+
+Aobo Wang a,b , Aifei Xia c, Zihao Wang c, ∗, Lizhu Hao d
+
+> aCollege of Shipbuilding Engineering, Harbin Engineering University, Harbin, 150001, China
+> bChina Academy of Aerospace Aerodynamics, Beijing, 100074, China
+> cInstitute of Artificial Intelligence, Shanghai University, Shanghai, 200444, China
+> dChina Ship Scientific Research Center, Wuxi, 214082, China
+
+Abstract 
+
+Field-based modeling from onboard measurements can produce autonomous underwater vehicle (AUV) maneuvering models that reflect real operating characteristics. From an approximation perspective, conventional maneu-vering models use predefined constraint polynomial bases, whereas data-driven models use data-adaptive bases. Motivated by this basis-function view, this paper presents a differentiable composite-approximation formula-tion, in which the polynomial-basis component and the data-adaptive ba-sis component are treated as differentiable parts of a single predictor and calibrated jointly. A gradient-based co-calibration method is developed for full-scale AUV maneuvering prediction, where a sensitivity-aware mechanism regulates bounded polynomial updates while the neural residual captures re-maining nonlinear discrepancies under a shared prediction objective. To ac-count for ocean-current effects in field data, a turning-motion-based current estimation and compensation procedure is incorporated to construct current-compensated learning targets for training and rollout. The framework is evaluated using sea-trial data collected from a 7-meter AUV under multiple maneuvering conditions. Results show that the proposed method improves recursive trajectory and velocity prediction compared with polynomial-only, neural-only, and frozen-prior hybrid baselines, demonstrating its applicability to field-data-based AUV maneuvering modeling. 
+
+> ∗Corresponding author: zihaowang@shu.edu.cn
+> arXiv:2606.19711v1 [cs.RO] 18 Jun 2026
+
+1. Introduction 
+
+Autonomous Underwater Vehicles (AUVs) play a vital role in marine ap-plications such as exploration, monitoring, and defense. As missions grow in complexity, AUVs are expected to operate autonomously over extended peri-ods with minimal human intervention. To support such capabilities, precise dynamic modeling becomes essential. By capturing the nonlinear charac-teristics of underwater motion, these models form the foundation for the agent to understand how it interacts with its environment and serve as a key enabler for reliable state prediction, informed decision-making, model-aided navigation, and model-based control (Smallwood and Whitcomb, 2004; Fossen, 2021). Conventional AUV dynamic models are often derived from polynomial approximations of hydrodynamic forces and moments, where pre-defined polynomial basis functions involving velocity states and control inputs are fitted to experimental data. The unknown parameters of the polynomial ba-sis terms, called hydrodynamic coefficients, are relatively interpretable and compact, making them suitable for control design. Common approaches for estimating these coefficients include captive model tests (Nouri et al., 2016), CFD simulations (Du et al., 2018; Go and Ahn, 2019), and free-running based system identification methods (Ahmed et al., 2023). Among these methods, free-running based system identification methods are more suitable for in-field modeling and post-deployment recalibration, as they do not require specialized facilities or computational resources. They estimate the coefficients by fitting the model output to measured free-running data. Prior studies have identified surge or yaw dynamics using least squares (Hegrenaes et al., 2007b; Zhang et al., 2020), Kalman filtering (Tiano et al., 2007; Sabet et al., 2017; Busse et al., 2022), and H-infinity filter (Sajedi and Bozorg, 2019). According to established maneuvering theory, third-order polynomial basis functions are commonly adopted to represent the dominant nonlinear hydrodynamic effects of marine vehicles (Fossen, 2021). Such polynomial models provide sufficient approximation when the selected terms are well conditioned and sufficiently excited by the available data. However, as the number of hydrodynamic derivatives increases, especially in coupled multi-degree-of-freedom motion, the regression basis may become highly correlated. This collinearity can lead to parameter drift and poor 2identifiability: the model may fit the measured trajectories in a mathematical sense, while the estimated coefficients become physically less reliable and the resulting predictor generalizes poorly outside the calibration data. Learning-based data-driven modeling methods provide another route for approximating vehicle dynamics, which can be interpreted as adaptive-basis function approximation from the perspective of approximation theory. In-stead of prescribing a fixed set of polynomial basis functions, these methods learn implicit basis representations from data. For example, neural networks construct highly flexible function approximators through cascaded nonlinear transformations, enabling them to capture complex nonlinear relationships and interaction effects without explicitly specifying the functional form in ad-vance. Related approaches have been explored for marine vehicle dynamics, including multi-output Gaussian processes (Ramirez et al., 2021), ensemble MLP models (Tešnar et al., 2025), and physics-informed neural networks (Zhao et al., 2024). Ramirez et al. (2021) employed multi-output Gaussian processes to model the dynamics of an underactuated AUV with limited data, while Tešnar et al. (2025) constructed an ensemble-MLP dynamics model and used predictive uncertainty to guide data selection for rehearsal in storage-limited online learning. Physics-informed neural networks have also been introduced to incorporate governing equations into neural prediction models (Zhao et al., 2024). However, the strong representation capacity of these adaptive approxima-tors is a double-edged sword. Although they offer high flexibility for modeling complex and high-dimensional dynamics, they may also overfit spurious cor-relations in the training data, especially when the available sea-trial data are limited and noisy. Such correlations may not correspond to physically meaningful dynamics and may become unreliable when the vehicle operates outside the training distribution. These limitations motivate physics-guided or hybrid physics-data model-ing strategies. In a typical pipeline, a polynomial-basis maneuvering model provides a structured hydrodynamic backbone, while a neural component compensates for the effects that are not captured by the polynomial model. This idea is well known as grey-box modeling in the field of system identifica-tion. For example, Lei et al. (2022b) used a physics-guided neural network in which a theoretical model provides the baseline and an RBF neural network compensates for modeling errors. Incremental residual learning has also been investigated for underwater vehicles to compensate for the physical-modeling gap caused by environmental uncertainty (Lei et al., 2022a). Similar hybrid 3ideas have also been explored in marine ship-motion prediction and digital-twin modeling (Skulstad et al., 2021; Nielsen et al., 2022). Nevertheless, these grey-box modeling methods commonly follow a sequential workflow: the mechanistic component is first assumed to provide a sufficiently reliable baseline and is then fixed, while a neural network is trained to compensate for the remaining error. From an approximation-theoretic perspective, this sequential workflow can be viewed as a staged combination of fixed-basis polynomial approxima-tion and adaptive-basis neural approximation. If an imperfect polynomial model is first identified from free-running data and then frozen, its coef-ficients may absorb effects outside the selected model structure, including environmental disturbances, higher-order nonlinearities, and omitted hydro-dynamic couplings. Such a biased baseline may fit the training data but yield coefficients with reduced physical reliability and interpretability, forcing the neural residual to compensate for both unmodeled dynamics and baseline error, which may degrade recursive maneuvering prediction. To address field-data-based AUV maneuvering modeling using full-scale sea-trial data, this study reformulates hybrid maneuvering prediction as a unified composite approximation problem. In this formulation, the poly-nomial and data-adaptive basis components are integrated as differentiable parts of a single transition predictor and optimized under a common pre-diction loss, enabling joint calibration rather than separate-stage fitting. A sensitivity-aware gradient-based calibration mechanism is developed in which the polynomial coefficients remain adjustable within bounded ranges instead of being fixed as baseline parameters, while the data-adaptive basis cap-tures the remaining nonlinear discrepancies. To reduce the influence of ocean currents on model learning, a turning-motion-based current estimation and compensation procedure is further incorporated. Validation using sea-trial data collected from a 7-meter AUV shows that the proposed co-calibration framework enables simultaneous optimization of both basis components and improves field-data-based AUV maneuvering prediction. The remainder of this paper is organized as follows: Section 2 formu-lates the maneuvering modeling problem and the joint calibration objective. Section 3 presents the proposed modeling method. Section 4 provides exper-imental validation and analysis, while Section 5 concludes the paper. 42. Problem Formulation 
+
+The objective of this study is to construct an AUV maneuvering dy-namics model from in-field free-running sea-trial data. In sea trials, the measured velocity is affected by ambient ocean currents. To represent hy-drodynamic forces in terms of the vehicle velocity relative to the surrounding water, the measured velocity is decomposed into water-relative and current-induced components before model calibration. The learning target is there-fore defined in the water-relative velocity frame, while the current component is reintroduced during rollout for comparison with sea-trial measurements. Under this formulation, the modeling problem is to jointly calibrate a poly-nomial hydrodynamic component and a neural residual component within a single predictive model. 
+
+2.1. Horizontal-plane maneuvering data 
+
+The AUV motion considered in this paper is restricted to horizontal-plane maneuvering. The inertial-frame pose and body-fixed velocity are defined as 
+
+ηk = xk yk ψk
+
+⊤ , νk = uk vk rk
+
+⊤ , (1) where xk and yk are horizontal positions, ψk is the heading angle, and uk, vk,and rk denote surge velocity, sway velocity, and yaw rate, respectively. The measured command input is written as 
+
+ak = nk δk
+
+⊤ , (2) where nk is the propeller revolution rate and δk is the equivalent rudder angle. Let {D i}Ni=1 be a set of free-running or quasi-open-loop maneuvering trials collected from the same vehicle. Each trial contains a time series 
+
+Di =
+
+n 
+
+η(i) 
+
+> k
+
+, ν(i)
+
+> m,k
+
+, a(i)
+
+> k
+
+o Ti
+
+> k=1
+
+, (3) where νm,k denotes the measured velocity available from onboard navigation data. The engineering objective is to obtain a maneuvering model that can be executed over a complete input sequence from the sea-trial data. In rollout prediction, the predicted velocity at one step is fed back into the model input for subsequent prediction. 52.2. Velocity decomposition under current influence 
+
+For maneuvering dynamics, the hydrodynamic response is more naturally associated with the vehicle velocity relative to the surrounding water than with the current-affected measured velocity. During a short sea-trial maneu-ver, the ambient current is approximated as locally constant in the inertial frame, with speed Vc and direction βc. Its projection into the body-fixed frame is 
+
+νbc,k =
+
+
+
+Vc cos( βc − ψk)
+
+Vc sin( βc − ψk)0
+
+ . (4) The measured and water-relative velocities, both expressed in the body-fixed frame, are then related by 
+
+νbm,k = νbr,k + νbc,k , (5) where νbr,k = [ ur,k , v r,k , r k]⊤ is the water-relative maneuvering velocity ex-pressed in the body-fixed frame. For notational simplicity, the superscript b
+
+is omitted in the following learning formulation, since measured and water-relative maneuvering velocities are expressed in the body-fixed frame un-less otherwise stated. This transformation prevents the learned maneuvering model from mixing vehicle dynamics relative to the surrounding water with current-induced kinematic drift. The estimation of Vc and βc from turning maneuvers is described in Section 3. 
+
+2.3. Joint calibration problem 
+
+After current compensation, the learning target is the one-step transition of the water-relative maneuvering velocity. Each sample is represented by the relative state-input vector 
+
+sr,k = ν⊤ 
+
+> r,k
+
+a⊤
+
+> k
+
+⊤ = ur,k vr,k rk nk δk
+
+⊤ . (6) For a history length L, the recent maneuvering history is written as 
+
+Hr,k = [ sr,k −L+1 , . . . , sr,k ] . (7) The central problem is to construct a transition predictor that combines two complementary approximation components. The first component is a re-duced polynomial maneuvering prior pθ(·), whose prescribed basis functions provide a structured approximation of the dominant hydrodynamic response. 6The second component is a data-adaptive module Rϕ(·), which learns non-linear corrections from the maneuvering history. Instead of identifying the polynomial prior first and then freezing it before residual learning, this study treats both components as differentiable parts of a single composite predictor. The objective is to learn a discrete-time maneuvering model that predicts the one-step-ahead relative velocity: 
+
+bνr,k +1 = C (pθ, Rϕ, Hr,k ) , (8) where C(·) denotes a differentiable coupling of the polynomial prior and the data-adaptive module. Its concrete residual-coupled realization is defined in Section 3. The joint calibration problem is first written in terms of the effective polynomial coefficients as 
+
+(θ∗, ϕ∗) = arg min 
+
+> θ,ϕ
+> N
+
+X
+
+> i=1
+> Ti−1
+
+X
+
+> k=L
+
+ℓ
+
+
+
+ν(i)
+
+> r,k +1
+
+, bν(i)
+
+> r,k +1
+
+, ∆ν(i)
+
+> k+1
+
+
+
+. (9) Here, ∆ν(i) 
+
+> k+1
+
+denotes the adaptive correction term, and the loss function ℓ(·)
+
+penalizes the one-step prediction error and the amplitude of the adaptive cor-rection. Through this objective, the polynomial coefficients and the neural adaptive-basis parameters are optimized under the same prediction loss. In the implemented model, θ denotes the effective polynomial coefficient vector generated from bounded correction variables w through θ(w); therefore, the concrete optimization is performed over (w, ϕ) and yields θ(w∗). The poly-nomial component is not merely a frozen baseline; it remains an adjustable structured component within the composite predictor. The detailed polyno-mial basis, adaptive-basis architecture, bounded coefficient parameterization, and current estimation procedure are presented in Section 3. 
+
+3. Methodology 
+
+3.1. Overview of the proposed model 
+
+The proposed framework integrates a polynomial hydrodynamic model and a neural adaptive-basis module into a differentiable composite approxi-mation model. The parameters of both components are jointly calibrated by gradient descent under a common prediction loss, with a sensitivity-aware mechanism regulating the bounded updates of the polynomial component. 7As shown in Fig. 1, the workflow first converts the measured sea-trial veloc-ities into water-relative velocities by estimating and removing the current-induced component. The maneuvering dynamics are then learned in the water-relative frame using the jointly calibrated composite predictor. Dur-ing rollout, the estimated current is reintroduced to reconstruct the measured field behavior. 
+
+Fig. 1. Proposed current-compensated differentiable composite approximation framework for AUV maneuvering modeling 
+
+To implement the abstract predictor in Eq. (8), the polynomial prior is evaluated over the same history window: 
+
+Pθ(w),k = pθ(w)(sr,k −L+1 ), . . . , pθ(w)(sr,k ) . (10) The prior-output history provides the adaptive module with information about how the polynomial model explains the recent maneuvering response. The implemented residual-coupled prediction model is 
+
+bνr,k +1 = pθ(w)(sr,k ) + Rϕ
+
+ Hr,k , Pθ(w),k 
+
+ , (11) where Pθ(w),k is the prior-output history defined in Eq. (10). The polynomial module and the neural adaptive-basis module are coupled through a skip con-nection. Specifically, the current polynomial output is directly retained as the 8hydrodynamic baseline in Eq. (11), while the polynomial-output history is also provided as part of the adaptive-basis input. This skip-connected design allows the adaptive-basis module to learn deviations conditioned on the poly-nomial hydrodynamic prediction, while the effective polynomial coefficients remain trainable. 
+
+3.2. Current compensation for sea-trial data 
+
+One major challenge in field modeling of AUVs is the disturbance induced by ocean currents. A feasible solution is to estimate the current velocity and compensate for its effect, thereby obtaining the water-relative motion states of the vehicle. This approach follows the relative-velocity formulation for marine craft under ocean currents (Fossen, 2021). For each short maneuvering trial, the ocean current is approximated as lo-cally constant in the inertial frame. Under this approximation, the measured body-fixed velocity is expressed as the sum of the water-relative velocity and the current projected into the body frame: 
+
+νbm = νbr + R⊤(ψ)νnc . (12) where νnc = [ Vc cos βc, V c sin βc, 0] ⊤ is the current velocity expressed in the inertial frame, and R(ψ) is the horizontal-plane rotation matrix from the body-fixed frame to the inertial frame. The current speed Vc and direction βc are estimated from the steady portion of turning maneuvers. During this segment, (ur, v r, r ) are treated as approximately constant, while the measured surge and sway velocities vary periodically with the heading angle because the inertial current is observed in the rotating body frame. The resulting regression model is 
+
+νbm = Φγ =
+
+
+
+1 0 0 cos ψ sin ψ
+
+0 1 0 − sin ψ cos ψ
+
+0 0 1 0 0
+
+
+
+ur
+
+vr
+
+rVc cos( βc)
+
+Vc sin( βc)
+
+ . (13) Stacking M samples from the steady turning segment gives 
+
+Y =
+
+
+
+νbm(1) 
+
+νbm(2) 
+
+...
+
+νbm(M )
+
+ , H =
+
+
+
+Φ(1) 
+
+Φ(2) 
+
+...
+
+Φ(M )
+
+ . (14) 9The unknown parameter vector is estimated by least squares: 
+
+ˆγ = arg min  
+
+> γ
+
+∥Y − Hγ ∥22 . (15) The continuous change of ψ in a turning maneuver provides the trigonometric excitation needed for the current components in Eq. (13). With ˆγ4 and ˆγ5
+
+denoting the estimated components of Vc cos βc and Vc sin βc, respectively, the current magnitude and direction are reconstructed as 
+
+ˆVc =
+
+q
+
+ˆγ24 + ˆ γ25 ,
+
+ˆβc = atan2 (ˆ γ5, ˆγ4) .
+
+(16) For notational simplicity, the hats are omitted in the subsequent current-compensation and rollout equations. After outlier replacement and low-pass filtering of the measured signals, the current-compensated velocity sequence used for training is constructed by removing the estimated body-frame current component: 
+
+νbr = νbm −
+
+
+
+Vc cos( βc − ψ)
+
+Vc sin( βc − ψ)0
+
+ . (17) Based on the current-compensated velocity sequence, the maneuvering dy-namics can be learned in the water-relative frame. 
+
+3.3. Differentiable composite approximation architecture 
+
+In this study, the maneuvering model is constructed as a differentiable composite approximation of the one-step maneuvering transition. It con-tains two complementary approximation modules. The first module uses explicitly specified polynomial hydrodynamic basis functions, which provide a compact and interpretable representation of the dominant surge, sway, and yaw-rate responses. The second module is a data-adaptive basis module implemented using long short-term memory (LSTM) networks, which learn history-dependent nonlinear features from the maneuvering sequence. The composite predictor is calibrated as a single differentiable transition map. For sr,k = [ ur,k , v r,k , r k, n k, δ k]⊤, the polynomial basis module is written as 
+
+pθ(sr,k ) = 
+
+
+
+pu(sr,k )
+
+pv(sr,k )
+
+pr(sr,k )
+
+ . (18) 10 where pθ = [ pu, p v, p r]⊤ directly approximates the next-step water-relative velocity. The retained channel-wise basis functions are 
+
+pu = θu, 1ur + θu, 2u2 
+
+> r
+
++ θu, 3n + θu, 4n2 + θu, 5δ2u2 
+
+> r
+
+,pv = θv, 1vr + θv, 2r + θv, 3δ + θv, 4r3 + θv, 5δ2r, pr = θr, 1r + θr, 2r3 + θr, 3δ + θr, 4urr + θr, 5rδ 2 + θr, 6vrr2.
+
+(19) This module is a reduced one-step transition approximation rather than a full force–moment model or a complete Abkowitz-type third-order polyno-mial maneuvering model. The retained basis includes the main linear damp-ing terms and selected nonlinear terms, allowing the module to capture the dominant hydrodynamic response with a compact parameterization. The corresponding coefficients are therefore interpreted as effective coefficients of the retained polynomial transition basis. In this sense, the module serves as an imperfect mechanistic prior that remains trainable during joint cali-bration with the adaptive-basis module, while avoiding the parameter drift and generalization issues that may arise when estimating a fully polynomial model from limited sea-trial data. Regarding the data-adaptive basis module, LSTM networks are used be-cause the correction to the one-step transition may depend on recent ma-neuvering memory, especially after steering actions and during the transient development of sway and yaw motion. In this study, the LSTM is treated as a standard recurrent nonlinear mapping. Its internal cell state allows the final hidden state to encode the recent maneuvering history. The initial hidden and cell states are set to zero for each training window. For each history window, the polynomial module is evaluated at every time step using the unnormalized physical variables in Hr,k , producing the prior-output history Pθ(w),k in Eq. (10). This sequence is then standard-ized using the same velocity scaling as (ur, v r, r ) and supplied to the LSTM module together with the standardized state-input variables. Let the tilde denote standardized variables. For each time index j in the window, the surge-channel adaptive-basis input is 
+
+zuj = ˜ur,j ˜nj ˜δj ˜pu,j 
+
+⊤ , (20) and the sway-yaw adaptive-basis input is 
+
+zvr j = ˜vr,j ˜rj ˜nj ˜δj ˜pv,j ˜pr,j 
+
+⊤ . (21) 11 In the implemented architecture, the surge channel uses one LSTM branch and the coupled sway-yaw channels use another LSTM branch. The final hid-den states are mapped by fully connected output layers to adaptive correction terms: 
+
+∆uk+1 = W uy huk + βuy , huk = LSTM u, ϕu
+
+ zuk−L+1: k
+
+ , (22) and 
+
+∆vk+1 
+
+∆rk+1 
+
+
+
+= W vr y hvr k + βvr y , hvr k = LSTM vr, ϕvr 
+
+ zvr k−L+1: k
+
+ . (23) The LSTM parameters and the output-layer parameters are included in ϕu
+
+and ϕvr . The adaptive-basis output is collected as 
+
+∆νk+1 = ∆uk+1 ∆vk+1 ∆rk+1 
+
+⊤ . (24) Equivalently, the compact notation used in Eq. (11) is 
+
+Rϕ
+
+ Hr,k , Pθ(w),k 
+
+ = ∆ νk+1 . (25) The final prediction uses a skip connection from the polynomial module to the output: 
+
+bνr,k +1 = pθ(w)(sr,k ) + ∆ νk+1 . (26) This skip-connected structure has two roles. First, the current polynomial output is directly retained as the structured one-step baseline. Second, the polynomial-output history is provided to the LSTM module as part of its sequence input, so that the adaptive basis is conditioned on the hydrody-namic prediction over the recent history. Thus, the polynomial basis module and the LSTM adaptive-basis module form a serial–parallel composite ap-proximation that remains differentiable with respect to both the polynomial coefficients and the LSTM parameters. 
+
+3.4. Joint optimization and sensitivity-aware bounded calibration 
+
+After defining the composite approximation architecture, the remaining task is to calibrate the polynomial basis module and the data adaptive-basis module in a single optimization problem. The procedure contains three parts. First, an initial polynomial transition model is obtained from current-compensated data to provide a structured starting point. Second, the poly-nomial coefficients are converted into bounded trainable variables so that the 12 polynomial module can be adjusted during learning without drifting arbitrar-ily. Third, the bounded coefficient variables and the LSTM adaptive-basis parameters are optimized by the same one-step prediction loss. This forms a sensitivity-aware calibration mechanism because the allowable coefficient movement and the gradient sensitivity of each coefficient are explicitly regu-lated by the bounded parameterization. The initial polynomial coefficients are obtained by fitting the retained basis functions to the current-compensated training data: 
+
+θ0 = arg min 
+
+> ¯θ
+> N
+
+X
+
+> i=1
+> Ti−1
+
+X
+
+> k=1
+
+ν(i) 
+
+> r,k +1
+
+− p¯θ(s(i)
+
+> r,k
+
+) 22
+
+. (27) This initial fit provides a structured reference model, but it is not treated as the final fixed physical model. In the proposed method, the effective coeffi-cients used by the polynomial module are generated from bounded correction variables: 
+
+θ(w) = θ0 ⊙ (1 + ρ tanh w) , (28) where w is trainable, ρ is the prescribed maximum relative correction range, and ⊙ denotes element-wise multiplication. This parameterization gives 
+
+−ρ < θj − θ0,j 
+
+θ0,j 
+
+< ρ, (29) for nonzero θ0,j . Thus, the polynomial basis module remains trainable, but its effective coefficients are constrained to stay within a controlled neighborhood of the initial polynomial fit. The trainable variables are the coefficient-correction variables w and the LSTM adaptive-basis parameters ϕ = {ϕu, ϕvr }. Let q = 1 , . . . , N s index the valid training windows, and let kq denote the last time index in the qth window. The one-step prediction error for this window is 
+
+eq = νr,k q +1 − bνr,k q +1 . (30) The training objective is 
+
+L(w, ϕ) = 1
+
+NsNsX
+
+> q=1
+
+e⊤ 
+
+> q
+
+W ν eq + λ∆ν⊤ 
+
+> q
+
+D−2 
+
+> ν
+
+∆νq
+
+ , (31) where ∆νq is the adaptive correction generated by Rϕ for the same window, 
+
+Dν = diag( σu, σ v, σ r) contains the training-set standard deviations of the 13 velocity channels, W ν = diag( ωu, ω v, ω r) is a channel-weighting matrix with 
+
+ωℓ proportional to 1/σ 2 
+
+> ℓ
+
+and normalized by its mean, and λ is the adaptive-correction penalty coefficient. The first term fits the next water-relative velocity, while the second term discourages the adaptive-basis module from unnecessarily replacing the polynomial basis module. The joint training problem can now be written as 
+
+(w∗, ϕ∗) = arg min  
+
+> w,ϕ
+
+L(w, ϕ). (32) In optimization, w and ϕ are included in the same computational graph and updated by a gradient-based optimizer with separate parameter groups and learning rates. The coefficient update is obtained by back-propagation through the dif-ferentiable composite predictor. For an individual correction variable wj ,
+
+∂θ j
+
+∂w j
+
+= ρθ 0,j 
+
+ 1 − tanh 2 wj
+
+ , (33) Equation (33) shows the sensitivity-aware nature of the coefficient calibra-tion. The scalar ρ sets the maximum relative range, while the factor 1 −
+
+tanh 2 wj reduces the local coefficient sensitivity as the correction approaches its bound. In one-step training, the history window is constructed from mea-sured current-compensated samples. Under this training setting, the sensi-tivity of the prediction to wj contains both the direct polynomial-baseline path and the indirect adaptive-basis input path: 
+
+∂bνr,k +1 
+
+∂w j
+
+=
+
+∂pθ(w)(sr,k )
+
+∂θ j
+
++ ∂Rϕ
+
+∂Pθ(w),k 
+
+∂Pθ(w),k 
+
+∂θ j
+
+ ∂θ j
+
+∂w j
+
+. (34) Here, the two terms correspond to the direct and indirect gradient paths from the polynomial module to the final prediction. The direct path comes from the skip connection, where the last polynomial output in the input window is added to the prediction, while the indirect path comes from feeding the standardized polynomial-output history into the LSTM adaptive-basis mod-ule. In addition, the adaptive-correction penalty in Eq. (31) also contributes a differentiable gradient through ∆νq.Algorithm 1 summarizes the training procedure. 14 Algorithm 1: Joint training of the polynomial basis and LSTM adaptive-basis modules 
+
+Input: Current-compensated training trials; history length L; initial polynomial coefficients θ0; correction range ρ;adaptive-correction penalty λ; learning rates ηϕ and ηw.
+
+Output: Optimized effective polynomial coefficients θ(w∗) and LSTM adaptive-basis parameters ϕ∗. 
+
+> 1
+
+Compute training-set normalization statistics from the current-compensated training data;  
+
+> 2
+
+Construct unstandardized windows Hr,k q , standardized windows 
+
+eHr,k q , and targets νr,k q +1 ; 
+
+> 3
+
+Initialize w = 0 and initialize ϕ; 
+
+> 4
+
+Create optimizer parameter groups for ϕ with learning rate ηϕ and for w with learning rate ηw and no weight decay;  
+
+> 5
+
+for each training epoch do  
+
+> 6
+
+for each mini-batch B do  
+
+> 7
+
+Compute bounded effective polynomial coefficients 
+
+θ(w) = θ0 ⊙ (1 + ρ tanh w); 
+
+> 8
+
+for each window q ∈ B do  
+
+> 9
+
+Evaluate pθ(w)(sr,j ) for j = kq − L + 1 , . . . , k q to form 
+
+Pθ(w),k q ; 
+
+> 10
+
+Standardize Pθ(w),k q and build zukq −L+1: kq and zvr kq −L+1: kq
+
+from Eqs. (20) and (21);  
+
+> 11
+
+Compute the adaptive correction 
+
+∆νq = Rϕ(Hr,k q , Pθ(w),k q ); 
+
+> 12
+
+Form the one-step prediction bνr,k q +1 = pθ(w)(sr,k q ) + ∆ νq; 
+
+> 13
+
+end for  
+
+> 14
+
+Compute the mini-batch version of the loss in Eq. (31);  
+
+> 15
+
+Clear accumulated gradients and back-propagate the loss through θ(w), Pθ(w),k q , the LSTM adaptive-basis branches, and the skip-connected summation;  
+
+> 16
+
+Update the optimizer parameter groups for ϕ and w; 
+
+> 17
+
+end for  
+
+> 18
+
+end for 
+
+15 3.5. Rollout prediction and current reintroduction 
+
+During model application, the learned predictor can be used in two modes. In the first mode, it is executed directly in the water-relative frame as an inherent maneuvering model to evaluate the vehicle maneuverability. In the second mode, the estimated current is reintroduced during rollout to predict the current-affected vehicle motion observed in sea trials. For both modes, the model is executed over complete maneuvering trials. The measured initial history is used to initialize the input window; after each step, the predicted water-relative velocity is appended to the history together with the recorded exogenous inputs (n, δ ) for the next prediction. This protocol tests the accumulated error behavior relevant to maneuvering simulation, digital-twin construction, and model-based control. For the current-reintroduced mode, the predicted yaw rate is first inte-grated to update the vehicle heading. The estimated current is then projected into the body-fixed frame using the updated heading, and the measured ve-locity is reconstructed as 
+
+bνbm,k = bνbr,k +
+
+
+
+Vc cos( βc − bψk)
+
+Vc sin( βc − bψk)0
+
+ . (35) The reconstructed body-frame velocity is then integrated through the horizontal-plane kinematics to obtain the predicted trajectory. 
+
+4. Experimental Validation and Analysis 
+
+4.1. Experimental Setup 
+
+To evaluate the effectiveness of the proposed modeling method, in-field experiments were conducted using a 7-meter-long AUV under real sea con-ditions. The trials took place in the East China Sea near Weihai, Shandong Province (approximately 37.5450 °N, 122.0908 °E). The geographic location and surrounding terrain of the test area are shown in Fig. 2. The coastal en-vironment featured generally calm sea states, but local ocean currents varied significantly due to seabed topography and coastal features. For example, turbulent flow was observed near protruding shoreline regions. Such spatial variability introduced uncertainties in the AUV’s motion response, influenc-ing the accuracy of dynamic modeling. 16 Fig. 2. Geographical location and surrounding terrain of the experimental area. 
+
+The experimental platform is a torpedo-shaped AUV measuring 7 meters in length and 0.5 meters in diameter, with a total weight of approximately 1.2 tons (as shown in Fig. 3). It is driven by a stern-mounted screw propeller providing continuous forward thrust. Yaw and pitch control are achieved via horizontal and vertical rudders, respectively. The vertical rudders range from -23 ◦ to 23 ◦. The vehicle is equipped with an Inertial Measurement Unit (IMU) and a Doppler Velocity Log (DVL), enabling real-time acquisition of position, velocity, and attitude data. These onboard sensor measurements, along with control inputs, constitute the core dataset for dynamic modeling. A series of free-running maneuvering trials were conducted under various operating conditions, including turning, zigzag, and random-rudder maneu-vers. Each maneuver type was performed at two propeller revolutions: 280 rpm and 420 rpm, corresponding approximately to the 4 kt and 6 kt speed conditions used in the data labels. Before each trial, the AUV was sub-merged to a depth of 4 meters and maintained in a steady state before the commanded rudder sequence was applied. In the modeling phase, the maneu-vering datasets serve distinct roles. Turning maneuvers are used to estimate trial-level current parameters for current compensation. For model training, the random-rudder maneuvers and selected turning maneuvers are used. The remaining turning and zigzag maneuvers are withheld from predictor training and used for validation. 17 Fig. 3. On-site sea trial of the experimental AUV platform. 
+
+4.2. Ocean Current Estimation Results 
+
+As detailed in the methodology section, ocean current parameters are es-timated from the steady-state phase of turning maneuvers. The estimated results from different turning trials are presented in Table 1, covering pro-peller revolutions of 280 rpm and 420 rpm. These two sets of trials were con-ducted in separate sessions. In each session, the maneuvers were performed in sequence, starting with larger rudder angles and gradually decreasing to smaller ones. 
+
+Table 1 
+
+Ocean current estimation from turning maneuvers Test condition n (rpm) ur (m/s) vr (m/s) Vc (m/s) βc (°)
+
+23 ◦ turning 280 1.4042 -0.0674 0.2170 42.31 
+
+15 ◦ turning 280 1.5036 -0.0470 0.2758 36.44 
+
+10 ◦ turning 280 1.5639 -0.0228 0.3592 55.47 
+
+23 ◦ turning 420 2.1752 -0.1098 0.3054 64.19 
+
+15 ◦ turning 420 2.3271 -0.0724 0.3463 69.14 
+
+10 ◦ turning 420 2.5099 -0.0203 0.6157 79.77 Across trials, the method estimates current parameters and the corre-18 sponding steady-state velocities (ur, v r), which characterize the AUV’s turn-ing response relative to the surrounding water. Under the 280 rpm condition, estimated current speeds Vc range from 0.2170 m/s to 0.3592 m/s, with di-rections βc between 36.44 ◦ and 55.47 ◦, indicating moderate variation across trials. For the 420 rpm condition, the first two trials produce similar results, while the third shows a sharp increase to 0.6157 m/s at 79.77 ◦, suggesting the vehicle encountered different local current characteristics, possibly due to spatial variation in the coastal test area. Fig. 4 illustrates the processing of surge and sway velocities in a 23 ◦ turn-ing maneuver. Under calm water conditions, these velocities are expected to approach quasi-steady values after the turn has developed. However, the raw measurements exhibit periodic variations induced by the projec-tion of a locally constant current into the rotating body frame, overlaid with high-frequency oscillations from sensor noise and other environmental dis-turbances. These periodic patterns arise from the continuous change in the vehicle heading angle, which excites the trigonometric components in Eq. 13. The fitted results based on Eq. 13 show good agreement with the measured data, capturing the periodic fluctuations attributed to the ocean current. With the estimated current parameters, the current-induced velocity is removed using Eq. 17. The compensated surge and sway velocities exhibit nearly constant trends despite minor high-frequency oscillations, which is consistent with the expected steady-state behavior during turning maneu-vers. These results confirm that the current information is effectively esti-mated. 
+
+4.3. Model Construction and Evaluation 
+
+This section evaluates whether the differentiable composite approximation can serve as an executable maneuvering model under sea-trial conditions. The evaluation is organized around three aspects. First, the proposed model is compared with a standalone polynomial prior and recurrent neural base-lines to examine whether the two approximation components are comple-mentary in recursive prediction. Second, ablation studies are conducted to separate the effects of bounded coefficient calibration and current compen-sation. Third, the calibrated polynomial coefficients are inspected to assess whether the prior module remains active after joint optimization. All re-ported errors are computed from recursive rollout prediction. 19 (a) 23 ◦ turning maneuver at 280 rpm. (b) 23 ◦ turning maneuver at 420 rpm.  
+
+> Fig. 4. Estimation and compensation of ocean current effects.
+
+4.3.1. Training and validation setup 
+
+Table 2 summarizes the data used for training and validation. The random-rudder training data are compensated using the current estimate identified from the 10 ◦ turning maneuver at 420 rpm, which was conducted close in time to the random-rudder trials. The selected 23 ◦ turning trials use their corresponding same-trial current estimates. The remaining turning and zigzag maneuvers are used for generalization validation. The proposed model uses a history length of L = 5 with a sampling inter-val of 1 s. The surge adaptive-basis branch is implemented as an LSTM with 128 hidden units followed by a fully connected output layer, while the cou-pled sway-yaw branch uses an LSTM with 256 hidden units followed by two fully connected output heads. The polynomial module is evaluated using the unnormalized variables [ur, v r, r, n, δ ], whereas the LSTM branches use stan-dardized state-input variables and standardized polynomial-output features. All neural and hybrid models are trained for 400 epochs with a batch size of 64 using Adam. The neural parameters use a learning rate of 1.0 × 10 −4 with a weight decay of 5.0 × 10 −4, while the prior-correction variables use a sep-arate learning rate of 0.006 without weight decay. The bounded-calibration range is set to ρ = 0 .9, and the adaptive-correction penalty is set to λ = 0 .05 .Training is performed by minimizing the one-step loss in Eq. (31). During 20 Item Maneuver data Current estimate used Training 4 kt random-rudder 10 ◦ turning at 420 rpm 6 kt random-rudder 4 kt 23 ◦ turning Same-trial estimate 6 kt 23 ◦ turning Validation 4 kt 10 ◦ turning Corresponding trial-level estimates in Table 1 are used for reconstruction and validation comparison. 4 kt 15 ◦ turning 6 kt 10 ◦ turning 6 kt 15 ◦ turning 4 kt 10 ◦/10 ◦ zigzag 4 kt 15 ◦/15 ◦ zigzag 4 kt 20 ◦/20 ◦ zigzag 6 kt 15 ◦/15 ◦ zigzag  
+
+> Table 2. Training and validation data used by the proposed model
+
+recursive validation, the predicted velocity is fed back into the next input window, and the recorded control inputs are applied at each step. 
+
+4.3.2. Comparison with polynomial and LSTM baselines 
+
+The comparison uses the eight holdout trials in Table 2, including four turning maneuvers and four zigzag maneuvers. The purpose is to test whether the proposed differentiable composite model improves the executable maneu-vering response. The comparison contains the proposed model and three baselines. The first baseline, denoted as the polynomial prior, retains only the reduced polynomial transition basis. The other two baselines are neural-only LSTM predictors. LSTM-DC is trained on the current-compensated water-relative velocity νr, with the estimated current added back only for trajectory recon-struction. LSTM-Raw uses the same pure LSTM architecture but is trained and rolled out directly on the measured velocity νm.Figs. 5 and 6 show representative predictions for two turning maneuvers and two zigzag maneuvers. Overall, the proposed model gives the most stable and balanced predictions in both velocity and trajectory. This can be seen across different maneuvering conditions, rather than from a single case. The 21 polynomial model captures the general maneuvering trend, but it is less able to represent nonlinear response details. Its errors also accumulate during standalone rollout. For example, it gives less accurate surge predictions in the two zigzag cases and a less accurate sway prediction in the 15 ◦/15 ◦ zigzag case. LSTM-DC can reproduce some local velocity trends, but its trajectory predictions are less stable and show a clear gap from the proposed model. LSTM-Raw gives larger drift and lower accuracy. This shows that directly learning current-affected measured velocities is a simple but weak recursive target, with limited generalization. These comparisons suggest that the pro-posed differentiable hybrid framework is more effective than using either a purely physics-based model or a purely data-driven model alone. Fig. 7 and Table 3 give the quantitative results, which are consistent with the visual comparison. The proposed model achieves the lowest errors in surge, sway, yaw, and trajectory prediction. This shows that the improve-ment is not limited to one response variable or one maneuver type. Instead, the model gives more balanced performance across all evaluated cases. This point is important because the main goal is not only to reduce the aver-age error, but also to obtain stable and balanced generalization in recursive prediction. Such behavior is necessary for a model to be useful for reliable maneuvering forecast.                     
+
+> Model uRMSE (m/s)
+> vRMSE (m/s)
+> rRMSE (deg/s) Trajectory RMSE (m) Proposed 0.115 0.159 0.704 7.04 Polynomial prior 0.126 0.229 0.728 10.69 LSTM-DC 0.131 0.170 0.733 9.85 LSTM-Raw 0.217 0.285 1.007 18.21
+
+Table 3. Recursive rollout results of the main comparison averaged over the eight holdout maneuvering trials 
+
+As an additional diagnostic, Fig. 8 compares the proposed model with a 29-parameter polynomial AUV maneuvering model following the struc-ture used in (Hegrenaes et al., 2007a). The 29-parameter model is fitted to the same training data and then evaluated in a standard 20 ◦/20 ◦ zigzag free-running simulation. This case is not included in the holdout average because it is not a sea-trial replay test. Under the tested setting, the 29-parameter polynomial model shows rapid growth during recursive free simu-lation, whereas the proposed predictor remains bounded within the plotted 22 1.2 
+
+1.4 
+
+1.6 
+
+1.8 
+
+> u (m/s)
+
+(a) 4 kt 
+
+15° turning 
+
+−0.5 
+
+0.0 
+
+0.5 
+
+> v (m/s)
+
+0 20 40 60 80 100 120 140 
+
+Time (s) 
+
+0
+
+1
+
+2
+
+3
+
+> r (deg/s)
+
+2.0 
+
+2.5 
+
+3.0 
+
+(b) 6 kt 
+
+10° turning 
+
+−0.5 
+
+0.0 
+
+0.5 
+
+0 20 40 60 80 100 
+
+Time (s) 
+
+0
+
+2
+
+4
+
+1.0 
+
+1.5 
+
+2.0 
+
+> u (m/s)
+
+(c) 4 kt 
+
+20°/20° zigzag 
+
+0.25 
+
+0.50 
+
+0.75 
+
+> v (m/s)
+
+0 20 40 60 80 
+
+Time (s) 
+
+−5 
+
+0
+
+5
+
+> r (deg/s)
+
+2.2 
+
+2.4 
+
+2.6 
+
+(d) 6 kt 
+
+15°/15° zigzag 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0 10 20 30 40 50 60 
+
+Time (s) 
+
+−5 
+
+0
+
+5
+
+Sea trial Proposed (joint) Poly. prior LSTM-DC LSTM-Raw Fig. 5. Representative recursive velocity predictions of the proposed model, the standalone polynomial prior, and LSTM baselines: (a) 4 kt, 15 ◦ turning; (b) 6 kt, 10 ◦ turning; (c) 4 kt, 20 ◦/20 ◦ zigzag; (d) 6 kt, 15 ◦/15 ◦ zigzag. 
+
+23 0 20 40 60 80 
+
+x (m) 
+
+−30 
+
+−20 
+
+−10 
+
+0
+
+10 
+
+20 
+
+30 
+
+40 
+
+> y (m)
+
+4 kt 
+
+15° turning 
+
+−20 0 20 40 60 80 100 120 
+
+x (m) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+120 
+
+> y (m)
+
+6 kt 
+
+10° turning 
+
+0 20 40 60 80 100 120 140 
+
+x (m) 
+
+−20 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+> y (m)
+
+4 kt 
+
+20°/20° zigzag 
+
+0 20 40 60 80 100 120 140 
+
+x (m) 
+
+−40 
+
+−20 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+> y (m)
+
+6 kt 
+
+15°/15° zigzag 
+
+Sea trial Proposed (joint) Poly. prior LSTM-DC LSTM-Raw Fig. 6. Representative recursive trajectory predictions of the proposed model, the standalone polynomial prior, and LSTM baselines. 
+
+24 Holdout 
+
+Turning 
+
+Zigzag 
+
+0.00 
+
+0.05 
+
+0.10 
+
+0.15 
+
+0.20 
+
+> u RMSE (m/s)
+
+(a) 
+
+Holdout 
+
+Turning 
+
+Zigzag 
+
+0.00 
+
+0.05 
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+0.35 
+
+> v RMSE (m/s)
+
+(b) 
+
+Holdout 
+
+Turning 
+
+Zigzag 
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> r RMSE (deg/s)
+
+(c) 
+
+Holdout 
+
+Turning 
+
+Zigzag 
+
+0
+
+5
+
+10 
+
+15 
+
+20 
+
+> Trajectory RMSE (m)
+
+(d) 
+
+Proposed Polynomial prior LSTM-DC LSTM-Raw Fig. 7. Channel-wise velocity RMSE and trajectory RMSE of the proposed model, the standalone polynomial prior, LSTM-DC, and LSTM-Raw on the holdout vali-dation trials. 
+
+25 horizon. This result should not be interpreted as a general statement that poly-nomial maneuvering models are unstable. It indicates that, under noisy field data and limited excitation, a model with many coupled hydrodynamic parameters can be sensitive in free rollout. The model structure must bal-ance expressive ability and parameter identifiability. In the original reference model, lower and upper bounds were imposed on the parameters to be iden-tified; in practical engineering applications, however, setting such bounds is not straightforward. In contrast, the proposed method uses a compact third-order polynomial prior and assigns the remaining discrepancy to an adaptive-basis module, which improves the stability of the overall executable predictor in this diagnostic case. 0 10 20 30 40 50 60         
+
+> Time (s)
+> -80
+> -60
+> -40
+> -20
+> 0
+> 20
+> Angle (deg)
+> (a)
+> 010 20 30 40 50 60
+> Time (s)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Normalized state norm  rapid growth
+> (b)
+> Proposed (joint) 29-parameter polynomial model Rudder command
+
+Fig. 8. Standard 20 ◦/20 ◦ zigzag free-running prediction: (a) heading response and rudder command; (b) dimensionless normalized state norm for the proposed model and the 29-parameter polynomial maneuvering model. 
+
+4.3.3. Ablation of trainable prior and current compensation 
+
+Two ablation models are used to isolate the main design choices. Frozen-prior hybrid model uses the same current-compensated training data and LSTM adaptive-basis structure as the proposed model, but keeps the poly-nomial coefficients fixed after the initial fit. Hybrid-Raw model directly used the measured velocity νm as the training target, without current compen-sation. The two ablation models share the same composite structure as the proposed model, but they test the effect of making the polynomial prior trainable and the effect of training on current-affected data, respectively. 26 Fig. 9 shows the ablation comparison results for the velocity components and trajectory prediction. Compared with the frozen-prior hybrid model, the proposed model achieves lower average RMSE values for u, v, r, and trajec-tory prediction, and yields lower trajectory RMSE in five of the eight holdout cases. These results suggest that bounded adjustment of the prior parameters enables the mechanistic model to absorb part of the systematic correction, rather than forcing the LSTM branch to compensate for both prior-model bias and residual dynamics. Although the frozen-prior model remains com-petitive, indicating that the LSTM branch can partially compensate for these errors, the proposed bounded co-calibration strategy provides a more inter-pretable and physically consistent error decomposition: low-frequency sys-tematic corrections are assigned to the structured prior, while the LSTM branch focuses on the remaining nonlinear residual dynamics. Fig. 10 further illustrates the coefficient changes before and after bounded parameter perturbation. The corrections are selective rather than uniformly distributed, with a mean absolute correction of 24.0% and a maximum cor-rection of 77.9%, occurring in a yaw-related coefficient. The result shows that the polynomial module remains active in the final predictor as a trainable structured component. Regarding current compensation within the differentiable composite model, Fig. 9 and Fig. 11 provide consistent evidence. Although the two models adopt the same model structure, Hybrid-Raw shows larger trajectory drift, indicating that the current projection is absorbed into the learned transition dynamics. These results support using body-relative, current-compensated velocity as the learning target, with the estimated current reintroduced only during rollout reconstruction. 
+
+4.4. Discussion 
+
+The proposed framework provides a differentiable way to view mechanis-tic and data-driven maneuvering models from the same approximation per-spective. A polynomial hydrodynamic model uses prescribed basis functions, such as velocity, rudder, propeller, and coupling terms, and then fits their coefficients from data. A data-driven recurrent model learns data-adaptive basis features from the maneuvering history. In this sense, a hybrid model is a composite approximation built from prescribed polynomial bases and learned adaptive bases. The role of the unified differentiable architecture is to optimize these basis components under one prediction objective. The polynomial coefficients and 27 Holdout 
+
+> Turning
+> Zigzag
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> u RMSE (m/s)
+
+(a) 
+
+> Holdout
+> Turning
+> Zigzag
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> v RMSE (m/s)
+
+(b) 
+
+> Holdout
+> Turning
+> Zigzag
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> 1.25
+> 1.50
+> r RMSE (deg/s)
+
+(c) 
+
+> Holdout
+> Turning
+> Zigzag
+> 0
+> 5
+> 10
+> 15
+> 20
+> Trajectory RMSE (m)
+
+(d)   
+
+> Proposed Frozen-prior Hybrid-Raw
+
+Fig. 9. Ablation comparison of velocity RMSE and trajectory RMSE for trainable hydrodynamic-prior coefficients and current-compensated learning. θu, 1
+
+> θu, 2
+> θu, 3
+> θu, 4
+> θu, 5
+> θv, 1
+> θv, 2
+> θv, 3
+> θv, 4
+> θv, 5
+> θr, 1
+> θr, 2
+> θr, 3
+> θr, 4
+> θr, 5
+> θr, 6
+
+−60 
+
+−30 
+
+0
+
+30 
+
+60 
+
+Surge Sway Yaw 
+
+Polynomial-prior coefficient 
+
+> Relative correction (%)
+
+Fig. 10. Relative correction of the effective hydrodynamic-prior coefficients in the selected joint model with ρ = 0 .9. The x-axis follows the coefficient notation in Eq. (19). 
+
+28 0 20 40 60 80         
+
+> x (m)
+> −40
+> −20
+> 0
+> 20
+> 40
+> y (m)
+> 4 kt
+> 15° turning
+> −20 020 40 60 80 100
+> x (m)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> y (m)
+> 6 kt
+> 10° turning
+> Sea trial Proposed (joint) Hybrid-Raw
+
+Fig. 11. Recursive trajectory predictions in two turning maneuvers for the pro-posed current-compensated hybrid model and Hybrid-Raw. 
+
+the LSTM parameters are not calibrated in two isolated stages. They are placed in the same computational graph and updated by gradient descent. This view also suggests that the framework is not limited to the particular basis used in this paper. Other differentiable basis choices or residual modules can be composed in the same manner, provided that the resulting transition remains executable in recursive rollout. Current treatment is another necessary part of the modeling problem. The polynomial maneuvering basis describes body-relative hydrodynamic re-sponse, whereas field measurements may contain current-induced kinemat-ics. If the current component is not separated, the learned transition mixes vehicle dynamics with an environment-dependent projection. The current-compensated training target used here reduces this ambiguity and helps ob-tain an inherent maneuvering model. The current validation has several limitations. First, it is conducted on a single type of AUV, and the generality of the proposed method should therefore be further assessed on additional platforms. From a methodolog-ical perspective, however, the formulation is extendable, and the full-scale experimental results reported in this study provide supporting evidence for its practical applicability. Second, the data were obtained from onboard measurements, including an inertial measurement unit and a Doppler veloc-ity log. Although these measurements provide the basis for model calibration and validation, finite sensor accuracy and residual preprocessing biases are 29 unavoidable. Accordingly, the calibrated coefficients should be interpreted as effective prediction coefficients rather than independently identified hydrody-namic derivatives. Within this scope, the model remains suitable for dead-reckoning support, maneuvering simulation, and digital-twin construction, where stable recursive prediction is more relevant than assigning a unique physical interpretation to each fitted coefficient. Further uncertainty anal-ysis would be valuable for quantifying the effects of measurement errors, current compensation, and cross-platform variability. 
+
+5. Conclusions 
+
+This paper presented a differentiable composite approximation frame-work for AUV maneuvering prediction from full-scale sea-trial data. A re-duced polynomial hydrodynamic prior and an LSTM adaptive-basis module were embedded in one differentiable one-step transition map. The effective polynomial coefficients and neural parameters were optimized jointly, while ocean-current effects were removed during training and reintroduced during rollout. Validation on eight holdout turning and zigzag maneuvers from full-scale AUV trials in real sea conditions shows that the proposed model improves average recursive prediction compared with the standalone polynomial prior and neural-only LSTM baselines. The results indicate that the polynomial prior and the adaptive-basis correction play complementary roles in long-horizon rollout. The ablation results further show that bounded prior cali-bration and current-compensated learning both contribute to the final rollout performance. Future work should examine richer excitation, repeated-seed robustness, multi-step training objectives, and closed-loop validation. 
+
+References 
+
+Ahmed, F., Xiang, X., Jiang, C., Xiang, G., Yang, S., 2023. Survey on tra-ditional and ai based estimation techniques for hydrodynamic coefficients of autonomous underwater vehicle. Ocean Engineering 268, 113300. Busse, C., Reich, J.E., Renner, B.C., 2022. In situ damping parameter estimation for an underwater vehicle using onboard sensors, in: 2022 IEEE/OES Autonomous Underwater Vehicles Symposium (AUV), IEEE. pp. 1–6. 30 Du, X., Zheng, Z., Guan, S., 2018. Numerical calculation of hydrodynamic in-teractions of submarine flow on auv, in: 2018 OCEANS-MTS/IEEE Kobe Techno-Oceans (OTO), IEEE. pp. 1–5. Fossen, T.I., 2021. Handbook of Marine Craft Hydrodynamics and Motion Control. 2nd ed., Wiley, Hoboken, NJ. Go, G., Ahn, H.T., 2019. Hydrodynamic derivative determination based on cfd and motion simulation for a tow-fish. Applied Ocean Research 82, 191–209. Hegrenaes, O., Hallingstad, O., Jalving, B., 2007a. Comparison of mathe-matical models for the HUGIN 4500 AUV based on experimental data, in: 2007 Symposium on Underwater Technology and Workshop on Scientific Use of Submarine Cables and Related Technologies, IEEE. pp. 558–567. doi: 10.1109/UT.2007.370776 .Hegrenaes, O., Hallingstad, O., Jalving, B., 2007b. A framework for obtaining steady-state maneuvering characteristics of underwater vehicles using sea-trial data, in: 2007 Mediterranean Conference on Control & Automation, IEEE. pp. 1–6. Lei, L., Liu, X.W., Yang, G., 2022a. Incremental residual learning-based dynamic modeling and stability analysis for multipower underwater ve-hicles. Mechanism and Machine Theory 178, 105088. doi: 10.1016/j. mechmachtheory.2022.105088 .Lei, L., Yang, G., Guo, J., 2022b. Physics-guided neural network for un-derwater glider flight modeling. Applied Ocean Research 121, 103082. doi: 10.1016/j.apor.2022.103082 .Nielsen, R.E., Papageorgiou, D., Nalpantidis, L., Jensen, B.T., Blanke, M., 2022. Machine learning enhancement of manoeuvring prediction for ship digital twin using full-scale recordings. Ocean Engineering 257, 111579. doi: 10.1016/j.oceaneng.2022.111579 .Nouri, N., Mostafapour, K., Bahadori, R., 2016. An apparatus to estimate the hydrodynamic coefficients of autonomous underwater vehicles using water tunnel testing. Review of Scientific Instruments 87, 065106. 31 Ramirez, W.A., Kocijan, J., Leong, Z.Q., Nguyen, H.D., Jayasinghe, S.G., 2021. Dynamic system identification of underwater vehicles using multi-output gaussian processes. International Journal of Automation and Com-puting 18, 681–693. Sabet, M.T., Daniali, H.M., Fathi, A., Alizadeh, E., 2017. Identification of an autonomous underwater vehicle hydrodynamic model using the ex-tended, cubature, and transformed unscented kalman filter. IEEE Journal of Oceanic Engineering 43, 457–467. Sajedi, Y., Bozorg, M., 2019. Robust estimation of hydrodynamic coefficients of an auv using kalman and h ∞ filters. Ocean Engineering 182, 386–394. Skulstad, R., Li, G., Fossen, T.I., Vik, B., Zhang, H., 2021. A hybrid ap-proach to motion prediction for ship docking—integration of a neural net-work model into the ship dynamic model. IEEE Transactions on Instru-mentation and Measurement 70, 1–11. doi: 10.1109/TIM.2020.3018568 .Smallwood, D.A., Whitcomb, L.L., 2004. Model-based dynamic positioning of underwater robotic vehicles: theory and experiment. IEEE Journal of oceanic engineering 29, 169–186. Tešnar, M., Wehbe, B., Valdenegro-Toro, M., 2025. Modeling of auv dynam-ics with limited resources: Efficient online learning using uncertainty. arXiv preprint arXiv:2504.04583 URL: https://arxiv.org/abs/2504.04583 .submitted to arXiv on April 6, 2025. Tiano, A., Sutton, R., Lozowicki, A., Naeem, W., 2007. Observer kalman filter identification of an autonomous underwater vehicle. Control engi-neering practice 15, 727–739. Zhang, H., Tong, X., Guo, H., Xia, S., 2020. The parameter identifi-cation of the autonomous underwater vehicle based on multi-innovation least squares identification algorithm. International Journal of Advanced Robotic Systems 17, 1729881420921016. Zhao, Y., Hu, Z., Du, W., Geng, L., Yang, Y., 2024. Research on modeling method of autonomous underwater vehicle based on a physics-informed neural network. Journal of Marine Science and Engineering 12, 801. 32

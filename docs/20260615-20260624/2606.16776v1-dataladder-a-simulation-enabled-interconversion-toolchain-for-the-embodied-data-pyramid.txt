@@ -1,0 +1,1070 @@
+Title: DataLadder: A Simulation-Enabled Interconversion Toolchain for the Embodied Data Pyramid
+
+URL Source: https://arxiv.org/pdf/2606.16776v1
+
+Published Time: Tue, 16 Jun 2026 02:44:30 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# DataLadder: A Simulation-Enabled Interconversion Toolchain for the Embodied Data Pyramid 
+
+Peidong Liu, Yongce Liu, Songyan Guo, Fuyuan Ma, Zhihao Yuan, Ao Li, Zengjue Chen, Wenhao Li, Tianle Zhang, Mingyang Li, Jiale Zhang, Junzhe Xiong, Zhiyuan Xiang, Dafeng Chi, Yuzheng Zhuang, Yihang Li, Qingrong He, Jiaming Liang, Chen Cai, Peng Hao, Mingxi Luo, Song Wang, Junwu Xiong, Ruodai Li, Liyi Luo, Wei Tan, Dongjiang Li, Jiawei Li †, Hui Shen, Yicheng Gong, Liang Lin †
+
+Joy Future Academy, JD Group JD Technology, JD Group 
+
+Abstract 
+
+Generalist robot policies require trustworthy evaluation and robot-usable training data, but both are difficult to scale with physical robots alone. Real-robot trials and demonstrations remain the most faithful source of deployment signals, yet they are slow, costly, and hard to reproduce. We present DataLadder , a simulation-enabled interconversion toolchain for human-robot aligned model evaluation and data generation, denoted as Robot ⇌ Simulation ⇌ Human . On the one hand, the Robot → Simulation → Human pathway supports human-robot aligned model evaluation by reconstructing real-robot tabletop organization tasks as calibrated digital twins for scalable evaluation, while using human embodied feedback to inspect and refine the naturalness of simulated motions. On the other hand, the Human → Simulation → Robot pathway supports human-robot aligned data generation: it lifts egocentric human demonstrations into simulation, checks them under robot physical constraints, and converts them into robot-centered trajectories, annotations, and visual observations. Together, these pathways use the JoySim simulator as both a scalable evaluation layer and a physical consistency filter for robot data generation. We further package the core reconstruction, simulation, rendering, and realism-augmentation modules as cloud services on JD Cloud, turning the system into reusable infrastructure for robot data generation and model evaluation.  
+
+> Project Page:
+
+https://joyai-sim.github.io/ 
+
+1 Introduction 
+
+Generalist robot policies are increasingly expected to operate reliably in complex manipulation settings [ 8,20 , 54 ]. Progress toward this goal depends on two core resources: trustworthy evaluation and robot-usable training data. Real-robot trials and demonstrations remain the most faithful source for both, because they expose the full deployment stack. However, relying primarily on physical robots creates a severe scaling problem. Trials are slow and hard to reproduce; demonstrations require specialized hardware and repeated scene resets; both require safety monitoring to avoid hardware damage and unsafe interactions. As a result, 
+
+> †Corresponding authors: Jiawei Li <li-jw15@tsinghua.org.cn>, Liang Lin <linliang@ieee.org>.
+> arXiv:2606.16776v1 [cs.RO] 15 Jun 2026
+
+Robot Simulation Human Human Simulation Robot      
+
+> Human Video Pose Extraction Simulation Video
+> Domain Randomization Robot Video
+> Digital Twin Evaluation
+> Synthetic Data
+> Generation
+> Robot -centered Data
+> generation
+> 50000+ Objects
+> 50+ Generalization
+> Axes
+> 300+ Categories
+
+Simulation Data 
+
+Robot Data 
+
+Human Data     
+
+> Human -Robot Aligned
+> Model Evaluation
+> Human -Robot Aligned
+> Data Generation
+> Real World
+> Digital Twin
+> Scene Interaction Object
+
+… 
+
+> Simulation
+> Teleop
+> FSM
+> IKFlow
+> RL
+> Synthetic Data
+> Generation
+> Consistency  Calibration
+> Human Data
+
+Figure 1 Overview of DataLadder. DataLadder uses the JoySim simulator as the central simulation hub to connect robot and human data. It builds two complementary pathways: Robot → Simulation → Human , which anchors real-robot tasks in digital twins for human-robot aligned model evaluation, and Human → Simulation →
+
+Robot , which serves as a human-robot aligned data generation pipeline that transforms human demonstrations into robot-centered trajectories and robot-view observations through simulation. 
+
+simulation and human demonstrations are natural alternatives for scaling evaluation and data collection, but using them effectively requires bridging a gap between scalability and deployment faithfulness [19, 34, 47]. This scaling gap creates two complementary bottlenecks. The first is an evaluation bottleneck. Simulation offers scalable execution, controllable reset, privileged state, and parallel rollouts, but it cannot be treated as a black-box substitute for physical deployment [ 9, 16 , 32 ]. Fragile initialization, inaccurate assets or physics, and success checkers that do not match task semantics can change measured success rates independently of policy quality. A practical evaluation pipeline should therefore start from real-world tasks and success criteria, reconstruct them as calibrated digital twins, and use simulation as a scalable screening layer before final physical validation. The second is a data bottleneck. Human egocentric videos are abundant and diverse, and they cover a large range of everyday manipulation behaviors, but they are not directly executable by robots because human hands and robot end-effectors obey different kinematic, contact, and control constraints [ 13 , 14 , 24 , 38 ]. Simulation can serve as the missing middle layer: human motion and task scenes can be reconstructed, checked under robot physical constraints, and converted into robot-centered trajectories and observations. In this role, simulation is not merely an evaluation environment, but also a physical consistency filter and data amplifier. We present DataLadder , a simulation-enabled interconversion toolchain that uses the JoySim simulator as the central simulation layer for aligning robot data and human data, denoted as Robot ⇌ Simulation ⇌
+
+Human . Figure 1 summarizes the simulation-centered design. The first pathway, Robot → Simulation →
+
+Human , supports human-robot aligned model evaluation . Real-robot tasks define the deployment target, calibrated digital twins provide scalable simulation evaluation, and human embodied feedback is used to inspect the naturalness of simulated motions. The second pathway, Human → Simulation → Robot , supports 
+
+human-robot aligned data generation . egocentric human demonstrations are lifted into simulation, filtered by physical feasibility, and converted into robot-centered trajectories and robot-view observations. Together, 2the two pathways place simulation at the center of the embodied data pyramid, connecting scarce but deployment-faithful robot data with abundant but embodiment-agnostic human data. This formulation is broader than the commonly studied real-to-sim-to-real paradigm, which primarily closes a two-level loop between physical robots and simulation [ 10 , 12 , 36 , 46 , 49 ]. At the level of data flow, real-to-sim-to-real mainly covers the Robot ⇌ Simulation loop: real-robot scenes or demonstrations are reconstructed in simulation, used for evaluation or data generation, and transferred back to the robot. DataLadder instead extends this loop into a three-level Robot ⇌ Simulation ⇌ Human framework. Compared with the two-modality Robot ⇌ Simulation setting, this formulation explicitly introduces the Human modality as an additional source of embodied observations, demonstrations, and feedback. This better matches the current embodied-data pyramid, where robot data is deployment-faithful but scarce, simulation data is scalable and physically inspectable, and human data is abundant but not directly robot-executable. In the Robot → Simulation → Human pathway, we use the simulator to support human-robot aligned model evaluation by turning real-robot tasks into scalable simulation evaluations and human-inspectable trajectories. We begin from standardized real-robot household tidy-up tasks, which provide the physical reference for scene layout, object categories, reset conditions, language-conditioned task semantics, and success criteria. We then reconstruct the same scenarios inside the simulator, which is built on NVIDIA Isaac Sim, as calibrated digital twins, enabling candidate policies to be evaluated at scale before costly real-robot trials. However, physically executable trajectories are not always natural or useful for policy learning. To assess trajectory quality, we project simulated robot trajectories into human-hand space for embodied inspection, enabling human feedback for filtering and improving synthesized data. This projection further produces aligned human-robot demonstrations as a by-product: each simulated episode can be exported as both robot-centered trajectories and corresponding human-form demonstrations. Such aligned human-robot data can support policy-training settings that benefit from paired human- and robot-form demonstrations [56]. The Human → Simulation → Robot pathway targets human-robot aligned data generation. It uses the simulator to turn abundant human demonstrations into physically feasible robot-centered training data. Instead of directly mapping human hand motions to a robot embodiment, DataLadder first recovers human motion and reconstructs the surrounding task scene into a sim-ready representation. The simulator then retargets the motion under robot kinematic limits, collision constraints, contact feasibility, and task geometry. Validated rollouts are rendered from robot viewpoints and can be augmented through domain randomization and reality augmentation [ 2, 39 , 44 ]. This pathway transforms low-cost human egocentric videos into a scalable source of robot-centered trajectories, annotations, and visual observations while preserving physically meaningful structure. We further package the above conversion workflows as a service on JD Cloud, including the Human →
+
+Simulation → Robot conversion, and the simulation, rendering, and realism-augmentation modules, turning them into reusable infrastructure for robot data production and evaluation. Our contributions are summarized as follows: 1. A Robot → Simulation → Human pathway for human-robot aligned model evaluation . DataLadder starts from real-robot long-horizon household tasks and reconstructs them as calibrated digital twins for scalable simulation-first evaluation. By exporting each simulated episode into both robot-centered and human-form representations, DataLadder supports embodied trajectory inspection, while human embodied feedback provides naturalness criteria for inspecting and filtering generated trajectories. 2. A Human → Simulation → Robot pathway for human-robot aligned data generation . DataLadder converts egocentric human demonstrations into sim-ready motion and scene representations, checks them in the JoySim simulator under robot physical constraints, and exports executable robot-centered trajectories and robot-view observations. This pathway uses the simulator as a physical consistency layer between abundant human videos and scarce robot training data, enabling large-scale human demonstrations to be transformed into robot-usable policy data. 3. DataLadder cloud service. We package the conversion workflows as cloud services on JD Cloud, turning the system into reusable infrastructure for robot data production and evaluation. 32 Related Work  
+
+> Robotic Manipulation Benchmarks.
+
+Real-robot benchmarks provide the most direct evidence of deployability, because physical trials expose sensing noise, control latency, contact uncertainty, hardware constraints, and safety requirements. Large-scale systems and datasets such as RT-1 [ 6], RT-2 [ 8], Open X-Embodiment [ 34 ], and DROID [ 19 ] have made real-world generalization a central evaluation target. Recent benchmarks such as RoboArena [ 5], RoboChallenge [ 52 ], and ManipArena [ 43 ] further standardize physical evaluation through shared platforms, fixed protocols, or distributed evaluators. However, real-robot evaluation is expensive, low-throughput, and sensitive to reset conditions, illumination, object states, and hardware variation. Simulation benchmarks such as RLBench [ 16 ], LIBERO [ 26 ], RoboCasa [ 32 ], RoboTwin [ 31 ], RoboTwin 2.0 [ 9], and RoboCasa GR1 [ 33 ] provide scalable and reproducible evaluation, but their scenes are often manually designed and only loosely tied to real deployment instances. DataLadder follows the complementary route introduced in Sec. 1: real robots define the task semantics and success criteria, while a real-world-aligned simulation layer reproduces the assets, robot embodiment, interaction loop, and task predicates for controlled evaluation.      
+
+> Robot →Simulation →Human.
+
+Digital-twin construction is the core technical form of Robot → Simulation: it turns a physical robot scene into a controllable simulator that preserves the task, the objects, and the robot interaction conditions. General-purpose simulators such as Isaac Gym [ 28 ], SAPIEN [ 50 ], Habitat [ 40 ], AI2-THOR [ 21 ], and iGibson [ 41 ] provide the physics and rendering substrate. On top of these systems, scene reconstruction methods build editable digital twins from real deployments: RialTo [ 45 ] scans a workspace into a policy-training twin, Robo-GS [ 27 ] combines Gaussian Splatting and mesh assets for articulated reconstruction, and GSWorld [ 17 ] and GaussGym [ 11 ] use Gaussian-Splatting-based rendering to reduce visual mismatch. These works show that Robot → Simulation can support both scalable policy training and real-world policy evaluation, including cases where simulated rankings correlate with physical performance [ 1, 23 ]. Another related direction evaluates simulated robot motions through external critics: CRISP [ 25 ] employs vision-language models (VLMs) to assess action appropriateness and iteratively refine behaviors through a generate–evaluate–replan loop in simulation. However, because VLMs primarily rely on semantic visual understanding rather than embodied physical intuition, their assessments may be insufficient to evaluate motion naturalness and physical feasibility. To address this gap, DataLadder studies a Simulation → Human paradigm, where synthesized robot trajectories are transferred into human-executable spaces for direct inspection, allowing humans to identify unnatural or impractical behaviors through embodied feedback and physical intuition. DataLadder differs by building household digital twins for two explicit purposes: first, to align with AgiBot G1 real-robot evaluation through scene, asset, embodiment, action, and predicate alignment; second, to synthesize policy-training data that can be further inspected through Simulation → Human feedback and exported as aligned robot-human trajectories.      
+
+> Human →Simulation →Robot.
+
+Human → Simulation → Robot methods use human behavior as a scalable source of manipulation priors, and introduce simulation to bridge the gap between human demonstrations and robot execution. Large-scale egocentric datasets such as Ego4D [ 13 ] and EgoLive [ 24 ] capture diverse everyday hand-object interactions, while hand-recovery methods such as HaMeR [ 38 ] estimate task-relevant wrist motion, hand pose, and manipulation phases from monocular videos. However, these outputs remain human-centered observations rather than robot demonstrations, because human hands and robot end-effectors differ in kinematics, contact geometry, compliance, and feasible force profiles. Recent work addresses parts of this gap with simulation, view alignment, or task-centric rewards. EgoHu-manoid [ 42 ] studies view and action alignment from egocentric demonstrations, X-Sim [ 10 ] and IKER [ 36 ]use human videos with object- or keypoint-centric rewards, and DexMan [ 14 ] converts human and generated videos into dexterous manipulation skills in simulation. DataLadder follows this line but organizes the full pathway under one simulation-centered data-production toolchain: human video parsing, editable simulation instantiation, robot feasibility checking, robot-view rendering, and downstream data augmentation.  
+
+> Synthetic Data Generation.
+
+Simulation-based data synthesis significantly reduces the cost of collecting robot demonstrations and has become a key approach for scaling manipulation datasets [ 9, 30 , 32 , 44 , 48 ]. One line of work relies on teleoperation systems to collect human demonstrations, with some efforts focusing on data collection in high-fidelity simulation environments, enabling low-cost acquisition of robot manipulation 4trajectories [ 22 , 29 ]. Beyond human demonstrations, expert policies based on finite state machines (FSMs) [ 15 ]can directly generate trajectories from task structures, providing scalable supervision when demonstrations are scarce. Another direction augments a small set of feasible trajectories through generative inverse kinematics; for example, IKFlow [ 4] and related methods [ 55 ] generate diverse joint-space solutions for the same end-effector pose, thereby increasing trajectory diversity. In addition, reinforcement learning can serve as a data generator, where reward-driven policies automatically explore environments and collect both successful and failed trajectories for downstream learning [ 18 , 51 ]. DataLadder integrates these complementary approaches within digital-twin environments, combining teleoperation-based data collection, FSM-based automatic generation, IKFlow-based trajectory augmentation, and reinforcement-learning-driven trajectory mining to construct large-scale robot simulation datasets. 
+
+3 Robot → Simulation → Human 
+
+The Robot → Simulation → Human pathway starts from real-robot tasks and uses simulation as the central layer for deployment-oriented evaluation and trajectory inspection, with data synthesis serving as an auxiliary source of candidate trajectories. Real-robot evaluation provides the most faithful deployment signal, but it is slow, low-throughput, and difficult to reproduce under identical object states, illumination, and reset conditions. This motivates the Robot → Simulation step: we reconstruct the real AgiBot G1 evaluation scenes as calibrated digital twins, so that policies can be screened under controllable perturbations before final physical validation. To provide a reliable evaluation substrate, the simulation must align not only the visible scene but also the robot embodiment, assets, camera configuration, control interface, and task-level success predicates. However, physically executable robot trajectories are not necessarily natural, and a trajectory that succeeds in the simulator may still contain awkward approach directions, abrupt phase transitions, or locally feasible but globally suboptimal strategies. This motivates the Simulation → Human step: we project simulated robot trajectories into human-hand space, ask humans to inspect them from an embodied perspective, and use the feedback to filter or improve synthesized data. This projection further creates one-to-one aligned robot-human data, because each simulated episode can be exported as both a robot-centered trajectory and a corresponding human-form trajectory. Together, Robot → Simulation constructs a deployable digital-twin environment, while Simulation → Human provides embodied naturalness criteria for inspecting, filtering, and aligning the trajectories generated in simulation. Figure 2 summarizes this two-stage toolchain. 
+
+3.1 Robot → Simulation 
+
+3.1.1 Real-robot Evaluation 
+
+Real-robot evaluation is the most direct way to measure whether a policy can be deployed in the physical world. It exposes sensing noise, calibration error, contact uncertainty, safety behavior, and long-horizon recovery under real household clutter. We therefore build our real-robot benchmark as the physical reference for task semantics, object-to-target mappings, scene layouts, success criteria, and final deployment-oriented validation. The benchmark focuses on long-horizon household tidy-up tasks that require category-level grounding, precise placement, sequential execution, and bimanual manipulation.  
+
+> Robotic Embodiment Platform.
+
+The real-world testbed is based on the AgiBot G1 bimanual humanoid, equipped with two 7-DoF arms, parallel-jaw grippers, a head-mounted RGB-D camera, and two wrist cameras. During each episode, proprioceptive states, end-effector poses, gripper widths, multi-view visual observations, executed actions, timestamps, and task metadata are synchronously logged at 30 Hz. The observation and action interface is kept fixed across evaluated policies, so that differences in performance reflect policy behavior rather than changes in the evaluation setup.  
+
+> Task Suite.
+
+Our benchmark contains two long-horizon, language-conditioned household tidy-up scenarios. Each scenario is defined by a physical scene, manipulated objects, target storage regions, and deterministic object-to-target assignments. 
+
+• Study-Room Tidy-up. The robot clears a study desk by sorting stationery, books, small daily-use items, 5Robot Video Simulation Video  
+
+> Human Video Domain Randomization
+> Lighting
+> Material
+> Action Generalization
+> View
+> Trajectory
+
+Robot → Simulation → Human            
+
+> Scene Alignment Figure 2 Robot →Simulation →Human Toolchain. Stage I: Robot →Simulation. Real AgiBot G1 household tasks are reconstructed as calibrated digital twins by aligning scenes, assets, robot embodiment, cameras, actions, and task predicates, yielding controllable replicas for scalable evaluation and data synthesis. Stage II: Simulation
+> →Human. Generated robot trajectories are projected into human-hand space, where embodied inspection filters unnatural motions and creates one-to-one aligned robot-human trajectory pairs.
+
+and trash into their corresponding storage regions. This task stresses category-level sorting, object-scale variation, target-region grounding, and long-horizon sequential execution. 
+
+• Living-Room Tidy-up. The robot tidies a cluttered coffee table by sorting tissues, toys, remote-control items, drinks, snacks, cups, and trash into their corresponding containers or support regions. This task stresses dense tabletop clutter, heterogeneous target containers, visually diverse object categories, and fine-grained language grounding.  
+
+> Evaluation Protocol and Metrics.
+
+For each task, policy, and evaluation condition, trials are initialized from a predefined reset list, so that the same initial configurations can be reused across policies. Object poses are randomized within the robot’s reachable workspace and the camera field of view, while target containers, shelves, storage boxes, and bins are either fixed or sampled from predefined layouts depending on the evaluation split. The policy then executes autonomously without human correction. An episode terminates when all required sub-tasks are completed, the maximum horizon Tmax seconds or Hmax control steps is reached, or a safety termination is triggered. A full task is successful only if all required objects are placed into their correct target regions within the episode horizon, and no safety termination occurs. We also report sub-task completion rate, grasp success rate, and placement accuracy. Sub-task completion measures the fraction of required atomic assignments completed in an episode. Grasp success measures whether the robot lifts and stabilizes the intended object after a grasp attempt. Placement accuracy measures whether the final object state lies inside the assigned target region or compartment under the task-specific tolerance ϵ. 
+
+> Generalization Axes.
+
+Instead of treating robustness as a single aggregate score, the benchmark evaluates controlled generalization dimensions while keeping task semantics and success criteria fixed. Representative visual generalization conditions are illustrated in Appendix A using AgiBot G1 head-camera observations. Each condition changes one non-semantic factor while preserving task semantics and object-to-target mappings. 63.1.2 Scene Alignment  
+
+> Sim-Ready Data Preparation.
+
+We build the simulator asset library through two complementary sources: collecting assets from public datasets, normalizing them into a common Isaac Sim format, and reconstructing task-specific assets in 3D when needed. Since some assets were originally authored for Isaac Sim 4.1 and 4.5, we convert and import them into Isaac Sim 5.1. After import, we check loading, collision geometry, and material integrity to avoid corruption introduced by cross-version conversion. After reorganizing the asset library for household scenes, we obtain 300 + fine-grained categories comprising 53,661 asset instances, as shown in Table 1. Additional asset distribution visualizations are provided in Appendix B.  
+
+> Table 1 Sim-Ready Asset Distribution by Class and Subgroup.
+
+Top class Count Total share Subgroup Count Class share Fixture 20,205 37.7% Sundry 17,320 85.7% Decoration 2,053 10.2% Sanitary 810 4.0% Openings 22 0.1% Tool 16,361 30.5% Stationery 16,022 97.9% Kitchen 192 1.2% Hand Tool 98 0.6% Cleaning 49 0.3% Storage 6,363 11.9% Containers 4,656 73.2% Boxes 945 14.9% Storage 629 9.9% Bags 133 2.1% Textile 3,117 5.8% Bedding 1,302 41.8% Curtain 840 26.9% Clothing 653 20.9% Cloth 322 10.3% Furniture 2,798 5.2% Seating 1,396 49.9% Tables 675 24.1% Shelving 395 14.1% Beds 332 11.9% Appliance 2,190 4.1% Electronics 929 42.4% Kitchen 676 30.9% Illumination 481 22.0% Personal 104 4.7% Food 1,357 2.5% Fresh 631 46.5% Cooked 364 26.8% Hygiene 323 23.8% Drink 39 2.9% Entertainment 1,270 2.4% Plush 738 58.1% Vehicles 334 26.3% Game 124 9.8% Sport 74 5.8% Total 53,661 100.0%  
+
+> Sim-Ready Scene Preparation.
+
+Based on this asset library, we construct two household scenes with diverse assets for the AgiBot G1 real-robot evaluation setup: the study room in Figure 3a, and the living room in 7(a) Study Room (b) Living Room 
+
+Figure 3 Diverse Assets in the JoySim Simulator. Real Scene Simulation Scene 
+
+(a) Study Room  
+
+> Real Scene Simulation Scene
+
+(b) Living Room Real Scene Simulation Scene 
+
+(a) Study Room  
+
+> Real Scene Simulation Scene
+
+(b) Living Room 
+
+(a) Study-Room Scene Alignment Real Scene Real Scene Simulation Scene 
+
+(a) Study Room  
+
+> Real Scene Simulation Scene
+
+(b) Living Room 
+
+(b) Living-Room Scene Alignment 
+
+Figure 4 Paired Real-Robot and Simulation Scenes. Each pair preserves task-relevant containers, objects, spatial arrangements, and robot states between the real-robot setup and its corresponding simulation scene. 
+
+Figure 3b. The asset categories summarized in Table 1 provide broad coverage for both scenes, including furniture, storage objects, tools, appliances, food items, and fixtures. For each scene, we align the simulator with the real workspace in appearance, geometry, object placement, and task-relevant spatial layout. We use 3D Gaussian Splatting and image-to-3D generation to recover high-fidelity scene and object assets, and then enrich the manipulated-object set with library assets. The resulting scenes preserve the physical structure needed for real-robot evaluation, while also supporting controlled variations over object category, object placement, illumination, and texture for large-scale policy-training data generation. 
+
+Real-Simulation Scene Alignment. To make robot observations comparable with simulation observations, we construct paired robot and simulation scenes for both tidy-up tasks. As shown in Figure 4, each simulated 8scene preserves the task-relevant containers, object categories, spatial arrangement, and robot state observed in the AgiBot G1 workspace. This pairing keeps the language goal, object-to-target mappings, and success criteria consistent between the real robot and the simulator, while allowing controlled changes in appearance, illumination, layout, and robot state for scalable evaluation. 
+
+3.1.3 Interaction Alignment 
+
+DataLadder executes digital twins in simulation, where interaction alignment is implemented through two coupled tracks: embodiment alignment and action alignment. Embodiment alignment ensures that the AgiBot G1 instantiated in the simulator matches the physical AgiBot G1 in kinematics, initial state, sensing geometry, and actuator dynamics. Action alignment allows the real robot and digital twin to share the same control schema, trajectory record-and-replay stream, and episode lifecycle protocol. Together, these two tracks allow the digital twin to serve as a simulation-first measurement tool, rather than only a visually similar scene. Table 2 summarizes the embodiment- and action-level design choices used for this alignment.              
+
+> Table 2 Key Elements of Simulator Interaction Alignment. Interaction alignment combines embodiment-level consistency in kinematics, initial state, sensing geometry, and actuator dynamics with action-level consistency in control, rollout replay, and episode lifecycle protocol.
+> Track Element Aligned design and evaluation role
+> Embodiment Kinematics SDK-consistent URDF/USD models for shared IK, indices, and end-effector frames Initial state Encoder-based ready pose with settling for stable, comparable starts Sensing Calibrated camera and hand–eye geometry for shared visual observations Dynamics Subsystem stiffness/damping for calibrated reach, compliance, and settling Action Control Unified Data Distribution Service schema for action semantics without remapping Rollout 30 Hz Parquet record/replay for the same command sequence u0∶T
+> Protocol Prepare/finalize/reset commands for repeatable episode boundaries
+> Embodiment Alignment.
+
+The AgiBot G1 in the simulator uses SDK-consistent URDF and USD robot models. The URDF supports inverse kinematics, teleoperation, and trajectory replay, while the USD articulation supports Isaac Sim physics, collision modeling, and camera attachment. The two assets share the same joint names, joint ordering, link hierarchy, and end-effector frames as the physical robot SDK, allowing inverse kinematics, control indices, and end-effector poses to carry the same meaning in real and simulated executions. At reset, the robot is restored to an encoder-based ready pose, followed by a short settling phase before policy execution, so each episode starts from a stable and comparable state. The head and wrist cameras use calibrated camera intrinsics and hand–eye extrinsics, allowing real and simulated logs to share the same visual observation format for the VLA pipeline. Actuator behavior is calibrated with subsystem-specific stiffness and damping parameters for the arms, torso, head, grippers, and passive finger links, reducing mismatch in reaching, contact compliance, and settling behavior.  
+
+> Action Alignment.
+
+Policies, teleoperators, and replay scripts use a unified Data Distribution Service (DDS) message schema on both the simulator and the real robot. Switching between the two only changes the DDS endpoint, while preserving the same action semantics without remapping, rescaling, or clipping the action space. Teleoperation and policy rollouts are recorded as timestamped Parquet streams at 30 Hz, including proprioceptive states, end-effector poses, gripper widths, and multi-view observations. The same command sequence u0∶T can then be replayed in the simulator through the shared control interface. For batch evaluation, the prepare, finalize, and reset lifecycle commands standardize recorder startup, log finalization, scene restoration, and episode boundaries, so policy checkpoints can be compared under repeatable evaluation conditions. 
+
+3.1.4 Simulation Evaluation 
+
+Simulation evaluation is the measurable outcome of the preceding alignment steps. The real-robot benchmark defines what should be evaluated: task semantics, object-to-target mappings, reset conditions, episode horizons, 9Table 3 Generalization Axes for Simulation-Based Policy Evaluation. DataLadder generates evaluation episodes by varying predefined axes, including robot state, object layout, object instance, background, surface, illumination, and instruction phrasing. 
+
+Example Axis Controlled variation Diagnostic signal Baseline Perturbed 
+
+Robot state Base offset; end-effector ready pose Approach and pre-grasp sensitivity Baseline Swapped Layout 
+
+Object layout Target, distractor, and receptacle pose; clutter and occlusion Spatial error, collision, or wrong placement Baseline Enlarged Object 
+
+Object instance Shape, size, material, mass, center of mass, and deformability Grasp mismatch, unstable lift, or object drop Baseline Perturbed 
+
+Background / Surface Texture, color, reflectance, and non-task visual distractors Pose-estimation drift under visual changes Baseline (EV+3.0) Dimmed (EV-4.0) 
+
+Illumination Brightness, illumination direction, shadows, and dim or hard illumination Detection, pose, or placement error under photometric shift Put the black pen in the mesh rack. vs. Place the black pen in the gray bin. Task Instruction Equivalent references to object, slot, layer, or region Wrong-object or wrong-goal grounding 
+
+and success criteria. Scene alignment determines where the evaluation is performed by reconstructing the study-room and living-room tasks as digital twins. Interaction alignment determines how the evaluation is executed by matching the robot embodiment, sensing layout, control interface, trajectory replay, and episode lifecycle between hardware and simulation. With these components aligned, the simulator serves not only as a rendering and physics backend, but also as a controlled evaluation layer for deployment-oriented policy evaluation. The role of this evaluation layer is complementary to real-robot testing. Real-robot trials remain the final measure of deployable performance, because they expose contact uncertainty, sensing artifacts, calibration error, and hardware-level safety behavior. However, physical trials are expensive and make it difficult to isolate a single cause of failure. We use the aligned digital twins to test whether a policy is sensitive to specific non-semantic factors, including robot initialization, object placement, object instance, background appearance, illumination, and instruction wording. To isolate each factor, we replay the same task from matched reset conditions and vary only one factor at a time while preserving the intended task goal. For each task, DataLadder uses the simulator to generate evaluation episodes by systematically varying a predefined set of generalization axes. Robot-state perturbations test whether the policy depends on a narrow base pose or end-effector ready pose. Object-layout perturbations reveal spatial reasoning errors, collision-prone behavior, and wrong placement under clutter or occlusion. Object-instance perturbations evaluate whether grasping and placement remain stable when object geometry or physical properties change. Background, surface, and illumination variations diagnose visual overfitting in perception and pose estimation. Instruction paraphrases test whether the policy grounds objects, containers, shelf layers, and target regions by task semantics rather than by memorized wording. Table 3 summarizes these axes, their controlled variations, and the corresponding diagnostic signals. The evaluation target is object-centric. For each task-relevant object, the simulator records the final stable pose and checks it against the assigned goal region defined by the task. For placement and tidy-up tasks, the pose is evaluated in the coordinate frame of the target container, shelf, bin, coaster, or support region. This prevents a global-position match from being treated as success when the object must be placed into a specific compartment, layer, or container. When a full 6-DoF match is unnecessary, only the relevant pose components 10 Table 4 Comparison of Simulator-Based Synthetic Data Generation Methods. Teleoperation, FSM-based generation, IKFlow-based augmentation, and RL-based generation are compared in terms of demonstration requirements, trajectory acceptance, and synthesis speed for a 10-second simulated episode. Method Min. episodes Acceptance Synthesis Speed (s/episode) Teleop. Zero ∼ 80 % ∼ 380                
+
+> FSM Zero ∼30 %∼300
+> IKFlow Few ∼70 %∼15
+> RL Large ∼90 %∼10
+
+are checked, such as planar position, support height, container membership, or compartment assignment. An episode is counted as successful only when all required objects reach their assigned target states within the horizon, and no safety termination is triggered. In addition to the final success or failure result, the evaluator records per-object completion, grasp outcome, placement error, collision events, timeout, safety-stop status, and success rate under each perturbation axis. These records turn a single task-level score into a failure profile: layout-sensitive failures, illumination-sensitive failures, grounding errors, and grasp-instability failures can be separated and addressed through targeted data generation, scene randomization, policy refinement, or selective real-robot validation. This protocol closes the Robot → Simulation part of DataLadder. The real robot anchors the benchmark in deployment-relevant tasks, scene alignment establishes the digital-twin environment, interaction alignment preserves the execution interface, and simulation-based evaluation turns the aligned system into a scalable measurement instrument. The resulting diagnostic profiles support simulation-first checkpoint screening before real-robot deployment, and also provide the basis for the following Simulation → Human stage, where simulated trajectories are inspected with human naturalness criteria before being used as training data. 
+
+3.2 Simulation → Human 
+
+3.2.1 Synthetic Data Generation 
+
+The Simulation → Human stage starts with candidate robot trajectories generated in simulation, which are then projected into human-hand space for embodied inspection and robot-human data alignment. To improve their coverage and diversity, we develop four complementary simulation-based data synthesis and augmentation pipelines. First, a virtual teleoperation framework is employed, where an operator uses a six-degree-of-freedom input device to remotely control a robot in the simulator and collect demonstration data. Second, a finite-state-machine (FSM)-based pipeline enables rule-driven automatic data generation. Third, IKFlow is leveraged to efficiently augment existing trajectories in the joint space. Finally, reinforcement learning (RL) is used to train general manipulation policies for the automatic generation of diverse task data. As summarized in Table 4, the four approaches exhibit different characteristics in terms of demonstration requirements, trajectory acceptance, and wall-clock synthesis speed for a 10-second simulated episode.  
+
+> Teleoperation.
+
+Teleoperation is a widely used paradigm for collecting robot demonstrations, where human operators control robots in the simulator through interfaces such as 6-DOF controller, XR headsets, and keyboards. As illustrated in Figure 5a, operators can use dedicated buttons and knobs to control the gripper pose and opening width, enabling intuitive manipulation. During operation, human inputs are translated into robot control commands, enabling the robot to perform manipulation tasks while recording observations, robot states, and action trajectories. The collected trajectories can be further replayed, processed, and augmented to construct large-scale datasets for robot learning. Teleoperation provides precise and natural demonstrations, serving as high-quality seed trajectories for subsequent data augmentation and policy learning.  
+
+> FSM-based Method.
+
+For scenarios where demonstration trajectories are unavailable, we adopt an FSM-based data synthesis method. The approach first decomposes a manipulation task into a sequence of predefined states based on task-specific prior knowledge, such as object selection, approach, grasp, transport, and release. Given object poses and environmental constraints, target end-effector poses are generated for each state, and 11 Change the gripper's orientation Change the gripper's position Open the gripper Close the gripper(a) Teleoperation in the Simulator Select Approach Grasp 
+
+Transport Lift Release 
+
+Trajectories in different episodes State transition sequence in episode 1
+
+(b) Synthetic Data Generation with an FSM-Based Method 𝑧 ∼ 𝑁 (0,1) 𝑥 ∈ ℝ𝑞 
+
+Flow Block L️ 
+
+Affine 
+
+Transform 
+
+Coefficient Network 
+
+𝑧 
+
+𝑧 1:𝑑 
+
+𝑧 𝑑 +1:𝐷 
+
+End -Effector Poses 
+
+Coupling Layer  Permute L️ ayer 
+
+𝑃 𝑍 (𝑧 ) Joint Space 
+
+(c) Synthetic Data Generation with an IKFlow-Based Method ·Cam  1 Cam  2 Cam  3 Rollout 1  Rollout  2 Rollout 3 
+
+Embodied Policy 
+
+Model 
+
+Instruction 
+
+Collected 
+
+RL Trajectories 
+
+PPO 
+
+𝑎 1 𝑎 2 𝑎 3 𝑎 𝑁 
+
+…
+
+N-step  Action Chunk 
+
+RL Update 
+
+Embodied Simulator 
+
+Platform 
+
+(d) Synthetic Data Generation with an RL-Based Method 
+
+Figure 5 Simulation-Enabled Synthetic Data Generation Methods. Four complementary pipelines are shown for generating robot trajectories in simulation: teleoperation, FSM-based generation, IKFlow-based augmentation, and RL-based autonomous data collection. 
+
+12 an inverse kinematics solver is used to obtain feasible joint configurations. By sequentially executing these states, complete manipulation trajectories can be automatically synthesized. As illustrated in Figure 5b, different episodes produce distinct trajectory distributions, while each episode follows a fixed FSM structure. Without requiring demonstration data, this method can rapidly generate an initial task dataset.  
+
+> IKFlow-based Method.
+
+Once a small number of feasible demonstrations are available, we employ an IKFlow-based augmentation strategy to expand the dataset, as illustrated in Figure 5c. IKFlow models the conditional distribution between end-effector poses and joint configurations, enabling diverse inverse-kinematics solutions to be generated efficiently for the same task. In practice, a single successful demonstration serves as a seed trajectory, from which multiple kinematically valid joint-space candidates are obtained through latent-space sampling. These candidate solutions are further connected through trajectory continuity constraints and motion optimization to produce smooth and executable trajectories.  
+
+> RL-based Method.
+
+To further enhance data generation in complex environments, we develop a simulation-based RL framework for autonomous trajectory collection, as illustrated in Figure 5d. Existing demonstrations and simulation environments are first used to construct training tasks, while reward functions guide policy learning toward successful task completion. The trained policy is then deployed under randomized scene configurations, object properties, and initial conditions to continuously generate diverse trajectories. During this process, both successful and failed trajectories are recorded together with their corresponding failure modes and organized into a contrastive experience buffer. This enables the policy to learn from informative positive and negative examples, thereby improving data diversity, robustness, and task generalization beyond what can be achieved with human demonstrations alone. 
+
+3.2.2 Consistency Calibration 
+
+Simulated robot trajectories often exhibit unnatural or even physically implausible motion patterns due to the lack of human motion priors. Although recent works such as CRISP [ 25 ] employ Vision-Language Models (VLMs) to automatically evaluate the appropriateness and naturalness of generated behaviors in simulation, their judgments primarily rely on visual observations and semantic understanding, making it difficult to capture the rich motor intuition and experience humans acquire through physical interaction. Motivated by these observations, we propose a Simulation → Human trajectory quality refinement method, as illustrated in Figure 6. The goal is to further improve the quality of trajectories generated in simulation by obtaining human data aligned with each simulation episode. The core idea is to convert simulation-synthesized robot trajectories into human-hand space and ask human operators to trace the mapped hand-space trajectories from an embodied perspective, thereby identifying unnatural or implausible motion patterns through direct embodied feedback. Human operators can leverage rich physical intuition and motor experience when simulating trajectory execution, yielding fine-grained assessments of trajectory plausibility. Specifically, we first map the robot end-effector trajectories from the simulator to the human hand workspace, enabling human operators to track and reproduce the trajectories from a first-person perspective. During this embodied inspection process, human operators can perceive awkwardness and implausible motion patterns in certain trajectories, which often reveal strategic deficiencies in simulated trajectories that violate human motor intuition. By systematically collecting and analyzing the simulation feedback from human operators, we find that the discrepancies between simulated trajectories and natural human operation manifest as strategic deviations across multiple dimensions. These include approach strategy deviation, where simulated trajectories tend to select kinematically direct paths when approaching target objects, whereas human operators prefer approach directions that preserve greater operational freedom for downstream actions. They also include temporal strategy deviation, where transitions between key operation phases in simulated trajectories often lack the anticipatory adjustments that humans naturally perform, resulting in insufficient motion fluency. Other deviations in motion patterns may arise when simulation-based planning algorithms converge to locally optimal but globally suboptimal solutions. Based on these naturalness criteria distilled from human embodied feedback, we construct a trajectory naturalness assessment framework. We then perform quality filtering on the simulation-synthesized dataset, removing trajectory samples that violate human motor intuition, thereby obtaining a higher-quality training dataset. 13 Simulation Data Simulation-Aligned Human Data Quality Filtering       
+
+> natural unnatural
+> Feasibility Naturalness Smoothness Figure 6 Simulation →Human Trajectory Quality Refinement. Robot trajectories generated in simulation are projected into human-hand space for embodied inspection, enabling human operators to detect unnatural motion patterns and obtain aligned robot-human trajectory data from the same episode.
+
+The key advantage of the proposed method lies in establishing a closed-loop pathway from simulation data to human embodied feedback and back to simulation data quality. The physical intuition of human operators provides judgment criteria for global-strategy naturalness assessment that neither per-frame evaluators nor VLMs can replace. The filtered dataset provides higher-quality candidate data for downstream manipulation-model training in both simulator and real-world settings. 
+
+3.2.3 Robot-Human Data Alignment 
+
+Beyond trajectory quality filtering, the Simulation → Human step also provides a mechanism for constructing aligned robot-human data. Starting from a simulated robot episode, we can export the same underlying task execution in two complementary forms: a robot-centered trajectory that preserves the AgiBot G1 embodiment, control interface, and camera observations, and a human-form trajectory obtained by projecting the robot end-effector motion into human-hand space. As a result, each simulated episode yields a paired robot-human sample with shared task semantics, object states, temporal structure, and success labels. This paired structure is valuable for representation alignment in the intermediate training stage before deployment-oriented fine-tuning, helping bridge human-centric priors and robot-executable actions. Similar in spirit to human-robot data construction in EgoScale[ 56 ], the aligned pairs allow the model to observe how the same manipulation intent appears under different embodiments and viewpoints. The robot trajectory provides deployment grounding, while the human-form trajectory provides an embodiment that is closer to large-scale human demonstration data. Training on such pairs encourages the policy representation to bridge human-centric manipulation priors and robot-executable actions, instead of treating human and robot data as two unrelated sources. 
+
+4 Human → Simulation → Robot 
+
+Modern robot foundation models, including Vision-Language-Action (VLA) [ 8], Vision-Action (VA) [ 6], and World-Action Models (WAM) [ 53 ], require data that is both scalable and deployment-faithful. Large robot datasets have improved generalist policies, but real-robot demonstrations remain expensive to collect across diverse scenes, embodiments, and tasks [ 7, 19 , 35 ]. egocentric human videos offer a much larger and cheaper source of manipulation experience [ 13 ], yet robots cannot directly execute them. This motivates a simulation-mediated data pathway that converts scalable human demonstrations into physically feasible and robot-consumable training data. This section focuses on the data generation: using the simulator to bridge large-scale human videos and robot-consumable data through a Human → Simulation → Robot toolchain. Specifically, the toolchain converts human demonstrations into feasible robot trajectories and visually realistic robot videos. Figure 7 summarizes the overall data pathway. It starts from egocentric human videos, extracts task-relevant hand pose cues, and 14 Human → Simulation → Robot                  
+
+> Human Video Hand Pose Extraction Simulation Video
+> Robot Video Domain Randomization Reality Augmentation
+> Lighting
+> Texture Color
+> Object Figure 7 Human →Simulation →Robot Toolchain. Stage I: Human →Simulation. egocentric human operation videos are processed to extract task-relevant hand pose cues and reconstruct the surrounding task scene, which are then converted into a sim-ready task representation. Stage II: Simulation →Robot. The reconstructed task execution is converted into robot-centered manipulation replay, where simulated robot videos are expanded through domain randomization over object identity, color, and scene configuration, and further enhanced by reality augmentation to improve texture, illumination, and visual realism.
+
+uses the simulator to obtain robot-centered trajectories and rendered videos. The rendered results can then be expanded by domain randomization in the simulator and further adapted by reality augmentation to reduce the visual gap to real-robot deployment. Simulation is necessary because direct human-to-robot retargeting is often unreliable. Human hands and humanoid end-effectors differ in kinematics, contact geometry, and feasible force profiles, so naively transferred motions may violate joint limits, cause self-collisions, or produce physically inconsistent contacts. We therefore first lift human demonstrations into metric 3D motion, execute them inside the simulator, and then export feasible robot trajectories together with robot-centric rendered videos. Domain randomization changes scene factors such as object instances, colors, and layouts, while reality augmentation improves the visual realism of the generated robot videos by adapting textures, illumination, and appearance. In this way, the simulator acts both as a physical feasibility filter and as a data amplifier, while reality augmentation makes the resulting videos closer to the visual distribution of real-robot deployment. The following subsections detail the Human → Simulation conversion in Sec. 4.1, the Simulation → Robot conversion in Sec. 4.2, and the JoyBuilder 2.0 cloud service interface in Sec. 4.3. 
+
+4.1 Human → Simulation 
+
+The Human → Simulation stage provides the front end of the Human → Simulation → Robot pipeline. Its goal is not to directly copy human hand motion onto the robot, but to extract task-relevant motion cues from egocentric human videos and place them into the simulator context, where robot feasibility can be checked. In the current system, this stage is organized as a conversion workflow that focuses on hand motion, object-level task cues, and an editable simulator setup. Uncertain cases are corrected or verified before being used for robot rollout generation.  
+
+> Human motion and task information.
+
+The input is an egocentric manipulation video, optionally accompanied by depth observations, camera calibration, object annotations, or selected key frames. From the RGB stream, we use HaMeR [ 38 ] to estimate the demonstrator’s hand pose. These estimates are used as motion priors rather than direct robot actions. Instead of preserving the full human hand articulation, we extract a task-space description, including wrist motion, approach direction, grasp or release phase, and candidate hand–object interaction regions. This abstraction reduces the dependence on human-specific kinematics and keeps the 15 information most relevant to robot manipulation. The task context is then instantiated in the simulator. The manipulated object, target container or support region, camera configuration, and robot embodiment are specified or selected from available assets. Object poses and task semantics are aligned with the demonstration when reliable estimates are available. When some quantities cannot be confidently estimated from the video alone, they are treated as editable parameters rather than fixed outputs of the perception system.  
+
+> Constraint-aware robot rollout.
+
+After the motion prior and task context are available, the demonstration is instantiated in the simulator and adapted to the target robot. The human trajectory provides a coarse task prior, while the simulator checks whether a corresponding robot rollout is feasible under the robot embodiment. This follows the motivation of recent human-video-to-robot-skill pipelines, where the simulator is used to bridge the embodiment gap between human demonstrations and robot manipulation [ 14 ]. The rollout is filtered by kinematic, safety, and task-level constraints. These constraints cover joint limits, reachable workspace, gripper range, collision avoidance, object accessibility, grasp or support stability, and target-region completion. If a rollout violates these constraints, it can be locally adjusted, manually reviewed, or excluded from the executable training set. This prevents visually plausible but physically invalid human motions from being used as robot demonstrations.  
+
+> Outputs.
+
+For each accepted demonstration, the Human → Simulation stage produces a robot-centered simu-lated episode. The episode contains robot states, end-effector poses, gripper commands, camera observations, object poses, contact events, and task annotations. Compared with the original human video, the resulting data is expressed in the robot’s action and observation space. Compared with a purely visual reconstruction, it is tied to an executable robot state and can be replayed, perturbed, and rendered under controlled conditions. These robot-centered rollouts serve as seed data for the following Simulation → Robot stage, where domain randomization and reality augmentation are used to produce more diverse and realistic robot-view videos. 
+
+4.2 Simulation → Robot 
+
+The Simulation → Robot stage converts the robot-centered simulated episodes from Sec. 4.1 into visually diverse robot-view videos for downstream training. As illustrated in Figure 7, this stage starts from videos rendered in the simulator and produces two types of outputs: domain-randomized videos and realism-augmented robot-view videos. We implement this stage through domain-randomized rendering, reality augmentation based on Cosmos Transfer [3], and appearance-level visual generalization.  
+
+> Domain-randomized simulation rendering.
+
+We first expand each simulated episode by randomizing task-relevant and visual factors inside the simulator. At the task level, object poses, container locations, and object combinations are varied while maintaining reachability and task feasibility. At the visual level, object colors, container colors, distractor objects, and local textures are randomized. For example, in the basket manipulation task shown in Figure 7, changing the basket color or the manipulated object produces multiple valid videos from the same task structure. This follows the standard domain-randomization principle: increasing the coverage of the simulation distribution can reduce the visual and state mismatch encountered during real deployment [ 39 , 44 ]. The output is a set of domain-randomized videos with controlled variations in object identity, color, pose, and local scene configuration. Because these videos are generated inside the simulator, they remain aligned with robot states, object poses, camera parameters, and task labels, making them usable as paired trajectory-video data for robot foundation model training.  
+
+> Reality augmentation with Cosmos Transfer.
+
+Domain randomization improves diversity, but simulated videos may still differ from those captured by real robot cameras. We therefore use Cosmos Transfer [ 3]as a reality-augmentation module to translate simulated clips into more realistic robot-view videos. In our pipeline, the RGB video provides the motion and scene layout, while structural signals such as depth, edges, or segmentation can be used to preserve the spatial structure of the scene during visual transfer. This step adapts the visual appearance of the video while preserving the task content, including robot motion and object movement. Quality checks are applied to ensure that the transferred videos remain consistent with the original simulation labels. Thus, the same executable trajectory can provide both physically grounded labels and visually enhanced observations for downstream model training.  
+
+> Appearance-level visual generalization.
+
+Beyond one-to-one reality augmentation, the same transfer 16 module can generate plausible appearance variants from a fixed rollout, such as changes in tabletop material, illumination, and global light tone. This complements domain randomization in simulation: the simulator varies physically explicit factors such as object pose, object identity, and container color, while Cosmos-based transfer adjusts higher-level appearance factors that are costly to author manually. The Simulation → Robot stage, therefore, produces domain-randomized videos and reality-augmented robot-view videos. Together, they enhance controllable diversity and visual realism while preserving the physical structure and privileged annotations provided by the underlying digital twin. 
+
+4.3 Cloud-Native Infrastructure for Data Generation and Evaluation 
+
+Shared Cloud Execution Layer. DataLadder organizes simulator rollout, data conversion, robot-view rendering, reality augmentation, and policy screening as a cloud-native execution layer on JD Cloud. The purpose of this layer is not to introduce an additional operational stage, but to make the Human → Simulation 
+
+→ Robot pathway scalable, standardized, and consistent with the Robot → Simulation → Human evaluation pathway. By moving rollout generation and visual augmentation into a managed runtime, DataLadder can reuse the same robot models, asset libraries, camera definitions, task predicates, randomization policies, and output schemas across data generation and evaluation. Human Simulation Robot Human Simulation Robot   
+
+> Robot Behavior Simulation Environment Human Feedback Parallel Physics Computing Distributed Rendering High-throughput Simulation Execution GPU / CPU Elastic Resources Distributed Job Scheduling Workflow Orchestration
+
+High-Performance Storage 
+
+> High-performance distributed storage Parallel data access and caching Large-scale assets, video, and trajectory storage
+
+Embodied Data Lake 
+
+> Unified embodied data lake Metadata index and dataset versioning Robot, scene, sensor, and trajectory data management
+
+Toolchain Runtime Services 
+
+Cloud Support Services  
+
+> Simulation Environment Robot Execution
+
+Figure 8 Cloud-Native Infrastructure for Embodied Data Generation and Visual Enhancement. JD Cloud provides the cloud-side execution substrate for the Human ⇌ Simulation ⇌ Robot workflow. 
+
+JoyBuilder Cloud Service. JD Cloud 1 supports the cloud deployment of the Human → Simulation → Robot pipeline through two JoyBuilder 2.0 service entries 2. The embodied simulation service 3 provides a cloud-side simulation environment for creating and running robot instances. It supports scene preparation, robot embodiment loading, camera configuration, and robot-centered video rendering. In the DataLadder pipeline, this service corresponds to the simulation and rollout-generation stage, where human demonstrations are replayed or converted into robot-consumable trajectories and videos. The Cosmos-Transfer notebook service 4
+
+supports the reality-augmentation stage. It adapts simulated videos toward more realistic illumination, 
+
+> 1
+
+https://www.jdcloud.com/ 
+
+> 2
+
+https://docs.jdcloud.com/cn/jdaip/product-overview 
+
+> 3
+
+https://docs.jdcloud.com/cn/jdaip/create-embodiedsimulation 
+
+> 4
+
+https://docs.jdcloud.com/cn/jdaip/Notebook-Cosmos-Transfer 
+
+17 texture, material appearance, and background realism. Together, these two services instantiate the cloud-side execution substrate for simulation data generation and visual enhancement in the Robot → Simulation →
+
+Human workflow. Figure 8 illustrates the cloud-service infrastructure.  
+
+> Scalable Data Generation.
+
+This infrastructure provides a common execution substrate for the modules described in Sec. 4.1 and Sec. 4.2. Human video inputs are converted into sim-ready task priors, instantiated in the simulator, and filtered by embodiment, collision, reachability, contact, and task-success constraints. Accepted rollouts are then rendered as robot-view trajectories with synchronized states, actions, object poses, camera observations, and task annotations. The same runtime can batch domain randomization over object instances, object poses, scene layouts, illumination, textures, backgrounds, and robot states, so that each task prior yields a distribution of physically grounded training examples rather than a single deterministic replay.  
+
+> Rendering and reality augmentation.
+
+The cloud layer also provides a standardized interface between simulation rendering and reality augmentation. The simulator provides the physically explicit trajectory, privileged state, and structured visual observations, while the realism-augmentation module improves texture, material appearance, illumination consistency, and background realism without changing the underlying task execution. This separation preserves the annotation fidelity of simulation while reducing the visual gap to robot-camera observations. As a result, the generated data remains suitable for policy training, sim-to-real analysis, and comparison with real-robot evaluation.  
+
+> Consistent Policy Screening.
+
+Overall, the cloud-native implementation turns DataLadder from a collection of offline modules into reusable experimental infrastructure. It supports large-scale data generation by parallelizing rollouts and rendering, and it supports reliable evaluation by keeping runtime versions, assets, embodiments, camera models, success predicates, and output formats fixed across policy checkpoints. This shared infrastructure is essential for the proposed data loop: human demonstrations can be converted into robot-usable training data at scale, while candidate policies can be screened in a consistent simulation environment before selective real-robot validation. 
+
+5 Conclusion 
+
+DataLadder is a simulation-enabled interconversion toolchain for the embodied data pyramid. DataLadder formulates the Robot ⇌ Simulation ⇌ Human paradigm, using simulation as the central alignment layer between robot data and human data. This bidirectional formulation is instantiated through two complementary pathways. In the Robot → Simulation → Human pathway, real-robot tasks and success criteria anchor calibrated digital-twin evaluators, where simulation enables scalable policy evaluation, while synthesized trajectories can be inspected with human embodied feedback before use as candidate training data. In the Human 
+
+→ Simulation → Robot pathway, egocentric human demonstrations are lifted into the JoySim simulator, checked under robot physical constraints, and converted into robot-centered trajectories and robot-view observations for downstream policy training. Together, these pathways form a simulation-centered data loop that reduces the cost and variance of repeated evaluation while supporting scalable robot data generation. The same reconstruction, simulation, rendering, and realism-enhancement modules are further organized as services on JD Cloud, turning the toolchain into reusable infrastructure for robot data production, benchmark construction, and deployment-oriented evaluation. 18 Appendices 
+
+A Additional Real-Robot Generalization Observations Background 
+
+Origin Red Cloth Gray Cloth Green Cloth Patterned Cloth 
+
+Imaging Perturbation 
+
+Origin Low Medium High Max 
+
+Illumination 
+
+Origin Yellow Light Orange Light Blue Light Purple Light 
+
+Robot State 
+
+Origin Forward Offset Backward Offset Left Yaw Right Yaw 
+
+Object Layout 
+
+Origin Shuffle 1 Shuffle 2 Shuffle 3 Shuffle 4 
+
+Background 
+
+Origin Red Cloth Gray Cloth Green Cloth Patterned Cloth 
+
+Imaging Perturbation 
+
+Origin Low Medium High Max 
+
+Illumination 
+
+Origin Yellow Light Orange Light Blue Light Purple Light 
+
+Robot State 
+
+Origin Forward Offset Backward Offset Left Yaw Right Yaw 
+
+Object Layout 
+
+Origin Shuffle 1 Shuffle 2 Shuffle 3 Shuffle 4 
+
+(a) Generalization Axes in Study Room Background 
+
+Origin Red Cloth Gray Cloth Green Cloth Patterned Cloth 
+
+Imaging Perturbation 
+
+Origin Low Medium High Max 
+
+Illumination 
+
+Origin Yellow Light Orange Light Blue Light Purple Light 
+
+Robot State 
+
+Origin Forward Offset Backward Offset Left Yaw Right Yaw 
+
+Object Layout 
+
+Origin Shuffle 1 Shuffle 2 Shuffle 3 Shuffle 4 
+
+Background 
+
+Origin Red Cloth Gray Cloth Green Cloth Patterned Cloth 
+
+Imaging Perturbation 
+
+Origin Low Medium High Max 
+
+Illumination 
+
+Origin Yellow Light Orange Light Blue Light Purple Light 
+
+Robot State 
+
+Origin Forward Offset Backward Offset Left Yaw Right Yaw 
+
+Object Layout 
+
+Origin Shuffle 1 Shuffle 2 Shuffle 3 Shuffle 4 
+
+(b) Generalization Axes in Living Room 
+
+Figure 9 Representative Real-World Observations for Generalization Evaluation. Real-robot observations are captured under controlled real-world generalization settings for study-room and living-room tidy-up tasks. 
+
+Figure 9 provides representative AgiBot G1 head-camera observations for the controlled real-world general-ization settings discussed in Section 3.1.1. These observations span tidy-up tasks in study rooms and living rooms with diverse visual variations. 19 B Additional Sim-Ready Asset Statistics 
+
+This appendix provides a complete enumeration of the sim-ready asset library used in the simulator. We first present a hierarchical summary of all assets in Figure 10, which organizes the library by scene-level category, functional role, and fine-grained object class. This multi-level taxonomy provides an overview of the simulator asset space and supports semantically controlled object replacement, clutter synthesis, and domain randomization while preserving task semantics. Storage 
+
+> Containers
+> bottle
+> cup
+> plate
+> bowl
+> pot
+> medicine_bottle
+> tray
+> mug
+> teapot
+> can
+> dish
+> red_wine_glass
+> pencup
+> kettle
+> sauce_can
+> wineglass
+> jam_jar
+> pillbottle
+> pump_bottle
+> container
+> cup_with_liquid
+> liangbei
+> decanter
+> redwine_glass
+> liquors_glass
+> Storage
+> cabinet
+> tvstand
+> shoecabinet
+> ikea_furniture
+> chestofdrawers
+> sideboardcabinet
+> wardrobe
+> storagefurniture
+> phonestand
+> displaystand
+> breadbasket
+> drawers
+> bookcase
+> cup_shelf
+> cupboard
+> plate_shelf
+> rack
+
+Boxes 
+
+> box
+> glasses_case
+
+plasticbox 
+
+cardboard_box 
+
+toolbox 
+
+coffee_box 
+
+tea_box 
+
+msg 
+
+wooden_box 
+
+shoe_box 
+
+carton 
+
+Bags 
+
+basket 
+
+shoppingtrolley 
+
+handbag 
+
+backpack 
+
+cart 
+
+Furniture 
+
+Tables 
+
+table 
+
+desk 
+
+counter 
+
+teatable 
+
+board 
+
+Seating 
+
+chair 
+
+couch 
+
+stool 
+
+sofa_chair 
+
+sofachair 
+
+Beds 
+
+bed 
+
+nightstand 
+
+Shelving shelf 
+
+bookshelf 
+
+> Food
+
+Fresh 
+
+mango 
+
+pomegranate 
+
+shrimp 
+
+egg 
+
+corn 
+
+mangosteen 
+
+lemon 
+
+orange 
+
+conch 
+
+lotus_root 
+
+pear 
+
+banana 
+
+sweet_potato 
+
+egg_p 
+
+peach 
+
+pitaya 
+
+carrot 
+
+onion 
+
+bamboo_shoots 
+
+tomato 
+
+starfish 
+
+pineapple 
+
+chili garlic fruit vagetable asparagus cucumber apple Cooked  bread sausage hamburger egg_tart dumpling hot_dog waffle cake donut pastry mooncake chicken_leg hamburg french_fries chips_tub 
+
+> baguette
+> Drink
+> boxed_beverage
+> milk_tea
+> soy_sauce
+> olive_oil
+> boxdrink
+> milk_box
+> vinegar
+> baisuishan
+> wuliangye
+> Hygiene
+> toothpaste
+> toothbrush
+> facial_cream
+> hand_cream
+> tissue
+> shampoo
+> soap
+> lipstick
+> candle
+> candlestick
+> roll_paper
+> perfume
+> hydrating_oil
+> Tool
+> Kitchen
+> pan
+> knife
+> egg_placer
+> teanet
+> tongs
+> spoon
+> skillet
+> steamer
+> fork
+> Hand Tool
+> hammer
+> tape_measure
+> scissor
+> stapler
+> scissors
+> drill
+> woodenmallet
+> spanner
+> smallshovel
+> screwdriver
+> Stationery
+> book
+> pen
+> eraser
+> folder
+> seal
+> brush_pen
+> markpen
+> glue
+> notebook
+> whiteboard_eraser
+> mini_chalkboard
+> Cleaning
+> brush
+> waterer
+> cleaner
+> roller
+> mop
+> dustpan
+> watering_can
+> Appliance
+> Kitchen
+> microwave
+> washingmachine
+> refrigerator
+> oven
+> electriccooker
+> dishwasher
+> hearth
+> coffeemaker
+> coffeemachine
+> ricecooker
+> waterdispenser
+> Electronics
+> monitor
+> tv
+> keyboard
+> mouse
+> clock
+> laptop
+> remote_control
+> power_strip
+> telephone
+> calculator
+> timer
+
+real_camera 
+
+battery 
+
+speaker 
+
+remotecontrol 
+
+phone 
+
+scanner 
+
+electronicscale 
+
+screen 
+
+microphone 
+
+small_speaker 
+
+Lighting 
+
+light 
+
+lamp 
+
+ceiling_light 
+
+flash_light 
+
+Personal 
+
+fan 
+
+hair_dryer 
+
+medical_equipment 
+
+watch 
+
+razor 
+
+Textile 
+
+Bedding 
+
+pillow 
+
+blanket 
+
+Clothing 
+
+shoe 
+
+clothes 
+
+belt 
+
+umbrella 
+
+glasses 
+
+hat 
+
+Cloth 
+
+towel 
+
+pet_collar 
+
+Curtain curtain 
+
+Entertainment 
+
+Vehicles 
+
+toy_bus 
+
+toy_train 
+
+toy_boat 
+
+toy_truck 
+
+toy_motorcycle 
+
+toy_plane 
+
+toy_car 
+
+toycar 
+
+mobility 
+
+bicycle 
+
+Sport 
+
+ball 
+
+table_tennis_bat 
+
+whistle 
+
+dumbbell 
+
+dumbbell_rack 
+
+table_tennis 
+
+Plush 
+
+toy 
+
+garage_kit 
+
+toy_animals 
+
+dinosaur 
+
+toy_plant 
+
+> Game
+
+rubik_cube chess rubik_cube_old chinese_chess piano block gong callbell woodenblock playingcards rubikscube bell fluted_block musical_instrument 
+
+> Fixture
+> Sanitary
+> trashcan faucet
+> toilet
+> sink
+> bathtub
+> tabletrashbin
+> trash
+> dustbin
+> Openings
+> door
+> sliding_door
+> double_door
+> wall
+> Decoration
+> plant
+> decoration
+> picture
+> person
+> mirror
+> props
+> trophy
+> rest
+> paymentsign
+> pot_art
+> globe
+> insert_the_flower_in_vase
+> coaster
+> Sundry
+> other_misc
+> other_flat
+> other_tiny
+> other_long
+> other_large
+> usd
+> other_unknown
+
+Figure 10 Hierarchical distribution of sim-ready assets by scene-level category and fine-grained object class. 
+
+To further illustrate the composition of the library, we report fine-grained statistics for three representative task-relevant groups: appliances, food items, and storage objects. The log-scale charts show a long-tailed distribution, where common categories provide dense coverage and rare categories support challenging generalization cases. 20 Figure 11 shows that the appliance subset is dominated by common household and office objects. Illumination devices and display-related electronics appear among the most frequent categories, while kitchen appliances and personal-care devices are also represented. These assets provide visual variation, reflective materials, background clutter, and future extensions toward appliance-aware household interaction. Figure 12 summarizes the food-related categories. The leading categories include bread, fruit, eggs, corn, dumplings, cakes, vegetables, and pastries. Compared with rigid storage or appliance objects, food items exhibit greater variation in shape, surface texture, color, and visual ambiguity. They are useful for evaluating category-level recognition, grasp selection, and placement robustness under realistic household clutter. Figure 13 shows that storage assets form one of the densest and most practically important parts of the library. Boxes, cabinets, shelves, baskets, drawers, wardrobes, and related receptacles appear frequently. This distribution supports tidy-up tasks that require semantically correct placement and enables controlled perturbations of receptacle geometry, scale, and clutter density. light 
+
+> monitor
+> tv
+> keyboard
+> mouse
+> microwave
+> washingmachine
+> clock
+> refrigerator
+> oven
+> electriccooker
+> lamp
+> laptop
+> dishwasher
+> hearth
+> ceiling_light
+> remote_control
+> fan
+> hair_dryer
+> power_strip
+> telephone
+> calculator
+> real_camera
+> coffeemaker
+> battery
+> razor
+> speaker
+> remotecontrol
+> flash_light
+> kettle
+> 10 1
+> 10 2
+> Top 30 Appliance
+
+Figure 11 Top-30 appliance categories in the sim-ready asset library. bread 
+
+> sausage
+> mango
+> pomegranate
+> shrimp
+> egg
+> hamburger
+> corn
+> mangosteen
+> lemon
+> orange
+> conch
+> lotus_root
+> pear
+> egg_tart
+> banana
+> sweet_potato
+> dumpling
+> egg_p
+> hot_dog
+> waffle
+> cake
+> peach
+> pitaya
+> carrot
+> onion
+> donut
+> bamboo_shoots
+> tomato
+> pastry
+> 10 1
+> 10 2
+> Top 30 Food
+
+Figure 12 Top-30 food categories in the sim-ready asset library. 
+
+21 box 
+
+> cabinet
+> shelf
+> trashcan
+> desk
+> nightstand
+> medicine_bottle
+> basket
+> tvstand
+> bookshelf
+> counter
+> shoecabinet
+> teatable
+> ikea_furniture
+> glasses_case
+> tissue
+> chestofdrawers
+> sideboardcabinet
+> can
+> wardrobe
+> storagefurniture
+> plasticbox
+> tabletrashbin
+> cardboard_box
+> toolbox
+> coffee_box
+> pencup
+> tea_box
+> trash
+> sauce_can
+
+10 1
+
+10 2
+
+10 3
+
+> Top 30 Storage
+
+Figure 13 Top-30 storage categories in the sim-ready asset library. 
+
+22 References 
+
+[1] Jad Abou-Chakra, Lingfeng Sun, Krishan Rana, Brandon May, Karl Schmeckpeper, Maria Vittoria Minniti, and Laura Herlant. Real-is-sim: Bridging the sim-to-real gap with a dynamic digital twin for real-world robot policy evaluation. arXiv preprint arXiv:2504.03597, 2025. [2] Hassan Abu Alhaija, Jose Alvarez, Maciej Bala, et al. Cosmos-transfer1: Conditional world generation with adaptive multimodal control. arXiv preprint arXiv:2503.14492, 2025. [3] Arslan Ali, Junjie Bai, Maciej Bala, Yogesh Balaji, Aaron Blakeman, Tiffany Cai, Jiaxin Cao, Tianshi Cao, Elizabeth Cha, Yu-Wei Chao, et al. World simulation with video foundation models for physical ai. arXiv preprint arXiv:2511.00062, 2025. [4] Barrett Ames, Jeremy Morgan, and George Konidaris. Ikflow: Generating diverse inverse kinematics solutions, 2022. URL https://arxiv.org/abs/2111.08933 .[5] Pranav Atreya, Karl Pertsch, Tony Lee, Moo Jin Kim, Arhan Jain, Artur Kuramshin, Clemens Eppner, Cyrus Neary, Edward Hu, Fabio Ramos, et al. Roboarena: Distributed real-world evaluation of generalist robot policies. arXiv preprint arXiv:2506.18123, 2025. [6] Anthony Brohan, Noah Brown, Justice Carbajal, Yevgen Chebotar, Joseph Dabis, Chelsea Finn, Keerthana Gopalakrishnan, Karol Hausman, Alex Herzog, Jasmine Hsu, et al. Rt-1: Robotics transformer for real-world control at scale. arXiv preprint arXiv:2212.06817, 2022. [7] Anthony Brohan, Noah Brown, Justice Carbajal, et al. Rt-1: Robotics transformer for real-world control at scale. arXiv preprint arXiv:2212.06817, 2022. [8] Anthony Brohan, Noah Brown, Justice Carbajal, Yevgen Chebotar, Xi Chen, Krzysztof Choromanski, Tianli Ding, Danny Driess, Avinava Dubey, Chelsea Finn, et al. Rt-2: Vision-language-action models transfer web knowledge to robotic control. arXiv preprint arXiv:2307.15818, 2023. [9] Tianxing Chen, Zanxin Chen, Baijun Chen, Zijian Cai, Yibin Liu, Zixuan Li, Qiwei Liang, Xianliang Lin, Yiheng Ge, Zhenyu Gu, et al. Robotwin 2.0: A scalable data generator and benchmark with strong domain randomization for robust bimanual robotic manipulation. arXiv preprint arXiv:2506.18088, 2025. [10] Prithwish Dan, Kushal Kedia, Angela Chao, Edward Weiyi Duan, Maximus Adrian Pace, Wei-Chiu Ma, and Sanjiban Choudhury. X-sim: Cross-embodiment learning via real-to-sim-to-real. In Proceedings of the Conference on Robot Learning (CoRL), 2025. [11] Alejandro Escontrela, Justin Kerr, Arthur Allshire, Jonas Frey, Rocky Duan, Carmelo Sferrazza, and Pieter Abbeel. GaussGym: An open-source real-to-sim framework for learning locomotion from pixels. arXiv preprint arXiv:2510.15352, 2025. [12] Yu Fang, Yue Yang, Xinghao Zhu, Kaiyuan Zheng, Gedas Bertasius, Daniel Szafir, and Mingyu Ding. Rebot: Scaling robot learning with real-to-sim-to-real robotic video synthesis, 2025. URL https://arxiv.org/abs/2503.14526 .[13] Kristen Grauman, Andrew Westbury, Eugene Byrne, Zachary Chavis, Antonino Furnari, Rohit Girdhar, Jackson Hamburger, Hao Jiang, Miao Liu, Xingyu Liu, et al. Ego4d: Around the world in 3,000 hours of egocentric video. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, pages 18995–19012, 2022. [14] Jhen Hsieh, Kuan-Hsun Tu, Kuo-Han Hung, and Tsung-Wei Ke. Dexman: Learning bimanual dexterous manipulation from human and generated videos. arXiv preprint arXiv:2510.08475, 2025. [15] Matteo Iovino, Julian Förster, Pietro Falco, Jen Jen Chung, Roland Siegwart, and Christian Smith. Comparison between behavior trees and finite state machines, 2024. URL https://arxiv.org/abs/2405.16137 .[16] Stephen James, Zicong Ma, David Rovick Arrojo, and Andrew J. Davison. Rlbench: The robot learning benchmark and learning environment. IEEE Robotics and Automation Letters, 5(2):3019–3026, 2020. [17] Guangqi Jiang, Haoran Chang, Ri-Zhao Qiu, Yutong Liang, Mazeyu Ji, Jiyue Zhu, Zhao Dong, Xueyan Zou, and Xiaolong Wang. GSWorld: Closed-loop photo-realistic simulation suite for robotic manipulation. arXiv preprint arXiv:2510.20813, 2025. 
+
+23 [18] Atsushi Kanehira, Naoki Wake, Kazuhiro Sasabuchi, Jun Takamatsu, and Katsushi Ikeuchi. Rl-driven data generation for robust vision-based dexterous grasping. ArXiv , abs/2504.18084, 2025. URL https: //api.semanticscholar.org/CorpusID:278129761 .[19] Alexander Khazatsky, Karl Pertsch, Suraj Nair, Ashwin Balakrishna, Sudeep Dasari, Siddharth Karamcheti, Soroush Nasiriany, Mohan Kumar Srirama, Lawrence Yunliang Chen, Kirsty Ellis, et al. Droid: A large-scale in-the-wild robot manipulation dataset. arXiv preprint arXiv:2403.12945, 2024. [20] Moo Jin Kim, Karl Pertsch, Siddharth Karamcheti, Ted Xiao, Ashwin Balakrishna, Suraj Nair, Rafael Rafailov, Ethan Foster, Grace Lam, Pannag Sanketi, Quan Vuong, Thomas Kollar, and Sergey Levine. Openvla: An open-source vision-language-action model. arXiv preprint arXiv:2406.09246, 2024. [21] Eric Kolve, Roozbeh Mottaghi, Winson Han, Eli VanderBilt, Luca Weihs, Alvaro Herrasti, Daniel Gordon, Yuke Zhu, Abhinav Gupta, and Ali Farhadi. AI2-THOR: An interactive 3d environment for visual AI. arXiv preprint arXiv:1712.05474, 2017. [22] Hangyu Li, Qin Zhao, Haoran Xu, Xinyu Jiang, Qingwei Ben, Feiyu Jia, Haoyu Zhao, Liang Xu, Jia Zeng, Hanqing Wang, Bo Dai, Junting Dong, and Jiangmiao Pang. Teleopbench: A simulator-centric benchmark for dual-arm dexterous teleoperation, 2025. URL https://arxiv.org/abs/2505.12748 .[23] Xuanlin Li, Kyle Hsu, Jiayuan Gu, Karl Pertsch, Oier Mees, Homer Rich Walke, Chuyuan Fu, Ishikaa Lunawat, Isabel Sieh, Sean Kirmani, Sergey Levine, Jiajun Wu, Chelsea Finn, Hao Su, Quan Vuong, and Ted Xiao. Evaluating real-world robot manipulation policies in simulation. In Conference on Robot Learning (CoRL), 2024. [24] Yihang Li, Xuelong Wei, Jingzhou Luo, Yingjing Xiao, Yibo Bai, Guangyuan Zhou, Teng Zou, Chenguang Gui, Jiajun Wen, He Zhang, Kangliang Chen, Xing Pan, Shuaiyan Liu, Daming Wang, Tao An, Jiayi Li, Shibo Jin, Wanwan Zhang, Tianyu Wang, Boren Wei, Zhixuan Huang, Fangsheng Liu, Ruodai Li, Hui Zhang, Anson Li, Yicheng Gong, Peng Cao, Jiaming Liang, and Liang Lin. Egolive: A large-scale egocentric dataset from real-world human tasks, 2026. URL https://arxiv.org/abs/2604.23570 .[25] Jiyu Lim, Youngwoo Yoon, and Kwanghyun Park. The robot’s inner critic: Self-refinement of social behaviors through vlm-based replanning, 2026. URL https://arxiv.org/abs/2603.20164 .[26] Bo Liu, Yifeng Zhu, Chongkai Gao, Yihao Feng, Qiang Liu, Yuke Zhu, and Peter Stone. Libero: Benchmarking knowledge transfer for lifelong robot learning. In Thirty-seventh Conference on Neural Information Processing Systems Datasets and Benchmarks Track, 2023. [27] Haozhe Lou, Yurong Liu, Yike Pan, Yiran Geng, Jianteng Chen, Wenlong Ma, Chenglong Li, Lin Wang, Hengzhen Feng, Lu Shi, Liyi Luo, and Yongliang Shi. Robo-gs: A physics consistent spatial-temporal model for robotic arm with hybrid representation. In 2025 IEEE International Conference on Robotics and Automation (ICRA), pages 15379–15386, 2025. doi: 10.1109/ICRA55743.2025.11128786. [28] Viktor Makoviychuk, Lukasz Wawrzyniak, Yunrong Guo, Michelle Lu, Kier Storey, Miles Macklin, David Hoeller, Nikita Rudin, Arthur Allshire, Ankur Handa, and Gavriel State. Isaac gym: High performance gpu-based physics simulation for robot learning. In Advances in Neural Information Processing Systems (NeurIPS) Datasets and Benchmarks Track, 2021. [29] Ajay Mandlekar, Yuke Zhu, Animesh Garg, Jonathan Booher, Max Spero, Albert Tung, Julian Gao, John Emmons, Anchit Gupta, Emre Orbay, Silvio Savarese, and Li Fei-Fei. Roboturk: A crowdsourcing platform for robotic skill learning through imitation, 2018. URL https://arxiv.org/abs/1811.02790 .[30] Ajay Mandlekar, Soroush Nasiriany, Bowen Wen, Iretiayo Akinola, Yashraj Narang, Linxi Fan, Yuke Zhu, and Dieter Fox. MimicGen: A data generation system for scalable robot learning using human demonstrations. In Conference on Robot Learning (CoRL), 2023. [31] Yao Mu, Tianxing Chen, Zanxin Chen, Shijia Peng, Zhiqian Lan, Zeyu Gao, Zhixuan Liang, Qiaojun Yu, Yude Zou, Mingkun Xu, et al. Robotwin: Dual-arm robot benchmark with generative digital twins. In Proceedings of the computer vision and pattern recognition conference, pages 27649–27660, 2025. [32] Soroush Nasiriany, Abhiram Maddukuri, Lance Zhang, Adeet Parikh, Aaron Lo, Abhishek Joshi, Ajay Mandlekar, and Yuke Zhu. Robocasa: Large-scale simulation of everyday tasks for generalist robots. arXiv preprint arXiv:2406.02523, 2024. [33] NVIDIA, Johan Bjorck, Fernando Castañeda, Nikita Cherniadev, Xingye Da, Runyu Ding, Linxi "Jim" Fan, Yu Fang, Dieter Fox, Fengyuan Hu, Spencer Huang, Joel Jang, Zhenyu Jiang, Jan Kautz, Kaushil Kundalia, 
+
+24 Lawrence Lao, Zhiqi Li, Zongyu Lin, Kevin Lin, Guilin Liu, Edith Llontop, Loic Magne, Ajay Mandlekar, Avnish Narayan, Soroush Nasiriany, Scott Reed, You Liang Tan, Guanzhi Wang, Zu Wang, Jing Wang, Qi Wang, Jiannan Xiang, Yuqi Xie, Yinzhen Xu, Zhenjia Xu, Seonghyeon Ye, Zhiding Yu, Ao Zhang, Hao Zhang, Yizhou Zhao, Ruijie Zheng, and Yuke Zhu. Gr00t n1: An open foundation model for generalist humanoid robots, 2025. URL 
+
+https://arxiv.org/abs/2503.14734 .[34] Abby O’Neill, Abdul Rehman, Abhiram Maddukuri, Abhishek Gupta, Abhishek Padalkar, Abraham Lee, Acorn Pooley, Agrim Gupta, Ajay Mandlekar, Ajinkya Jain, et al. Open x-embodiment: Robotic learning datasets and rt-x models. In 2024 IEEE International Conference on Robotics and Automation (ICRA), pages 6892–6903, 2024. doi: 10.1109/ICRA57147.2024.10611477. [35] Open X-Embodiment Collaboration, Abby O’Neill, et al. Open x-embodiment: Robotic learning datasets and rt-x models. arXiv preprint arXiv:2310.08864, 2023. [36] Shivansh Patel, Xinchen Yin, Wenlong Huang, Shubham Garg, Hooshang Nayyeri, Li Fei-Fei, Svetlana Lazebnik, and Yunzhu Li. A real-to-sim-to-real approach to robotic manipulation with vlm-generated iterative keypoint rewards. In Proceedings of the IEEE International Conference on Robotics and Automation (ICRA), 2025. [37] Georgios Pavlakos, Dandan Shan, Ilija Radosavovic, Angjoo Kanazawa, David Fouhey, and Jitendra Malik. Reconstructing hands in 3d with transformers. arXiv preprint arXiv:2312.05251, 2023. [38] Georgios Pavlakos, Dandan Shan, Ilija Radosavovic, Angjoo Kanazawa, David Fouhey, and Jitendra Malik. Reconstructing hands in 3D with transformers. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2024. [39] Xue Bin Peng, Marcin Andrychowicz, Wojciech Zaremba, and Pieter Abbeel. Sim-to-real transfer of robotic control with dynamics randomization. In IEEE International Conference on Robotics and Automation, 2018. [40] Manolis Savva, Abhishek Kadian, Oleksandr Maksymets, Yili Zhao, Erik Wijmans, Bhavana Jain, Julian Straub, Jia Liu, Vladlen Koltun, Jitendra Malik, Devi Parikh, and Dhruv Batra. Habitat: A platform for embodied AI research. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV), 2019. [41] Bokui Shen, Fei Xia, Chengshu Li, Roberto Martín-Martín, Linxi Fan, Guanzhi Wang, Claudia Pérez-D’Arpino, Shyamal Buch, Sanjana Srivastava, Lyne P. Tchapmi, Micael E. Tchapmi, Kent Vainio, Josiah Wong, Li Fei-Fei, and Silvio Savarese. iGibson 1.0: A simulation environment for interactive tasks in large realistic scenes. In Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2021. [42] Modi Shi, Shijia Peng, Jin Chen, Haoran Jiang, Yinghui Li, Di Huang, Ping Luo, Hongyang Li, and Li Chen. Egohumanoid: Unlocking in-the-wild loco-manipulation with robot-free egocentric demonstration. arXiv preprint arXiv:2602.10106, 2026. [43] Yu Sun, Meng Cao, Ping Yang, Rongtao Xu, Yunxiao Yan, Runze Xu, Liang Ma, Roy Gan, Andy Zhai, Qingxuan Chen, et al. Maniparena: Comprehensive real-world evaluation of reasoning-oriented generalist robot manipulation. arXiv preprint arXiv:2603.28545, 2026. [44] Josh Tobin, Rachel Fong, Alex Ray, Jonas Schneider, Wojciech Zaremba, and Pieter Abbeel. Domain randomization for transferring deep neural networks from simulation to the real world. In IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2017. [45] Marcel Torne, Anthony Simeonov, Zechu Li, April Chan, Tao Chen, Abhishek Gupta, and Pulkit Agrawal. Reconciling reality through simulation: A real-to-sim-to-real approach for robust manipulation. arXiv preprint arXiv:2403.03949, 2024. [46] Marcel Torne, Anthony Simeonov, Zechu Li, April Chan, Tao Chen, Abhishek Gupta, and Pulkit Agrawal. Reconciling reality through simulation: A real-to-sim-to-real approach for robust manipulation. arXiv preprint arXiv:2403.03949, 2024. [47] Homer Walke, Kevin Black, Abraham Lee, et al. Bridgedata v2: A dataset for robot learning at scale. arXiv preprint arXiv:2308.12952, 2023. [48] Lirui Wang, Yiyang Ling, Zhecheng Yuan, Mohit Shridhar, Chen Bao, Yuzhe Qin, Bailin Wang, Huazhe Xu, and Xiaolong Wang. GenSim: Generating robotic simulation tasks via large language models, 2023. [49] Yuxuan Wu, Lei Pan, Wenhua Wu, Guangming Wang, Yanzi Miao, Fan Xu, and Hesheng Wang. Rl-gsbridge: 3d gaussian splatting based real2sim2real method for robotic manipulation learning. In 2025 IEEE International Conference on Robotics and Automation (ICRA), pages 192–198. IEEE, 2025. 
+
+25 [50] Fanbo Xiang, Yuzhe Qin, Kaichun Mo, Yikuan Xia, Hao Zhu, Fangchen Liu, Minghua Liu, Hanxiao Jiang, Yifu Yuan, He Wang, Li Yi, Angel X. Chang, Leonidas J. Guibas, and Hao Su. SAPIEN: A simulated part-based interactive environment. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2020. [51] Charles Xu, Qiyang Li, Jianlan Luo, and Sergey Levine. Rldg: Robotic generalist policy distillation via reinforce-ment learning. ArXiv, abs/2412.09858, 2024. URL https://api.semanticscholar.org/CorpusID:274658369 .[52] Adina Yakefu, Bin Xie, Chongyang Xu, Enwen Zhang, Erjin Zhou, Fan Jia, Haitao Yang, Haoqiang Fan, Haowei Zhang, Hongyang Peng, et al. Robochallenge: Large-scale real-robot evaluation of embodied policies. arXiv preprint arXiv:2510.17950, 2025. [53] Seonghyeon Ye, Yunhao Ge, Kaiyuan Zheng, Shenyuan Gao, Sihyun Yu, George Kurian, Suneel Indupuru, You Liang Tan, Chuning Zhu, Jiannan Xiang, Ayaan Malik, Kyungmin Lee, et al. World action models are zero-shot policies. arXiv preprint arXiv:2602.15922, 2026. [54] Tianle Zhang, Zhihao Yuan, Dafeng Chi, Peidong Liu, Dongwei Li, Kejun Hu, Likui Zhang, Junnan Nie, Ziming Wei, Zengjue Chen, Yili Tang, Jiayi Li, Zhiyuan Xiang, Mingyang Li, Tianci Luo, Hanwen Wan, Ao Li, Linbo Zhai, Zhihao Zhan, Xiaodong Bai, Jiakun Cai, Peng Cao, Kangliang Chen, Siang Chen, Yixiang Dai, Shuai Di, Yicheng Gong, Chenguang Gui, Yucheng Guo, Peng Hao, Qingrong He, Haoyang Huang, Kunrui Huang, Zhixuan Huang, Shibo Jin, Yixiang Jin, Anson Li, Dongjiang Li, Jiawei Li, Ruodai Li, Yihang Li, Yuzhen Li, Jiaming Liang, Fangsheng Liu, Jing Long, Mingxi Luo, Xing Pan, Hui Shen, Xiaomeng Tian, Daming Wang, Song Wang, Junwu Xiong, Hang Xu, Wanting Xu, Zhengcheng Yu, He Zhang, Jiyao Zhang, Lin Zhao, Chen Zhou, Nan Duan, Yuzheng Zhuang, and Liang Lin. Joyai-ra 0.1: A foundation model for robotic autonomy, 2026. URL 
+
+https://arxiv.org/abs/2604.20100 .[55] Zeyu Zhang and Ziyuan Jiao. Ikdiffuser: a diffusion-based generative inverse kinematics solver for kinematic trees, 2026. URL https://arxiv.org/abs/2506.13087 .[56] Ruijie Zheng, Dantong Niu, Yuqi Xie, Jing Wang, Mengda Xu, Yunfan Jiang, Fernando Castañeda, Fengyuan Hu, You Liang Tan, Letian Fu, Trevor Darrell, Furong Huang, Yuke Zhu, Danfei Xu, and Linxi Fan. Egoscale: Scaling dexterous manipulation with diverse egocentric human data, 2026. URL https://arxiv.org/abs/2602.16710 .
+
+26
