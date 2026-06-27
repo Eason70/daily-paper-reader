@@ -6,79 +6,68 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-25
-- 运行时间：2026-06-25 22:12:25 UTC
+- 最新运行日期：2026-06-27
+- 运行时间：2026-06-27 21:34:47 UTC
 - 运行状态：成功
-- 本次总论文数：19
-- 精读区：7
+- 本次总论文数：16
+- 精读区：4
 - 速读区：12
 
 ### 今日简报（AI）
-今日共推荐19篇论文，精读7篇，其中两篇9.0高分聚焦具身智能与多智能体安全控制。  
-最值得关注方向：基于因果世界模型的具身认知框架，以及通过约束流形控制实现安全可泛化的分层多智能体强化学习。  
-建议普通读者优先精读这两篇高分论文，把握具身智能和分布式安全决策的最新进展。
-- 详情：[/202606/25/README](/202606/25/README)
+今日精选16篇论文，重点研究多智能体编队控制与机器人操作安全两大方向。最值得关注的是基于控制屏障函数的多智能体编队跟踪方法（9.0分）与通用操作策略安全防护技术（8.0分）。建议优先阅读这两篇论文，其方法可直接应用于实际机器人系统的安全性与协作控制。
+- 详情：[/202606/27/README](/202606/27/README)
 
 ### 精读区论文标签
-1. [Self-Evolving Cognitive Framework via Causal World Modeling for Embodied Scientific Intelligence](/202606/25/2606.22449v1-self-evolving-cognitive-framework-via-causal-world-modeling-for-embodied-scientific-intelligence)  
-   标签：评分：9.0/10、query:ocean-robot
-   evidence：用于具身科学智能的自演化认知框架与因果世界建模
-2. [Safe and Generalizable Hierarchical Multi-Agent RL via Constraint Manifold Control](/202606/25/2606.24010v1-safe-and-generalizable-hierarchical-multi-agent-rl-via-constraint-manifold-control)  
+1. [Control Barrier Function only Formation Tracking in Multi-Agent Systems](/202606/27/2606.25452v2-control-barrier-function-only-formation-tracking-in-multi-agent-systems)  
    标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：通过约束流形实现硬安全约束的层次化多智能体强化学习
-3. [Causality-Based Parametric Control Barrier Function for Safe Multi-Vehicle Interaction](/202606/25/2606.25134v1-causality-based-parametric-control-barrier-function-for-safe-multi-vehicle-interaction)  
-   标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：论文提出基于因果性的参数化控制屏障函数用于安全多车交互
-4. [Deterministic Non-Smooth Safety via Dual-Algebraic Control Barrier Functions](/202606/25/2606.25333v1-deterministic-non-smooth-safety-via-dual-algebraic-control-barrier-functions)  
-   标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：使用对偶代数控制障碍函数实现确定性非光滑安全控制
-5. [Control Barrier Function only Formation Tracking in Multi-Agent Systems](/202606/25/2606.25452v1-control-barrier-function-only-formation-tracking-in-multi-agent-systems)  
-   标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：基于控制屏障函数的多智能体编队跟踪
-6. [Power-Budgeted Underwater Vehicle Control via Constrained Reinforcement Learning](/202606/25/2606.25680v1-power-budgeted-underwater-vehicle-control-via-constrained-reinforcement-learning)  
-   标签：评分：9.0/10、query:ocean-robot
-   evidence：水下航行器的约束强化学习控制
-7. [A High-accuracy Event-based Underwater SLAM System](/202606/25/2606.18951v2-a-high-accuracy-event-based-underwater-slam-system)  
+   evidence：基于CBF的编队跟踪控制
+2. [Any-Body Guard: Universal Safeguarding for Manipulation Policies via Action Masking](/202606/27/2606.22278v1-any-body-guard-universal-safeguarding-for-manipulation-policies-via-action-masking)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：通过动作屏蔽实现操作策略的通用安全保障
+3. [HoloAgent-0: A Unified Embodied Agent Framework with 3D Spatial Memory](/202606/27/2606.23565v1-holoagent-0-a-unified-embodied-agent-framework-with-3d-spatial-memory)  
    标签：评分：8.0/10、query:ocean-robot
-   evidence：高精度水下SLAM系统用于海洋机器人
+   evidence：统一具身智能体框架与3D空间记忆
+4. [RoBoSR: Structured Scene Representations for Embodied Robotic Reasoning](/202606/27/2606.24338v1-robosr-structured-scene-representations-for-embodied-robotic-reasoning)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：具身机器人推理与结构化场景表示
 
 ### 速读区论文标签
-1. [A Neuromorphic Reinforcement Learning Framework for Efficient Pathfinding in Robotic Mobile Fulfillment Systems](/202606/25/2606.20031v1-a-neuromorphic-reinforcement-learning-framework-for-efficient-pathfinding-in-robotic-mobile-fulfillment-systems)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：论文使用神经网络和强化学习
-2. [Long-Distance Real-World Navigation of the Legged-Wheeled Robot Go2-W Using Deep Reinforcement Learning](/202606/25/2606.21387v1-long-distance-real-world-navigation-of-the-legged-wheeled-robot-go2-w-using-deep-reinforcement-learning)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：基于深度强化学习的腿轮机器人运动和导航
-3. [Any-Body Guard: Universal Safeguarding for Manipulation Policies via Action Masking](/202606/25/2606.22278v1-any-body-guard-universal-safeguarding-for-manipulation-policies-via-action-masking)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：通用机器人操作策略安全防护，动作掩码与配置空间推理
-4. [Verifiable Foundation Models for Robot Safety](/202606/25/2606.23754v1-verifiable-foundation-models-for-robot-safety)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：可验证的基础模型框架用于机器人安全
-5. [Formal Verification of Learned Multi-Agent Communication Policies via Decision Tree Distillation](/202606/25/2606.19632v1-formal-verification-of-learned-multi-agent-communication-policies-via-decision-tree-distillation)  
+1. [Zero-shot Transfer of Reinforcement Learning Control Policies for the Swing-Up and Stabilization of a Cart-Pole System](/202606/27/2606.22145v1-zero-shot-transfer-of-reinforcement-learning-control-policies-for-the-swing-up-and-stabilization-of-a-cart-pole-system)  
+   标签：评分：7.0/10、query:ocean-robot
+   evidence：强化学习用于机器人控制，零样本仿真到实物迁移
+2. [Select-to-Act: Hierarchical Reinforcement Learning via Adaptive Language Guidance](/202606/27/2606.22350v1-select-to-act-hierarchical-reinforcement-learning-via-adaptive-language-guidance)  
+   标签：评分：7.0/10、query:ocean-robot
+   evidence：使用语言指导的分层强化学习提高样本效率
+3. [LP-NavOA: Integrated Local Navigation and Obstacle Avoidance for Humanoid Robots under Limited Perception](/202606/27/2606.23249v1-lp-navoa-integrated-local-navigation-and-obstacle-avoidance-for-humanoid-robots-under-limited-perception)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：多智能体神经网络策略安全验证，决策树蒸馏，与安全强化学习和控制屏障函数相关
-6. [BayesFP: Posterior Estimation for Flow-Based Policies via Feynman-Kac Sampling](/202606/25/2606.21014v1-bayesfp-posterior-estimation-for-flow-based-policies-via-feynman-kac-sampling)  
+   evidence：人形机器人导航中的安全强化学习与安全过滤器
+4. [Complex Autonomous UAV Task Execution and Decision-Making With s(CASP)](/202606/27/2606.23866v1-complex-autonomous-uav-task-execution-and-decision-making-with-scasp)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：通过贝叶斯后验采样与Feynman-Kac校正器实现安全轨迹生成
-7. [Temporal logics and formal synthesis for robot planning and control](/202606/25/2606.21438v1-temporal-logics-and-formal-synthesis-for-robot-planning-and-control)  
+   evidence：使用符号s(CASP)推理的安全自主无人机任务执行
+5. [SAGE-Nav: Leveraging LLM Planning and Alignment Fusion for Hierarchical Scene Graph-Guided Navigation](/202606/27/2606.25497v1-sage-nav-leveraging-llm-planning-and-alignment-fusion-for-hierarchical-scene-graph-guided-navigation)  
+   标签：评分：7.0/10、query:ocean-robot
+   evidence：基于LLM的分层导航用于具身智能体
+6. [Learning to Adapt: Reptile-D-Learning for Robust and Efficient Control Under Parametric Uncertainty](/202606/27/2606.25659v1-learning-to-adapt-reptile-d-learning-for-robust-and-efficient-control-under-parametric-uncertainty)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：基于控制证书的形式化综合保障机器人安全
-8. [Reference-Free, Long-Horizon Trajectory Optimization for Aggressive Autonomous Driving in Milliseconds](/202606/25/2606.21486v1-reference-free-long-horizon-trajectory-optimization-for-aggressive-autonomous-driving-in-milliseconds)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：用于安全自动驾驶的实时轨迹优化
-9. [SRL: Combining SLIP Model and Reinforcement Learning for Agile Robotic Jumping](/202606/25/2606.18625v1-srl-combining-slip-model-and-reinforcement-learning-for-agile-robotic-jumping)  
+   evidence：基于学习的李雅普诺夫控制实现参数不确定下的鲁棒安全控制
+7. [A Reward-Petri-Net Interpretation of Temporal Behavior Trees](/202606/27/2606.21350v1-a-reward-petri-net-interpretation-of-temporal-behavior-trees)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：论文结合强化学习和SLIP模型进行机器人跳跃控制
-10. [A High-accuracy Event-based Underwater SLAM System](/202606/25/2606.18951v1-a-high-accuracy-event-based-underwater-slam-system)  
+   evidence：时态行为树的奖励Petri网解释用于强化学习
+8. [FlowDPG: Deterministic Policy Gradient on Flow Matching Policies for Real-World Manipulation](/202606/27/2606.22303v1-flowdpg-deterministic-policy-gradient-on-flow-matching-policies-for-real-world-manipulation)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：用于自主水下航行器控制的水下SLAM系统
-11. [SCAN-Planner: Spatial Collision-Aware Local Planning for Route-Guided Long-Range Quadruped Navigation](/202606/25/2606.19555v1-scan-planner-spatial-collision-aware-local-planning-for-route-guided-long-range-quadruped-navigation)  
+   evidence：强化学习用于机器人操作
+9. [SkyJEPA: Learning Long-Horizon World Models for Zero-Shot Sim-to-Real Control of Quadrotors](/202606/27/2606.23444v2-skyjepa-learning-long-horizon-world-models-for-zero-shot-sim-to-real-control-of-quadrotors)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：空间碰撞感知的局部规划用于机器人安全
-12. [Cooperative-ORCA*: Real-Time Proactive Deadlock Avoidance for Continuous-Space Multi-Agent Navigation](/202606/25/2606.22757v1-cooperative-orca-real-time-proactive-deadlock-avoidance-for-continuous-space-multi-agent-navigation)  
+   evidence：四旋翼无人机控制的神经网络世界模型，与无人机主题相关
+10. [From Open Waters to Enclosed Cabins: ProteusVPR for Cross-Scene Visual Place Recognition in Maritime Perception and Cabin Inspection](/202606/27/2606.24234v1-from-open-waters-to-enclosed-cabins-proteusvpr-for-cross-scene-visual-place-recognition-in-maritime-perception-and-cabin-inspection)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：面向船载机器人的海洋视觉地点识别
+11. [Optimization-based Safe Trajectory Planning for Autonomous Ground Vehicle in Multi-Floor Scenarios](/202606/27/2606.24631v1-optimization-based-safe-trajectory-planning-for-autonomous-ground-vehicle-in-multi-floor-scenarios)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：论文处理多智能体安全导航中的主动死锁避免
+   evidence：基于优化的自主地面车辆安全轨迹规划
+12. [Reliability-Asymmetric Spacecraft Autonomy: Co-Designing a Capable Learned GNC Stack with a Verified, Adaptation-Aware Runtime Shield](/202606/27/2606.25366v1-reliability-asymmetric-spacecraft-autonomy-co-designing-a-capable-learned-gnc-stack-with-a-verified-adaptation-aware-runtime-shield)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：面向航天器安全关键自主的运行时护盾
 
 
 <div class="dpr-home-promo-card">

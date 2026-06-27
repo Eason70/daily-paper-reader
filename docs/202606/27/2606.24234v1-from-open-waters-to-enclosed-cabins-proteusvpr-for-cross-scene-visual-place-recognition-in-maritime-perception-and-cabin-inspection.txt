@@ -1,0 +1,757 @@
+Title: From Open Waters to Enclosed Cabins: ProteusVPR for Cross-Scene Visual Place Recognition in Maritime Perception and Cabin Inspection
+
+URL Source: https://arxiv.org/pdf/2606.24234v1
+
+Published Time: Wed, 24 Jun 2026 00:37:33 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# From Open Waters to Enclosed Cabins: ProteusVPR for Cross-Scene Visual Place Recognition in Maritime Perception and Cabin Inspection 
+
+## Zexi Chen a,c , Zitai Huang c, Qiwen Gu c,d , Zhiqi Li b, Shengli Dong c, Chenlei Wang e, Junqiao Zhao d,Hongdong Wang a and Bing Han b,e ,∗
+
+> a
+
+Shanghai Jiaotong University, Shanghai, China 
+
+> b
+
+COSCO SHIPPING Advanced Technology Institute, Shanghai, China 
+
+> c
+
+Shanghai Ship and Shipping Research Institute Co.LTD, Shanghai, China 
+
+> d
+
+Tongji University, Shanghai, China 
+
+> e
+
+Dalian Maritime University, Dalian, Liaoning, China 
+
+A R T I C L E I N F O 
+
+Keywords :Visual Place Recognition Intra-vessel Navigation Perceptual Aliasing Fine-grained Position Refinement 
+
+A B S T R A C T 
+
+Autonomous robotic inspection in maritime environments presents unique challenges for Visual Place Recognition (VPR) due to cross-scene perceptual shifts. Robots navigating ship-borne environments must transition between visually distinct domains: open decks with sparse textures and severe illumination changes, and enclosed cabins with repetitive structures and high visual ambiguity. Existing VPR methods, primarily designed for urban or indoor scenes, fail to generalize reliably across these starkly different scenarios. To address this, we propose ProteusVPR, a two-stage retrieval-refinement framework. The first stage employs any standard VPR model for initial image retrieval. The second stage introduces a geometric-visual estimation network that fuses the retrieved image with two temporally preceding frames, incorporating geometric descriptors, a local affine coordinate system, and camera azimuth encoding to achieve precise localization. To support this task, we introduce the XHZ dataset, an 8K-panoramic ship-borne dataset collected from an operational vessel, featuring multi-floor cabin structures, deck transition zones, and strict query-database separation for rigorous evaluation. Extensive experiments on the XHZ dataset demonstrate that ProteusVPR consistently improves localization accuracy across multiple VPR backbones, reducing mean localization error by over 60% on average and that ProteusVPR offers an effective and robust solution for precise visual localization in challenging, cross-scene maritime environments. The full code will be released here .
+
+## 1. Introduction 
+
+Visual Place Recognition (VPR) aims to determine the location of a query image from visual observations and serves as an important component in autonomous driving, robotics, and augmented reality [1]. Recently, with the grow-ing interest in intelligent ship inspection and autonomous maritime systems, applying VPR to maritime environments has attracted increasing attention [2]. Compared with conventional urban or indoor scenar-ios, maritime environments introduce a more challenging cross-scene setting. In practical ship inspection tasks, the robot usually moves across two drastically different visual domains: open decks and enclosed cabins. Open-deck envi-ronments often contain sparse textures, repeated sky-water backgrounds, and severe illumination changes caused by weather and reflections. In contrast, enclosed cabins exhibit 
+
+> ∗
+
+Corresponding author  
+
+> chenzexi@sjtu.edu.cn
+
+(Z. Chen); 924000912020@sjtu.edu.cn (Z. Huang); 2432178@tongji.edu.cn (Q. Gu); li.zhiqi1@coscoshipping.com (Z. Li); dong.shengli@coscoshipping.com (S. Dong);  
+
+> wang.chenlei@coscoshipping.com
+
+(C. Wang); zhaojunqiao@tongji.edu.cn (J. Zhao); whd302@sjtu.edu.cn (H. Wang); han.bing@coscoshipping.com (B. Han) 
+
+> ORCID
+
+(s): 
+
+> 1
+
+This work was supported in part by the National Natural Science Foundation of China under Grant No.52502512 and in part by the Natural Science Foundation of Shanghai under Grant No.25ZR1402140. 
+
+highly repetitive structures, narrow corridors, and multi-floor layouts with strong appearance similarity. Such a tran-sition from open outdoor spaces to compact indoor environ-ments poses significant challenges to both retrieval robust-ness and localization precision, as illustrated in Figure. 1. Existing VPR methods mainly focus on global de-scriptor learning and image retrieval. Representative meth-ods include NetVLAD [3], CosPlace [4], EigenPlaces [5], MixVPR [6], and SALAD [7], which improve retrieval per-formance through feature aggregation, viewpoint modeling, or large-scale training strategies. Other methods further introduce local matching or re-ranking modules for fine-grained retrieval, such as Patch-NetVLAD [8], TransVPR [9], and CricaVPR [10]. More recently, semantic-aware and vision-language based approaches [11, 12, 13] further im-prove scene understanding capability. Despite these advances, directly applying existing VPR systems to maritime cabin environments remains difficult. One limitation of current retrieval-based methods is that they mainly optimize image-level retrieval performance in-stead of precise localization. In open-deck environments, sparse textures and drastic appearance changes often reduce retrieval robustness. Meanwhile, enclosed cabins contain highly repetitive structures, making different locations visu-ally similar and causing severe ambiguity for global descrip-tors. Furthermore, simply fine-tuning existing models on maritime datasets is often insufficient, since the underlying 
+
+First Author et al.: Preprint submitted to Elsevier Page 1 of 16        
+
+> arXiv:2606.24234v1 [cs.CV] 23 Jun 2026 Short Title of the Article
+> Figure 1: Introduction of ProteusVPR. Left: Main challenges in maritime cross-scene VPR; Middle: architecture of the proposed retrieval refinement framework; Right: quantitative comparisons on the XHZ dataset.
+
+feature representations are still designed for generic large-scale place retrieval rather than repetitive indoor localiza-tion. We therefore ask the following question: Can a general refinement framework be built upon existing VPR systems to adapt them to maritime cabin environments while further improving localization precision? 
+
+To address this problem, we propose ProteusVPR 2, a second-stage retrieval refinement framework for maritime visual localization. Instead of redesigning the retrieval back-bone, ProteusVPR is designed to work together with ex-isting VPR models. Specifically, the first stage employs a general VPR model to retrieve the most relevant refer-ence image, while the second stage introduces a geometric-visual estimation network to refine the retrieved location. By estimating relative poses under a local affine coordinate system, the proposed framework improves localization accu-racy and partially alleviates retrieval ambiguity in repetitive cabin environments. By bridging the gap between VPRs in open-water scenarios (e.g., autonomous berthing) and enclosed environments such as AR-based cabin inspec-tion, we believe the proposed ProteusVPR can enhance perception across the full spectrum of maritime set-tings—true to its name, Proteus. 
+
+The main contributions of this paper are summarized as follows: 
+
+> 2Named after the shape-shifting sea god Proteus, highlighting adapta-tion across maritime visual domains.
+
+1. We propose ProteusVPR, a general second-stage retrieval refinement framework that adapts exist-ing VPR systems to maritime cabin environments. The proposed geometric-visual estimation module leverages image sequences to improves localization precision beyond nearest-neighbor retrieval and par-tially mitigates retrieval ambiguity in repetitive indoor scenes. 2. We construct the XHZ dataset containing ship cab-ins, multi-floor structures, and deck transition regions with strict query-database separation. The dataset pro-vides a challenging benchmark for fine-grained mar-itime VPR and localization evaluation. 3. Extensive experiments on multiple benchmarks demon-strate that ProteusVPR consistently improves the lo-calization accuracy and robustness of multiple ex-isting VPR models in maritime cross-scene environ-ments while maintaining good generalization capabil-ity, showing its capability of upgrading localization performence for future autonomous cabin inspection. 
+
+## 2. Related Work 
+
+Visual place recognition (VPR) is formulated as an im-age retrieval task that determines the geographic location of a query image from visual information alone. Existing methods are broadly categorized into four groups according to their technical evolution: global descriptor aggregation, two-stage re-ranking, context and cross-image correlation, as well as semantic and multi-modal fusion.   
+
+> First Author et al.: Preprint submitted to Elsevier Page 2 of 16 Short Title of the Article
+
+2.1. Global Descriptor Aggregation 
+
+Early deep learning methods extract compact global de-scriptors from entire images. NetVLAD [3] first introduced a differentiable formulation of the Vector of Locally Aggre-gated Descriptors (VLAD), enabling end-to-end training. CosPlace [4] reformulated large-scale geo-localization as a classification problem, eliminating the need for explicit negative mining. EigenPlaces [5] further clusters scenes to explicitly model different viewpoints, improving robustness to view changes. For feature aggregation, MixVPR [6] adopts a multi-level feature mixing strategy without explicit local feature extraction. SALAD [7] re-formulates NetVLAD’s soft as-signment as an optimal transport problem and introduces a “dustbin” cluster to discard uninformative features. When combined with a DINOv2 [14] backbone, SALAD achieves competitive performance. Universal VPR solutions have also been explored. Any-Loc [15] demonstrates that off-the-shelf features from self-supervised models perform well across diverse environ-ments without VPR-specific fine-tuning. MegaLoc [16] fuses multiple existing methods, training techniques, and datasets into a single retrieval model, achieving strong results on VPR, landmark retrieval, and visual localization. Most relevant to this work are BoQ [17] and Mutu-alVPR [18]. BoQ introduces a bag of learnable global queries inspired by the BERT mechanism, using cross-attention to extract discriminative information from input features. MutualVPR addresses supervision inconsistency caused by viewpoint changes through a mutual learning framework where unsupervised view self-classification and descriptor learning co-evolve, improving robustness to view variations and occlusions. 
+
+2.2. Two-Stage Re-ranking 
+
+Two-stage strategies first retrieve a shortlist of candidate images using global descriptors, then refine the list with local features or geometric information. Local-feature-based methods are typical in this category. Patch-NetVLAD [8] extracts multi-scale local patches from NetVLAD residuals and matches them for robustness to viewpoint and condition changes. TransVPR [9] employs a Vision Transformer (ViT) to generate global descriptors via multi-head attention, and treats the filtered output tokens as local features for spatial matching re-ranking. Unified Transformer frameworks for retrieval and re-ranking have gained attention. R 2Former [19] designs a unified Transformer where the re-ranking branch jointly con-siders feature correlation, attention scores, and spatial co-ordinates, enabling end-to-end training. Pair-VPR [20] pro-poses a two-stage training pipeline: first pre-training a Trans-former with pose-aware image sampling, then jointly learn-ing global descriptors and a binary classifier. ProGEO [21] leverages CLIP to generate learnable text prompts and en-hances visual features through image-text contrastive learn-ing. Furthermore, SelaVPR [22] and EffoVPR [23] explore better exploitation of features from pre-trained foundation models (especially DINOv2) for re-ranking. PRGS [24] con-structs a patch-to-region graph search, exploiting neighbour-hood correspondences among candidate images to improve re-ranking. 
+
+2.3. Context and Cross-Image Correlation 
+
+Within-batch inter-image context is increasingly rec-ognized as important for discriminative feature learning. CricaVPR [10] proposes cross-image correlation-aware rep-resentation learning, using self-attention to associate mul-tiple images in a batch and incorporating multi-scale local information. UniPR-3D [25] adopts a 3D geometric perspec-tive, designing a feature aggregator based on a visual geom-etry foundation model to encode multi-view 3D information for universal VPR. For sequence-to-frame and temporal association, Ca-seVPR [26] introduces a hierarchical matching strategy con-sisting of coarse sequence retrieval and fine-grained se-quence matching. IMVPR [27] implicitly integrates a bird’s-eye view (BEV) representation into multi-view VPR, us-ing descriptor queries to encode 3D spatial positions for parallel fusion of multi-view features. Although VLAD-BuFF [28] focuses primarily on aggregation efficiency, its self-similarity driven feature discounting also models corre-lations among local patches. 
+
+2.4. Semantic and Multi-Modal Fusion 
+
+Integrating semantics or vision-language models into VPR is another direction. SegVLAD [12] decomposes an image into “thing” and “stuff” segments using the Segment Anything Model (SAM) and encodes or retrieves these seg-ments instead of whole images, significantly improving ro-bustness. StructVPR++ [13] distils structural and semantic knowledge into RGB global representations via segmenta-tion guidance, balancing global retrieval and re-ranking. Vision-language models have recently introduced new paradigms for place recognition. The Context-Based Visual-Language Place Recognition method [11] proposes a training-free approach to handle scene variations by extracting pixel-wise embeddings via zero-shot, language-driven semantic segmentation, constructing semantic image descriptors. For domain-specific scenarios, customized solutions have been developed. Zhou et al. [29] designed a method for coastal scenes that fuses semantic and sequential constraints, guiding the model to focus on landmarks via semantic constraints and resolving perceptual confusion via temporal constraints. MRS-VPR [30] achieves fast sequence match-ing through multi-resolution sampling, demonstrating high matching efficiency for long-term visual navigation. 
+
+2.5. Summary and Positioning 
+
+VPR has evolved from global descriptor learning to two-stage re-ranking, cross-image context modelling, and the incorporation of semantics and language models. Mu-tualVPR [18], through its mutual learning framework that    
+
+> First Author et al.: Preprint submitted to Elsevier Page 3 of 16 Short Title of the Article
+> Figure 2: Overall architecture of ProteusVPR. The first stage VPR model extracts a global descriptor for retrieval. The second stage fuses visual attention, geometric descriptors, a local affine coordinate system, and azimuth information to regress the query location.
+
+adaptively resolves supervision inconsistency, provides a foundation for this study. However, none of the above methods are specifically designed for cross-scene maritime environments (from open decks to enclosed cabins). Their retrieval accuracy degrades significantly under extreme visual domain shifts. To address this gap, this paper proposes ProteusVPR. Building upon the first stage of MutualVPR, we introduce a two-stage estimation network that incorporates geometric descriptors, a local affine coordinate system, and azimuth encoding. The proposed method bridges high-recall retrieval and high-precision localization in complex ship interior scenarios. Subsequent experiments systematically validate its effec-tiveness on ship interior data, indoor corridors, and outdoor benchmarks. 
+
+## 3. Methodology 
+
+The proposed method (shown in Figure. 2) consists of two stages. The first stage is an image retrieval model that selects a reference image most similar to the query image from a database. The second stage takes this reference image together with the two preceding frames of the query image within its video sequence, and estimates the geographic location of the query image via a relative displacement estimation network. The two stages are detailed below. 
+
+3.1. First Stage: Image Retrieval Model 
+
+Given a query image 𝐼 𝑞 , the first stage retrieves the most visually similar reference image 𝐼 𝑟 1 from a large-scale geo-tagged image database, and outputs its geographic location 
+
+𝐩 𝑟 1 and field-of-view center azimuth 𝑦 𝑟 1. This reference image is then used, along with the two preceding frames of the query image (denoted 𝐼 𝑟 2, 𝐼 𝑟 3), as input to the second stage. The first stage adopts a visual place recognition (VPR) approach. In a standard VPR pipeline, an image is first en-coded into a compact global descriptor, followed by nearest neighbor search in the descriptor space for retrieval. 
+
+3.1.1. General Architecture of VPR 
+
+A standard VPR model comprises a backbone network and an aggregation layer. 
+
+Backbone Network. The backbone takes an image 𝐼 ∈
+
+ℝ3× 𝐻 ×𝑊 as input and outputs a set of local feature maps. Typical backbones include convolutional neural networks or vision transformers. 
+
+Aggregation Layer. The local feature maps are aggregated into a single global descriptor 𝐝 ∈ ℝ𝐷 . This is commonly achieved via pooling strategies such as generalized mean (GeM) pooling or learnable modules like NetVLAD. The descriptor is usually L2-normalized to enable efficient simi-larity comparison. 
+
+3.1.2. Retrieval Process 
+
+Given a trained VPR model, all database images are pre-processed to extract their global descriptors {𝐝 (𝑘 ) 
+
+> db
+
+}, which are then indexed for fast similarity search. For a query image 𝐼 𝑞 , the retrieval procedure is as follows: 1. Extract its descriptor 𝐝 𝑞 via a forward pass of the VPR model.   
+
+> First Author et al.: Preprint submitted to Elsevier Page 4 of 16
+
+Short Title of the Article 
+
+2. Retrieve the most similar database image by maxi-mum cosine similarity: 
+
+𝐼 𝑟 1 = arg max 
+
+> 𝐼 (𝑘 )
+> db
+
+cos( 𝐝 𝑞 , 𝐝 (𝑘 ) 
+
+> db
+
+), (1) where cos( ⋅, ⋅) denotes cosine similarity. 3. Output 𝐼 𝑟 1 together with its geographic location 𝐩 𝑟 1
+
+and field-of-view center azimuth 𝑦 𝑟 1.
+
+3.2. Second Stage: Relative Displacement Estimation Network 
+
+The second stage regresses the precise geographic lo-cation of the query image using three reference images: 
+
+𝐼 𝑟 1 retrieved from the first stage, and 𝐼 𝑟 2, 𝐼 𝑟 3, which are the two previous frames of the query image in its video sequence. The network adopts an end-to-end multi-modal fusion framework, as shown in Figure. 2. 
+
+3.2.1. Visual Feature Extraction and Processing 
+
+All images (query image 𝐼 𝑞 and three reference images 
+
+𝐼 𝑟 1, 𝐼 𝑟 2, 𝐼 𝑟 3) share a fully frozen DINOv2 ViT-B/14 encoder. The input image size is adjusted to 504×504 . All pre-trained parameters remain frozen during training. For each image, the encoder outputs a CLS token feature 
+
+𝐟 cls ∈ ℝ768 and patch tokens 𝐅 patch ∈ ℝ𝑁 𝑝 ×768 , where 
+
+𝑁 𝑝 is the number of patches. To enhance the features, the CLS token is concatenated with the average of the patch tokens and then projected back to 768 dimensions via a linear projection layer 𝜙 (⋅):
+
+𝐟 = 𝜙 
+
+([𝐟 cls ; 1
+
+𝑁 𝑝 𝑁 𝑝 
+
+∑
+
+> 𝑘 =1
+
+𝐅 (𝑘 )
+
+> patch
+
+])
+
+(2) where [ ⋅ ; ⋅ ] denotes concatenation. This yields the query feature 𝐟 𝑞 and reference features 𝐟 𝑟 1, 𝐟 𝑟 2, 𝐟 𝑟 3.Then, two layers of attention fusion are applied: 
+
+• Inter-reference attention: a multi-head self-attention module is applied to the reference feature matrix 
+
+𝐅 ref = [ 𝐟 𝑟 1, 𝐟 𝑟 2, 𝐟 𝑟 3]⊤ ∈ ℝ3×768 , producing updated reference features ̂ 𝐅 ref = [ ̂𝐟 𝑟 1,̂ 𝐟 𝑟 2,̂ 𝐟 𝑟 3]⊤.
+
+• Query-reference attention: the query feature 𝐟 𝑞 is taken as the query, and ̂ 𝐅 ref as the key and value, to compute cross-attention, yielding a query-relevant aggregated reference feature 𝐟 𝑞 -ref ∈ ℝ768 .The mean of ̂ 𝐅 ref , i.e., 13 (̂ 𝐟 𝑟 1 +̂ 𝐟 𝑟 2 +̂ 𝐟 𝑟 3), is concatenated with 𝐟 𝑞 -ref and then encoded by an MLP into the final attention feature 𝐟 att ∈ ℝ768 .Visual similarity weights are computed using the en-hanced features: 
+
+𝑤 𝑖  
+
+> sim
+
+= exp( 𝜏 ⋅ cos( 𝐟 𝑞 , 𝐟 𝑟𝑖 )) 
+
+∑3 
+
+> 𝑗 =1
+
+exp( 𝜏 ⋅ cos( 𝐟 𝑞 , 𝐟 𝑟𝑗 )) , 𝑖 = 1 , 2, 3 (3) where cos( ⋅, ⋅) is cosine similarity and 𝜏 = 10 is a tempera-ture coefficient. The three weights are denoted 𝑤 𝑟 1, 𝑤 𝑟 2, 𝑤 𝑟 3
+
+and form the vector 𝐰 sim = [ 𝑤 𝑟 1, 𝑤 𝑟 2, 𝑤 𝑟 3]⊤, used for coarse location estimation. 
+
+3.2.2. Coordinate Information Processing 
+
+Geometric Descriptor Encoding For the geographic lo-cations 𝐩 𝑟 1, 𝐩 𝑟 2, 𝐩 𝑟 3 ∈ ℝ2 of the three reference images, the following geometric quantities are computed for all pairs 
+
+(𝑖, 𝑗 ) with 𝑖 < 𝑗 :
+
+𝚫 𝑖𝑗 = 𝐩 𝑟𝑗 − 𝐩 𝑟𝑖 , (4) 
+
+𝑑 𝑖𝑗 = ‖𝚫 𝑖𝑗 ‖2, (5) 
+
+𝜃 𝑖𝑗 = atan2(Δ 𝑖𝑗,𝑦 , Δ𝑖𝑗,𝑥 ) (6) Each pair is represented by a 4-dimensional vector 𝐠 𝑖𝑗 =[Δ 𝑖𝑗,𝑥 , Δ𝑖𝑗,𝑦 , 𝑑 𝑖𝑗 , 𝜃 𝑖𝑗 ]⊤. It is encoded by an MLP 𝜓 pair into a 384-dimensional feature; the encodings of all three pairs (total (32
+
+) = 3 pairs) are concatenated and fed into another MLP 𝜓 geo to obtain a global geometric descriptor 𝐟 geo ∈
+
+ℝ768 :
+
+𝐟 geo = 𝜓 geo 
+
+([ 𝜓 pair (𝐠 12 ); 𝜓 pair (𝐠 13 ); 𝜓 pair (𝐠 23 )]) (7) 
+
+Local Affine Coordinate System Construction A 2D affine coordinate system is built using the three reference points: 
+
+𝐜 = 13
+
+> 3
+
+∑
+
+> 𝑖 =1
+
+𝐩 𝑟𝑖 , (8) 
+
+𝐯 1 = 𝐩 𝑟 2 − 𝐩 𝑟 1, 𝐯 2 = 𝐩 𝑟 3 − 𝐩 𝑟 1 (9) Gram-Schmidt orthogonalization is applied to 𝐯 2 with respect to 𝐯 1:
+
+𝐮 2 = 𝐯 2 − 𝐯 2 ⋅ 𝐯 1
+
+𝐯 1 ⋅ 𝐯 1
+
+𝐯 1 (10) If the three points are collinear ( ‖𝐮 2‖ < 𝜖 , where 𝜖 
+
+is a very small positive number), set 𝐮 2 = (− 𝐯 1,𝑦 , 𝐯 1,𝑥 )⊤.Normalization yields an orthonormal basis: 
+
+𝐞 𝑥 = 𝐯 1
+
+‖𝐯 1‖ , 𝐞 𝑦 = 𝐮 2
+
+‖𝐮 2‖ (11) The transformation matrix is: 
+
+𝐓 = [ 𝐞 𝑥 𝐞 𝑦 ] ∈ ℝ2×2 (12) This matrix transforms local coordinates to global coordi-nates: 𝐩 global = 𝐜 +𝐓 ⋅𝐩 local . The coordinates of the reference points in the local coordinate system are: 
+
+𝐩 local  
+
+> 𝑟𝑖
+
+= 𝐓 ⊤(𝐩 𝑟𝑖 − 𝐜 ), 𝑖 = 1 , 2, 3 (13) 
+
+3.2.3. Field-of-View Center Azimuth Encoding 
+
+The field-of-view center azimuth 𝑦 (also called camera boresight azimuth) is defined as the horizontal angle at which the cropped image is projected from the panoramic sphere. This angle describes the direction of the image’s field-of-view center; it is not necessarily identical to the robot’s own heading and may be interpreted as the instal-lation angle of each camera relative to the robot’s forward direction. In this paper, 𝑦 is measured in degrees (see Sec-tion 4) and used directly as input to the neural networks. 
+
+First Author et al.: Preprint submitted to Elsevier Page 5 of 16 Short Title of the Article 
+
+The azimuths of the query image 𝐼 𝑞 and reference images 
+
+𝐼 𝑟 1, 𝐼 𝑟 2, 𝐼 𝑟 3 are denoted 𝑦 𝑞 , 𝑦 𝑟 1, 𝑦 𝑟 2, 𝑦 𝑟 3, respectively. The azimuths of the query and reference images are concatenated into a 4-dimensional vector: 
+
+𝐲 = [ 𝑦 𝑞 , 𝑦 𝑟 1, 𝑦 𝑟 2, 𝑦 𝑟 3]⊤ ∈ ℝ4 (14) This vector is encoded by an MLP 𝜓 yaw into an azimuth feature: 
+
+𝐟 yaw = 𝜓 yaw (𝐲 ) ∈ ℝ128 (15) 
+
+3.2.4. estimation and Coordinate Transformation 
+
+A coarse location (weighted centroid) is first computed: 
+
+𝐩 init =
+
+> 3
+
+∑
+
+> 𝑖 =1
+
+𝑤 𝑟𝑖 ⋅ 𝐩 𝑟𝑖 ∈ ℝ2 (16) where the weights are given by Eq. (3). The attention feature 𝐟 att , geometric descriptor 𝐟 geo ,coarse location 𝐩 init , and azimuth feature 𝐟 yaw are con-catenated and fed into a estimation MLP 𝜓 reg to output a displacement vector in the local coordinate system: 
+
+𝜹 local = 𝜓 reg 
+
+([𝐟 att ; 𝐟 geo ; 𝐩 init ; 𝐟 yaw ]) ∈ ℝ2 (17) Finally, the displacement is transformed to global coor-dinates: ̂
+
+𝐩 𝑞 = 𝐜 + 𝐓 ⋅ 𝜹 local (18) where 𝐜 and 𝐓 are defined by Eq. (8) and Eq. (12), respec-tively. 
+
+3.2.5. Loss Function 
+
+Before training the second stage, Z-scale normalization is applied to the geographic coordinates of the entire dataset. For the 2D coordinates (𝑥, 𝑦 ) of all samples, the ranges along the 𝑥 and 𝑦 directions are computed, and the larger of the two is taken as the scaling factor 𝑠 ; the minimum values min 𝑥 and 
+
+min 𝑦 for each direction are also recorded. Each coordinate is then subtracted by the corresponding minimum, divided by 𝑠 , and mapped to the interval [−1 , 1] . This normalization ensures equal scaling on both axes and constrains the entire dataset within [−1 , 1] × [−1 , 1] .During training, the estimation network directly predicts the position ̂ 𝐩 norm  
+
+> 𝑞
+
+in the normalized coordinate space, and the loss is computed between this predicted normalized coor-dinate and the ground-truth normalized coordinate. During inference, the normalized prediction is transformed back to real geographic coordinates via the inverse mapping: ̂
+
+𝐩 real  
+
+> 𝑞
+
+=
+
+[min 𝑥 
+
+min 𝑦 
+
+]
+
++ 𝑠 ⋅̂ 𝐩 norm  
+
+> 𝑞
+
++ 1 2 , (19) where ̂ 𝐩 norm  
+
+> 𝑞
+
+∈ [−1 , 1] 2. All loss functions are computed in the normalized coordinate space. The second stage is trained end-to-end with a loss func-tion consisting of two terms. The total loss is: 
+
+ = 𝜆 abs ⋅ abs + 𝜆 geo ⋅ geo_cons (20) where 𝜆 abs and 𝜆 geo are hyperparameters balancing the loss terms. 
+
+Absolute Position Loss ( abs ): directly computes the Euclidean distance between the predicted position and the ground truth, without additional normalization. 
+
+abs = 1
+
+𝐵 
+
+> 𝐵
+
+∑
+
+> 𝑏 =1
+
+‖̂ 𝐩 (𝑏 ) 
+
+> 𝑞
+
+− 𝐩 gt ,(𝑏 ) 
+
+> 𝑞
+
+‖2 (21) where 𝐵 is the batch size and 𝐩 gt  
+
+> 𝑞
+
+is the ground-truth ge-ographic location of the query image. This loss drives the predicted position toward the ground truth. 
+
+Geometric Consistency Loss ( geo_cons ): barycentric coordinate constraints ensure that the predicted position is reasonably represented by the reference points. 
+
+geo_cons = 1
+
+𝐵 
+
+> 𝐵
+
+∑
+
+> 𝑏 =1
+
+(‖̂ 𝐩 (𝑏 ) 
+
+> 𝑞
+
+− 𝐜 (𝑏 )‖2
+
++𝜆 cons ⋅ max 
+
+(
+
+0, min  
+
+> 𝑖 ∈{1 ,2,3}
+
+‖̂𝐩 (𝑏 ) 
+
+> 𝑞
+
+− 𝐩 (𝑏 ) 
+
+> 𝑟𝑖
+
+‖2 − 𝜌 
+
+)) (22) where 𝐜 (𝑏 ) is the centroid of the reference points for the 
+
+𝑏 -th sample (computed by Eq. (8)), 𝜆 cons = 0.3 is the weight coefficient for the second term, and 𝜌 = 0 .1 is the distance threshold. The first term penalizes deviation of the predicted point from the centroid of the reference points; the second term adds an extra penalty when the predicted point is farther than 𝜌 from all reference points, thereby enhancing geometric plausibility. The second stage is trained independently and end-to-end. During training, the backbone parameters are frozen, and only the newly added attention modules, geometric encoder, azimuth encoder, and estimation head are updated. 
+
+## 4. Dataset 
+
+4.1. Overview 
+
+To evaluate the proposed method on real-world ship inspection scenarios, the Xinhongzhuan Visual Dataset 
+
+(demonstrated in Figure. 3, hereinafter referred to as the 
+
+XHZ Dataset ) is introduced. This dataset was collected from an operational vessel, covering interior cabins and exterior deck areas to simulate typical ship inspection tasks. Its core characteristics include highly repetitive spatial layouts, strong visual similarity, constrained motion trajectories, and the presence of indoor-outdoor transition zones. These prop-erties enable assessment of localization robustness when relying solely on visual cues. The following subsections detail the acquisition, prepro-cessing, annotation protocols, and evaluation splits of the XHZ dataset. 
+
+4.2. Data Acquisition 
+
+4.2.1. Hardware Configuration 
+
+Data acquisition was performed using an Insta360 X5 professional panoramic camera, configured at a video res-olution of 7840 × 3840 and a frame rate of 30 FPS. The    
+
+> First Author et al.: Preprint submitted to Elsevier Page 6 of 16 Short Title of the Article
+> Figure 3: Overview of the XHZ dataset. The upper part shows the acquisition platform, device, and panorama examples; the lower part shows the annotation tool, exported images, annotations (position, timestamp, IMU), and folder structure.
+
+device generates equirectangular images with a 360 ◦ hori-zontal field of view and 180 ◦ vertical field of view through dual-fisheye lens stitching, providing high-resolution source material for subsequent multi-view analysis. 
+
+4.2.2. Acquisition Environment and Path Planning 
+
+The acquisition area covers key compartments of the Xinhongzhuan ship, specifically including corridors in the living quarters, partial rooms, sections of the deck, and the engine room. To systematically cover heterogeneous spaces, the collection path was designed as follows: 
+
+• Layered collection: the living area was divided into three floors (L1–L3), with each floor sampled inde-pendently. 
+
+• Segmented connection: the engine room (L0) was di-vided into three continuous stages based on functional layout, ensuring the start and end points of each stage were geographically connected to form a closed-loop topological verification ring. 
+
+4.2.3. Acquisition Method 
+
+To simulate the viewpoint height during real inspec-tion or navigation tasks, the collector adopted a hand-held overhead approach and moved at a slow, steady pace. This   
+
+> First Author et al.: Preprint submitted to Elsevier Page 7 of 16 Short Title of the Article
+
+method ensured a stable imaging perspective near eye level while minimizing motion blur. 
+
+4.3. Image Preprocessing and Cropping 
+
+Raw video streams were decoded into equirectangular panoramic images (resolution 7840 × 3840 ). To adapt to the input requirements of standard convolutional neural net-works for planar perspective images, the following geomet-ric transformation and cropping were applied: 1. Reprojection: equirectangular images were converted into spherical projections based on spherical coordi-nate systems. 2. Multi-view generation: using the field-of-view center azimuth (denoted as yaw) 𝑦 as the baseline, starting from 𝑦 = 0 ◦, six directional perspective views were generated at 60 ◦ intervals. The horizontal field of view for each cropped image was set to 120 ◦. (Such yaw is elaborated upon in Section 3.) 3. Overlap property: the theoretical overlap between ad-jacent cropped images is approximately 50%, ensur-ing sufficient co-visible features between neighboring views for sequence matching and pose estimation. The final cropped images were uniformly scaled to a resolution of 2560 × 2560 , preserving rich texture details. 
+
+4.4. Ground Truth Annotation and Coordinate System 
+
+4.4.1. Annotation Tool and Method 
+
+A dedicated annotation software was developed to im-prove efficiency. Its key features are as follows: 
+
+• Temporal sampling: uniformly samples the original video at 5 Hz. 
+
+• View assistance: computes and displays a gravity-corrected front view in real time to aid orientation judgment. 
+
+• Automatic archiving: upon confirmation, the software automatically saves the current frame’s raw panorama, six cropped sub-images, and corresponding coordi-nate labels. 
+
+4.4.2. Coordinate Construction and Scaling 
+
+Geographic coordinates were derived from CAD vector drawings of the ship. Operators clicked positions within the software interface; these points were then mapped to physical space by converting drawing units to meters (m) at a ratio of 80:1 based on the drawing’s internal scale. Annotation dimensions: each record contains the image filename, frame number, 2D planar coordinates (𝑥, 𝑦 ) (unit: m), and a millisecond-level timestamp. 
+
+4.4.3. Coordinate Post-Processing 
+
+Since different ship decks may overlap in 2D planar projections, a manual offset correction was applied to the initial coordinates. This step prevents VPR algorithms from incorrectly associating cross-floor scenes due to the lack of elevation constraints when calculating positive pairs: 
+
+• L0: 𝑌 -coordinate −75 
+
+• L1: 𝑌 -coordinate −25 
+
+• L2: 𝑌 -coordinate +25 
+
+• L3: 𝑌 -coordinate +75 
+
+This operation significantly increases the coordinate dif-ference between decks while preserving the relative topol-ogy within each floor, ensuring that evaluation metrics accu-rately reflect the model’s ability to distinguish vertical levels. 
+
+4.5. Dataset Versions and Scale 
+
+Two incremental versions are released to accommodate research needs at different granularities: 
+
+• Version 1 (manual): based on manual keyframe an-notations at 5 Hz. Contains 2,996 panoramic images, resulting in a total of 17,976 cropped multi-angle images. 
+
+• Version 2 (interpolated): based on Version 1, lin-ear interpolation was applied to unlabeled intermedi-ate frames. Assuming uniform linear motion between manually annotated frames, coordinates for intermedi-ate frames were derived by evenly distributing the dis-placement. This version expands to 17,982 panoramic images, with the total number of cropped images reaching 107,892 (overall 125,874 images). Additional sensor data: raw IMU data sampled at 1000 Hz was recorded synchronously. Note that the panoramic video used for annotation underwent pre-processing elec-tronic image stabilization (EIS); therefore, geometric defor-mation in the image frames does not perfectly align with the raw IMU timestamps. For precise kinematic analysis or sen-sor fusion using IMU data, strict spatiotemporal calibration is recommended to compensate for deviations introduced by stabilization. 
+
+4.6. Data Structure and Partitioning 
+
+4.6.1. Storage Architecture 
+
+The dataset is organized by scene. Each scene directory corresponds to a specific deck or area: 008 (L2), 011 (L1), 
+
+> 012
+
+/013 /014 (three segments of L0 engine room), and 018 
+
+(L3). Within each scene directory, the following items are included: 
+
+• labels.csv : centralized metadata file for all image annotations. 
+
+• pano/ : original equirectangular panoramic images. 
+
+• yaw_0/ , ..., yaw_300/ : perspective images cropped at the specified yaw angles. 
+
+• Naming convention: image files follow the format  
+
+> SceneID_FrameID.jpg
+
+to ensure unique traceability. 
+
+4.6.2. Splitting Criterion 
+
+Given the strong temporal correlation in sequential data, the dataset is strictly partitioned chronologically to avoid information leakage: 
+
+• Training set: the first 2∕3 of frames in the sequence. 
+
+• Validation set: frames from 2∕3 to 5∕6 of the se-quence. 
+
+• Test set: the last 1∕6 of frames in the sequence.   
+
+> First Author et al.: Preprint submitted to Elsevier Page 8 of 16 Short Title of the Article
+
+4.6.3. Query-Database 
+
+To simulate discrete observation and dense mapping scenarios in real-world VPR tasks, the following evaluation protocol is defined (as used in Section 5): 
+
+• Validation: images with horizontal yaw angle 𝑦 =0◦ from each frame are selected as queries. The re-maining yaw angles ( 𝑦 = 60 ◦, 120 ◦, 180 ◦, 240 ◦, 300 ◦)from the validation set constitute the database. 
+
+• Testing: similarly, images with 𝑦 = 0◦ from each frame in the test set are selected as queries. The remaining yaw angles from the test set, combined with the training and validation sets, form the global database. This protocol validates the model’s cross-view local-ization ability when faced with a large number of visually similar scenes. 
+
+## 5. Experiment 
+
+5.1. Experimental Setup 
+
+5.1.1. Dataset and Evaluation 
+
+Experiments are conducted on the XHZ dataset . The XHZ dataset (Section 4) utilizes the perspective images from Version 1 (manual). The data split, query/database construc-tion, and coordinate design for distinguishing different decks follow the methods described in Section 4. Only perspective images are used throughout training, validation, and testing. The following metrics are reported: 
+
+• Recall: R@1, R@5 (%). The positive sample thresh-old is a 2D Euclidean distance ≤ 0.5 m between images. 
+
+• Stage 1 error: Euclidean distance (in meters) when directly using the retrieved image coordinates as the estimate. 
+
+• Stage 2 error: Euclidean distance after refinement by the relative displacement estimation network. Two complementary statistics are reported for the Stage 1 and Stage 2 errors: 
+
+• Mean Euclidean distance (Table 2 in the Appendix): reflects average performance. 
+
+• 90% quantile of Euclidean distance (Table 1 in the main paper): captures worst-case behavior and robust-ness against outliers. Both statistics are reported for each deck level (L0 to L3) and for all baseline methods. 
+
+5.1.2. Comparison Baselines 
+
+Several VPR baselines are selected: BoQ [17], Cos-Place [4], EigenPlace [5], MixVPR [6], Salad [7], and Mu-tualVPR [18]. Each baseline is tested with two weight con-figurations: 
+
+• pre : the publicly available pre-trained weights pro-vided by the authors. 
+
+• tra : weights obtained after fine-tuning on the XHZ dataset. 
+
+Adaptation of BoQ output dimension. The original pre-trained weights of BoQ (based on DINO) have an output dimension of 12288, while all other baselines use 512 di-mensions. For a fair comparison, a trainable linear projection layer is added at the end of BoQ to reduce its feature dimension to 512 . The projection layer is used as follows: 
+
+• For the pre weights: only this projection layer is trained on XHZ. 
+
+• For the tra weights: during end-to-end fine-tuning on XHZ, the official unfreezing strategy of BoQ is followed, and the projection layer is updated simul-taneously. Thus, for both pre and tra , the projection layer is adapted to the XHZ dataset. 
+
+5.1.3. Implementation Details 
+
+Due to the default training settings of the compared base-lines vary and the XHZ dataset has distinct characteristics (scene scale, number of images, inter-deck distribution), the fine-tuning hyperparameters for each baseline are adjusted according to the properties of XHZ. The hyperparameters listed below differ from the official defaults; parameters not mentioned remain at their official default values. The hyperparameter changes for fine-tuning on XHZ (obtaining the tra weights) are as follows: 
+
+• BoQ: batch_size=32, epochs=50, lr=3e-8 .
+
+• CosPlace: batch_size=32, epochs=160, lr=1e-5, N=4, M=0.05, L=0.5, classifiers_lr=0.01 .
+
+• EigenPlaces: batch_size=32, epochs=50, M=0.05, N=2, lr=1e-7 .
+
+• MixVPR: batch_size=32, epochs=50, lr=2e-5 .
+
+• Salad: batch_size=32, epochs=50, lr=1e-4 .
+
+• MutualVPR: batch_size=8, epochs=180, M=0.05, N=4, lr=1e-5, iterations_per_epoch=5000 .For the pre weights (except BoQ), the official pre-trained models are used directly without any further parameter updates. For BoQ pre : before testing, the projection layer alone is trained on XHZ with the following hyperparameters: 
+
+> batch_size=32, max_epochs=50, lr=6e-8, warmup_epochs=10
+
+.After this training, the BoQ model with the projection layer is used for evaluation. The relative displacement estimation network (architec-ture described in Section 3) takes as input the retrieved images from the first stage, together with the two preceding frames in the video sequence of the query image, and outputs an accurate coordinate estimate. Training hyperparameters for the relative displacement estimation network: during end-to-end training of the second-stage estimation network, the visual encoder (DINOv2) is kept frozen. Only the attention modules, geometric encoder, azimuth encoder, and regression head are updated. During training and validation, each sample is a 4-frame tuple with the same layer, same angle, temporally adjacent. In such a tuple, we pick the latest frame as the query, the other three as references. Batch size denotes the number of such tuples per batch. The hyperparameters are: 
+
+• Batch size: 16 
+
+• Number of epochs: 300 
+
+• Initial learning rate: 2 × 10 −5    
+
+> First Author et al.: Preprint submitted to Elsevier Page 9 of 16 Short Title of the Article
+> Figure 4: Qualitative Demonstration on the correction effect of the estimation module on intra-layer retrieval errors (retrieval module: fine-tuned MutualVPR). The connecting lines illustrate the correction relationship between a mis-retrieved point and its corresponding predicted point within the same layer. The two zoom-in panels below correspond to the boxed regions on L 1 (left) and L 2 (right), respectively.
+
+• Weight decay: 1 × 10 −4 
+
+• Learning rate scheduler: cosine annealing, warmup epochs = 30, minimum learning rate = 1 × 10 −7 
+
+• Loss weights for Eq. 20: 𝜆 abs = 1 .0, 𝜆 geo = 0 .2
+
+Hardware environment: all experiments are performed on a single NVIDIA RTX 4090 GPU (24GB VRAM) with PyTorch 2.6.0 + CUDA 12.4. 
+
+5.2. Evaluation of the Proposed Dataset 
+
+To validate the effectiveness of the proposed XHZ Dataset, all baselines (BoQ, CosPlace, EigenPlace, MixVPR, Salad, MutualVPR) are evaluated with both pre-trained ( pre )and fine-tuned ( tra ) weights on the XHZ dataset in this sec-tion. Table 1 reports the 90% quantile of Euclidean distance (in meters) for Stage 1 and Stage 2 errors, which reflects robustness against outliers. A qualitative demonstration is   
+
+> First Author et al.: Preprint submitted to Elsevier Page 10 of 16
+
+Short Title of the Article 
+
+Figure 5: Qualitative Demonstration on the correction effect of the pose estimation on cross-layer retrieval errors (retrieval module: fine-tuned MutualVPR). In the case, we are locating query images in ”Layer 0”, The VPR might reach out to a mis-retrieved point (on a wrong layer) to its corresponding predicted point. Colors encode the number of layers crossed: blue for crossing one layer, purple for two layers, and orange for three layers. Refer to the legend for detailed marker and line styles. 
+
+Table 1 Quantitative Demonstration on the XHZ dataset (90% quantile of Euclidean distance). “pre” denotes pre-trained weights, “tra” denotes fine-tuned weights. Metrics: R@1 and R@5 (%); Stage1 and Stage2 errors (m) before and after the regression network. Red indicates Stage2 enhanced the performance of Stage1 in the same row and layer while Blue indicates the opposite (such corner cases will be discussed in Section 5.3.1).                                                                                                                                                                                                                           
+
+> Method Mode layer 0 layer 1 layer 2 layer 3 R@1 R@5 Stage1 Stage2 R@1 R@5 Stage1 Stage2 R@1 R@5 Stage1 Stage2 R@1 R@5 Stage1 Stage2 BoQ pre 58.7 86.2 3.379 1.311 36.4 62.6 100.174 2.711 48.6 67.6 1.985 0.892 61.6 82.2 1.274 0.847 tra 58.2 87.1 3.146 1.255 40.4 70.7 99.857 2.451 47.6 67.6 1.602 0.904 60.3 82.2 1.22 0.838 CosPlace pre 32.9 65.3 4.528 1.87 9.1 25.3 19.613 4.778 40 62.9 50.137 1.199 47.9 75.3 2.755 1.026 tra 69.8 91.6 4.286 1.643 72.7 93.9 7.04 2.128 78.1 93.3 1.204 0.69 91.8 98.6 0.429 0.451 EigenPlaces pre 70.2 84 3.303 1.345 10.1 31.3 99.927 3.9 52.4 78.1 2.356 0.942 56.2 69.9 80.886 1.467 tra 68.9 85.3 2.606 1.117 16.2 52.5 22.482 3.624 60 89.5 1.128 0.658 61.6 74 3.306 0.957 MixVPR pre 46.7 76.9 3.973 1.595 412.1 50.021 3.977 43.8 71.4 31.629 1.269 54.8 64.4 51.141 1.614 tra 73.8 88.9 1.631 0.841 61.6 94.9 13.748 3.341 65.7 92.4 0.842 0.496 74 93.2 1.044 0.657 SALAD pre 50.2 78.2 3.151 1.376 11.1 23.2 23.477 3.621 42.9 69.5 2.274 0.971 47.9 67.1 3.501 1.45 tra 80 92.4 1.247 0.723 77.8 98 0.785 0.428 69.5 94.3 1.269 0.716 82.2 97.3 0.625 0.472 MutualVPR pre 36.4 64 4.368 1.729 5.1 18.2 21.761 4.412 41.9 68.6 3.178 1.08 41.1 58.9 5.982 1.659 tra 88.4 97.8 0.534 0.501 90.9 99 0.436 0.416 87.6 95.2 0.526 0.495 97.3 100 0.403 0.428
+
+shown in Figure. 4. Table 2 reports the mean Euclidean distance, reflecting overall average performance. Both tables present results across layers 0 to 3. The analysis below jointly considers the two complementary metrics. 
+
+5.2.1. Overall Performance 
+
+Each layer is analyzed independently, primarily based on R@1 and Stage 1 90% quantile errors (reflecting worst-case robustness), while Stage 2 quantile errors are reported to validate the dataset’s ability to support pose refinement. Mean errors are occasionally referenced as a complementary perspective. 
+
+Layer 0. MutualVPR (tra) achieves the best overall trade-off: R@1 = 88.4%, Stage 1 quantile = 0.534 m, and its Stage 2 quantile is further reduced to 0.501 m. EigenPlaces (pre) has a lower Stage 1 quantile (0.899 m) but much lower recall (70.2%). For MutualVPR (tra), the refinement from Stage 1 to Stage 2 (0.534 → 0.501 m) shows consistent improvement, validating that our dataset supports effective pose regression even under worst-case conditions. 
+
+Layer 1. MutualVPR (tra) attains R@1 = 90.9%, Stage 1 quantile = 0.436 m, and Stage 2 quantile = 0.416 m. Cos-Place (tra) yields R@1 = 72.7% but a much larger Stage 1 quantile (7.040 m); SALAD (tra) achieves R@1 = 77.8% and Stage 1 quantile = 0.785 m. In terms of mean error (supplementary), MutualVPR (tra) has 0.770 m (Stage 1) and 0.189 m (Stage 2), while SALAD (tra) shows 0.391 m and 0.241 m. The key observation is that the 90% quantile improves from Stage 1 to Stage 2 for all strong methods, con-firming the dataset’s adequacy for robust pose refinement. 
+
+Layer 2. From Table 1, MutualVPR (tra) leads with R@1 = 87.6%, Stage 1 quantile = 0.526 m, and Stage 2 quantile = 0.495 m. CosPlace (tra) follows (R@1 = 78.1%, Stage 1 quantile = 1.204 m, Stage 2 quantile = 0.690 m). As a supplementary view, the mean errors in Table 2 show that SALAD (tra) has the smallest mean (Stage 1 = 0.556 m, 
+
+First Author et al.: Preprint submitted to Elsevier Page 11 of 16 Short Title of the Article 
+
+Table 2 Quantitative Demonstration on the XHZ dataset (mean Euclidean distance). This table complements Table 1 by reporting average errors.                                                                                                                                                                                                                           
+
+> Method Mode layer 0 layer 1 layer 2 layer 3 R@1 R@5 Stage1 Stage2 R@1 R@5 Stage1 Stage2 R@1 R@5 Stage1 Stage2 R@1 R@5 Stage1 Stage2 BoQ pre 58.7 86.2 0.911 0.572 36.4 62.6 24.621 0.901 48.6 67.6 0.76 0.517 61.6 82.2 1.887 0.456 tra 58.2 87.1 1.441 0.586 40.4 70.7 23.723 0.811 47.6 67.6 0.724 0.507 60.3 82.2 1.832 0.437 CosPlace pre 32.9 65.3 2.043 0.908 9.1 25.3 13.766 2.208 40 62.9 7.196 0.582 47.9 75.3 4.401 0.606 tra 69.8 91.6 1.07 0.568 72.7 93.9 4.468 0.628 78.1 93.3 0.39 0.326 91.8 98.6 4.416 0.275 EigenPlaces pre 70.2 84 0.899 0.524 10.1 31.3 18.009 1.737 52.4 78.1 3.549 0.484 56.2 69.9 11.597 0.638 tra 68.9 85.3 0.801 0.477 16.2 52.5 12.891 1.568 60 89.5 2.442 0.395 61.6 74 4.739 0.5 MixVPR pre 46.7 76.9 2.009 0.686 412.1 15.522 2.259 43.8 71.4 6.1 0.565 54.8 64.4 12.336 0.668 tra 73.8 88.9 0.606 0.4 61.6 94.9 4.396 1.019 65.7 92.4 0.435 0.322 74 93.2 3.836 0.381 SALAD pre 50.2 78.2 1.249 0.643 11.1 23.2 13.708 2.026 42.9 69.5 1.373 0.537 47.9 67.1 9.013 0.692 tra 80 92.4 0.451 0.344 77.8 98 0.391 0.241 69.5 94.3 0.556 0.364 82.2 97.3 0.274 0.242 MutualVPR pre 36.4 64 1.752 0.804 5.1 18.2 12.741 1.859 41.9 68.6 3.822 0.535 41.1 58.9 9.917 0.725 tra 88.4 97.8 1.541 0.295 90.9 99 0.77 0.189 87.6 95.2 2.211 0.285 97.3 100 1.519 0.242
+
+Stage 2 = 0.364 m), while MutualVPR (tra) exhibits a larger mean (Stage 1 = 2.211 m) due to a long tail. Crucially, the quantile-based refinement for MutualVPR (tra) (0.526 →
+
+0.495 m) demonstrates that our dataset helps tame worst-case outliers. 
+
+Layer 3. From Table 1, MutualVPR (tra) achieves the highest R@1 (97.3%) and the smallest Stage 1 quantile (0.403 m), with Stage 2 quantile = 0.428 m — a negli-gible increase given the already excellent error level. Cos-Place (tra) ranks second (R@1 = 91.8%, Stage 1 quantile = 0.429 m, Stage 2 quantile = 0.451 m). As a complementary metric, mean errors (Table 2) show that SALAD (tra) has the smallest Stage 1 mean (0.274 m) and Stage 2 mean (0.242 m), but its recall is lower (R@1 = 82.2%). Mutu-alVPR (tra) shows a larger mean (Stage 1 = 1.519 m) due to a long tail, yet its Stage 2 mean plummets to 0.242 m. In summary, MutualVPR (tra) delivers the highest re-call and the best (or second-best) 90% quantile errors in all layers. Across nearly all methods and layers, the pose refinement (Stage 2) consistently lowers the 90% quantile error, often by a large margin. These results suggest that the XHZ dataset contains sufficient temporal and geometric structure to support effective coarse-to-fine localization: a strong retrieval model can achieve high recall, and the sub-sequent regression network can reliably reduce worst-case errors. The 90% quantile serves as the primary robustness measure, while mean errors provide additional context. 
+
+5.2.2. Effectiveness of Fine-Tuning on XHZ 
+
+Fine-tuning on XHZ substantially improves most base-lines. Taking layer 3 as an example: - MutualVPR: R@1 rises from 41.1% ( pre ) to 97.3% (tra ); Stage 1 quantile drops from 5.982 m to 0.403 m (93.3% reduction); mean error drops from 9.917 m to 1.519 m (84.7% reduction). - SALAD: R@1 from 47.9% to 82.2%; Stage 1 quantile from 3.501 m to 0.625 m (82.1% reduction); mean error from 9.013 m to 0.274 m (97.0% reduction). - CosPlace: R@1 from 47.9% to 91.8%; Stage 1 quantile from 2.755 m to 0.429 m (84.4% reduction); mean error from 4.401 m to 4.416 m (0.3% increase). Overall, fine-tuning is essential for achieving high recall and low localization errors. 
+
+Recall decrease despite error reduction. Some models show a drop in R@1 after fine-tuning while Stage 1 errors become smaller. For instance, BoQ at layer 3: pre : R@1 = 61.6%, Stage 1 = 1.274 m; tra : R@1 = 60.3%, Stage 1 = 1.220 m. ΔR@1 = -1.3%, ΔStage1 = -0.054 m. Similarly, EigenPlaces at layer 0: pre : R@1 = 70.2%, Stage 1 = 3.303 m; tra : R@1 = 68.9%, Stage 1 = 2.606 m. 
+
+ΔR@1 = -1.3%, ΔStage1 = -0.697 m. This behavior arises from the distinct natures of the two metrics. Recall is a binary indicator dependent on a fixed distance threshold (0.5 m), whereas Stage 1 error measures continuous Euclidean distance. Fine-tuning may push a few originally successful queries just beyond the threshold, slightly harming recall. Simultaneously, it reduces the distances of many previously far-off queries. The net effect is a leftward shift of the error distribution, leading to lower mean and quantile errors despite a minor recall decrease. 
+
+5.3. Evaluation on ProteusVPR 
+
+In this subsection, we primarily use Table 2 (mean errors) and Table 1 (90% quantile errors) to evaluate the pose estimation performance of ProteusVPR. For brevity, we refer to Table 2 as the “mean error table” and Table 1 as the “quantile table” in the following discussion. The proposed pose estimation (Stage 2) of ProteusVPR refines the initial retrieval coordinates using temporal and geometric information. 
+
+Effectiveness of the pose estimation. As shown in Table 2, comparing Stage 1 and Stage 2 errors reveals consistent improvement for most models. Take layer 3: - SALAD (tra): mean error 0.274 → 0.242 m ( −11 .7% ); 90% quantile 0.625 → 0.472 m ( −24 .5% ). - MutualVPR (tra): mean error 1.519 → 0.242 m(−84 .1% ); 90% quantile 0.403 → 0.428 m ( +0 .025 m). 
+
+First Author et al.: Preprint submitted to Elsevier Page 12 of 16 Short Title of the Article 
+
+- CosPlace (tra): mean error 4.416 → 0.275 m ( −93 .8% ); 90% quantile 0.429 → 0.451 m ( +0 .022 m). The pose estimation substantially reduces the mean error for all models, even when the quantile slightly increases. The small quantile increase occurs only when the Stage 1 quantile is already ≤ 0.45 m and is negligible in practice. 
+
+Impact of retrieval quality on regression accuracy. 
+
+Models with a long-tail error distribution (high mean but low quantile) benefit most from the pose estimation. MutualVPR (tra) has Stage 1 mean = 1.519 m and quantile = 0.403 m, in-dicating a few very large errors. The pose estimation reduces the mean by 84.1%. In contrast, SALAD (tra) has a compact error distribution (mean = 0.274 m, quantile = 0.625 m), and the regression gain is smaller. Thus, the pose estimation is particularly effective when the first-stage retrieval has high recall but suffers from occasional catastrophic errors. 
+
+5.3.1. Analysis of Pose Estimation Degradation Cases 
+
+Two failure cases labled in blue are observed in Table 1. For CosPlace (tra) on Layer 3, the Stage 2 90% quantile error (0.451 m) is slightly higher than the Stage 1 error (0.429 m). For MutualVPR (tra) on Layer 3, the Stage 2 90% quantile error (0.428 m) is slightly higher than the Stage 1 error (0.403 m). The pose estimation network predicts a displacement relative to the centroid of the three reference points (the Stage 1 retrieval result and its two preceding frames). When the Stage 1 retrieval is already accurate, the three reference points are spatially close. In this regime, the centroid is com-puted from points that lie near one another, and the network’s robustness to small perturbations in the reference points decreases. Consequently, the predicted displacement may be more easily affected by localization noise. For CosPlace (tra) and MutualVPR (tra) on Layer 3, the Stage 1 retrieval error is relatively low (0.429 m and 0.403 m, respectively), meaning the three reference points are close together. In contrast, for entries where the Stage 1 error is larger, the reference points are more spread out. With a wider spatial distribution, the effect of small perturbations on the centroid is reduced, which helps the pose estimation reduce the error reliably. For example, for CosPlace (tra) on Layer 2, the Stage 1 90% quantile error of 1.204 m is reduced to 0.690 m after pose estimation; for MutualVPR (tra) on Layer 0, from 0.534 m to 0.501 m; for SALAD (tra) on Layer 3, from 0.625 m to 0.472 m. Except for these two cases, the Stage 2 90% quantile errors are lower than the Stage 1 errors for all other rows and layers in Table 1. Furthermore, in terms of mean error (Table 2), Stage 2 achieves lower values than Stage 1 for every row and layer, including the two blue-colored cases. These results collectively demonstrate that the pose estima-tion module remains effective overall. 
+
+5.3.2. Case Study: Internal Mechanism of the Pose Estimation 
+
+The internal mechanism of the pose estimation is ex-plained using the XHZ dataset’s coordinate offset design and the architecture described in Section 3. 
+
+Coordinate offsets between decks. In XHZ, different decks (L0 to L3) are separated by fixed Y-axis offsets: L0: −75 , L1: −25 , L2: +25 , L3: +75 (units: meters). This ensures that cross-floor errors produce large Euclidean dis-tances, making them clearly detectable in evaluation. 
+
+Inputs to the pose estimation. The module takes three reference images: 𝐼 𝑟 1 retrieved from Stage 1, and 𝐼 𝑟 2, 𝐼 𝑟 3,which are the two immediately preceding frames of the query in its video sequence. All images are encoded by a shared frozen DINOv2 backbone. In the geometric branch, the three reference points are used to construct a centroid 
+
+𝐜 (Eq. 8) and a local affine coordinate system (Eqs. 8–11). A coarse location 𝐩 init is computed as a similarity-weighted centroid (Eq. 16). The regression head outputs a local dis-placement 𝜹 local (Eq. 17) relative to the centroid, which is then transformed to global coordinates via Eq. 18. 
+
+Correcting cross-floor retrieval errors. When Stage 1 retrieves an image from a wrong layer (as demonstrated in Figure. 5), the retrieved coordinate deviates significantly from the true location due to the fixed Y-axis offsets between layers. However, the two preceding frames are taken from the same continuous trajectory as the query and therefore almost certainly belong to the correct layer. Consequently, the centroid 𝐜 of the three reference points is pulled toward the correct layer, reducing the initial error. The pose estima-tion network then predicts a small local offset to compensate for the remaining discrepancy. Additionally, the geometric descriptor captures the large distances between the off-layer point and the two correct ones, implicitly down-weighting the outlier. In this way, the module effectively mitigates cross-floor retrieval failures. The combination of temporal context and the geometry-aware local coordinate system thus allows the pose estima-tion to correct severe retrieval failures, particularly those caused by layer confusion. This reduces the average local-ization error. 
+
+5.4. Ablation Study 
+
+To verify the contribution of each key component in the proposed two-stage re-localization model, three ablation variants are designed based on MutualVPR (tra). All variants use the same training parameters as the full model and remove only specific modules from the network architecture. Table 3 reports the 90% quantile localization errors (in meters) on the XHZ test set, reflecting robustness against outliers. Table 4 reports the mean Euclidean distance, re-flecting overall average performance. The two tables jointly provide a view of each component’s impact.                                                  
+
+> First Author et al.: Preprint submitted to Elsevier Page 13 of 16 Short Title of the Article
+> Table 3
+> Ablation study (90% quantile of Euclidean distance, in metres).
+> 𝑤 ∕𝑜 𝐺𝑒𝑜 : remove geometric descriptor encoding; 𝑤 ∕𝑜 𝐿𝑜𝑐 :remove local affine coordinate system (global regression);
+> 𝑤 ∕𝑜 𝐴𝑧𝑖 : remove camera azimuth encoding. Model layer 0 layer 1 layer 2 layer 3 Full model 0.494 0.412 0.498 0.432
+> 𝑤 ∕𝑜 𝐺𝑒𝑜 2.826 3.093 2.913 2.974
+> 𝑤 ∕𝑜 𝐿𝑜𝑐 1.205 1.732 1.525 1.512
+> 𝑤 ∕𝑜 𝐴𝑧𝑖 0.551 0.409 0.537 0.479
+> Table 4
+> Ablation study (mean Euclidean distance). This table comple-ments Table 3 by reporting average errors. Model layer 0 layer 1 layer 2 layer 3 Full model 0.29 0.193 0.285 0.245
+> 𝑤 ∕𝑜 𝐺𝑒𝑜 2.539 2.46 2.804 2.342
+> 𝑤 ∕𝑜 𝐿𝑜𝑐 0.796 1.458 1.184 1.321
+> 𝑤 ∕𝑜 𝐴𝑧𝑖 0.378 0.248 0.318 0.254
+
+5.4.1. Variant Definitions 
+
+• Full model: includes geometric descriptor encoding, local affine coordinate system construction and trans-formation, camera azimuth encoding, and the atten-tion fusion module (i.e., the method described in Section 3). 
+
+• 𝑤 ∕𝑜 𝐺𝑒𝑜 – remove geometric descriptor encoding: the geometric descriptor encoding and its use are removed (i.e., Eq. 7 and the associated MLP encoder are not computed). All other modules are kept. 
+
+• 𝑤 ∕𝑜 𝐿𝑜𝑐 – remove local coordinate system construc-tion: the construction and transformation of the local affine coordinate system are removed (i.e., Eq. 8 to Eq. 11 are not used). Geometric operations are per-formed in the global coordinate system: the estimation network directly outputs a global offset ̂ 𝐩 𝑞 = 𝐩 init +
+
+𝜹 global .
+
+• 𝑤 ∕𝑜 𝐴𝑧𝑖 – remove camera azimuth encoding: the azimuth encoder and its use are removed (i.e., Eq. 14 and Eq. 15 are omitted). The rest of the model remains unchanged. 
+
+5.4.2. Result Analysis 
+
+Each variant is analyzed by examining both the 90% quantile (Table 3) and the mean error (Table 4). 
+
+Geometric descriptor encoding (denoted as 𝑤 ∕𝑜 𝐺𝑒𝑜 ). 
+
+Removing the geometric descriptor encoding causes a large increase in localization error. For the 90% quantile at layer 3, the error rises from 0.432 m (full model) to 2.974 m – a factor of approximately 6.9. The mean error at layer 3 increases from 0.245 m to 2.342 m (about 9.6 times). Similar degradation is observed across all layers. This indicates that the relative geometry among the three reference points (displacements, distances, and angles) provides an essential prior for regressing the query position. 
+
+Local affine coordinate system (denoted as 𝑤 ∕𝑜 𝐿𝑜𝑐 ). 
+
+Removing the local coordinate system and performing esti-mation directly in the global coordinate system also degrades performance. At layer 3, the 90% quantile increases from 
+
+0.432 m to 1.512 m, and the mean error from 0.245 mto 1.321 m. Similar patterns hold for other layers. This suggests that transforming geometric computations into a local affine coordinate system centred at the reference points provides rotation and translation invariance, simplifying the estimation task. Without this invariance, the network must learn both absolute positions and relative relationships in the global frame, leading to poorer generalization. 
+
+Camera azimuth encoding (denoted as 𝑤 ∕𝑜 𝐴𝑧𝑖 ). 
+
+Removing the explicit azimuth encoder yields results close to the full model. For the 90% quantile, the differences are within 0.05 m (e.g., layer 2: 0.537 m vs. 0.498 m). The mean errors are slightly higher than the full model: at layer 2, 0.318 m vs. 0.285 m ( +0 .033 m); at layer 3, 
+
+0.254 m vs. 0.245 m ( +0 .009 m). Overall, the contribution of explicit azimuth encoding is limited. In the ship interior environment, the viewing direction (yaw) may already be implicitly present in the image content (e.g., wall textures on different sides of a corridor, door locations), allowing the network to infer azimuth from visual features alone. Geometric descriptor encoding and the local affine coor-dinate system are core components of the two-stage estima-tion module; removing either leads to a substantial increase in both the mean and the 90% quantile errors. Camera azimuth encoding provides only marginal benefits and can be considered optional. For practical applications, retaining the first two components is recommended to achieve the best localization accuracy. 
+
+5.5. Summary of Experiments 
+
+Experiments on the XHZ dataset yield the following quantitative findings. 
+
+Retrieval stage. Among all evaluated baselines, fine-tuned MutualVPR achieves the highest recall and the lowest 90% quantile localization errors across all four layers. At layer 3, MutualVPR (tra) attains R@1 = 97.3% and a Stage 1 90% quantile error of 0.403 m, outperforming the next best base-line (CosPlace tra), which gives R@1 = 91.8% and 0.429 m. The mean Stage 1 error of MutualVPR (tra) at layer 3 is 1.519 m, which is higher than that of SALAD (tra) (0.274 m), indicating a long-tail error distribution. This tail is effectively addressed by the estimation module. By evaluating multiple well-known baselines on the proposed 
+
+XHZ Dataset , we reassure the effectiveness as well as reem-phasize the importance of the dataset. 
+
+Pose Estimation stage. The relative displacement estima-tion network reduces the mean localization error substan-tially. At layer 3, the mean error of MutualVPR (tra) drops from 1.519 m (Stage 1) to 0.242 m (Stage 2), a reduction of 84.1%. For SALAD (tra), the mean error decreases from 0.274 m to 0.242 m (–11.7%). For CosPlace (tra), the mean error drops from 4.416 m to 0.275 m (–93.8%). Averaged   
+
+> First Author et al.: Preprint submitted to Elsevier Page 14 of 16
+
+Short Title of the Article 
+
+over all models and layers, the pose estimation reduces the mean localization error by 61.22%. 
+
+Ablation study. Removing the geometric descriptor en-coding ( 𝑤 ∕𝑜 𝐺𝑒𝑜 ) increases the 90% quantile error at layer 3 from 0.432 m to 2.974 m (factor of 6.9), and the mean error from 0.245 m to 2.342 m (factor of 9.6). Removing the local affine coordinate system ( 𝑤 ∕𝑜 𝐿𝑜𝑐 ) raises the 90% quantile to 1.512 m and the mean error to 1.321 m at layer 3. In contrast, removing camera azimuth encoding ( 𝑤 ∕𝑜 𝐴𝑧𝑖 )yields results close to the full model: at layer 2, the 90% quantile differs by 0.039 m (0.537 vs. 0.498), and the mean error by 0.033 m (0.318 vs. 0.285); at layer 3, the mean error differs by 0.009 m (0.254 vs. 0.245). These results demonstrate that the geometric descriptor and the local affine coordinate system are critical for achiev-ing high localization accuracy in ship interior scenes, while explicit azimuth encoding offers only limited additional benefit. 
+
+## 6. Conclusion 
+
+This paper addresses the cross-scene visual place recog-nition problem in maritime environments, where a robot moves between open decks and enclosed cabins with dras-tically different visual characteristics. A two-stage retrieval refinement framework, ProteusVPR, is proposed. The first stage employs most of the common VPR models to retrieve a reference image from a geo-tagged database. The second stage introduces a geometric-visual estimation network that fuses the retrieved image with the two preceding frames of the query video sequence, incorporating geometric descrip-tors, a local affine coordinate system, and camera azimuth encoding to refine the query location. Experimental results on the XHZ dataset demonstrate the effectiveness and robustness of the proposed framework for cabin-scale visual place recognition and localization. The proposed method consistently improves localization accuracy across different VPR backbones and ship decks, while the ablation studies further validate the importance of the geometric-aware design choices. Overall, the results show that the framework can effectively enhance existing VPR systems and provide reliable localization performance in challenging enclosed maritime environments. The main contributions of this work are threefold. First, a general second-stage retrieval refinement framework, Pro-teusVPR, is proposed that adapts existing VPR systems to maritime cabin environments by improving localization precision beyond nearest-neighbor retrieval and partially mitigating retrieval ambiguity in repetitive indoor scenes. Second, the XHZ dataset is constructed, containing ship cab-ins, multi-floor structures, and deck transition regions with a strict query-database separation, providing a challenging benchmark for fine-grained maritime VPR and localization evaluation. Third, extensive experiments on multiple bench-marks demonstrate that ProteusVPR consistently improves the localization accuracy and robustness of several existing VPR models in maritime cross-scene environments. 
+
+## 7. Limitations and Future Works 
+
+Nevertheless, several limitations remain in the current study. i) The proposed refinement framework is inherently dependent on the quality of the initial retrieval stage; se-vere retrieval failures cannot be corrected during subsequent pose estimation. ii) The XHZ dataset was collected from a single vessel under relatively limited environmental varia-tions, including lighting and operational conditions, leaving the generalization capability to other ship types and long-term deployments insufficiently explored. iii) The proposed estimation network assumes reliable reference coordinates, while its robustness to noisy odometry or imperfect SLAM inputs has not yet been systematically evaluated. Future work will therefore investigate uncertainty-aware retrieval and online adaptation mechanisms to improve robustness against retrieval outliers, as well as the construction of larger and more diverse maritime datasets to further enhance generalization performance. 
+
+## References                  
+
+> [1] Li, Z., Shang, T., Xu, P., Deng, Z., 2025. Place recognition meet multiple modalities: a comprehensive review, current challenges and future development. Artificial Intelligence Review 58, 363. [2] Thomas, L., Edwards, M., Capsey, A., Rahat, A., Roach, M., 2022. Deep visual place recognition for waterborne domains, in: 2022 IEEE International Conference on Image Processing (ICIP), IEEE. pp. 3546–3550. [3] Arandjelovic, R., Gronat, P., Torii, A., Pajdla, T., Sivic, J., 2016. Netvlad: Cnn architecture for weakly supervised place recognition, in: Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 5297–5307. [4] Berton, G., Masone, C., Caputo, B., 2022. Rethinking visual geo-localization for large-scale applications, in: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 4878–4888. [5] Berton, G., Trivigno, G., Caputo, B., Masone, C., 2023. Eigenplaces: Training viewpoint robust models for visual place recognition, in: Proceedings of the IEEE/CVF International Conference on Computer Vision, pp. 11080–11090. [6] Ali-Bey, A., Chaib-Draa, B., Giguere, P., 2023. Mixvpr: Feature mixing for visual place recognition, in: Proceedings of the IEEE/CVF winter conference on applications of computer vision, pp. 2998–3007. [7] Izquierdo, S., Civera, J., 2024. Optimal transport aggregation for visual place recognition, in: Proceedings of the ieee/cvf conference on computer vision and pattern recognition, pp. 17658–17668. [8] Hausler, S., Garg, S., Xu, M., Milford, M., Fischer, T., 2021. Patch-netvlad: Multi-scale fusion of locally-global descriptors for place recognition, in: Proceedings of the IEEE/CVF conference on com-puter vision and pattern recognition, pp. 14141–14152. [9] Wang, R., Shen, Y., Zuo, W., Zhou, S., Zheng, N., 2022. Transvpr: Transformer-based place recognition with multi-level attention aggre-gation, in: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 13648–13657. [10] Lu, F., Lan, X., Zhang, L., Jiang, D., Wang, Y., Yuan, C., 2024. Cricavpr: Cross-image correlation-aware representation learning for visual place recognition, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, pp. 16772–16782. [11] Woo, S., Kim, S.W., 2024. Context-based visual-language place recognition. arXiv preprint arXiv:2410.19341 . [12] Garg, K., Puligilla, S.S., Kolathaya, S., Krishna, M., Garg, S., 2024. Revisit anything: Visual place recognition via image segment re-trieval, in: European Conference on Computer Vision, Springer. pp. 326–343.
+
+First Author et al.: Preprint submitted to Elsevier Page 15 of 16 Short Title of the Article 
+
+[13] Shen, Y., Zhou, S., Fu, J., Wang, R., Chen, S., Zheng, N., 2025. Structvpr++: distill structural and semantic knowledge with weight-ing samples for visual place recognition. IEEE Transactions on Pattern Analysis and Machine Intelligence . [14] Oquab, M., Darcet, T., Moutakanni, T., Vo, H., Szafraniec, M., Khali-dov, V., Fernandez, P., Haziza, D., Massa, F., El-Nouby, A., et al., 2023. Dinov2: Learning robust visual features without supervision. arXiv preprint arXiv:2304.07193 . [15] Keetha, N., Mishra, A., Karhade, J., Jatavallabhula, K.M., Scherer, S., Krishna, M., Garg, S., 2023. Anyloc: Towards universal visual place recognition. IEEE Robotics and Automation Letters 9, 1286–1293. [16] Berton, G., Masone, C., 2025. Megaloc: One retrieval to place them all, in: Proceedings of the Computer Vision and Pattern Recognition Conference, pp. 2861–2867. [17] Ali-Bey, A., Chaib-Draa, B., Giguere, P., 2024. Boq: A place is worth a bag of learnable queries, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, pp. 17794– 17803. [18] Gu, Q., Wang, X., Zhao, J., Tao, S., Feng, T., Wang, Z., Chen, G., 2026. Mutualvpr: A mutual learning framework for resolving supervision inconsistencies via adaptive clustering. Advances in Neural Information Processing Systems 38, 2899–2922. [19] Zhu, S., Yang, L., Chen, C., Shah, M., Shen, X., Wang, H., 2023. R2former: Unified retrieval and reranking transformer for place recog-nition, in: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, pp. 19370–19380. [20] Hausler, S., Moghadam, P., 2025. Pair-vpr: Place-aware pre-training and contrastive pair classification for visual place recognition with vision transformers. IEEE Robotics and Automation Letters . [21] Hu, J., Mao, C., Tan, C., Li, H., Liu, H., Zheng, M., 2024. Progeo: Generating prompts through image-text contrastive learning for visual geo-localization, in: International Conference on Artificial Neural Networks, Springer. pp. 448–462. [22] Lu, F., Zhang, L., Lan, X., Dong, S., Wang, Y., Yuan, C., 2024. Towards seamless adaptation of pre-trained models for visual place recognition. arXiv preprint arXiv:2402.14505 . [23] Tzachor, I., Lerner, B., Levy, M., Green, M., Shalev, T.B., Habib, G., Samuel, D., Zailer, N.K., Shimshi, O., Darshan, N., et al., 2024. Effovpr: Effective foundation model utilization for visual place recog-nition. arXiv preprint arXiv:2405.18065 . [24] Zuo, W., Liu, L., Li, Y., Shen, Y., Xiang, F., Xin, J., Zheng, N., 2025. Prgs: patch-to-region graph search for visual place recognition. Pattern Recognition 166, 111673. [25] Deng, T., Chen, X., Li, Z., Shen, H., Wang, D., Civera, J., Wang, H., 2025. Unipr-3d: Towards universal visual place recogni-tion with visual geometry grounded transformer. arXiv preprint arXiv:2512.21078 . [26] Li, H., Peng, G., Zhang, J., Wen, M., Ma, Y., Wang, D., 2025. Casevpr: Correlation-aware sequential embedding for sequence-to-frame visual place recognition. IEEE Robotics and Automation Letters . [27] Cao, X., Zhang, C., Liu, Z., Zhong, X., Fang, H., 2025. Imvpr: Implicit bev-enhanced multi-view aggregation for visual place recog-nition, in: 2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), IEEE. pp. 9669–9676. [28] Khaliq, A., Xu, M., Hausler, S., Milford, M., Garg, S., 2024. Vlad-buff: Burst-aware fast feature aggregation for visual place recognition, in: European Conference on Computer Vision, Springer. pp. 447–466. [29] Zhou, R., Wang, Y., Gao, Y., Zhao, X., Xu, X., 2025. Visual place recognition for coastal scenes with semantic and sequential constraints. Measurement 256, 118071. [30] Yin, P., Srivatsan, R.A., Chen, Y., Li, X., Zhang, H., Xu, L., Li, L., Jia, Z., Ji, J., He, Y., 2019. Mrs-vpr: a multi-resolution sampling based global visual place recognition method, in: 2019 International conference on robotics and automation (ICRA), IEEE. pp. 7137– 7142. 
+
+First Author et al.: Preprint submitted to Elsevier Page 16 of 16
