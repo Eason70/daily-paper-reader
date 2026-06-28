@@ -489,7 +489,7 @@ function testSidebarPaperVisualStateCssContract() {
   assert.ok(!/-webkit-line-clamp/i.test(titleRule));
 
   const titleDotsRule = cssRule(css, '.dpr-sidebar-paper-title::after');
-  assert.ok(/content:\s*"\.\."/i.test(titleDotsRule));
+  assert.ok(/content:\s*""/i.test(titleDotsRule));
   assert.ok(/position:\s*absolute/i.test(titleDotsRule));
   assert.ok(/right:\s*-8px/i.test(titleDotsRule));
   assert.ok(/width:\s*calc\(28px \+ 3ch\)/i.test(titleDotsRule));
@@ -499,10 +499,11 @@ function testSidebarPaperVisualStateCssContract() {
   assert.ok(/text-align:\s*left/i.test(titleDotsRule));
   assert.ok(/opacity:\s*0/i.test(titleDotsRule));
 
-  assert.ok(/\.dpr-sidebar-paper\.is-title-overflowing \.dpr-sidebar-paper-title::after\s*{[^}]*opacity:\s*1/i.test(css));
+  assert.ok(!/\.dpr-sidebar-paper\.is-title-overflowing \.dpr-sidebar-paper-title::after\s*{[^}]*opacity:\s*1/i.test(css));
   assert.ok(/\.dpr-sidebar-paper:hover \.dpr-sidebar-paper-title,\s*\.dpr-sidebar-paper:focus-within \.dpr-sidebar-paper-title\s*{[^}]*padding-right:\s*calc\(var\(--dpr-sidebar-paper-action-reserve\) \+ 1ch\)/i.test(css));
-  assert.ok(/\.dpr-sidebar-paper:hover \.dpr-sidebar-paper-title::after,\s*\.dpr-sidebar-paper:focus-within \.dpr-sidebar-paper-title::after\s*{[^}]*right:\s*calc\(var\(--dpr-sidebar-paper-action-reserve\) - 1ch\)/i.test(css));
-  assert.ok(/\.dpr-sidebar-paper:hover \.dpr-sidebar-paper-title::after,\s*\.dpr-sidebar-paper:focus-within \.dpr-sidebar-paper-title::after\s*{[^}]*opacity:\s*0/i.test(css));
+  assert.ok(/\.dpr-sidebar-paper:hover \.dpr-sidebar-paper-title::after,\s*\.dpr-sidebar-paper:focus-within \.dpr-sidebar-paper-title::after\s*{[^}]*right:\s*-8px/i.test(css));
+  assert.ok(/\.dpr-sidebar-paper:hover \.dpr-sidebar-paper-title::after,\s*\.dpr-sidebar-paper:focus-within \.dpr-sidebar-paper-title::after\s*{[^}]*width:\s*calc\(\(var\(--dpr-sidebar-paper-action-reserve\) \+ 8px \+ 2ch\) \* 0\.66\)/i.test(css));
+  assert.ok(/\.dpr-sidebar-paper:hover \.dpr-sidebar-paper-title::after,\s*\.dpr-sidebar-paper:focus-within \.dpr-sidebar-paper-title::after\s*{[^}]*opacity:\s*1/i.test(css));
 
   const actionsRule = cssRule(css, '.dpr-sidebar-paper-actions');
   assert.ok(/position:\s*absolute/i.test(actionsRule));
