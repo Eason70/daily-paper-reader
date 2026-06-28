@@ -6,68 +6,79 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-27
-- 运行时间：2026-06-27 21:34:47 UTC
+- 最新运行日期：2026-06-28
+- 运行时间：2026-06-28 21:17:48 UTC
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：4
+- 本次总论文数：19
+- 精读区：7
 - 速读区：12
 
 ### 今日简报（AI）
-今日精选16篇论文，重点研究多智能体编队控制与机器人操作安全两大方向。最值得关注的是基于控制屏障函数的多智能体编队跟踪方法（9.0分）与通用操作策略安全防护技术（8.0分）。建议优先阅读这两篇论文，其方法可直接应用于实际机器人系统的安全性与协作控制。
-- 详情：[/202606/27/README](/202606/27/README)
+今日精选19篇论文，精读7篇，重点关注长时程推理导航与自适应控制器运行时保证两大方向。  
+最值得深读的是《RAVEN》中基于视空时记忆的推理导航方法（9.0分）和《Conformal Recovery-Deadline Certificates》中运行时控制器保障技术（9.0分），前者突破长时推理瓶颈，后者实现自适应控制的安全证书。  
+普通读者可先速读《MAPL》中的多目标偏好学习与《Autoformalization》的指令形式化，再结合精读内容探索机器人策略的实用化路径。
+- 详情：[/202606/28/README](/202606/28/README)
 
 ### 精读区论文标签
-1. [Control Barrier Function only Formation Tracking in Multi-Agent Systems](/202606/27/2606.25452v2-control-barrier-function-only-formation-tracking-in-multi-agent-systems)  
-   标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：基于CBF的编队跟踪控制
-2. [Any-Body Guard: Universal Safeguarding for Manipulation Policies via Action Masking](/202606/27/2606.22278v1-any-body-guard-universal-safeguarding-for-manipulation-policies-via-action-masking)  
+1. [RAVEN: Long-Horizon Reasoning & Navigation with a Visuo-Spatio-Temporal Memory](/202606/28/2606.25206v1-raven-long-horizon-reasoning--navigation-with-a-visuo-spatio-temporal-memory)  
+   标签：评分：9.0/10、query:ocean-robot
+   evidence：用于长程机器人导航的记忆系统
+2. [Conformal Recovery-Deadline Certificates for Runtime Assurance of Adapting Controllers](/202606/28/2606.25371v1-conformal-recovery-deadline-certificates-for-runtime-assurance-of-adapting-controllers)  
+   标签：评分：9.0/10、query:ocean-robot
+   evidence：基于保形证书的运行时保证用于安全关键系统
+3. [Advancing Omnimodal Embodied Agents from Isolated Skills to Everyday Physical Autonomy](/202606/28/2606.27251v1-advancing-omnimodal-embodied-agents-from-isolated-skills-to-everyday-physical-autonomy)  
+   标签：评分：9.0/10、query:ocean-robot
+   evidence：具身智能机器人系统
+4. [SkyJEPA: Learning Long-Horizon World Models for Zero-Shot Sim-to-Real Control of Quadrotors](/202606/28/2606.23444v2-skyjepa-learning-long-horizon-world-models-for-zero-shot-sim-to-real-control-of-quadrotors)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：通过动作屏蔽实现操作策略的通用安全保障
-3. [HoloAgent-0: A Unified Embodied Agent Framework with 3D Spatial Memory](/202606/27/2606.23565v1-holoagent-0-a-unified-embodied-agent-framework-with-3d-spatial-memory)  
+   evidence：用于四旋翼控制的神经网络动力学模型
+5. [dVLA-RL: Reinforcement Learning over Denoising Trajectories for Discrete Diffusion Vision-Language-Action Models](/202606/28/2606.23623v1-dvla-rl-reinforcement-learning-over-denoising-trajectories-for-discrete-diffusion-vision-language-action-models)  
    标签：评分：8.0/10、query:ocean-robot
-   evidence：统一具身智能体框架与3D空间记忆
-4. [RoBoSR: Structured Scene Representations for Embodied Robotic Reasoning](/202606/27/2606.24338v1-robosr-structured-scene-representations-for-embodied-robotic-reasoning)  
+   evidence：强化学习应用于离散扩散视觉-语言-动作模型的机器人操作
+6. [TACTFUL: Tactile-Driven Exploration For Object Localization and Identification in Confined Environments](/202606/28/2606.24712v1-tactful-tactile-driven-exploration-for-object-localization-and-identification-in-confined-environments)  
    标签：评分：8.0/10、query:ocean-robot
-   evidence：具身机器人推理与结构化场景表示
+   evidence：触觉驱动的机器人物体定位探索框架
+7. [Bridging Performance and Generalization in Reinforcement Learning for Agile Flight](/202606/28/2606.27348v1-bridging-performance-and-generalization-in-reinforcement-learning-for-agile-flight)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：解决敏捷无人机飞行中强化学习的泛化问题
 
 ### 速读区论文标签
-1. [Zero-shot Transfer of Reinforcement Learning Control Policies for the Swing-Up and Stabilization of a Cart-Pole System](/202606/27/2606.22145v1-zero-shot-transfer-of-reinforcement-learning-control-policies-for-the-swing-up-and-stabilization-of-a-cart-pole-system)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：强化学习用于机器人控制，零样本仿真到实物迁移
-2. [Select-to-Act: Hierarchical Reinforcement Learning via Adaptive Language Guidance](/202606/27/2606.22350v1-select-to-act-hierarchical-reinforcement-learning-via-adaptive-language-guidance)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：使用语言指导的分层强化学习提高样本效率
-3. [LP-NavOA: Integrated Local Navigation and Obstacle Avoidance for Humanoid Robots under Limited Perception](/202606/27/2606.23249v1-lp-navoa-integrated-local-navigation-and-obstacle-avoidance-for-humanoid-robots-under-limited-perception)  
+1. [MAPL: Multi-Objective Preference Learning for Robot Locomotion](/202606/28/2606.25398v1-mapl-multi-objective-preference-learning-for-robot-locomotion)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：用于机器人运动的强化学习
+2. [Autoformalization of Agent Instructions into Policy-as-Code](/202606/28/2606.26649v1-autoformalization-of-agent-instructions-into-policy-as-code)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：智能体指令自动形式化为经过形式验证的安全策略
+3. [Continual Robot Policy Learning via Variational Neural Dynamics](/202606/28/2606.27353v1-continual-robot-policy-learning-via-variational-neural-dynamics)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：使用神经动力学的连续机器人策略学习
+4. [Regret-Guaranteed Safe Switching: LQR Setting with Unknown Dynamics](/202606/28/2606.22223v1-regret-guaranteed-safe-switching-lqr-setting-with-unknown-dynamics)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：人形机器人导航中的安全强化学习与安全过滤器
-4. [Complex Autonomous UAV Task Execution and Decision-Making With s(CASP)](/202606/27/2606.23866v1-complex-autonomous-uav-task-execution-and-decision-making-with-scasp)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：使用符号s(CASP)推理的安全自主无人机任务执行
-5. [SAGE-Nav: Leveraging LLM Planning and Alignment Fusion for Hierarchical Scene Graph-Guided Navigation](/202606/27/2606.25497v1-sage-nav-leveraging-llm-planning-and-alignment-fusion-for-hierarchical-scene-graph-guided-navigation)  
+   evidence：针对未知模式的LQR系统提出具有遗憾保证的安全切换
+5. [EmbodiedUS-FS: Fast Slow Intelligence for Ultrasound Robotics](/202606/28/2606.22319v1-embodiedus-fs-fast-slow-intelligence-for-ultrasound-robotics)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：基于LLM的分层导航用于具身智能体
-6. [Learning to Adapt: Reptile-D-Learning for Robust and Efficient Control Under Parametric Uncertainty](/202606/27/2606.25659v1-learning-to-adapt-reptile-d-learning-for-robust-and-efficient-control-under-parametric-uncertainty)  
+   evidence：具身智能应用于超声机器人系统，包含安全约束
+6. [Decentralized Autonomous Traffic Management through Corridor Networks](/202606/28/2606.23585v1-decentralized-autonomous-traffic-management-through-corridor-networks)  
+   标签：评分：7.0/10、query:ocean-robot
+   evidence：多智能体强化学习用于自主交通管理
+7. [Low-power analogue neural networks with trainable nonlinear connections for continuous control](/202606/28/2606.23742v1-low-power-analogue-neural-networks-with-trainable-nonlinear-connections-for-continuous-control)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：基于学习的李雅普诺夫控制实现参数不确定下的鲁棒安全控制
-7. [A Reward-Petri-Net Interpretation of Temporal Behavior Trees](/202606/27/2606.21350v1-a-reward-petri-net-interpretation-of-temporal-behavior-trees)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：时态行为树的奖励Petri网解释用于强化学习
-8. [FlowDPG: Deterministic Policy Gradient on Flow Matching Policies for Real-World Manipulation](/202606/27/2606.22303v1-flowdpg-deterministic-policy-gradient-on-flow-matching-policies-for-real-world-manipulation)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：强化学习用于机器人操作
-9. [SkyJEPA: Learning Long-Horizon World Models for Zero-Shot Sim-to-Real Control of Quadrotors](/202606/27/2606.23444v2-skyjepa-learning-long-horizon-world-models-for-zero-shot-sim-to-real-control-of-quadrotors)  
+   evidence：低功耗模拟神经网络用于连续控制任务
+8. [Grounding Generative Policies in Physics: Optimization-Guided Diffusion for Robot Control](/202606/28/2606.24208v1-grounding-generative-policies-in-physics-optimization-guided-diffusion-for-robot-control)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：优化引导的扩散过程确保机器人控制中的物理约束
+9. [Temporal Logic Guidance for Action-Only Diffusion Policies with World Models](/202606/28/2606.22729v1-temporal-logic-guidance-for-action-only-diffusion-policies-with-world-models)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：四旋翼无人机控制的神经网络世界模型，与无人机主题相关
-10. [From Open Waters to Enclosed Cabins: ProteusVPR for Cross-Scene Visual Place Recognition in Maritime Perception and Cabin Inspection](/202606/27/2606.24234v1-from-open-waters-to-enclosed-cabins-proteusvpr-for-cross-scene-visual-place-recognition-in-maritime-perception-and-cabin-inspection)  
+   evidence：使用信号时序逻辑实现机器人学习中的安全引导
+10. [Asymmetric physics enables efficient learning in quadrupedal robot swarms](/202606/28/2606.23153v1-asymmetric-physics-enables-efficient-learning-in-quadrupedal-robot-swarms)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：面向船载机器人的海洋视觉地点识别
-11. [Optimization-based Safe Trajectory Planning for Autonomous Ground Vehicle in Multi-Floor Scenarios](/202606/27/2606.24631v1-optimization-based-safe-trajectory-planning-for-autonomous-ground-vehicle-in-multi-floor-scenarios)  
+   evidence：在具身机器人群体中实现高效端到端学习
+11. [Data-Driven Robust MPC for Unknown Nonlinear Systems via Set-Membership Learning](/202606/28/2606.24316v1-data-driven-robust-mpc-for-unknown-nonlinear-systems-via-set-membership-learning)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：基于优化的自主地面车辆安全轨迹规划
-12. [Reliability-Asymmetric Spacecraft Autonomy: Co-Designing a Capable Learned GNC Stack with a Verified, Adaptation-Aware Runtime Shield](/202606/27/2606.25366v1-reliability-asymmetric-spacecraft-autonomy-co-designing-a-capable-learned-gnc-stack-with-a-verified-adaptation-aware-runtime-shield)  
+   evidence：针对未知非线性系统的数据驱动鲁棒MPC方法，可用于安全控制
+12. [Learning Perceptive Platform Adaptive Locomotion Controllers for Quadrupedal Robots](/202606/28/2606.25179v1-learning-perceptive-platform-adaptive-locomotion-controllers-for-quadrupedal-robots)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：面向航天器安全关键自主的运行时护盾
+   evidence：基于强化学习的四足机器人控制方法，融合感知信息
 
 
 <div class="dpr-home-promo-card">

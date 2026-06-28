@@ -1,0 +1,690 @@
+Title: Learning Perceptive Platform Adaptive Locomotion Controllers for Quadrupedal Robots
+
+URL Source: https://arxiv.org/pdf/2606.25179v1
+
+Published Time: Thu, 25 Jun 2026 00:14:39 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Learning Perceptive Platform Adaptive Locomotion Controllers for Quadrupedal Robots 
+
+David Rytz 1, Kim Tien Ly 1, and Ioannis Havoutis 11Dynamic Robot Systems, Oxford Robotics Institute, University of Oxford 
+
+Abstract — Universal quadrupedal locomotion remains lim-ited by the difficulty of integrating perception across diverse robot morphologies. State-of-the-art controllers rely on single-robot training or blind policies that omit real-time perception, leading to poor cross-embodiment generalization. Designing lo-comotion policies that remain robust across related quadruped morphologies while incorporating perception is challenging. Moreover, fully perceptive policies are often sensitive to noise, whereas blind controllers lack terrain awareness. In this work, we study how perception should be integrated into morphology-aware reinforcement learning architectures for deployable quadrupedal control. Building on MorAL, we train morphology-specialized universal controllers on multiple refer-ence quadrupeds using adaptive terrain curricula. We compare a blind baseline, a critic-perceptive variant (MorAL+), and a fully perceptive actor–critic (PPAL). Policies are evaluated in simulation on flat and rough terrains, and deployed on ANYmal hardware. Results show that critic-only perception improves robustness and tracking consistency over blind base-lines while remaining more stable than fully perceptive policies under perception noise. These findings highlight that perception placement and curriculum design are key factors for scalable, morphology-aware locomotion. 
+
+Index Terms — Sim-to-real; Legged Locomotion; Reinforce-ment Learning. 
+
+I. I NTRODUCTION 
+
+The ability to curate and process large datasets has driven a significant push for general-purpose artificial intelli-gence (AI) models that generalize across diverse information modalities, including images, video, audio, and more. This development has led to recent cross-embodiment models, such as Vision-Language-Action (VLA) generalist models, exemplified by Gemini Robotics [1], which can be fine-tuned to control various real robot modalities. To enable similar large-scale mobile robot control, LocoFormer [2] demonstrated the ability to synthesize universal omni-bodied locomotion models, able to control a wide range of robot bodies with significant changes, including locked or damaged limbs. The key to such generalist capability is massive domain randomization using procedurally generated robots with diverse robot embodiments across bipeds, quadrupeds, and wheeled varieties, while also randomizing relevant pa-rameters, including joint control gains, body masses, and inertias [2]. This approach stands in contrast to the very capable Reinforcement Learning (RL) methods for training locomotion controllers [3], [4], [5], which are trained specif-ically for a single robot and thus reduce their usefulness 
+
+> Corresponding author: rytz@robots.ox.ac.uk. Video can be found here.
+
+across different robot parameters and manufacturers, limiting scalability and knowledge reuse. In this work, we pursue a middle ground: morphology-specialized universal locomotion controllers that incorpo-rate perception while maintaining tractable computational demands. Building on MorAL [6], we reformulate universal locomotion as a morphology-specific learning problem with the goal of perceptive locomotion without requiring large-scale cross-embodiment training [2], [7], [8]. This formula-tion allows efficient deployment and transfer to real hardware while preserving terrain awareness and robustness. Our key contributions are:  
+
+> •
+
+We conduct a study of morphology-aware blind, critic-perceptive, and fully perceptive actor-critic lo-comotion architectures to develop a perceptive and single-morphology universal locomotion policy for quadrupedal robots with diverse kinematic and dynamic properties.  
+
+> •
+
+We design an adaptive terrain curriculum that balances sample efficiency with challenging environmental vari-ability, improving robustness and generalization.  
+
+> •
+
+We extend the MorAL architecture to support multi-reference morphology training with perception-aware critic information, enabling efficient zero-shot transfer to unseen quadruped systems in simulation and hard-ware. II. R ELATED WORK 
+
+A. Reinforcement Learning for Quadrupedal Locomotion 
+
+Reinforcement Learning (RL) has shown in recent years to be a powerful tool to generate robust and agile legged locomotion controllers by training policies in simulation with extensive domain randomization and subsequently transfer-ring them zero-shot to real hardware. Such strategies enable policies to adapt to unmodeled dynamics and environmental variations through implicit experience during training, reduc-ing the need for fine-tuning after deployment [9], [10]. Incorporating perception into the control loop enables terrain-aware adaptation. These perceptive locomotion ap-proaches allow robots to anticipate and adjust their gait based on the upcoming terrain geometry. Depending on how visual information is represented, methods can be categorized into either implicit or explicit perception frameworks. Implicit methods [11], [12] integrate visual or egocentric features directly into the policy network, enabling end-to-end learning 
+
+> arXiv:2606.25179v1 [cs.RO] 23 Jun 2026
+
+of terrain-adaptive behaviors. In contrast, explicit mapping approaches [5], [13] rely on geometric or elevation-based representations to inform footstep planning and control. 
+
+B. Universal and Cross-Embodiment Locomotion Control 
+
+Cross-embodiment learning seeks to generalize loco-motion control across robots with distinct morphologies, actuation schemes, and sensor configurations. Early re-search emphasized morphology-specialized universal con-trollers—policies trained for robustness across a family of related morphologies rather than full embodiment agnosti-cism. GenLoco [14] trained quadruped controllers through pro-cedural morphology randomization and a large context window, achieving robust behavior across varied param-eters but limited to fixed degrees of freedom (DoFs). ManyQuadrupeds [15] combined Central Pattern Generators (CPGs) with RL for multi-quadruped control but relied on robot-specific inverse kinematics, restricting scalability. MorAL [6] advanced this paradigm via a morphology-aware architecture encoding physical information from proprio-ceptive inputs into compact morphological representations, enhancing robustness across diverse quadruped configura-tions. All of these approaches demonstrate rough terrain locomotion capabilities on small quadrupeds below 30 kg. Broader cross-embodiment approaches such as URMA [7] and LocoFormer [2] pursue morphology-agnostic architec-tures using large-scale transformer encoders and procedu-rally generated robot datasets. URMA unifies control across quadrupeds, bipeds, and hexapods via joint-level descriptors, while LocoFormer trains an omnibodied transformer model across dozens of GPUs with extended temporal context. Al-though these methods achieve strong embodiment generaliza-tion, their massive computational demands limit practicality for real-world deployment. Building upon MorAL, our work introduces morphology-specialized universal architectures that retain perceptive lo-comotion capabilities with substantially reduced computa-tional requirements compared to cross-embodiment mod-els. MorAL utilizes a single robot reference model aug-mented with heightmap-based perceptual encoding. We ex-tend the asymmetric actor–critic design, where only the critic receives exteroceptive input during training, to a multi-reference setup. This formulation unifies morphology encod-ing and minimal perception injection, bridging morphology-specific generalization and terrain-aware control for scalable, zero-shot deployment across diverse and previously unseen quadrupedal systems while maintaining deployment simplic-ity. III. M ETHODOLOGY 
+
+Our goal in this work is to train a universal perceptive locomotion policy that can robustly control a range of previously unseen quadrupedal robots in a zero-shot fashion to follow a given base velocity command, consisting of forward and lateral velocities and yaw rate. The command is uniformly sampled within the training ranges vmax  
+
+> x
+
+= ±1 m /s, 
+
+vmax  
+
+> y
+
+= ±0.75 m /s, and ωmax  
+
+> z
+
+= ±1.5 rad /s. 
+
+A. Problem Formulation 
+
+We model the problem as a partially observable Markov decision process (POMDP), represented by a 7-tuple M =
+
+{S, O, A, R, T, Ω, γ}. Here, S, O, and A denote the sets of states, observations, and actions, respectively. At each time step t, the agent in state st ∈ S selects an action at ∈ A and receives a reward R(st , at ). The environment then transitions to a new state st+1 with probability T (st+1 | st , at ). Because the full state is not directly observable (e.g., complete terrain information), the agent instead receives an observation ot+1 ∈
+
+O generated according to the observation function Ω(ot+1 |
+
+st+1, at ). The scalar γ denotes the discount factor. The objective is to find the optimal policy π∗ that maxi-mizes the expected discounted cumulative reward: 
+
+JM (π) = Eπ
+
+" ∞
+
+# ∑
+
+> t=0
+
+γt R(st , at )
+
+#
+
+. (1) While previous works often focused more on robot-specific terrain information processing [13] or massive cross-embodiement configurations [2], [7], we aim to also deploy on heavy hardware, such as the 50 kg ANYmal robot, and thus investigate asynchronous actor-critic network layouts as described in Section III-B.1, inspired by [6], [16]. 
+
+B. Controller and Training Design 
+
+An overview of our proposed control framework is illus-trated in Fig. 1. The framework consists of three different neural networks: an estimator, a critic, and an actor. The esti-mator network estimates relevant state and robot morphology parameters for control using proprioceptive quantities and feeds them to the actor network, which outputs joint target commands that are then tracked using a joint proportional-derivative (PD) controller. The critic network helps reduce variance in the policy gradient estimate from RL algorithms. All training is done in simulation, using RaiSim [17]. 
+
+1) Observation and State Space: To train robot locomo-tion policies for rough-terrain traversal, our framework uses a heterogeneous actor-critic architecture. The actor network generates control policies that output joint target commands, and the critic evaluates the quality of these policies while receiving privileged information. Together with the mor-phology and base estimator network, we can adapt to a wide range of robots and terrain during deployment. These three networks are trained in parallel in simulation, with the estimator being updated via a regression algorithm. We discuss each network in more detail here: 1) Estimator Network: In the absence of imitation learning, the framework requires the estimator to infer the base linear velocity v∗ 
+
+> x,y,z
+
+to enable base velocity command tracking. To enhance generaliza-tion across different morphologies, this estimator net-work is augmented with robot-specific morphological descriptors, o∗
+
+> m
+
+. These descriptors include the base Terrain Generation: Initialization : draw n Tprandom samples in SR                          
+
+> Training : repeat for every N Ttraj 1. Generate trajectories using Actor
+> 2. Update SR and particle weights w i3. Resample terrain particles cTi
+> Joint states 𝝉 cmd
+> Nominal joint positions qjdes
+> Joint PD Controller
+> Velocity command
+> (History) Buffer with 1. Joint States / Targets 2. Base States
+> Critic
+> Actor
+> Policy gradient
+> rewards
+> value
+> Configuration Buffer
+> cRi
+> a
+> Stairs Hills
+> Slopes
+> Estimator
+> Perfect Heightmap HNoisy Heightmap Hn
+> {vx,y,z ,om}
+> {vx,y,z *,om*}
+> Sample n Rprobot configurations cR
+> i
+> after N Rtraj rollouts
+> Traversability
+> otH
+> othota
+> otv
+
+Fig. 1: Architecture for perceptive universal quadrupedal locomotion: The base and joint states and actions are stored in a buffer. The estimator network receives oHt , a history of robot states from the buffer. The critic receives the observation ovt
+
+including the perfect heightmap H as input. The Actor receives oat , including the corresponding estimator outputs, and the noisy heightmap Hn and is finally deployed on the ANYmal platform. While the robot parameter configuration follows [18], we include work terrain generation (in green) as outlined in Section III-D. body center of mass com base ,x,y,z ∈ R3, the individ-ual link masses mbase, hip, thigh, shank ∈ R4, joint link offsets cqxyz 1 ,qxyz 2 ,qxyz 3 ∈ R9, and the vertical foot offset 
+
+c f ,z ∈ R1. The estimator operates on a short tempo-ral context defined by the robot state history oHt =
+
+⟨oht=0, oht=1, . . . , oht=5⟩ with each historical state vector encapsulating proprioceptive and command informa-tion. For the current timestep t = 0, the observation vector is specified as 
+
+oht=0 = ⟨eBz , ωB, ∆qt, ˙qt, qdes 
+
+> t−1
+
+, vdes  
+
+> x,y,ω
+
+⟩, (2) where eBz ∈ R3 denotes the base orientation unit vector, 
+
+ωB ∈ R3 represents the base angular velocity, ∆qt ∈
+
+R12 corresponds to the deviation of joint positions from their nominal configuration, ˙qt ∈ R12 is the joint velocity vector, qdes  
+
+> t−1
+
+∈ R12 is the previously executed joint action, and vdes  
+
+> x,y,ω
+
+∈ R3 specifies the commanded velocity in heading, lateral and yaw directions. For our study, the history is selected at multiples of 0 .01 s. 2) Actor Network: The actor network produces the de-sired joint position command qdes  
+
+> j
+
+∈ R12 by processing an input observation vector oa and outputting the desired action at ∈ R12 . This input encapsulates the estimated base linear velocity v∗ 
+
+> x,y,z
+
+and morphology descriptor o∗
+
+> m
+
+, the current robot state oht=0, the base centered noisy height scan Hn ∈ R108 , and the nominal joint configuration qn ∈ R12 , defined as 
+
+oat = ⟨v∗
+
+> x,y,z
+
+, oht=0, qn, Hn, o∗
+
+> m
+
+⟩. (3) The resulting action is drawn from a Gaussian distri-bution with zero mean and a fixed standard deviation. The sampled output a is added to the nominal joint position qn before being applied to the robot’s joint-space PD controller, expressed as qdes = qn + σa · a
+
+with σa = 0.6. 3) Critic Network: The critic network is given access to additional privileged information, drawn from the simulator that is generally unavailable or difficult to estimate during real-world deployment. This privileged data includes the feet contact states c f ,it ∈ R4, the corresponding contact friction coefficients μ f ,i ∈ R4,the individual feet height in base frame h f ,it , the joint-space PD gains kPD ∈ R24 , and the noise-free height scan H ∈ R108 . Unlike the actor, which uses estimated morphological parameters, the critic processes ground-truth morphological descriptors om obtained directly from the simulation environment. The resulting input observation for the critic is thus expressed as 
+
+ovt = ⟨vx,y,z , oht=0, qn, om, c f ,it , μ f ,i, h f ,it , kPD , H⟩. (4) The estimator network is optimized by a supervised regres-sion loss loss reg , similar to [6], to reduce the mean square er-ror (MSE) between the estimation and corresponding ground-truth values. The total loss is computed as: 
+
+Loss = β  MSE (vx,y,z, v∗
+
+> x,y,z
+
+) + MSE (om, o∗
+
+> m
+
+) + ( 1 − β )loss π ,
+
+(5) with the hyperparameter β = 0.04 and loss π being the policy gradient. We dynamically generate a robot-centric grid of 12 ×
+
+9 sampling points centered around the estimated support polygon of the robot’s feet in the nominal robot joint configuration (see Fig. 2) inspired by [19]. It shows in red an example noisy heightmap scan pattern for an A1 reference model. We include latency randomization during training for the perception observations H and Hn.N    
+
+> M
+> p3
+> p2
+> p1
+> c
+> p4
+
+Fig. 2: Robot-centric heightmap scan pattern Hn, displayed as N ×M red dots. During training, an additional noise value is added sampled as hn ∼ U (0.02 , 0.1).
+
+2) Rewards: We detail the reward components and their corresponding coefficients in Table I, following the formula-tions in [6], [18]. Unless otherwise specified, all policies in this study were trained using the same reward structure and weights.                                                                                                              
+
+> Reward Description
+> Base linear velocity rv=3·(1−tanh (4∥cdes
+> xy −cxy ∥2))
+> Base angular velocity rω=1.5·(1−tanh (2∥cdes
+> z−cz∥2))
+> Base orientation rR=−5·tanh (RB)2
+> Base height rh=−20 ·tanh (( rz−rn)2)
+> Base undesired motion rb=−0.5·(v2
+> z+0.25 ·(|ωx|+|ωy|))
+> Joint position rq=−0.2· || qt−qn|| 2
+> Joint velocity r˙q=−3·10 −4· ∥ ˙qt∥2
+> Joint acceleration r¨q=−1·10 −7· ∥ ¨qt∥2
+> Joint torque rτ=−3.5·10 −5· ∥ τ∥2
+> Joint action smoothness rs1=−0.12 · || qdes t−qdes t−1|| 2
+> Joint action smoothness 2 rs2=−0.05 · || qdes t−2·qdes t−1+qdes t−2|| 2
+> Foot slip rμ,i=−0.25 ·cf,i· ∥ vf,xy ,i∥
+> Air time rair ,i=−6·
+> (
+> if || cdes || 2=0 : −Ti,swing
+> else: Ti,swing −0.5
+
+TABLE I: Reward term definitions. The index i ∈ { 1, 2, 3, 4} represents the corresponding leg (front left, front right, hind left, and hind right). Ti,stance and 
+
+Ti,swing are the corresponding times since the last touchdown and takeoff. The contact state c f ,i is taken from the simulator for each foot i. If c f ,i = 1, we define foot i to be in ground contact and 0 otherwise. RB represents the base orientation with respect to the world frame. The tangential foot velocity at its contact point is captured by v f ,xy ,i.We would like to point out that Luo et al. [6] successfully trained and deployed a perceptive locomotion policy for light and medium-sized robots of less than 30 kg without any foot clearance reward, which we aim to reproduce in this work. 
+
+3) Joint controller: As illustrated in Fig. 1, each joint 
+
+j ∈ { 1, . . . , 12 } is regulated using a PD controller that tracks the desired joint position q des  
+
+> j
+
+generated by the actor output 
+
+a j. The commanded torque τcmd  
+
+> j
+
+applied to the actuator is defined as 
+
+τcmd  
+
+> j
+
+= Kp · (qdes  
+
+> j
+
+− q j) − Kd · ˙q j, (6) where Kp and Kd denote the proportional and derivative gains, respectively. The commanded torques τ j are clipped within the actuator limits [−τmax  
+
+> j
+
+, τmax  
+
+> j
+
+]. To capture more realistic actuation dynamics, which are typically nonlinear and complex in physical systems such as the series elastic actuators of the ANYbotics robots, we incorporate learned actuator models [20]. The actuator network stochastically replaces the PD formulation in Equation (6) and is trained on data collected from the ANYmal B and ANYmal C hardware platforms. 
+
+C. Terrain Configuration Parameters and Heightmap Sam-pling 
+
+We generate an N × M grid to be sampled for heightmap values during training and on the off-the-shelf perception pipeline by ANYbotics as follows: Given the set of foot nominal positions F = {pi ∈ R2}m=4 
+
+> i=1
+
+,we compute the axis-aligned bounding box and its centroid 
+
+c:
+
+pmin = min  
+
+> i
+
+pi, pmax = max  
+
+> i
+
+pi, c = 1
+
+m
+
+> m
+
+# ∑
+
+> i=1
+
+pi.
+
+To ensure sufficient coverage, the bounding box is expanded by user-defined paddings px =0.5 m and py =0.5 m: 
+
+pmin ← pmin − [px, py]T , pmax ← pmax + [ px, py]T . (7) The grid spacing along each axis is determined as 
+
+∆x = max  round 1 cm 
+
+  pmax ,x−pmin ,x
+
+> N−1
+
+, smin 
+
+, (8) where round 1 cm (·) enforces quantization to 1 cm resolution and smin denotes the minimum allowable spacing, set to 2 cm. The final grid is centered at c:
+
+xi = cx − (N−1)∆x 
+
+> 2
+
++ i ∆x, y j = cy − (M−1)∆y 
+
+> 2
+
++ j ∆y, (9) for i ∈ [0, N −1] and j ∈ [0, M −1], producing a total of N ×M
+
+sampling points 
+
+s(i, j) = ( xi, y j). (10) 
+
+D. Parameter Sampling Strategies for Universal Quadrupedal Robot Control 
+
+We employ two strategies for sampling nRp robot configura-tion parameters cRi and nTp terrain configurations parameters 
+
+cTi during training after NR 
+
+> traj
+
+or NT 
+
+> traj
+
+seconds of simulator rollouts:  
+
+> •
+
+Adaptive curriculum with particle filtering: Inspired by [9], we define the linear and zero-velocity tracking performance indicators as: 
+
+νlin (t) = 
+
+(
+
+1 if |νlin  
+
+> pr
+
+| > 0.3 · ∥ [vmax  
+
+> x
+
+, vmax  
+
+> y
+
+]∥
+
+0 otherwise (11) 
+
+νzero (t) = 
+
+(
+
+1 if ∥vcur  
+
+> x,y,ω
+
+∥ < 0.20 otherwise (12) Here, νlin pr is the scalar projection of the commanded onto the current base linear velocity in the robot frame, and |vcur  
+
+> x,y,ω
+
+| denotes the velocity norm during zero-velocity commands. Over all timesteps, the tracking performance for configuration i is computed as 
+
+Tr cmd  
+
+> i
+
+=
+
+> Ttot
+
+# ∑
+
+> t=0
+
+νcmd i (t)
+
+T tot 
+
+> i
+
+, (13) where Ttot is the total duration that a command is active for configuration i after Ntraj . Ideal tracking yields 
+
+Tr cmd  
+
+> i
+
+= 1 for cmd ∈ { lin, zero }, while poor policies approach zero. A Sequential Importance Resampling (SIR) particle filter maintains a parameter distribution that evolves with policy performance. Each configura-tion i is assigned an importance weight 
+
+wi = 12
+
+> cmd
+
+# ∑ Tr lin  
+
+> i
+
+∈ [0.45 , 0.95 ] + γ · Tr zero  
+
+> i
+
+∈ [0.45 , 0.95 ],
+
+(14) emphasizing configurations with mid- to upper-range performance. Weighted resampling, combined with ran-dom nearest-neighbor walks over nw configurations, pre-vents parameter set degeneration. γ is a hyperparameter set to 1 for robot configuration sampling and 0 for terrain sampling.  
+
+> •
+
+Performance-based curriculum: As per [16], nSR con-figurations are generated from nominal parameters cnom 
+
+> i
+
+by restricting the uniform sampling range (SR) to SR ∈
+
+(0.1, 1), initialized at 0 .1. When the policy surpasses task-specific thresholds after each Ntraj , SR is adjusted to match training difficulty, based on the average tracking performance of all robot particles belonging to the same reference model. Let Tr cmd mean denote the mean tracking score computed over all configurations ci. The update rule is defined as: 
+
+SR t+1 =
+
+
+
+SR t + 0.01 , if Tr lin mean > Tr lin high ,
+
+SR t − 0.01 , if Tr lin mean < Tr lin low ,
+
+SR t , otherwise. (15) This adaptive scheme progressively increases task dif-ficulty in proportion to learning progress, avoiding de-generate, catastrophic forgetting or overly trivial param-eterizations ci.
+
+1) Robot Parameters: We implement the robot param-eter sampling approach by Rytz et al. [16], using four simplified quadruped reference models that are employed during training: Unitree’s A1 [21], Aliengo, and ANYbotics’ ANYmal B and ANYmal C [22], [23]. Nominal parameters from these platforms are used to resample new parameter sets cRi , generating nRp = 30 distinct configurations per model through randomized kinematic and dynamic properties. The sampling parameter ranges are set as in the original work of 
+
+Rytz et al. . Based on the reference quadrupeds , nw = 0.1and nSR = 0.4 morphology parameters are sampled after 
+
+NR 
+
+> traj
+
+=20 s. The SR is fixed to 1 at all times. A sampled robot configuration is admitted into the randomized training set if it can stand collision-free in its nominal pose for 2 s using RaiSim’s [17] joint controller. 
+
+2) Terrain Parameters: To enable perceptive heavy-duty 
+
+universal morphology-adaptive locomotion [16], we extend the framework of [6]: instead of a single curriculum per ref-erence robot, each configuration follows an adaptive terrain curriculum, reflecting that robots with different morpholo-gies possess distinct terrain capabilities (e.g., larger robots with higher torque limits might handle steeper terrain). Our terrain generation incorporates slope, stair, and hilly terrain, previously shown to be effective for rough-terrain control [9], [19]. Terrain parameters, defined in Table II, are uniformly sampled within preset bounds with SR = 0.1 at the start of each episode to enhance policy generalization. Depending on their respective traversability defined in Equation (12), we increase or decrease SR following Equation (15), with 
+
+Tr lin high = 0.7, and Tr lin low = 0.55. We generate nw = 0.4 and 
+
+nSR = 0.1 samples after NT 
+
+> traj
+
+=20 s for the total of 12 configurations per terrain and robot type. A flat terrain is sampled with a probability of 10 %, all others with 30 %. The resulting tiles for stair and slope terrains are replicated in a 3 × 3 grid with small flat gaps between tiles to create extended patterns. All generated heightmaps are centered such that the robot spawns on a flat central surface.                                              
+
+> Terrain Parameter Sampling Distribution Nominal Slope
+> Step Size U(0.10 ,1.00 )0.40 Max Height U(0.01 ,0.30 )0.01 Plateau Steps U(0.00 ,10 .00 )1.00 Contact Friction U(0.10 ,1.50 )0.70
+> Stairs
+> Step Size U(0.01 ,0.50 )0.10 Maximum Height U(0.01 ,1.50 )0.01 Number of Steps U(1.00 ,20 .00 )1.00 Contact Friction U(0.10 ,1.50 )0.70
+> Hilly
+> Fractal Octaves U(0.00 ,5.00 )1.00 Fractal Lacunarity U(1.00 ,5.00 )2.00 Fractal Gain U(0.10 ,1.00 )0.45
+> z-Scale U(0.01 ,0.75 )0.15 Contact Friction U(0.10 ,1.50 )0.70 Number of Samples U(50 ,100 )50
+
+TABLE II: Parameter ranges and nominal values for terrain configurations. Note: For stairs terrain, we define the step height as maxHeight / noSteps. By applying an initial SR = 0.1 for terrain configuration sampling, we expose the early stage of the training regimen to less challenging terrain configurations, for example, hav-ing fewer and smaller steps for the Stairs terrain, while in-creasing or decreasing the maximum step height and number of stairs as a function of training performance. 
+
+E. Hyperparameter choices for PPO 
+
+The locomotion control policy was optimized using the Proximal Policy Optimization (PPO) algorithm [24]. Both the control policy π and the corresponding value estimator were implemented as Multi-Layer Perceptrons (MLPs) with leaky ReLU activations, comprising three hidden layers of dimensions [512, 256, 128]. The MLP estimator network consists of layers of sizes [512, 256, 64], also with leaky ReLU activation function. An MLP is the simplest neu-ral network architecture and, compared to other memory-based networks, is more computationally efficient and has been shown to be sufficient for estimation and perceptive locomotion [25], [26]. To discourage unstable behavior, an early termination penalty of −0.2 was introduced whenever self-collisions or non-foot body-ground contacts occurred. Additional implementation details can be found in Table III. Training parameters and schedules were empirically ad-justed following initial values presented in [18]. The exper-iments were conducted using 8 CPU cores (4 GHz) and an NVIDIA RTX 4090 GPU. Table III outlines the hyperparam-eters and computational settings adopted. A training horizon of 60,000 iterations required approximately 30 hours of wall-clock time for a 100 Hz controller network frequency. 
+
+Parameter Value Parameter Value 
+
+Discount factor, γ 0.997 Entropy coefficient 0Learning rate adaptive Value coefficient 0.5 Batch size 54000 GAE True Mini-batch size 6 GAE λ 0.95 Epochs 4 Steps per iteration 120 Parallel envs, nenv 450 PPO time/iteration ∼1.8 s 
+
+TABLE III: RL training time and hyperparameters. IV. R ESULTS AND DISCUSSION 
+
+A. Performance Benchmarks 
+
+We evaluate the generalization and performance of zero-shot morphology-specific universal locomotion controllers across varied quadruped morphologies in simulation and on the large-scale ANYmal hardware platform. Our comparison focuses on robustness under morphology variations and per-ception placement, rather than peak dynamic performance. The following architectures are considered: 1) MorAL [6] : A blind actor combined with a perceptive critic that receives privileged state-action information. The architecture is trained using a single robot refer-ence model (Unitree A1) and adjusts the robot con-figuration parameter ranges according to the original implementation. This universal controller architecture ensures that, on hardware, no requirements on the perception pipeline exist while leveraging POMDPs to process privileged simulation information during training. 2) MorAL blind [18] : A completely blind actor-critic ar-chitecture trained against multiple reference models, serving as our most resource-minimal baseline. 3) MorAL+ (ours): Our proposed method, which retains the blind actor for efficient policy execution utilizing a perceptive critic of MorAL, but trained with multiple reference robot models as in MorAL blind , and noise-free critic state observations H as in MorAL .4) PPAL (ours): Our second proposed method, featuring a fully perceptive actor-critic architecture trained on multiple reference models, prioritizes critic informa-tion while the actor receives noisy perception scans. The chosen noise model matches a previously capa-ble locomotion controller for heavy-duty quadrupedal robots, as the ANYmal [19], used in our hard-ware results section. It comes with manufacturer-grade perception software that has an industrial-grade state estimator and perception stack. All controllers were trained with identical adaptive terrain curricula, robot configuration sampling, reward functions, and PPO hyperparameters, resulting in comparable gait struc-tures and enabling controlled architectural comparisons. 0 25 50 75                   
+
+> Force [N]
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> SR  * : A1
+> A1
+> 050 100 150
+> Force [N]
+> Laikago
+> 050 100 150
+> Force [N]
+> ANYmal
+> 123
+> Friction Coefficient [-]
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> SR  * : A1
+> 123
+> Friction Coefficient [-]
+> 123
+> Friction Coefficient [-]
+> 020 40
+> Mass [kg]
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> SR  * : A1
+> 020 40
+> Mass [kg]
+> 050 100
+> Mass [kg]
+> MorAL
+> MorAL blind
+> MorAL+
+> PPAL (10 cm noise)
+> PPAL (2 cm noise)
+
+Fig. 3: Robustness test of controller design with heightmap sampled at 5 Hz and 80% of the training velocity command ranges. Controller policy was evaluated on quadrupeds A1, Laikago and ANYmal, previously unseen during training. 
+
+B. Simulation Results 
+
+We evaluate the Success Rate (SR ∗) of our resulting estimator and actor networks in RaiSim by rolling out 100 segments of 20 s with random velocity commands sampled every 4 s of the full training commanded range [27]. In Fig. 3, we specifically demonstrate robot configuration parameter robustness by randomizing base mass, perturbation, and con-tact friction effects for flat terrain locomotion. Incorporating perceptual information can degrade controller performance as demonstrated by PPAL with 10 cm scan noise. Consistent with [18], multi-morphology training signifi-cantly improves robustness across disturbance magnitudes. Both MorAL blind and MorAL+ achieve the highest SR ∗ over wide parameter ranges, indicating that robot configuration diversity is a primary contributor to robustness. The addition of exteroceptive input in MorAL+ does not yield a consistent performance gain over the blind variant, suggesting that the chosen formulation does not effectively leverage the high scan information. In contrast, PPAL degrades under perception noise, suggesting that directly incorporating ex-teroceptive input in the form of an imperfect height scan is not sufficiently denoised by the policy architecture. This indi-cates that more structured belief representations or memory-based inference mechanisms may be required [13] to reliably denoise Hn.As illustrated by the Laikago results, however, none of the evaluated approaches achieve consistently high SR ∗ across all tested perturbations. This suggests that substantial morpho-logical shifts beyond the training distribution still degrade locomotion performance, highlighting the remaining gap in out-of-distribution morphology generalization. MorAL      
+
+> 0.01
+> 0.06
+> 0.11
+> 0.16
+> 0.21
+> 0.26
+> 0.31
+> 0.36
+> 0.01
+> 0.035
+> 0.06
+> 0.085
+> 0.11
+> 0.135
+> 0.16
+> 0.185
+> 0.21
+> 0.235
+> 0.26
+> 0.285
+> 0.31
+> 0.335
+> 0.36
+> 0.385
+> Maximum Height [m]
+> MorALblind
+> 0.01
+> 0.06
+> 0.11
+> 0.16
+> 0.21
+> 0.26
+> 0.31
+> 0.36
+> 0.01
+> 0.035
+> 0.06
+> 0.085
+> 0.11
+> 0.135
+> 0.16
+> 0.185
+> 0.21
+> 0.235
+> 0.26
+> 0.285
+> 0.31
+> 0.335
+> 0.36
+> 0.385
+> MorAL+
+> 0.01
+> 0.06
+> 0.11
+> 0.16
+> 0.21
+> 0.26
+> 0.31
+> 0.36
+> 0.01
+> 0.035
+> 0.06
+> 0.085
+> 0.11
+> 0.135
+> 0.16
+> 0.185
+> 0.21
+> 0.235
+> 0.26
+> 0.285
+> 0.31
+> 0.335
+> 0.36
+> 0.385
+> Maximum Height [m]
+> PPAL(2cmnoise)
+> 0.01
+> 0.06
+> 0.11
+> 0.16
+> 0.21
+> 0.26
+> 0.31
+> 0.36
+> 0.01
+> 0.035
+> 0.06
+> 0.085
+> 0.11
+> 0.135
+> 0.16
+> 0.185
+> 0.21
+> 0.235
+> 0.26
+> 0.285
+> 0.31
+> 0.335
+> 0.36
+> 0.385
+> StepSize[m]
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> 𝑆 𝑅 *
+
+Fig. 4: SR ∗ for stair terrain and five steps over a range of maximum height and step size for ANYmal quadruped in RaiSim. We further evaluate the controllers’ performance across a five-step stair terrain parameter range in Fig. 4, which presents SR ∗ over a grid of stair step heights and lengths. The general trends observed on flat terrain transfer to stair traversal: MorAL exhibits the lowest performance due to single-morphology training, while both MorAL blind and MorAL+ achieve substantially higher success rates. Notably, MorAL blind demonstrates the most consistent performance and attains the highest success rates over a broader region of the stair parameter space. This further supports the conclu-sion that multi-reference morphology training is the primary driver of robustness in the proposed universal locomotion controller. In contrast, PPAL remains more sensitive to vari-ations in stair geometry, highlighting the trade-off between incorporating perceptual inputs and maintaining robustness under imperfect or noisy exteroception. 
+
+C. Hardware Results 
+
+Tables IV and V summarize hardware performance on ANYmal. MorAL+ consistently reduces velocity tracking Root Mean Square Error (RMSE) relative to MorAL blind 
+
+on both flat and rough terrain, demonstrating that critic-only perception improves tracking consistency without in-creasing deployment complexity. PPAL achieves competitive simulation performance (see Fig. 3) but exhibits increased sensitivity to perception noise, leading to less reliable hard-ware behavior. The original MorAL architecture could not be safely deployed due to instability (see supplementary video). As we did not have access to an additional hardware platform to evaluate morphology transfer directly, we re-peated the experiments by modifying the physical properties of the same robot. Specifically, we introduced a top-heavy payload of 6 kg, thereby altering both the total mass and the center of mass of the system. The corresponding results are 
+
+Controller Terrain RMSE vx vy vθ ex ey ez
+
+MorAL blind Flat 0.0987 0.0955 0.2548 0.1118 0.1276 0.0702 MorAL+ Flat 0.0864 0.0909 0.2051 0.0914 0.1202 0.0579 
+
+PPAL Flat 0.1605 0.1167 0.2975 0.1251 0.1213 0.0708 MorAL blind Rough 0.0983 0.0854 0.2734 0.0951 0.0937 0.0755 MorAL+ Rough 0.0908 0.0757 0.2401 0.0806 0.0912 0.0620 
+
+PPAL Rough 0.1376 0.0762 0.2745 0.0830 0.0847 0.0690 
+
+TABLE IV: Velocity command tracking and estimation results (RMSE represented by vx, vy, vθ ) and base linear velocity estimate ( ex, ey, ez) on the hardware ANYmal (5 min duration for data collection). reported in Table V. We did not repeat the weighted ex-periments for PPAL, as the unweighted hardware evaluation already exhibited sagging and degraded velocity-tracking performance on flat terrain (Table IV), indicating limited robustness and posing an increased risk of hardware damage under additional load. 
+
+Controller Terrain RMSE vx vy vθ ex ey ez
+
+MorAL blind Flat 0.1046 0.0840 0.2488 0.1289 0.1438 0.0738 MorAL+ Flat 0.0889 0.0981 0.2470 0.1187 0.1240 0.0644 PPAL Flat 0.1654 0.1191 0.2973 0.1146 0.1083 0.0598 
+
+MorAL blind Rough 0.1098 0.0912 0.2626 0.1300 0.0971 0.0739 MorAL+ Rough 0.1090 0.0985 0.2874 0.1070 0.0883 0.0647 
+
+PPAL Rough - - - - - -
+
+TABLE V: Locomotion policy performance results for 6 kg payload. All evaluated controllers achieve reliable locomotion on flat terrain. However, performance degrades on large vertical obstacles and stair environments in hardware experiments. A possible explanation is the absence of an explicit foot-clearance term in the underlying MorAL reward formulation. Without directly incentivizing swing height, the learned policy may adopt conservative swing trajectories with limited foot elevation, which appear sufficient for nominal terrains but result in insufficient clearance on pronounced vertical discontinuities. The reference-free formulation deliberately avoids explicit stepping priors, enabling locomotion strategies to emerge during training and potentially improving generalizability. Nevertheless, the observed results indicate that the emergent behavior does not consistently provide adequate clearance for highly irregular terrain. Future work will investigate reward or architectural refinements that preserve this reference-free property while improving terrain-adaptive swing behavior. V. C ONCLUSION 
+
+In this paper, we presented and evaluated morphology-specific universal locomotion controllers for quadrupedal systems in simulation and on ANYmal hardware. Our study demonstrates that multi-morphology training substantially improves robustness across configuration and terrain vari-ations. Injecting perception exclusively via the critic, as in MorAL+, enhances tracking consistency over blind baselines while maintaining deployment stability. In contrast, fully perceptive architectures increase sensitivity to noise. Although stair and obstacle traversal remain challenging under the current reward design, the results highlight that perception placement and curriculum design are critical for scalable and deployable morphology-aware locomotion. Future work will investigate belief-state fusion, improved perception denoising, and reward shaping strategies to en-hance terrain-aware behavior without compromising robust-ness across morphologies. REFERENCES [1] G. R. Team, S. Abeyruwan, J. Ainslie, J.-B. Alayrac, M. G. Arenas, T. Armstrong, A. Balakrishna, R. Baruch, M. Bauza, M. Blokzijl, S. Bohez, K. Bousmalis, A. Brohan, T. Buschmann, A. Byravan, S. Cabi, K. Caluwaerts, F. Casarini, O. Chang, J. E. Chen, X. Chen, H.-T. L. Chiang, K. Choromanski, D. D’Ambrosio, S. Dasari, T. Davchev, C. Devin, N. D. Palo, T. Ding, A. Dostmohamed, D. Driess, Y. Du, D. Dwibedi, M. Elabd, C. Fantacci, C. Fong, E. Frey, C. Fu, M. Giustina, K. Gopalakrishnan, L. Graesser, L. Hasenclever, N. Heess, B. Hernaez, A. Herzog, R. A. Hofer, J. Humplik, A. Iscen, M. G. Jacob, D. Jain, R. Julian, D. Kalashnikov, M. E. Karagozler, S. Karp, C. Kew, J. Kirkland, S. Kirmani, Y. Kuang, T. Lampe, A. Laurens, I. Leal, A. X. Lee, T.-W. E. Lee, J. Liang, Y. Lin, S. Maddineni, A. Majumdar, A. H. Michaely, R. Moreno, M. Neunert, F. Nori, C. Parada, E. Parisotto, P. Pastor, A. Pooley, K. Rao, K. Reymann, D. Sadigh, S. Saliceti, P. Sanketi, P. Sermanet, D. Shah, M. Sharma, K. Shea, C. Shu, V. Sindhwani, S. Singh, R. Soricut, J. T. Springenberg, R. Sterneck, R. Surdulescu, J. Tan, J. Tompson, V. Vanhoucke, J. Varley, G. Vesom, G. Vezzani, O. Vinyals, A. Wahid, S. Welker, P. Wohlhart, F. Xia, T. Xiao, A. Xie, J. Xie, P. Xu, S. Xu, Y. Xu, Z. Xu, Y. Yang, R. Yao, S. Yaroshenko, W. Yu, W. Yuan, J. Zhang, T. Zhang, A. Zhou, and Y. Zhou, “Gemini robotics: Bringing AI into the physical world.” arXiv. [Online]. Available: http://arxiv.org/abs/2503.20020 [2] M. Liu, D. Pathak, and A. Agarwal, “LocoFormer: Generalist locomo-tion via long-context adaptation,” in 9th annual conference on robot learning , 2025. [3] Z. Zhuang, Z. Fu, J. Wang, C. Atkeson, S. Schwertfeger, C. Finn, and H. Zhao, “Robot parkour learning,” in Proceedings of The 7th Conference on Robot Learning , vol. 229. PMLR, pp. 73–92. [Online]. Available: http://arxiv.org/abs/2309.05665 [4] D. Hoeller, N. Rudin, D. Sako, and M. Hutter, “ANYmal parkour: Learning agile navigation for quadrupedal robots,” in 
+
+Science Robotics , vol. 9, p. eadi7566, 2024. [Online]. Available: https://www.science.org/doi/10.1126/scirobotics.adi7566 [5] H. Kim, H. Oh, J. Park, Y. Kim, D. Youm, M. Jung, M. Lee, and J. Hwangbo, “High-speed control and navigation for quadrupedal robots on complex and discrete terrain,” in Science Robotics , vol. 10, p. eads6192, 2025. [Online]. Available: https://www.science.org/doi/ abs/10.1126/scirobotics.ads6192 [6] Z. Luo, Y. Dong, X. Li, R. Huang, Z. Shu, E. Xiao, and P. Lu, “MorAL: Learning morphologically adaptive locomotion controller for quadrupedal robots on challenging terrains,” in 
+
+2024 Robotics and Automation Letters . IEEE. [Online]. Available: https://ieeexplore.ieee.org/document/10463132/ [7] N. Bohlinger, G. Czechmanowski, M. Krupka, P. Kicki, K. Walas, J. Peters, and D. Tateo, “One policy to run them all: an end-to-end learning approach to multi-embodiment locomotion,” in Proceedings of The 8th Conference on Robot Learning , vol. 270. PMLR, 2025. [Online]. Available: https://proceedings.mlr.press/v270/bohlinger25a. html [8] S. Yang, Z. Fu, Z. Cao, G. Junde, P. Wensing, W. Zhang, and H. Chen, “Multi-loco: Unifying multi-embodiment legged locomotion via reinforcement learning augmented diffusion,” in Proceedings of The 9th Conference on Robot Learning . PMLR, pp. 1030–1048, 2025. [Online]. Available: https://proceedings.mlr.press/v305/yang25a.html [9] J. Lee, J. Hwangbo, L. Wellhausen, V. Koltun, and M. Hutter, “Learning quadrupedal locomotion over challenging terrain,” in 
+
+Science Robotics , vol. 5, p. eabc5986, 2020. [Online]. Available: https://www.science.org/doi/abs/10.1126/scirobotics.abc5986 [10] C. Zhang, N. Rudin, D. Hoeller, and M. Hutter, “Learning agile loco-motion on risky terrains,” in 2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, pp. 11 864–11 871. [11] A. Agarwal, A. Kumar, J. Malik, and D. Pathak, “Legged locomotion in challenging terrains using egocentric vision,” in 
+
+Proceedings of The 6th Conference on Robot Learning , vol. 205. PMLR, pp. 403–415, 2022. [Online]. Available: https: //proceedings.mlr.press/v205/agarwal23a.html [12] X. Cheng, K. Shi, A. Agarwal, and D. Pathak, “Extreme parkour with legged robots,” in 2024 IEEE International Conference on Robotics and Automation (ICRA) . IEEE, pp. 11 443–11 450. [13] T. Miki, J. Lee, J. Hwangbo, L. Wellhausen, V. Koltun, and M. Hutter, “Learning robust perceptive locomotion for quadrupedal robots in the wild,” in Science Robotics , vol. 7, 2022. [Online]. Available: https://www.science.org/doi/abs/10.1126/scirobotics.abk2822 [14] G. Feng, H. Zhang, Z. Li, X. B. Peng, B. Basireddy, L. Yue, Z. Song, L. Yang, Y. Liu, K. Sreenath, and S. Levine, “GenLoco: Generalized locomotion controllers for quadrupedal robots,” in 
+
+2022 Conference on robot learning . PMLR. [Online]. Available: http://arxiv.org/abs/2209.05309 [15] M. Shafiee, G. Bellegarda, and A. Ijspeert, “ManyQuadrupeds: Learning a single locomotion policy for diverse quadruped robots,” in 2024 IEEE International Conference on Robotics and Automation (ICRA) , pp. 3471–3477. [Online]. Available: https://api.semanticscholar.org/CorpusID:264146177 [16] D. Rytz, K. T. Ly, and I. Havoutis, “Sampling strategies for robust universal quadrupedal locomotion policies.” [Online]. Available: http://arxiv.org/abs/2510.07094 [17] RaisimTech. Articulated systems — RaiSim v1.1.7 documentation. [Online]. Available: https://raisim.com/sections/ArticulatedSystem. html [18] D. Rytz, S. Choi, W. Yu, W. Merkt, J. Hwangbo, and I. Havoutis, “Reference free platform adaptive locomotion for quadrupedal robots using a dynamics conditioned policy,” in 2025 European Conference on Mobile Robots (ECMR) .[19] N. Rudin, D. Hoeller, P. Reist, and M. Hutter, “Learning to walk in minutes using massively parallel deep reinforcement learning,” in Proceedings of the 5th Conference on Robot Learning , vol. 164. PMLR, pp. 91–100, 2021. [Online]. Available: https://proceedings.mlr.press/v164/rudin22a.html [20] J. Hwangbo, J. Lee, A. Dosovitskiy, D. Bellicoso, V. Tsounis, V. Koltun, and M. Hutter, “Learning agile and dynamic motor skills for legged robots,” in 2019 Science Robotics , vol. 4. [Online]. Available: https://www.science.org/doi/10.1126/scirobotics.aau5872 [21] Unitree. A1. [Online]. Available: https://www.unitree.com/en/a1/ [22] M. Hutter, C. Gehring, D. Jud, A. Lauber, C. D. Bellicoso, V. Tsounis, J. Hwangbo, K. Bodie, P. Fankhauser, M. Bloesch, R. Diethelm, S. Bachmann, A. Melzer, and M. Hoepflinger, “ANYmal - a highly mobile and dynamic quadrupedal robot,” in 2016 International Con-ference on Intelligent Robots and Systems . IEEE/RSJ, pp. 38–44. [23] E. Ackerman. ANYbotics introduces sleek new ANYmal c quadruped. [Online]. Available: https://spectrum.ieee.org/ anybotics-introduces-sleek-new-anymal-c-quadruped [24] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, “Proximal policy optimization algorithms,” in arXiv preprint , 2017. [Online]. Available: https://arxiv.org/abs/1707.06347 [25] G. Ji, J. Mun, H. Kim, and J. Hwangbo, “Concurrent training of a control policy and a state estimator for dynamic and robust legged locomotion,” in IEEE Robotics and Automation Letters , vol. 7. IEEE, pp. 4630–4637. [26] B. Werner, L. Yang, and A. D. Ames, “Architecture is all you need: Diversity-enabled sweet spots for robust humanoid locomotion.” arXiv. [Online]. Available: http://arxiv.org/abs/2510.14947 [27] S. Gangapurwala, L. Campanaro, and I. Havoutis, “Learning low-frequency motion control for robust and dynamic robot locomotion,” in 2023 IEEE International Conference on Robotics and Automation ,pp. 5085–5091.
