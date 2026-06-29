@@ -1,0 +1,1545 @@
+Title: Large-Scale Tunnel Air-Ground Collaboration With FLISP: Fast LiDAR-IMU Synchronized Path Planner
+
+URL Source: https://arxiv.org/pdf/2606.25393v2
+
+Published Time: Fri, 26 Jun 2026 01:25:17 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# Large-Scale Tunnel Air–Ground Collaboration With FLISP: Fast LiDAR-IMU Synchronized Path Planner 
+
+FENGHE GUO 1,2 , Student Member, IEEE , RUNJIE SHEN 2,3 , CHENYANG SUN 3, JUNRUI ZHANG 3, QUANXI ZHAN 3, YONGCHUN WANG 3, AND JUNJIE ZHANG 3   
+
+> 1Shanghai Research Institute for Intelligent Autonomous Systems, Tongji University, Shanghai 201210, China
+> 2State Key Laboratory of Autonomous Intelligent Unmanned Systems, Tongji University, Shanghai 201210, China
+> 3College of Electronic and Information Engineering, Tongji University, Shanghai 201804, China CORRESPONDING AUTHOR: RUNJIE SHEN (shenrunjie@tongji.edu.cn) This work was supported by State Key Laboratory of Autonomous Intelligent Unmanned Systems, China.
+
+ABSTRACT Hydropower tunnel inspection is critical for infrastructure integrity yet remains inefficient and hazardous using manual methods. We propose FLISP (Fast LiDAR-IMU Synchronized Path Planner), a mapless planning framework for cooperative UGV-UAV inspection. Unlike traditional map-based paradigms, FLISP features three core contributions: (1) a unified architecture where a single UGV-mounted LiDAR-IMU suite drives synchronized path generation for both platforms; (2) platform-specific solvers utilizing an enhanced Firefly Algorithm for UGV obstacle avoidance and a dynamic iterative optimizer for UAV flight; and (3) a hierarchical refinement strategy ensuring kinematic feasibility without state estimation drift. Benchmarks in a 1.2 km operational tunnel demonstrate that FLISP circumvents structural bottlenecks of map-based methods, eliminating map rasterization overhead (Fast-LIO2 + A*) and sampling instability (LIO-SAM + RRT*). FLISP achieves a 100% success rate with ∼7 ms latency, representing a 7-fold speedup over grid-based and three-order-of-magnitude improvement over sampling-based baselines. Validated in operational hydropower tunnels, this approach offers a scalable solution for robotic inspection in feature-degraded linear infrastructure. A demonstration video is available at https://youtu.be/Y ezs1PfLJ4, and the code at https://github.com/ArchibaldGuo/FLISP.git. 
+
+INDEX TERMS Hydropower tunnel inspection, path planning, air-ground collaboration. 
+
+I. INTRODUCTION 
+
+# LARGE-SCALE civil infrastructure, particularly hy-dropower water conveyance tunnels, constitutes a crit-ical backbone for sustainable energy management. Ensuring the structural integrity of these kilometers-long facilities is paramount. However, current maintenance relies predomi-nantly on manual inspection, a labor-intensive, hazardous process prone to subjective errors, thereby compromising long-term health assessments [1]–[5]. The adverse conditions within these confined spaces, characterized by poor lighting, homogeneous textures, and uneven terrain, necessitate auto-mated solutions to enhance safety and data quality. Recent advancements in automation and robotics offer a transformative approach to this long-standing industry problem [6]–[8]. While single-robot systems have shown promise, the scale and complexity of kilometer-long, high-arched tunnels render them ineffective for comprehensive in-spection. An unmanned ground vehicle (UGV) cannot access the tunnel crown, while an aerial vehicle (UAV) is limited by endurance. This necessitates a collaborative, heterogeneous robotic system. However, deploying such systems in these GPS-denied, perceptually-degraded environments (Fig. 1) faces significant automation challenges: robust localization over long distances with repetitive textures, stable naviga-tion on uneven or debris-covered surfaces, and real-time, collision-free path planning for multiple agents. Existing multi-robot planners, often derived from manu-facturing or logistics, typically rely on structured environ-ments or computationally expensive map-based frameworks (e.g., SLAM methods in the DARPA SubT Challenge [35]). These approaches are ill-suited for the linear, repetitive geometry of tunnels, where maintaining a globally consistent map is both prone to drift and computationally prohibitive for routine inspection. Conversely, substituting global maps with purely reactive local planners avoids mapping overhead but renders the system highly susceptible to topological 
+
+> 1
+> arXiv:2606.25393v2 [cs.RO] 25 Jun 2026 GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP
+
+# (a)  (b)  (c)  (d) 
+
+> FIGURE 1. The challenging operational environment of a large-scale hydropower tunnel. Insets show a typical textureless section (a), uneven silt accumulation (b), and structural obstacles like gates (c, d), underscoring the necessity for a collaborative UGV-UAV system.
+
+deadlocks and kinematic inconsistencies in blind curves (detailed in Appendix A). To bridge this gap, we introduce the Fast LiDAR-IMU Synchronized Path Planner (FLISP), a novel framework for robust UGV-UAV tunnel navigation. Diverging from map-centric paradigms, FLISP employs a lightweight, “map-less” strategy. It leverages local geometry from a single UGV-mounted LiDAR-IMU suite to generate synchronized, collision-free paths for the entire team in real time. This approach significantly reduces computational load and elimi-nates SLAM-inherent drift accumulation. We validate FLISP through extensive simulations and a full-scale deployment in a 1.2 km hydropower tunnel. Comparative analysis reveals the limitations of traditional map-based methods and high-lights our approach’s orders-of-magnitude efficiency gain. Distinct from loosely coupled multi-robot systems, FLISP establishes a vertically integrated, asymmetric collaboration model. Instead of isolated planning, we centrally process environmental geometry on the UGV. This creates a hierar-chical dependency where the ground-based perception layer directly drives lightweight aerial path generation. Conse-quently, the system functions as a unified pipeline, extending the robustness of the “mapless” philosophy from state esti-mation down to multi-agent control. Our primary contributions are: 1) A hierarchical navigation framework using a UGV-centric, asymmetric collaboration model, enabling real-time planning for a UGV-UAV team using a single sensor suite in degenerate environments. 2) Platform-specific, multi-objective obstacle avoidance strategies tailored to the unique challenges of con-structed environments, such as a UGV navigating on uneven, curved floors and a UAV maneuvering around fixed infrastructure like sluice gates. 3) A multi-level optimization mechanism that ensures path smoothness and computational efficiency, demon-strating a robust pipeline from raw sensor data to executable trajectories. To facilitate benchmarking, we release the source code and a curated representative LiDAR-IMU dataset capturing criti-cal geometric degeneracy in tunnels. Resources are available at: https://github.com/ArchibaldGuo/FLISP.git. 
+
+II. RELATED WORK 
+
+A. CLASSIC PATH PLANNING ALGORITHMS 
+
+Path planning algorithms are broadly categorized into global paradigms, reliant on prior environmental models (GIS or static maps), and local paradigms driven by real-time perception [9], [10]. Global planning optimizes reference trajectories against topological, energy, and safety constraints [11]. Conversely, local planning focuses on online trajectory generation, utilizing sensor fusion for dynamic obstacle avoidance and kinematic feasibility [12]. Classical global algorithms include A* [13], Dijkstra [14], and RRT [15], while local approaches encompass Artificial Potential Fields (APF) [16], Dynamic Window Approach (DWA) [17], and deep learning techniques [18]. In the specific context of penstock and tunnel inspection, ¨ Ozaslan et al. [19] pioneered a seminal framework for autonomous UAV navigation. Their work established a critical methodology for standalone Micro Aerial Vehicles (MAV), demonstrating how onboard 3D mapping can effectively support localiza-tion and planning in these confined environments. While this map-centric approach is essential for single-agent operations, FLISP introduces a collaborative UGV-UAV framework to address endurance limits and adopt a “mapless” paradigm to mitigate the catastrophic mapping failures inherent to feature-degraded tunnels (as demonstrated in Section VI-C). Contemporary research increasingly integrates heuristic strategies to enhance robustness. For instance, HA-RRT [20] incorporates adaptive mechanisms to resolve RRT’s slow convergence in maritime contexts. Similarly, hybrid algorithms combining honey badger optimization with cu-bic splines [21], and improved Q-learning with dynamic exploration [22], have demonstrated superior efficiency and convergence over traditional baselines. 
+
+> 2B. PATH PLANNING FOR MULTI-ROBOT SYSTEMS
+
+In recent years, research on path planning for multi-robot systems has increasingly focused on learning-based ap-proaches to handle complex coordination. For instance, re-inforcement learning frameworks, such as the Soft Actor-Critic (SAC) algorithm for UAVs [23] and Multi-Agent Proximal Policy Optimization (MAPPO) with experience replay [25], have been utilized to optimize obstacle avoid-ance and goal achievement. Similarly, imitation learning has been employed to enable agents to rapidly acquire complex behaviors from expert demonstrations [24]. In parallel with learning-based paradigms, traditional heuristic scheduling approaches, such as hybrid-state A* combined with conflict-based search [26], have been devel-oped for multiple UGVs in warehouse logistics. However, these approaches predominantly target homogeneous agents and are strictly trained or evaluated in simulated, well-structured grid environments. Consequently, they struggle to generalize to the non-convex, unmapped geometries and dis-tinct kinematic constraints inherent to subterranean tunnels. 
+
+> C. PATH PLANNING FOR HETEROGENEOUS MULTI-ROBOT SYSTEMS
+
+For aerial-ground heterogeneous multi-robot systems, com-bining UAV and UGV capabilities significantly enhances joint mapping and planning. UAVs leverage their elevated vantage point for dynamic local mapping, which serves as the foundation for subsequent planning tasks [27]. Typically, UAV vision systems capture sequential imagery that un-dergoes rectification, stitching, and obstacle recognition to construct a global ground map. Concurrently, UGVs employ 2D LiDAR to generate local feature sets. Based on these integrated maps, global and local planning are executed using A* and DWA algorithms, respectively. Similarly, Niu et al. [28] employ a UAV-mounted wide-angle camera to localize multiple UGVs and obstacles, proposing a concave-convex programming algorithm to solve non-convex energy minimization problems for optimal UGV path generation. To address synchronization challenges, various architec-tures introduce intermediary agents or centralized nodes. Hu et al. [29] project 3D LiDAR data onto 2D occupancy grids constructed via UGV SLAM. They utilize an enhanced Long Short-Term Memory (LSTM) model for path planning, em-ploying a mediator agent to relay data and resolve conflicts between platforms. Li et al. [30] implement a centralized data processing center acting as a relay hub to facilitate seamless aerial-ground coordination. Sharing a perception strategy similar to our work, Martinez-Rozas et al. [31] utilize LiDAR-generated local maps and an optimal RRT* method to simultaneously plan trajectories for a UAV, a UGV, and their connecting tether. However, the computational overhead of solving tether op-timization equations significantly restricts performance. In field experiments, this resulted in stepwise movement pat-terns, highlighting the difficulty of achieving real-time agility in complex environments due to algorithmic complexity. 
+
+> D. METHODS IN TUNNEL ENVIRONMENTS
+
+Standard planning algorithms struggle in large-scale tunnels due to uneven terrain, GNSS denial, and geometric unifor-mity. In our previous work, we explored alternative methods with mixed success. Zhang et al. [32] utilized optical flow to mitigate UAV drift; however, this approach proves unreliable in low-light or curved sections and fails to address UGV attitude estimation. Similarly, Zhan et al. [33] implemented a parametric cylindrical fitting methodology via Levenberg-Marquardt optimization for incomplete point clouds. While geometrically accurate, its iterative nature incurs prohibitive computational costs for simultaneous multi-vehicle planning, and it neglects the critical roll-constraints of ground vehicles. Research on synchronous UGV-UAV tunnel planning re-mains scarce. Existing collaborative frameworks [34] often rely on the UGV maintaining a global SLAM map to georeference the UAV. This dependency creates a single point of failure: if SLAM drifts due to featureless geometry, the entire system collapses. Furthermore, state-of-the-art subterranean systems from the DARPA SubT Challenge [35]–[38] primarily target the exploration of complex networks via computationally in-tensive SLAM. Even frontier-based approaches that suc-cessfully bypass dense volumetric mapping [38] assume flat traversable surfaces, lacking the kinematic constraints essential for heavy UGVs navigating curved tunnel floors. Similarly, recent single-platform studies, such as those op-timizing UGV navigation in mines [39], [40] or extracting UAV centerlines via occupancy grids [41] and vision [5], fail to address heterogeneous team synchronization. To summarize, existing methods typically depend on drift-prone SLAM, assume flat ground traversability, or isolate platforms. FLISP bridges this gap by enabling simultaneous, mapless UAV-UGV path planning with platform-specific kinematic constraints tailored for geometrically degraded linear infrastructure. 
+
+> III. SYSTEM ARCHITECTURE
+> A. FRAMEWORK AND CONTROL FLOW
+
+Fig. 2 illustrates the overall system architecture. Following initialization, a gimbal-mounted tracking suite (LiDAR and RGB camera) monitors the UAV’s relative position. Simulta-neously, a navigation LiDAR-IMU on the UGV provides en-vironmental point clouds and attitude data. The UGV’s path is generated via dynamic binning and multimodal fitting, switching to a Firefly Algorithm (FA) for local avoidance upon obstacle detection. The UAV path is then derived hierarchically from the UGV path, adhering to altitude and communication safety constraints. A cascaded control architecture executes these trajecto-ries: outer-loop controllers transmit desired states to inner-loop actuators, while continuous feedback from UGV local 
+
+> 3GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP
+
+odometry (i.e., wheel encoders and IMU) and UAV posi-tioning closes the loop. It should be explicitly stated that while FLISP does not require a globally consistent map, it fundamentally relies on accurate local odometry from the UGV platform for short-term trajectory tracking. 
+
+> B. UAV AND UGV HARDWARE
+
+Fig. 3 depicts the hardware configuration. The aerial plat-form is a DJI Mavic 3T, utilizing COTS controllers for low-level stabilization to offload trajectory generation. The custom UGV features a GPU-accelerated industrial computer processing data from a 64-line navigation LiDAR-IMU, a UAV tracking module (comprising a separate, short-range LiDAR and a high-resolution monocular RGB camera on a two-degree-of-freedom gimbal), and wireless infrastructure. Crucially, to accommodate the narrow clearance during vertical hoisting into the tunnel, the UGV employs a heavy-duty chassis with independently retractable wheel arms. This mechanical design, while robust, results in a low steering re-sponse bandwidth that precludes rapid, large-angle rotations. The navigation LiDAR, which contains an integrated IMU, is mounted on the front-top of the UGV to maximize lookahead for curvature detection. While this creates a near-field blind spot, it poses negligible impact on FLISP. The planner extracts the global tunnel centerline via geometric fitting rather than relying on immediate terrain analysis. Furthermore, obstacle detection volumes (Section IV-A) are calibrated to effectively ignore this unmonitored region. The intrinsic integration of the IMU within the LiDAR assembly ensures synchronized state estimation. Operationally, the UGV serves as the primary surveyor and mobile base, while the UAV inspects the tunnel crown and structural anomalies inaccessible from the ground. 
+
+> C. COMMUNICATION TOPOLOGY
+
+Fig. 4 illustrates the communication architecture, designed as a UGV-centric mobile network utilizing a wireless bridge for long-range connectivity. Specifically, the UGV’s onboard industrial router establishes a local Wi-Fi zone for the UAV while maintaining a wireless link to a static mediating router at the tunnel entrance, which connects to the Ground Control Station via Ethernet. This dual-router configuration ensures robust, real-time data transmission over extended operational distances. Internally, the UGV computer functions as the integration hub: high-bandwidth sensors (LiDARs) and the router connect via Ethernet, while motion controllers and vi-sion peripherals interface via RS-485 and USB, respectively. 
+
+> D. OPERATIONAL PHILOSOPHY
+
+FLISP is designed based on an “Online Collection + Offline Reconstruction” strategy. We adopt this approach because real-time SLAM algorithms frequently suffer from drift in featureless tunnels, which significantly compromises the accuracy of online defect localization. Instead, we utilize a gimbal-mounted camera that captures images at a fixed frequency while rotating. By integrating this fixed visual sampling rate with the UGV’s velocity, we perform 3D reconstruction offline. Crucially, this reconstruction logic necessitates a strictly constant velocity and a jitter-free trajectory to prevent alignment artifacts. Therefore, our al-gorithmic focus is explicitly placed on optimizing the spatial path geometry to ensure the smooth motion required for high-fidelity data acquisition, as evidenced by the complete tunnel model shown in Fig. 19. 
+
+> IV. FAST LIDAR-IMU SYNCHRONIZED PATH PLANNER
+
+This section details FLISP, designed for GNSS-denied tunnel environments. FLISP integrates three synchronized subsys-tems: (1) a UGV-based state estimation and perception layer that serves as the computational core; (2) a hierarchical planner that generates dynamically feasible trajectories for the UAV; and (3) a robust control interface that handles non-linear flight dynamics. As illustrated in Fig. 5, this architecture ensures real-time responsiveness by decoupling heavy perception tasks from the lightweight execution layer of the UAV. The subsystems are linked via a synchronized state machine, ensuring that the UAV’s planning is continu-ously updated by the UGV’s high-fidelity perception without latency-inducing global map consistency checks. For this work, we used only a 3D LiDAR and IMU. This design choice is driven by three factors: First, LiDAR provides reliable geometric data in the low-light conditions typical of tunnels, where visual sensors often underper-form. Second, direct geometric measurement is robust to the textureless tunnel surfaces that frequently cause failure in visual SLAM algorithms. Third, avoiding dense global mapping mitigates errors caused by structural homogeneity. Adding further sensors would increase system complexity and computational overhead, which aligns with the efficiency requirements of the proposed planner. 
+
+> A. Hierarchical UGV Path Planner
+
+The UGV path planner comprises three stages: corridor generation, refinement, and dynamic constraints/safety con-straints (smoothing). 
+
+> 1) Foundational Corridor Generation
+
+The first stage aims to rapidly extract the tunnel’s fundamen-tal geometric structure from raw sensor data, establishing a coarse but directionally correct corridor for navigation. This involves two key steps: estimating the vehicle’s orientation within the tunnel and deriving an initial centerline path. Since six-axis IMUs lack absolute yaw information in magnetically complex environments, we first estimate the relative yaw angle to the tunnel walls, which is integrated with IMU data to derive the complete vehicle pose. Follow-ing [32], we utilize a point cloud sampling technique (Fig. 6) to derive a robust tunnel wall normal vector −→v . The yaw angle deviation θ is then calculated: 
+
+> 4
+
+Start 
+
+Activate  System and  Initialize  Sensor 
+
+Initialize Robotic Agents: Activate onboard navigation and 
+
+relative localization modules 
+
+UAV Positioning System Start Capturing and Tracking 
+
+UAV positioning system locks onto the UAV, calculating real -time 
+
+position and sending tracking information to the gimbal Steering Motor 
+
+UAV-UGV Hardware Connection 
+
+Connect UAV, UGV and sensing devices for data acquisition ,
+
+and send data to industrial control computer 
+
+Path Planning and Optimization 
+
+Plan the optimal path for UAV and UGV with FLISP, publish them 
+
+through ROS 
+
+Trajectory Planning 
+
+Receive the path of UAV and UGV,  then  solve the optimal trajectory 
+
+based on the optimization function, and start replanning at intervals 
+
+Calculating Controller Output 
+
+Calculate the continuous controller outputs based on the trajectory 
+
+Execution of the E nd Effector 
+
+The UGV motor controller and UAV MAVL ink receive velocity 
+
+commands, execute them , and send current velocity feed back 
+
+End 
+
+System architecture of HMS 
+
+FLISP 
+
+Tunnel navigation 
+
+control and feedback              
+
+> UGV
+> UAV
+> Cable RS 485 Ethernet Cable
+> Motor
+> Controller s
+> Industrial Control
+> Computer
+> Ethernet
+> Switch
+> On -Board Industrial
+> Wireless Router
+> Ouster LiDAR
+> Mid -70
+> LiDAR
+> Wi -Fi
+> Gimbal S teering
+> Motor
+> Mediating Industrial
+> Wireless Router
+> Ground Control
+> Station
+> Ethernet Cable
+> UGV
+> UAV
+> Point
+> Cloud
+> Map
+> LiDAR
+> Data Initial
+> Planner
+> Optimizer
+> Smoother
+> Initial Path
+> Imu Data
+> Sampled
+> Point Cloud UGV Pose
+> Point
+> Clouds
+> 3D LiDAR with
+> Six -axis IMU
+> Smoothed Path
+> UGV Path Planner
+> Optimized Path
+> UAV -UGV
+> Path
+> UGV Final Path
+> Obstacle
+> Avoid
+> Module
+> Global
+> Calibrator
+> Initial Planner
+> Quaternion
+> Safety Radius
+> Predetermined Path
+> Optimizer
+> Obstacle
+> Avoid
+> Module
+> UAV Final Path
+> Flight altitude
+> Input Parameters
+> Communication
+> safety distance
+> Communication
+> security ball
+> Initial Path
+> UAV Path Planner
+
+FIGURE 2. Operational workflow of the UAV-UGV collaborative system. The architecture comprises three principal modules: (1) Hardware initialization, (2) Cooperative path planning, and (3) Motion control with feedback mechanisms. Camera 
+
+Propeller 
+
+RGB Camera 
+
+Positioning 
+
+LiDAR 
+
+2-DOF 
+
+Gimbal 
+
+On -board Industrial 
+
+Wireless Router 
+
+Navigation 
+
+LiDAR 
+
+UAV Cabin 
+
+FIGURE 3. The hardware configuration comprising a UGV and an inspection UAV. The front gimbal is deactivated for this study. 
+
+θ = π − arccos 
+
+ 1 0 0 T · −→v
+
+
+
+(1) This angle is then fused into the vehicle’s attitude quaternion to achieve a comprehensive state estimation. 
+
+qd = qb ⊗  cos( θ/ 2) 0 0 sin( θ/ 2) T (2) With vehicle orientation established, the planner generates a centerline path using a binning strategy with a dynamically adjusted step size ∆s, governed by yaw angle θ (Eq. (3)). This allows finer resolution during turns and faster planning in straight sections (Fig. 7). 
+
+∆s =
+
+
+
+c1 ·
+
+
+
+1 − |θ|
+
+c2
+
+κ
+
++ λ|θ|3, |θ| ⩽ c2
+
+c3 + μ(|θ| − c2), |θ| > c 2
+
+(3) UGV System 
+
+UGV 
+
+Wheels 
+
+UAV 
+
+Cable  RS 485  Ethernet  Cable 
+
+Motor 
+
+Controller s
+
+Industrial  Control 
+
+Computer 
+
+Ethernet 
+
+Switch 
+
+On -Board  Industrial 
+
+Wireless  Router 
+
+Navigation LiDAR 
+
+UAV positioning 
+
+LiDAR 
+
+Wi -Fi 
+
+Gimbal S teering 
+
+Motor 
+
+Mediating Industrial 
+
+Wireless Router 
+
+Ground Control Station 
+
+Ethernet Cable 
+
+RGB  camera 
+
+FIGURE 4. Schematic of the communication structure. The architecture establishes a UGV-centric mobile network, linking the Ground Control Station, UGV, and UAV via a wireless bridge and local Wi-Fi. 
+
+The point cloud is first partitioned into bins based on step size: 
+
+Bj = {(xi, y i, z i) ∈ P| (j − 1)∆ s ≤ xi < j ∆s} (4) Within each bin, the leftmost and rightmost boundary points are extracted. 
+
+5GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP UGV 
+
+UAV 
+
+Point 
+
+Cloud Map 
+
+Point 
+
+Cloud Map LiDAR  
+
+> Data
+
+Corridor 
+
+Generation 
+
+Corridor 
+
+Generation 
+
+Robustification 
+
+&
+
+Refinement 
+
+Robustification 
+
+&
+
+Refinement 
+
+Smooth ing Smooth ing 
+
+Initial Path Initial Path Initial Path    
+
+> Sampled
+> IMU Data Point Cloud
+
+UGV Pose UGV Pose 
+
+> Point
+> Clouds
+
+3D LiDAR with 
+
+Six -axis IMU 
+
+3D LiDAR with 
+
+Six -axis IMU 
+
+3D LiDAR with 
+
+Six -axis IMU 
+
+Smoothed Path Smoothed Path Smoothed Path 
+
+UGV Path Planner 
+
+Optimized Path Optimized Path 
+
+UGV Final Path UGV Final Path UGV Final Path 
+
+Dynamic Safety 
+
+&
+
+Obstacle  Avoidance 
+
+Dynamic Safety 
+
+&
+
+Obstacle  Avoidance 
+
+Pose Correction Pose Correction 
+
+Initial 
+
+Planning 
+
+Initial 
+
+Planning  
+
+> Quaternion
+> Safety Radius
+
+Predetermined 
+
+Path 
+
+Predetermined 
+
+Path 
+
+Iterative 
+
+Optimization 
+
+Iterative 
+
+Optimization 
+
+Dynamic 
+
+Sampling 
+
+Dynamic 
+
+Sampling 
+
+UAV Final Path UAV Final Path UAV Final Path 
+
+Flight altitude Flight altitude 
+
+Input Parameters 
+
+Communication 
+
+safety  constraint 
+
+Communication 
+
+safety  constraint 
+
+Flight altitude 
+
+Input Parameters 
+
+Communication 
+
+safety  constraint 
+
+Communication 
+
+safety  constraint 
+
+Communication 
+
+safety  constraint 
+
+Communication 
+
+safety  constraint 
+
+Initial Path Initial Path Initial Path 
+
+UAV Path Planner 
+
+UAV -UGV Final Path 
+
+FIGURE 5. Overview of FLISP. Starting from the LiDAR with the IMU, the initial path of the UGV is planned and optimized, and then the UAV path is planned and optimized based on the communication safety constraint established by the UGV path. Point cloud    
+
+> Yaw angle Forward
+> direction
+> Casting
+> perspective
+> Detection box
+> Yaw direction
+> Tunnel wall
+> Normal vector Point cloud
+> Yaw angle
+> Forward
+> direction
+> Casting
+> perspective
+> Detection box
+> Yaw direction
+> Tunnel wall
+> Normal vector
+
+(a) (b) 
+
+FIGURE 6. Yaw angle estimation in tunnel environments. (a) Straight section with surface normal detection. (b) Curved section with wall normal extraction. 3m 3m 3m 3m 3m 
+
+Right  edge 
+
+point 
+
+Average point 
+
+(path) 
+
+Left edge 
+
+point 
+
+Dividing 
+
+Box 
+
+Tunnel 
+
+point cloud 
+
+Step size Path 
+
+> 2m  2m  2m  2m  2m  2m  2m
+
+Smaller 
+
+step size 
+
+Average 
+
+point  Transition 
+
+point 
+
+> 2m
+
+(a) (b) 
+
+FIGURE 7. Initial path planning visualization. (a) Straight tunnel with uniform step size. (b) Yaw angle presence resulting in finer path resolution with additional transition points. 
+
+pLj = arg min 
+
+(x,y,z )∈Bj
+
+ypRj = arg max 
+
+(x,y,z )∈Bj
+
+y (5) To handle LiDAR occlusion in curved sections, we analyze the local slope sequence K to classify the segment as straight or curved, using its variance σ2
+
+K .
+
+K = {ki|ki = yi+δ − yi
+
+xi+δ − xi
+
+, i = 1 , 2, ..., n − δ} (6) 
+
+σ2
+
+K = 1
+
+|K|
+
+X
+
+ki∈K
+
+(ki − ¯k)2 (7) A multi-level fitting model is then applied to infer the complete tunnel boundaries from sparse data (Fig. 8). 
+
+y =
+
+(
+
+β0 + β1x, σ2
+
+K ⩽ τcurve 
+
+Pdj=0 αj xj , σ2
+
+K > τ curve .
+
+(8) Crucially, this model-based inference inherently enhances robustness against environmental anomalies. Specifically, it bridges potential point cloud cavities caused by water reflection on the tunnel floor, ensuring path continuity even when raw LiDAR data is locally fragmented. The initial UGV path, Pinitial , is finally calculated as the midpoint between these fitted boundaries, providing a foundational but potentially noisy centerline. 
+
+Pinitial =
+
+ pLi + pRi
+
+2 pLi ∈ E L, p Ri ∈ E R, i = 1 , 2, . . . 
+
+
+
+.
+
+(9) Extracting this long-horizon centerline is essential to accommodate the UGV’s aforementioned mechanical con-straints. A myopic, short-horizon planner would command 
+
+6Missing points   
+
+> Left edge
+> point
+> Right edge
+> point
+> Pseudo -edge
+> points
+> Detection edge
+> Tunnel point
+> cloud
+> Detection
+> area
+> Ps eudo p ath Fitting point
+> Inference point
+> Average point
+> Corrected path
+
+(a) (b) 
+
+> FIGURE 8. Curved tunnel path planning. (a) Occluded point clouds generating inaccurate pseudo-paths. (b) Corrected path through model-based fitting and inference.
+
+sudden steering inputs that the low-bandwidth wheel arms cannot execute in time, risking collisions. Instead, FLISP’s long-horizon geometry provides an anticipatory yaw gra-dient, enabling the slow-response actuators to smoothly execute gradual micro-adjustments. 
+
+2) Path Robustification and Refinement 
+
+The initial path Pinitial serves as a coarse blueprint but is susceptible to sensor noise. This second stage refines this path, enhancing its smoothness and reliability using a Bayesian inference approach. First, for each point pi, we construct a local prediction ˆyi
+
+of its position based on its neighbors, using both forward and backward linear interpolation. 
+
+ˆyi, prev = yi−1 + yi−1 − yi−2
+
+xi−1 − xi−2
+
+· (xi − xi−1) (10a) 
+
+ˆyi, next = yi+1 + yi+1 − yi+2 
+
+xi+1 − xi+2 
+
+· (xi − xi+1 ) (10b) The final prediction is the average of these two values: 
+
+ˆyi = ˆyi, prev + ˆ yi, next 
+
+2 (11) Next, we define the measurement error εi as the difference between the actual and predicted values. 
+
+εi = yi − ˆyi (12) We model the error as following a Gaussian distribution, with a smaller standard deviation σn for normal points and a larger one σo for outliers. 
+
+p(εi|Sn) = 1
+
+σn
+
+√2π e− ε2 
+
+> i
+> 2σ2
+> n
+
+(13a) 
+
+p(εi|So) = 1
+
+σo
+
+√2π e− ε2 
+
+> i
+> 2σ2
+> o
+
+(13b) Fitting points 
+
+> Inference points
+> Initial path
+> FIGURE 9. Illustration of projecting path points onto the bottom of the tunnel.
+
+Finally, according to Bayes’ theorem, we compute the pos-terior probability that a point is an outlier given the observed error. Points exceeding a probability threshold are then corrected based on the prediction, as detailed in Algorithm 1. 
+
+P (So|εi) = p(εi|So)P (So)
+
+p(εi|Sn)P (Sn) + p(εi|So)P (So) (14) 
+
+Algorithm 1 Bayesian Outlier Detection and Correction  
+
+> 1:
+
+Input: Path Pinitial ; prior P (So); standard deviations 
+
+σn, σ o; threshold θ 
+
+> 2:
+
+Output: Corrected path P ′ 
+
+> initial
+> 3:
+
+for each point pi where i ∈ [3 , n − 2] do  
+
+> 4:
+
+Compute forward prediction ˆyi, prev using (10a)  
+
+> 5:
+
+Compute backward prediction ˆyi, next using (10b)  
+
+> 6:
+
+Compute combined prediction ˆyi using (11)  
+
+> 7:
+
+Compute measurement error εi using (12)  
+
+> 8:
+
+Compute likelihoods p(εi|Sn) and p(εi|So) using (13a), (13b)  
+
+> 9:
+
+Compute posterior probability P (So|εi) using (14)  
+
+> 10:
+
+if P (So|εi) > θ then  
+
+> 11:
+
+Correct the point: pi ← (xi, ˆyi) 
+
+> 12:
+
+end if  
+
+> 13:
+
+end for  
+
+> 14:
+
+return Corrected path P ′
+
+> initial
+
+The corrected 2D path P ′ 
+
+> initial
+
+is then projected onto the tunnel floor by fitting the elevation profile from the 3D point cloud, resulting in a 3D path, Pf it , that accurately follows the ground topology (Fig. 9). 
+
+3) Dynamic Safety and Obstacle Avoidance 
+
+With a robust path Pf it , the third stage ensures safe passage by handling dynamic obstacles. FLISP adopts a path-centric detection strategy, constructing a safety corridor along the path (Fig. 10) and checking for obstacles only within this volume. The detection box Bi for each path segment is defined as a rotated volume in the global frame: 
+
+Bi = p RTi (p − ci) ∈ D i (15) 
+
+> 7GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP Point cloud Initial paths Detection box Detected Obstacle
+> FIGURE 10. FLISP’s path-centric obstacle detection strategy. A safety corridor is constructed around the planned path. The corridor’s shape is tailored to each platform: rectangular volumes for the UGV and cylindrical volumes for the UAV.
+
+In this formulation, Di represents the local, axis-aligned bounding box before rotation, whose dimensions are deter-mined by the segment length Li, a lateral safety radius r,and vertical limits [zmin , z max ]. It is defined as: 
+
+Di =
+
+
+
+− Li
+
+2 , Li
+
+2
+
+
+
+× [−r, r ] × [zmin , z max ] (16) While Eqs. (15) and (16) establish the rigorous geometric criteria for safety, evaluating them via brute-force iteration over high-density LiDAR frames ( O(N · M )) introduces latency that threatens control stability. To guarantee robust operation within the 10 ms control cycle required for high-speed tracking, we implement a spatial partitioning strategy as a broad-phase filter. The detection domain is discretized into a path-aligned 1D grid. LiDAR points are mapped to these cells via fast integer indexing ( O(1) ). Only points in path-occupied cells undergo the precise geometric containment check in Eq. (15) (narrow-phase). Crucially, this optimization preserves geometric accuracy while reducing computational load for viable onboard processing. Upon detecting an obstacle, an enhanced FA optimizes a local avoidance path (Algorithm 2). To further accelerate convergence, we simplify the optimization problem from full 3D space to a 1D lateral search within the tunnel cross-section. The search is governed by two critical constraints. First, the path must remain within the physical boundaries of the tunnel, defined by: 
+
+ymin = −Rpipe + Wv
+
+2 + Ms (17a) 
+
+ymax = Rpipe − Wv
+
+2 − Ms (17b) where Rpipe denotes the tunnel radius, Wv is the vehicle width, and Ms represents a mandatory safety buffer. Second, to prevent the UGV from rolling over on the curved floor, a maximum inclination angle constraint is imposed: 
+
+| yRpipe 
+
+| ≤ θmax (18) Within these constraints, the quality of a potential path point is evaluated by its brightness I(y). This multi-objective cost function rewards obstacle clearance while penalizing center deviation and excessive tilt: 
+
+I(y) = dobstacle − wtilt ·
+
+ |y|
+
+Rpipe 
+
+2
+
+− wcenter · | y| (19) Unlike standard FA, our approach introduces adynamically-weighted cost function where the penalty for tilt ( wtilt ) increases non-linearly as the UGV approaches the wall. This adaptation creates a “soft barrier” against rollovers, a unique challenge in circular geometries. Based on this brightness, fireflies update their positions using an attraction-exploration rule: 
+
+y(t+1)  
+
+> i
+
+= y(t) 
+
+> i
+
++ β0e−γr 2
+
+> ij
+
+
+
+y(t) 
+
+> j
+
+− y(t)
+
+> i
+
+
+
++ α(t) · rand( −0.5, 0.5) · (ymax − ymin ) (20) Here, β0 and γ control the attractiveness, while the random-ization parameter α(t) decays geometrically over iterations (e.g., α(t+1) = 0.95 α(t)). This decay mechanism allows broad exploration in early stages while ensuring stable convergence to the global optimum in the final steps. 
+
+Algorithm 2 Firefly Algorithm for Obstacle Avoidance  
+
+> 1:
+
+Input: FA parameters ( N, T, . . . ); Tunnel parameters (ymin , y max , . . . ) 
+
+> 2:
+
+Output: Optimized collision-free path P ∗ 
+
+> cf
+> 3:
+
+Initialize firefly positions yi randomly within 
+
+[ymin , y max ] 
+
+> 4:
+
+for t = 1 to T do  
+
+> 5:
+
+Calculate brightness I(yi) for all fireflies using Eq. (19)  
+
+> 6:
+
+for i = 1 to N do  
+
+> 7:
+
+for j = 1 to N do  
+
+> 8:
+
+if I(yj ) > I (yi) then  
+
+> 9:
+
+Update firefly position yi using Eq. (20)  
+
+> 10:
+
+Enforce boundary constraint on yi using Eq. (17)  
+
+> 11:
+
+Enforce inclination constraint on yi using Eq. (18)  
+
+> 12:
+
+end if  
+
+> 13:
+
+end for  
+
+> 14:
+
+end for  
+
+> 15:
+
+Decay random factor: α(t+1) ← α(t) · ρ 
+
+> 16:
+
+end for  
+
+> 17:
+
+ybest ← arg max yi I(yi) 
+
+> 18:
+
+Apply smoothers and prune redundant points from the path.  
+
+> 19:
+
+return: Optimized path P ∗
+
+> cf
+
+4) Final Path Smoothing and Pose Correction 
+
+The final stage transforms the path P ∗ 
+
+> cf
+
+into a smooth, executable path. To mitigate rollover risk, FLISP applies a pose correction mechanism, first attenuating measured angles using a shrinkage factor (Eq. (21)). 
+
+θadjusted = θoriginal · fshrink (21)   
+
+> 8Initial Path
+> ···
+> ···
+> iph
+> iph
+> iplipl
+> Sa fety Range
+> UGV Plane
+> Projected Point
+> Safe Distance FIGURE 11. Illustration of UAV initial path planning, ensuring points remain within the communication safety constraint relative to the UGV path.
+
+An adaptive number of transition points, ntransition , is calcu-lated based on the yaw angle’s magnitude (Eq. (22)). 
+
+ntransition = min 
+
+
+
+ntotal , ntotal 
+
+1 + e−| θyaw |
+
+
+
+(22) Vehicle orientation is then linearly interpolated over these points (Eq. (23)), before the final transformation (Eq. (24)) uses quaternions to yield the executable UGV path ϕ.
+
+θyaw,roll (i) = θyaw,roll 
+
+
+
+1 − intransition 
+
+
+
+(23) ⃗p global (i) = 
+
+(
+
+qθ (i) ⊗⃗p local (i) if i < n transition 
+
+q0 ⊗⃗p local (i) otherwise (24) 
+
+B. UAV PATH PLANNER 
+
+The UAV path planner takes the final, refined UGV path ϕ as a foundational reference, generating a safe and efficient aerial path that respects communication, altitude, and obstacle constraints unique to the aerial platform. This hierarchical dependency ensures synchronized movement while capital-izing on the UAV’s distinct maneuverability. 
+
+1) Initial Path Planning 
+
+Instead of suboptimally projecting the UGV path verti-cally, the planner first establishes a safe flight constraint. A minimum safe altitude path, Plowest , is generated from 
+
+ϕ. A desired altitude path, Ph, is projected from the tunnel centerline. As shown in Fig. 11, a communication safety constraint is constructed around each point on Plowest . The initial UAV path, Γinitial , is formed by ensuring each point from Ph lies within or projects onto the corresponding safety constraints. 
+
+γi =
+
+
+
+phi , if ∥phi − pli∥ ⩽ rpli + r · phi − pli
+
+∥phi − pli∥ , otherwise . (25) 
+
+2) Dynamic Sampling Iterative Path Optimization 
+
+The initial path requires optimization for smoothness and obstacle avoidance. FLISP uses a dynamic sampling iterative approach (Fig. 12). For each waypoint, candidate points ζi
+
+are generated in its vicinity using a polar-coordinate strategy. ω22   
+
+> Initial Point
+> Candidate point
+> ω13
+> Iterative Optimal
+> Point
+> ω11
+> ω31
+> Optimizing Direction
+> Global Optimum
+> ω24
+> ω41
+> FIGURE 12. Overview of the iterative optimization process for the UAV path.
+
+ζi = ζ0 + rsp 
+
+cos θi
+
+sin θi
+
+0
+
+ (26) Each candidate is evaluated using a multi-objective cost function, formulated as a weighted sum of four key metrics: 
+
+J(ζ) = αJ 1(ζ) + βJ 2(ζ) − ηJ 3(ζ) + δJ 4(ζ) (27) 
+
+1) Safety Cost ( J1): Penalizes proximity to obstacles within a cylindrical safety corridor. If an obstacle point ej is detected (Eq. (28)), a quadratic penalty is applied (Eq. (30)), based on its distance to the path segment (Eq. (29)). 
+
+∃ej ∈ E, d (ej , γ iγi+1 ) < r safe (28) 
+
+d(ej , γ iγi+1 ) = |(γi+1 − γi) × (γi − ej )||γi+1 − γi| (29) 
+
+J1(ζ) = 
+
+(
+
+(r − d(ej , γ iγi+1 )) 2, d(ej , γ iγi+1 ) < r 
+
+0, otherwise . (30) 
+
+2) Smoothness Cost (J2): Penalizes deviation from astraight line to encourage smooth paths. 
+
+J2(ζ) = d(ζ, ζstart ζend ) (31) 
+
+3) Progress Reward ( J3): Rewards efficient progress to-wards the goal. 
+
+J3(ζ) = |ζstart − ζend | − | ζ − ζend ||ζstart − ζend | (32) 
+
+4) Height Consistency Cost ( J4): Penalizes unnecessary altitude variations to save energy. 
+
+J4(ζ) = ( ζz − ζstart,z )2 (33) The optimization problem is to find the candidate point ζ∗
+
+that minimizes the total cost. 
+
+ζ∗ = arg min 
+
+> ζ∈Z
+
+J(ζ) (34) The final optimized UAV path ϵ is the sequence of these optimal points. 
+
+ϵ = {ζ∗
+
+> 0
+
+, ζ∗
+
+> 1
+
+, . . . , ζ∗
+
+> n
+
+} (35)       
+
+> 9GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP Trajectory
+> Planning
+> Outer Loop
+> Controller
+> UGV Inner Loop
+> Controller
+> UAV Controller
+> Path
+> Expected
+> position,
+> velocity
+> Velocity Output
+> Output
+> UAV Positioning
+> System
+> UGV Local
+> Wheel Odometry
+> Error
+> Point Cloud
+> RGB Image
+> FIGURE 13. Control framework following FLISP path generation.
+
+C. TRAJECTORY PLANNING AND CONTROLLER 
+
+A key advantage of the FLISP framework is that it generates high-quality, kinematically aware paths directly from sensor data. This obviates the need for complex, computationally expensive trajectory optimization layers that are often re-quired to smooth out paths from conventional planners. Con-sequently, we can employ standard, lightweight trajectory generation methods and simple controllers to effectively track the planned path. This section briefly outlines these implementations, which serve to validate the practical feasi-bility of the paths generated by FLISP. The overall control architecture is illustrated in Fig. 13. For both platforms, discrete waypoints from FLISP are converted into continuous, time-parameterized trajectories. For the UGV, we employ a standard minimum-jerk trajec-tory generation based on quintic polynomial interpolation between waypoints, of the form: 
+
+p(t) = (1 − h1(t)) p0 + h1(t)p1, (36) where h1(t) is the quintic polynomial basis function. To ensure feasibility, a dynamic time reallocation mechanism is applied to respect the vehicle’s velocity and acceleration limits, following the approach in [42]. For the UAV, a trajectory is generated using a non-uniform B-spline representation, which ensures smoothness up to a high derivative order. To mitigate excessive velocities at sharp turns, we incorporate a curvature-aware time allocation mechanism by modulating a time scaling factor λcurv :
+
+λcurv = 1 .0 + kcurv (1 .0 − cos θ)p. (37) where θ is the heading change angle, kcurv is a gain param-eter, and p is the curvature sensitivity exponent, empirically set to kcurv = 8 .0 and p = 1 .5. This ensures the UAV automatically slows down at corners. A final time-scaling pass guarantees that all dynamic constraints are met. Finally, a feedforward Proportional-Derivative (PD) con-troller, a standard choice for trajectory tracking, serves as the outer-loop controller for both vehicles. It computes velocity commands based on the errors between the current state and the desired state from the generated trajectory, which are then sent to the inner-loop controllers of the UGV and UAV. 
+
+V. SIMULATION EXPERIMENTS 
+
+To validate FLISP without risking physical assets, we devel-oped a high-fidelity Gazebo environment (Fig. 14) replicat-ing real water-conveyance tunnel geometries, including 13 m diameter sections with varying curvatures and sluice gates. Simulations facilitate rigorous parameter tuning and stress testing across diverse topologies. 
+
+A. Performance Evaluation 
+
+We assessed FLISP across three core competencies: nominal tracking, dynamic obstacle avoidance, and runtime effi-ciency. The visualizations in Figs. 15–17 depict represen-tative paths from single trial runs to illustrate topological behavior. Quantitative metrics (Table 1) and runtime distri-butions (Fig. 18) are derived from statistical analysis over 100 independent trials per scenario. 
+
+1) Nominal Planning Robustness 
+
+We evaluated kinematic feasibility in four canonical ge-ometries: straight, left/right turns, and consecutive curves (Fig. 15). The UGV demonstrated exceptional path stability. In straight sections, deviations were negligible, appearing in just 6% of trials due to simulated sensor noise. In curved sections, path stability positively correlated with point cloud density. FLISP’s hierarchical fitting effectively compensated for sparse regions, maintaining continuous floor alignment. Even in challenging consecutive turns, where frequent cur-vature changes required rapid replanning, the system main-tained high accuracy, with minor deviations occurring only under extreme roll/yaw conditions. UAV paths, derived from the UGV master path, maintained synchronized formation. 
+
+2) Obstacle Avoidance Capabilities 
+
+• Personnel Avoidance: We introduced single and multi-agent obstacles (simulating maintenance personnel) in both straight and curved segments (Fig. 16). FLISP consistently generated smooth evasion paths for the UGV, strictly adhering to slope and path length con-straints to ensure floor alignment. For the UAV, al-titude separation alone proved sufficient for collision avoidance, resulting in minimal path deviation. Notably, the algorithm demonstrated robust convergence even in curved, sparse-data regions without compromising downstream path fidelity. 
+
+• Sluice Gate Traversal: Gates impose vertical con-straints, requiring the UAV to dip below the struc-ture (Fig. 17). Dimensionality reduction revealed gate sections geometrically resemble straight tunnels to the UGV, resulting in minimal path impact. For the UAV, the planner successfully generated “dive-and-recovery” paths in both forward and reverse directions. The al-titude recovery phase occasionally exhibited discrete staging, an optimization solver characteristic ensuring safe clearance. 
+
+> 10 (d)
+> (a)
+> (b)
+> (c) FIGURE 14. Overview of the simulated tunnel environment. Left: Operational scene with obstacles. Right: Representative point clouds of a straight segment (a), right turn (b), left turn (c), and a sluice gate (d). Author et al. :
+
+(a)  
+
+> FIGURE 13. Schematic of the yaw angle estimation method. Compared to the original approach, extracting point clouds from both sides of the tunnel
+
+(c) (d) 
+
+> rather than a single side is more suitable for curved sections.
+
+The experimental platform comprised a self-developed 
+
+UGV and a DJI Mavic 3T industrial-grade UAV. The UGV 
+
+was equipped with an Intel i7-12700 CPU, an NVIDIA GTX 
+
+4060-8G GPU, 32 GB of RAM, and an Ouster OS1-64 
+
+LiDAR for navigation. Additionally, a Livox Mid-70 LiDAR 
+
+and an RER-USB4KHDR01 monocular RGB camera were 
+
+utilized for UAV localization, while a DJI Action 5 camera 
+
+was employed for tunnel inspection tasks unrelated to the 
+
+FLISP framework. The ground control station, dedicated 
+
+exclusively to visualization, operated on a BWJ3P173-220 
+
+industrial computer with triple displays. The UAV, running 
+
+on a PX4 autopilot system, was equipped with an infrared 
+
+camera for inspection purposes independent of FLISP. Com-
+
+munication among all robotic agents was facilitated by two 
+
+bridged 5 GHz WAVLINK AERIAL HD6 industrial routers, 
+
+chassis motors and to send velocity control commands to the 
+
+UAV via MAVLink. During the experiments, we recorded the 
+
+relevant path information throughout the navigation process. 
+
+Representative experimental results for each scenario are 
+
+presented in Fig. 18. 
+
+During our field experiments, the planning performance of 
+
+FLISP was consistent with that observed in preliminary sim-
+
+ulation studies, successfully generating feasible and rational 
+
+paths. However, practical deployment revealed that vibra-
+
+tions generated during UGV locomotion were transmitted to 
+
+the LiDAR sensor, introducing certain instabilities in the path 
+
+planning process. These instabilities primarily manifested as 
+
+fluctuations in the number of waypoints and the total planned 
+
+path length. In scenarios involving significant vibrations, 
+
+point clouds from tunnel walls were occasionally misclas-
+
+(b) 
+
+> FIGURE 15. The path planning results of FLISP in simulated tunnel environment, encompassing scenarios with straight segments (a), left (b) and right turn segments (c), and consecutive curves (d).
+
+3) Runtime Efficiency Analysis 
+
+As illustrated in Fig. 18, we evaluated FLISP’s runtime performance across nine scenarios: (1) Normal straight seg-ment, (2) Normal curved segment, (3) Normal consecutive curved segments, (4) Straight segment with a single obstacle, (5) Straight segment with multiple obstacles, (6) Curved segment with a single obstacle, (7) Curved segment with multiple obstacles, (8) Sluice gate segment (forward), and (9) Sluice gate segment (reverse). Normal scenarios demonstrated the most efficient perfor-mance. Specifically, straight segments (Scenario 1) required only linear inference ( ≈ 3.50 ms), making them faster than the polynomial fitting needed for curved segments (Scenarios 2 & 3, ≈ 5.0 ms). 
+
+• UGV Performance: The introduction of obstacles re-sulted in a marginal increase in computation time (Sce-narios 4-7 averaged 6.2-8.8 ms). This slight variance is primarily attributed to the simulation host’s overhead (e.g., physics engine and ray-casting load) rather than      
+
+> 11 GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP (a) (b) (c) (d)
+> FIGURE 16. FLISP obstacle avoidance (personnel) in the simulated tunnel. Scenarios include single and multiple obstacles in straight (a, b) and curved (c, d) segments. (a) (b)
+> FIGURE 17. FLISP gate traversal in the simulated tunnel, demonstrating UAV altitude recovery paths during forward (a) and reverse (b) traversals. Normal Obstacle(Person) Obstacle(Gate)
+> FIGURE 18. Runtime distribution across nine scenarios ( N= 100 trials each). Red lines: Mean; White dots: Median.
+
+algorithmic complexity. Crucially, the planner main-tains robust efficiency, keeping all execution times well within the 10 ms safety threshold. 
+
+• UAV Performance: While generally sub-1 ms in stan-dard tunnels, UAV planning latency spiked in sluice gate scenarios (Scenarios 8 & 9, ≈ 1.5 ms). This increase stems from the additional computational over-head required for 3D obstacle segmentation and feature extraction in the vertical domain to execute the “dive-and-recovery” maneuver. These sub-10 ms latencies represent a significant margin over real-time requirements, validating framework efficiency. 
+
+B. Quantitative Metrics 
+
+Table 1 summarizes the aggregate metrics. 
+
+• Geometric Complexity: Waypoint count and path length naturally correlate with environmental complex-ity. Curved segments induce longer paths and higher waypoint densities as vehicles execute finer maneuvers to track curvature. 
+
+• Platform Comparison: The UAV consistently gener-ated shorter paths with fewer waypoints than the UGV. This efficiency derives from omnidirectional maneuver-ability and altitude freedom, allowing 3D corner-cutting unachievable by the ground-constrained UGV. 
+
+VI. FIELD EXPERIMENTS 
+
+Field trials were conducted in a functional flood discharge tunnel at a major hydropower station. To rigorously evaluate the system’s robustness against long-term geometric degen-eracy, the experimental scope covered the full longitudinal extent of the facility. As illustrated in Fig. 19, the environ-ment transitions from an entrance gate into a proximal curve, followed by a dominant straight corridor. The UGV autonomously traversed 1.0 km; the final 200 m segment was excluded solely due to deep silt accumulation                                                               
+
+> 12 TABLE 1. Average analysis metrics over 100 simulated trials.
+> Scenario # Time [ms] Waypoints Length [m] UGV UAV UGV UAV UGV UAV
+> 13.50 0.57 2.38 2.03 51.57 51.51 25.06 0.11 17.14 15.62 62.05 61.93 34.88 0.11 13.43 12.42 57.39 56.66 46.21 0.10 11.93 10.38 52.20 51.90 56.61 0.11 20.69 20.38 66.47 64.45 68.75 0.13 11.76 10.04 51.55 51.23 77.82 0.14 20.07 19.18 74.89 72.17 84.32 1.54 3.58 4.68 49.98 50.25 94.50 1.41 6.38 7.40 50.18 50.69
+
+(Fig. 19(h)) exceeding chassis mechanical clearance rather than algorithmic limits. Strict safety protocols were enforced given the confined terrain. 
+
+> A. Experimental Platform and Environment
+
+The experimental platform comprised a self-developed UGV and a DJI Mavic 3T industrial-grade UAV. The UGV was equipped with an Intel i7-12700 CPU, an NVIDIA GTX 4060-8G GPU, 32 GB of RAM, and an Ouster OS1-64 LiDAR for navigation. Additionally, a Livox Mid-70 LiDAR and an RER-USB4KHDR01 monocular RGB camera were utilized for UAV localization, while a DJI Action 5 camera was employed for tunnel inspection tasks unrelated to the FLISP framework. A ground control station with triple displays, running on a BWJ3P173-220 industrial computer, was used for visualization. The UAV, running on a PX4 autopilot system, was equipped with an infrared camera for inspection purposes independent of FLISP. Communication among all robotic agents was facilitated by two bridged 5 GHz WAVLINK AERIAL HD6 industrial routers, which were physically connected to the ground station via Ethernet. Given the tunnel’s predominantly straight topology, we extracted eight representative scenarios (Fig. 19) to stress-test specific geometric features, mirroring the simulation benchmarks (excluding the continuous curve). To execute the paths generated by FLISP, we implemented a feedforward path tracking Controller. This module converts the polyno-mial geometry into distinct chassis motor commands for the UGV and velocity setpoints for the UAV, transmitted via the MAVLink protocol. Detailed telemetry was recorded throughout the navigation process to validate performance under these realistic, constrained conditions. 
+
+> B. Performance Analysis and Results
+
+Building on the successful deployment, we analyze the planner’s performance across three critical dimensions: en-vironmental robustness, dynamic obstacle avoidance, and quantitative consistency with simulation. 
+
+> 1) Environmental Robustness and Sensor Stability
+
+Field deployment revealed disturbances absent in simulation. 
+
+• Vibration Effects and Step Loss: UGV locomotion on uneven terrain transmitted vibrations to the LiDAR. Beyond minor point misclassification, this introduced a “step loss” phenomenon where distal point instability truncated the final path segment (typically 2–3 m). Con-sequently, planned paths were slightly shorter (47–48 m) than the 50 m horizon. However, this marginal trun-cation is operationally benign: FLISP’s high replanning frequency and receding horizon nature ensure that the remaining effective lookahead ( > 45 m) is continuously resolved, maintaining seamless navigation. 
+
+• Atmospheric Resilience: Despite airborne moisture, dripping water, and dust, the Ouster OS1-64 LiDAR demonstrated high resilience without significant data degradation, confirming its subterranean suitability. 
+
+• Operational Constraints: Strict safety protocols were enforced. For the narrow sluice gate traversal (Fig. 22), data was collected via separate approaches from either side due to the insufficient physical opening for safe autonomous passage. 
+
+> 2) Robustness Validation via Handheld Obstacle Scenarios
+
+For multi-obstacle scenarios (Fig. 21), we adopted a safe-by-design protocol where a human operator carried the LiDAR to simulate the UGV path. This inadvertently subjected FLISP to a “stress test” with severe non-vehicular jitter. 
+
+• Path Length Truncation: As detailed in Table 2, while obstacle avoidance typically extends path length, these handheld trials (Scenarios 4 & 6) paradoxically exhibited a reduction (45–48 m). We attribute this to severe jitter exacerbating the “step loss” combined with obstacle occlusion. Nevertheless, the total path length remained stable within 50 ± 5 m (Fig. 24), maintaining sufficient lookahead. 
+
+• Heading Estimation Resilience: Crucially, despite these worst-case state inputs, the planner consistently recovered valid paths. The jitter challenged the system’s orientation consistency, yet the yaw estimation module 
+
+(Section IV-A-1) proved robust. By averaging normal vectors from multiple tunnel surfaces, it successfully fil-tered out high-frequency handheld disturbances, main-taining a stable heading reference. 
+
+> 3) Runtime Efficiency and Simulation Consistency
+
+Quantitative metrics (Table 2, Fig. 23) confirm robust real-time performance and cross-domain consistency. 
+
+• Algorithmic Characteristics: Standard planning times remained under 10 ms (UGV) and 3 ms (UAV). No-tably, obstacles increased UAV latency (3–4 ms) due to optimization costs, whereas UGV latency remained 
+
+> 13 GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP
+
+## (a)  (c) 
+
+## (b) 
+
+## (e)  (d) 
+
+## (g) 
+
+## (f) 
+
+## (h)     
+
+> 0100 200 0100 200
+> FIGURE 19. Overview of the 1.2 km field experimental site. The central strip depicts the top-down point cloud projection. Insets (a)-(h) highlight representative scenarios including entrance gates, varying illumination, blind curves, multi-obstacle evasion, and deep silt accumulation at the terminal gate.
+
+(a) (b) 
+
+> FIGURE 20. FLISP path planning during field experiments in straight (a) and slightly curved (b) segments of the flood discharge tunnel.
+
+invariant ( ≈ 6 ms). This stability stems from the UGV’s geometric architecture, which analytically resolves path structure and restricts FA optimization to the 1D -domain, minimizing sensitivity to clutter. 
+
+• Simulation vs. Reality: Real-world execution was slightly slower with wider distribution due to system overhead. However, path topology closely mirrors simu-lation. Despite “step loss” reducing actual path lengths, the system consistently maintained sufficient lookahead (> 45 m) to ensure safe high-speed tracking. 
+
+> TABLE 2. Average analysis metrics over 100 field trials.
+
+Scenario # Time [ms] Waypoints Length [m] UGV UAV UGV UAV UGV UAV 
+
+1 5.75 2.57 8.42 6.70 49.64 49.54 2 6.30 2.50 9.18 7.28 48.60 48.17 3 5.16 0.62 12.51 10.89 51.59 52.01 4 6.67 0.59 11.64 9.98 48.92 47.51 5 6.24 0.69 11.82 9.82 50.21 49.86 6 5.84 0.44 10.69 8.52 47.93 45.40 7 7.04 3.27 12.10 11.89 49.97 49.94 8 5.36 4.22 8.73 5.53 49.46 49.20 
+
+VII. COMPARATIVE EXPERIMENTS AND DISCUSSION 
+
+This section evaluates the proposed FLISP framework against two state-of-the-art map-based paradigms using the 1.2 km tunnel dataset. We conduct a standardized offline benchmark to ensure identical sensor inputs and eliminate run-to-run physical variance. 
+
+A. Experimental Setup and Baselines 
+
+We benchmark FLISP against two representative baselines: 1) Method I (FLISP): Our proposed mapless approach uti-lizing hierarchical polynomial fitting. 2) Method II (Graph-based): LIO-SAM [43] tightly coupled with Informed RRT* [44]. Informed RRT* is chosen for its ellipsoidal heuristic, theoretically accelerating convergence in confined tunnels. 
+
+> 14
+
+(a) (b) (c) (d) FIGURE 21. Obstacle avoidance field tests with personnel (circled). Scenarios include single obstacle in straight (a) and curved (b) segments, and multi-obstacle in straight (c) and curved (d) segments. 
+
+3) Method III (Filter-based): Fast-LIO2 [45] coupled with a Grid A* planner [46]. Operational parameters are detailed in Table 3. These values derive from the sensitivity analysis in Section B to ensure each baseline performs at its Pareto-optimal limit. To ensure fair benchmarking and real-time feasibility, both map-based baselines operate on a local sliding win-dow extracted from the global SLAM map. This window is dynamically aligned with the vehicle’s odometry (LIO-SAM for Method II, Fast-LIO2 for Method III) to ensure consistent sensor coverage in curved sections while bounding computational complexity. (a) (b)                       
+
+> FIGURE 22. FLISP planning results in gate traversal scenarios: (a) Reverse traversal and (b) Forward traversal.
+> FIGURE 23. Runtime distribution across eight scenarios ( N= 100 trials each). Red lines: Mean; White dots: Median.
+> 15 GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP
+> FIGURE 24. The length change of the paths planned by FLISP for the UGV and UAV across eight scenarios, evaluating the path validity rate. Notably, scenarios 4 and 6 were recorded using a handheld LiDAR, resulting in significant data jitter. TABLE 3. Experimental Parameters and Constraints
+> Category Parameter Value Physical UGV Dims ( L×W×H)1.2×0.8×1.0m
+> FLISP Planning Horizon 50.0 m
+> Method II
+> Planning Horizon 25.0 m Max Planning Time 8.0 s Success Threshold 10.0 rad
+> Method III
+> Grid Resolution 0.1 m Inflation Radius 0.7 m Planning Horizon 30.0 m Seal Radius 1.0 m Sliding Window 50.0 m
+
+To quantify performance (Section D), we define five metrics: 
+
+• Path Smoothness ( S): The accumulated angular de-viation: S = PN −1 
+
+> i=1
+
+arccos(ˆ vi · ˆvi+1 ), where ˆvi =
+
+vi/∥vi∥ denotes the normalized segment vector. Lower 
+
+S implies a smoother path. 
+
+• System Latency ( Tlat ): The operational bottleneck, calculated as the maximum wall-clock computation time per cycle: Tlat = max( Tuav , T ugv ). This captures the total latency from sensor input to planning output. 
+
+• Path Tortuosity ( τ ): Efficiency metric defined as the ratio of path length Lpath to the Euclidean planning horizon Lhorizon : τ = Lpath /Lhorizon . A value τ ≈ 1
+
+indicates optimal straightness. 
+
+• CPU Load: Average single-core utilization and peak RAM usage. 
+
+• Success Rate: The percentage of frames where a valid collision-free path is generated. 
+
+Note: To decouple planning performance from SLAM drift, this is calculated only within segments where the state estimator provides valid localization. 
+
+Finally, to address the stochasticity of SLAM front-ends, we report mean values across 5 independent trials for each baseline. Additionally, to ensure consistent initialization, all experiments are aligned to start at t = 40 s, allowing sufficient time for IMU bias convergence while the UGV remains stationary at the tunnel entrance gate. 
+
+B. Baseline Parameter Sensitivity Analysis 
+
+To ensure fair comparison, we calibrated the baselines via a two-stage protocol to identify their theoretical limits in the tunnel environment. 
+
+1) Method II (Informed RRT*) 
+
+We tuned the planner to decouple geometric constraints from computational latency. 
+
+Horizon Optimization: To identify the physical planning limit, we tested lookahead distances (10–40 m) with asurplus budget (8.0 s). As shown in Fig. 25(a), success rates plummet beyond 30 m due to the exponential expansion of the sampling space. Thus, 25 m was fixed as the Pareto-optimal horizon. 
+
+Threshold Calibration: Analyzing the smoothness dis-tribution at this horizon (Fig. 25(b)) revealed a mean cost 
+
+μ ≈ 7.45 rad. We established the Success Threshold at 10.0 rad (statistical upper bound μ + σ). Crucially, latency is recorded as the instant the first valid path satisfying S < 10 .0
+
+is found, representing the minimum time to viability. 
+
+2) Method III (Grid A*) 
+
+A similar protocol balanced map fidelity and range. 
+
+> 16
+
+(a) (b)   
+
+> FIGURE 25. Calibration for Method II. (a) Horizon: 25 m is selected as the Pareto optimal (100% success). (b) Threshold: A 10.0 rad cutoff aligns with the statistical upper bound ( μ+σ), filtering stochastic outliers.
+
+(a) (b) 
+
+> FIGURE 26. Calibration for Method III. (a) Horizon: 30 m is identified as the geometric limit due to occlusion. (b) Resolution: 0.1 m balances system latency vs. obstacle dilation artifacts.
+
+Horizon Determination: To isolate planning distance effects, we fixed the grid resolution (0.1 m) and swept horizons from 20 to 40 m. Fig. 26(a) reveals a geometric breakdown beyond 30 m, where sensor occlusion prevents the grid from capturing wall curvature ( S > 14 .5). Thus, 30 m was selected. 
+
+Resolution Optimization: With the fixed horizon (30 m), we swept grid resolutions (Fig. 26(b)). High fidelity (0.05 m) induced prohibitive latency ( ≈ 369 ms), while coarse resolutions ( > 0.15 m) caused obstacle dilation, merging the floor with walls and blocking the passage. Thus, 0.1 m was identified as the unique operating window. 
+
+C. Qualitative Analysis of Navigation Behavior 
+
+We analyze the evolution of mapping consistency and path quality on identical data. 
+
+1) Phenomenology: Mapping and Path Evolution 
+
+Distinct degradation patterns emerge in the deep tunnel (Supplementary Video, 02:10). 
+
+Mapping Behavior: While stable at the entrance, diver-gence occurs in the featureless curve. 
+
+• Method II (LIO-SAM) exhibits rapid instability. Its primary failure mode involves drift-induced map over-lapping (Fig. 27(b)), where curved walls alias into the path. A distinct characteristic is severe vertical ( z-axis) jitter. Furthermore, the failure is highly stochastic: in a subset of trials, pose estimation completely decouples (“fly-away”), rendering the map unusable. 
+
+• Method III (Fast-LIO2) maintains valid localization longer but converges to a similar overlapping artifact (Fig. 28(c)). Crucially, the degradation dynamics differ: unlike the chaotic divergence of Method II, Method III suffers from longitudinal stagnation . The estimator “slips” along the tunnel axis, causing the virtual posi-tion to become static despite physical forward motion. This leads to continuous superposition of the local map, forming a “phantom blockage” without the unbounded spatial drift seen in Method II. 
+
+Path Quality: Even within the valid horizon, quality varies significantly. 
+
+• Method II (Informed RRT*) circumvents the backward-planning issues inherent to standard RRT, but produces paths that remain tortuous and geometrically non-smooth (Fig. 27(a)). This stochastic irregularity is even more pronounced under the looser constraints applied to the UAV. 
+
+• Method III (A*) visually approximates the centerline (Fig. 28(a, b)) but microscopic inspection reveals in-trinsic “sawtooth” discretization artifacts. Critically, in scenarios with initial yaw deviation or curvature, it fails to correct cross-track error until traversing beyond the midpoint, frequently culminating in an abrupt sharp turn at the terminal state to satisfy the goal constraint. 
+
+2) Root Cause and Dynamic Analysis 
+
+We analyze these failure mechanisms, differentiating geo-metric causes (Mapping), dynamic consequences (Planning), and heterogeneous coordination limits. 
+
+Mapping Failure Mechanism (The “Anchor Loss”): 
+
+The contrast between the stable entrance phase and the failure in the deep tunnel indicates that performance relies on the visibility of the gate. This structure acts as a geometric anchor. When the gate becomes occluded by the curve, the system loses its primary longitudinal and yaw constraints. To verify this stems from feature loss rather than vibration, we conducted a control experiment using a handheld 128-beam LiDAR (Supplementary Video, 03:06). Despite significantly higher irregular motion (jitter), the resulting point cloud walls remained sharp and thin as the 64-beam UGV base-line, without thickening artifacts typical of vibration noise. However, the system failed more rapidly due to the sensor’s shorter effective range causing earlier anchor loss. This provides strong evidence that vibration is not the primary failure mechanism and confirms that geometric degeneracy is the fundamental limitation. 
+
+Dynamic Implications of Path Artifacts: Geometric artifacts introduce severe stability risks for UGV control. 
+
+> 17 GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP
+
+• Instability and Inefficiency from Method II: The stochastic irregularities necessitate frequent, erratic steering adjustments. Given the tunnel’s concave pro-file, these lateral deviations cause the wide-bodied UGV to repeatedly ascend the sidewalls. This induces severe roll instability and high-frequency mechanical vibra-tion, compromising data quality and causing excessive energy consumption due to redundant maneuvering and gravitational resistance. 
+
+• Control Oscillation (Method III): The “sawtooth” artifacts often fall within the actuator deadband, al-lowing cross-track error to accumulate until the UGV physically drifts onto the wall. The subsequent high-magnitude correction, compounded by inertia, triggers control oscillation. This poses a severe rollover risk, escalating at higher inspection speeds. 
+
+Limitations of Local and Uncoordinated Paradigms: 
+
+To rigorously evaluate alternatives to SLAM-based mapping, we additionally benchmarked a pure local planner (TEB on streaming point clouds). While successfully bypassing SLAM drift, it exposed three fundamental vulnerabilities inherent to uncoordinated 2D methods in our specific en-vironment (detailed empirical analyses and visual proofs are provided in Appendix A): 
+
+• Local Occlusion Trap (UGV Straight-Line Artifact): 
+
+Due to the inherent roof-shadow blind spot of UGV-mounted LiDAR, a cost-free void forms directly ahead. Pure local planners, optimizing for minimal immediate cost, invariably generate a reactive straight-line path through this void. In curved segments, high-frequency execution of these straight lines actively drives the UGV toward the outer wall. FLISP circumvents this by performing a macroscopic 50m polynomial fit, an-alytically guaranteeing an initial curvature-aligned arc that is impervious to local sensor blockages. 
+
+• Topological Deadlock under Roll Perturbation: Nav-igation relying on 2D costmap projections faces acatastrophic edge case. If the UGV mechanically slips onto the curved sidewall, the 2D projection casts the surrounding walls as an impenetrable forward obstacle, isolating the vehicle from the valid center channel. Even with IMU-corrected orientation, 2D local planners become topologically deadlocked. FLISP inherently avoids this by integrating the IMU gravity vector into its global 3D geometric evaluation, synthesizing a viable 3D recovery path back to the tunnel floor. 
+
+• The Heterogeneous Lookahead Paradox: Uncoordi-nated local planners face an irreconcilable dilemma regarding the planning horizon in UAV-UGV oper-ations. A short horizon (e.g., 5m) forces the UAV, operating in the obstacle-free upper tunnel, to generate high-frequency, uncoordinated zigzags, inducing severe flight oscillation. Conversely, extending the horizon (e.g., 10m) in non-convex blind curves forces the (a) (b) 
+
+> FIGURE 27. Performance evaluation of Method II (LIO-SAM + Informed RRT*). (a) Effective Planning: Accurate mapping enables valid planning in the feature-rich entrance. (b) Estimation Failure: In degenerate sections, drift causes map overlapping, oscillation, and erroneous elevation gain (upward curling), rendering navigation infeasible.
+
+optimization solver into conflicting soft constraints. Attempting to balance obstacle clearance and path con-tinuity, the solver frequently generates abrupt mid-path kinks (similar to A* jaggedness), which are dynami-cally infeasible for heavy UGVs. Employing asymmet-ric horizons for each platform fundamentally destroys spatial synchronization. In contrast, FLISP establishes a robust foundation for heterogeneous collaborative planning. By hierarchically de-riving the UAV path from the UGV’s 50m geometric base-line, FLISP inherently resolves the lookahead paradox and enforces strict spatial synchronization. Furthermore, unlike optimization-based planners averaging ∼ 100 ms per cycle, FLISP operates at a highly efficient 7 ms, effectively elim-inating control phase lag. Ultimately, by anchoring trajecto-ries directly to the global 3D tunnel geometry rather than reactive 2D costmaps, FLISP guarantees dynamic compli-ance and immunizes the system against local map aliasing, cumulative drift, and topological deadlocks. 
+
+D. Quantitative Benchmark and Efficiency Analysis 
+
+Complementing qualitative insights, we quantify system per-formance across the 1.2 km tunnel benchmark. As defined in Section A, data in Table 4 represents mean performance over 
+
+> 18
+
+(a)  (b)  (c) FIGURE 28. Performance evaluation of Method III (Fast-LIO2 + Grid A*). (a) Start and (b) Turn phases show successful path generation. (c) Failure Phase: Longitudinal stagnation causes structural overlap between straight and curved sections, creating a “phantom blockage” that renders navigation infeasible despite the physical passage being clear. 
+
+5 independent trials. Crucially, to ensure fair comparison of planning capabilities, baseline statistics (Method II and III) are calculated exclusively within valid localization horizons .This prevents including invalid timeout data from failure phases, presenting baselines at their operational best.                                                  
+
+> TABLE 4. Quantitative Benchmark Results
+> Metric Method I Method II Method III Success Rate [%] 100.0 98.5 99.6
+> Path Smoothness [rad] 0.016 9.638 6.068
+> Path Tortuosity [-] 1.03 1.42 1.02 Latency ( Tlat )[ms] 7.05 ±4.26 6492.61 ±2973.8 49.93 ±8.01
+> CPU Load [%] 1.37 ±0.41 11.18 ±3.94 8.72 ±1.20
+> RAM Usage [MB] 39.7 760.5 1037.3
+> Definitions: Method I: FLISP (Ours); Method II: Graph-based (LIO-SAM + Informed RRT*); Method III: Filter-based (Fast-LIO2 + A*).
+> Note: Data represents mean values over N=5trials. Metrics for Baselines are calculated only within valid localization segments.
+
+Performance and Reliability: Method I (FLISP) achieves a 100% Success Rate. In contrast, map-based baselines exhibit occasional failures (98.5% and 99.6%) due to the mapping degradation discussed in Section C. 
+
+Path Quality Trade-off: A distinct trade-off is observed between macroscopic efficiency and microscopic continuity. Method III achieves the lowest Path Tortuosity ( τ = 1 .02 ), marginally outperforming FLISP ( τ = 1 .03 ). However, this marginal reduction is achieved at the expense of significantly poorer smoothness (6.068 rad vs 0.016 rad). This discrep-ancy arises because Method III generates rigid, piecewise-linear paths inherent to grid-based search. While geometri-cally shorter, these paths contain frequent angular discontinu-ities (“zig-zags”) detrimental to tracking. Conversely, FLISP prioritizes high-order continuity, accepting a negligible in-crease in path length to ensure the smooth control inputs essential for high-speed tracking. Method II exhibits the poorest quality in both metrics. The dynamic implications of these path artifacts are analyzed in Section C. 
+
+Computational Efficiency Breakdown: Method Idemonstrates a decisive advantage in computational effi-ciency, reducing System Latency to 7.05 ms, a ∼7× speedup over Method III (49.93 ms) and three orders of magnitude over Method II (Table 4). To elucidate the source of this efficiency, we decompose the pipeline in Fig. 29. The breakdown reveals a critical insight: the computa-tional bottleneck of map-based planning is not the graph search itself, but the map maintenance overhead. In Method III, the actual A* search (shown in green) accounts for a minor fraction of the total latency. The majority of the computational budget ( > 80% ) is consumed by Grid Ras-terization (ray-casting from sparse LiDAR points to dense voxels) and C-Space Generation (obstacle inflation). This high overhead is the algorithmic penalty for maintaining a high-resolution (0.1 m) occupancy grid, which is geo-metrically necessary to ensure safety in narrow tunnels but computationally expensive to update in real-time. In contrast, FLISP (shown in burgundy) entirely eliminates this intermediate representation. Formulating path generation as direct geometric fitting on the sparse point cloud bypasses   
+
+> 19 GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP 22.1 ms 23.9 ms 47.6 ms
+
+UAV 2.28 ms   
+
+> 22.0 ms 25.3 ms 48.5 ms
+
+UGV 4.76 ms 
+
+0 10 20 30 40 50 
+
+> Computational Latency (ms)
+> M3:Grid Rasterization M3:C-Space Gen. M3:A*Search M1:FLISP(Total)
+> FIGURE 29. Computational Latency Breakdown (Method III vs. Method I). For the map-based Method III, total latency is dominated by Grid Rasterization (Blue) and C-Space Generation (Teal), acting as expensive pre-requisites for the actual A* Search (Green). These map maintenance steps are mandated by the 0.1 m grid resolution for safety. In contrast, FLISP (Burgundy) bypasses dense map updates, operating on sparse geometric features to achieve an order-of-magnitude latency reduction.
+
+expensive rasterization and inflation stages. This architec-tural advantage allows FLISP to maintain negligible latency, effectively decoupling planning speed from environmental resolution requirements. 
+
+Resource Consumption and Real-time Feasibility: Be-yond latency, the proposed framework exhibits a minimal re-source footprint, which is decisive for autonomous inspection missions. On SWaP-constrained onboard platforms, high-fidelity data acquisition and high-frequency flight control already consume the majority of the computational budget. Consequently, the planning module must operate with a negligible footprint to avoid process starvation or resource contention that could jeopardize stability. Method I maintains an exceptionally low CPU Load (1.37%) and RAM Usage (39.7 MB), leaving ample re-sources for these concurrent mission-critical tasks. In sharp contrast, the map-based baselines incur heavy penalties: 
+
+• Memory Overhead: Both baselines require substantial memory. Method III consumes 1037.3 MB, a demand dominated by the maintenance of the Global Oc-cupancy Grid and obstacle inflation layers required for A* search, rather than the lightweight Fast-LIO2 estimator itself. This cumulative memory consumption poses a severe risk of exhaustion during long-endurance exploration. 
+
+• Update Frequency Disparity: The computational bot-tleneck directly dictates the control bandwidth. Both 
+
+Method I (FLISP) and Method III (A*) are com-putationally efficient enough to saturate the set ROS publication frequency, ensuring continuous feedback control. However, Method II (Informed RRT*) is severely constrained by its sampling complexity. Statis-tical analysis reveals it operates at an average frequency of only 0.16 Hz. This implies the system executes in an intermittent “open-loop” fashion for extended dura-tions ( ≈ 6 seconds per planning cycle), fundamentally explaining its inability to correct path deviations in the degenerate tunnel environment. These results validate FLISP as uniquely suited for resource-constrained platforms, ensuring agility without compromising concurrent perception and control stability. Furthermore, it is essential to contextualize the frame-work’s performance against inherent physical limitations. In severe mud or water accumulation, or when driving diagonally on the curved floor causes a wheel to lose ground contact, the UGV’s wheel encoders experience unavoidable slip, leading to momentary local odometry failure. How-ever, FLISP’s mapless, high-frequency replanning architec-ture effectively mitigates this by implicitly resetting the state relative to the latest valid LiDAR frame, preventing the catastrophic global map divergence seen in traditional SLAM pipelines. Furthermore, while high-frequency percep-tion inevitably introduces minor waypoint jitter, the current physical deployment smooths these artifacts via the heavy chassis’s mechanical low-pass filtering properties and path profiling, ensuring stable physical execution. 
+
+VIII. CONCLUSION 
+
+In this paper, we presented FLISP, a collaborative planning framework designed to enable the automated inspection of large-scale, geometrically degenerate infrastructure. Ad-dressing the limitations of traditional robotics in hazardous hydropower tunnels, we proposed a lightweight mapless paradigm based on hierarchical polynomial fitting. By di-rectly translating raw sensor streams from a single LiDAR-IMU suite into safe, synchronized trajectories, our sys-tem effectively decouples path generation from global state estimation. This architectural shift mitigates the drift and consistency issues inherent to SLAM-dependent planners, providing a robust solution for feature-poor conditions. The system’s practical feasibility and efficiency were val-idated through comprehensive benchmarks and a successful deployment in a 1.2 km operational tunnel. The comparative analysis demonstrated that FLISP significantly outperforms state-of-the-art map-based baselines. While the grid-based baseline suffered from excessive memory consumption due to map rasterization and the sampling-based baseline failed to maintain real-time control frequencies, FLISP achieved a 100% success rate with negligible latency and a minimal re-source footprint. Furthermore, empirical analysis confirmed that substituting our geometric approach with purely reactive local planners leads to unrecoverable topological deadlocks and synchronization failures. These results confirm our core hypothesis that for repetitive and resource-constrained envi-ronments, a mapless approach is a prerequisite for ensuring both system agility and operational stability. Future work will expand the framework’s versatility be-yond linear structures by integrating a topological decision-making layer for complex junctions. Furthermore, while FLISP provides robust high-level mapless path guidance, executing these trajectories seamlessly under highly dy-
+
+> 20
+
+namic constraints requires rigorous low-level control. To this end, our recent parallel work [47] developed a control barrier function (CBF)-based consensus tracking controller in simulation. Since FLISP generates the reference targets and the CBF controller ensures safety-critical execution, the two frameworks are highly complementary. Integrating this theoretically guaranteed controller with FLISP on the physical platform to evaluate their combined performance represents our immediate next step. 
+
+APPENDIX: EMPIRICAL ANALYSIS OF LOCAL PLANNER 
+
+To justify replacing reactive local planners with our macro-scopic geometric approach, we benchmarked the Timed Elastic Band (TEB) algorithm against FLISP using identical LiDAR streams and safety parameters (e.g., 0.1m resolution, 
+
+0.7m inflation). This appendix evaluates their kinematic behavior, topological resilience, and computational efficiency in constrained 3D tunnels. 
+
+A. The Heterogeneous Lookahead Paradox 
+
+Tuning the lookahead horizon for 2D local planners exposes a fundamental kinematic dilemma for heterogeneous teams. 
+
+• Short Horizon (5m): Limited lookahead produces jittery and unstable paths. For the UGV, this local path jitter translates into high-frequency steering con-trol inputs, which the heavy chassis cannot physically execute, rendering the path unusable. Conversely, for the UAV, the projected aerial costmap is highly open, causing the planner to simply generate reactive straight-line segments. Under continuous high-frequency re-planning, these short straight segments piece together into a jagged polyline, resulting in non-smooth and severely oscillatory flight. 
+
+• Long Horizon (10 m): Extending the horizon to improve anticipation forces the optimization solver into conflicting soft constraints within the non-convex curved tunnel. To balance obstacle clearance and goal progression, TEB frequently compromises by generat-ing abrupt mid-path kinks (Fig. 30, bottom). In sharp contrast to the high-frequency jitter of short horizons, these mid-path kinks subject the UGV to sudden, large steering control inputs, severely destabilizing its dynamic control. 
+
+B. The Local Occlusion Trap (Roof-Shadow Blind Spot) 
+
+Independent of the planning horizon, the UGV-mounted LiDAR inherently suffers from a roof-shadow blind spot, creating a perceived “cost-free” void directly ahead. To min-imize optimization costs, TEB inherently tends to pull and straighten the trajectory through this void at the beginning of the planning cycle. While benign in straight sections, executing these rigid straight segments in curved pipes actively drives the UGV toward the outer wall, inevitably leading to a rollover hazard. Notably, while SLAM-based methods eventually suffer from global map collapse in deep curves, their cumulative map-ping effectively fills this physical void, thereby successfully avoiding this specific straight-line artifact prior to localiza-tion failure. (a) 
+
+(b) 
+
+> FIGURE 30. Evaluation of TEB local planner in curved tunnels. The roof-shadow blind spot induces rigid straight-line planning at the start of the trajectory, driving the UGV towards the outer wall regardless of the chosen horizon. Top (5m): Short horizons cause uncoordinated and oscillatory UAV flight and high-frequency UGV control jitter. Bottom (10m): Extended horizons force soft-constraint conflicts, resulting in dynamically infeasible mid-path kinks.
+
+C. Topological Deadlock under Roll Perturbation 
+
+Navigation relying on 2D costmap projections fails under 3D spatial disturbances (Fig. 31). If the UGV slips onto the curved sidewall, the 2D projection artificially casts the surrounding walls as an impenetrable forward boundary. This pseudo-collision state forces standard 2D planners into an unrecoverable topological deadlock (marked by the red cross). Conversely, FLISP evaluates geometry natively in 3D. By integrating the IMU gravity vector, it synthesizes a valid 3D recovery path back to the tunnel floor (magenta path), remaining completely immune to 2D projection artifacts. 
+
+D. Computational Efficiency 
+
+Table 5 summarizes the processing time required per update. In constrained environments, TEB’s dense graph optimiza-
+
+> 21 GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP Valid 3D Centerline
+> Deadlocked
+> Current Pose
+> Topologically
+> Blocked in 2D
+> FIGURE 31. Topological deadlock under UGV roll perturbation. The 2D costmap (right) artificially blocks the valid 3D corridor, trapping 2D planners. FLISP successfully extracts a 3D gravity-aligned recovery path.
+
+tion suffers from constraint explosion, pushing computation beyond 100 ms with high variance. Conversely, FLISP ab-stracts 3D point clouds into a macroscopic geometric poly-nomial. This mathematical dimensionality reduction allows FLISP to evaluate a 50 m horizon in just ∼ 7ms, providing the > 100 Hz real-time performance essential for eliminating control phase lag in dynamic heterogeneous swarms. 
+
+> TABLE 5. Computation Time Comparison of Planning Algorithms
+
+Algorithm Mean Time [ms] Variance [ms 2]
+
+TEB Planner ( 5m) 100.02 9.88 TEB Planner ( 10 m) 98.04 162.41 
+
+FLISP (Ours) 7.05 4.26 
+
+Note: Data collected over 300 planning cycles on an identical onboard computing platform. The lower mean time for the TEB 10 m horizon is attributed to frequent early-exit optimization failures in non-convex blind curves, which simultaneously induces the significantly higher variance. 
+
+ACKNOWLEDGMENT 
+
+The authors are grateful for the assistance of State Key Laboratory of Autonomous Intelligent Unmanned Systems, Tongji University, China. 
+
+REFERENCES 
+
+[1] H. Huang, C. Wang, M. Zhou, et al. , “Compressive strength detection of tunnel lining using hyperspectral images and machine learning,” Tunnelling and Underground Space Technology , vol. 153, p. 105979, 2024. [2] N. ¨Ozkan and H. Arabacı, “Examination of the environmental and economic effects of hydroelectric power plants,” SSRJ Social Sciences Research Journal , vol. 13, no. 1, pp. 285–297, 2024. [3] X. Fu and N. Angkawisittpan, “Detecting surface defects of heritage buildings based on deep learning,” Journal of Intelligent Systems , vol. 33, no. 1, p. 20230048, 2024. [4] W. Wang, X. Xu, and H. Yang, “Intelligent detection of tunnel leakage based on improved Mask R-CNN,” Symmetry , vol. 16, no. 6, p. 709, 2024. [5] R. Zhang, G. Hao, K. Zhang, et al. , “Reactive UAV-based auto-matic tunnel surface defect inspection with a field test,” Automation in Construction , vol. 163, p. 105424, 2024. [6] Y. He, Z. Liu, Y. Guo, et al. , “UAV based sensing and imaging technologies for power system detection, monitoring and inspec-tion: A review,” Nondestructive Testing and Evaluation , pp. 1–68, 2024. [7] H. Liang, J. K. W. Yeoh, and D. K. H. Chua, “Robust alignment of UGV perspectives with BIM for inspection in indoor environ-ments,” Journal of Computing in Civil Engineering , vol. 38, no. 4, p. 04024018, 2024. [8] A. J. Lee, W. Song, B. Yu, et al. , “Survey of robotics technolo-gies for civil infrastructure inspection,” Journal of Infrastructure Intelligence and Resilience , vol. 2, no. 1, p. 100018, 2023. [9] H. Qin, S. Shao, T. Wang, et al. , “Review of autonomous path planning algorithms for mobile robots,” Drones , vol. 7, no. 3, p. 211, 2023. [10] X. Xu, J. Zeng, Y. Zhao, et al. , “Research on global path planning algorithm for mobile robots based on improved A*,” Expert Systems with Applications , vol. 243, p. 122922, 2024. [11] C. S. Tan, R. Mohd-Mokhtar, and M. R. Arshad, “A comprehensive review of coverage path planning in robotics using classical and heuristic algorithms,” IEEE Access , vol. 9, pp. 119310–119342, 2021. [12] R. Chai, Y. Guo, Z. Zuo, et al. , “Cooperative motion planning and control for aerial-ground autonomous systems: Methods and applications,” Progress in Aerospace Sciences , vol. 146, p. 101005, 2024. [13] Z. Wang and X. Fan, “A systematic review and analysis of A-star pathfinding algorithms and its variations,” in Proc. 4th Int. Conf. Signal Processing and Machine Learning (CONF-SPML) , 2024, vol. 13077, pp. 157–182. [14] S. Xiong, Y. Zhang, C. Wu, et al. , “Energy management strategy of intelligent plug-in split hybrid electric vehicle based on deep reinforcement learning with optimized path planning algorithm,” 
+
+Proc. Inst. Mech. Eng., Part D: J. Automobile Engineering , vol. 235, no. 14, pp. 3287–3298, 2021. [15] D. K. Muhsen, F. A. Raheem, and A. T. Sadiq, “A systematic review of rapidly exploring random tree RRT algorithm for single and multiple robots,” Cybernetics and Information Technologies ,vol. 24, no. 3, 2024. [16] A. Tanveer, M. T. Ashraf, and U. Khan, “Motion planning for autonomous ground vehicles using artificial potential fields: A review,” arXiv preprint arXiv: 2310.14339 , 2023. [17] Y. Hu, H. Long, and M. Chen, “The analysis of pedestrian flow in the smart city by improved DWA with robot assistance,” Scientific Reports , vol. 14, no. 1, p. 11456, 2024. [18] M. Ganesan, S. Kandhasamy, B. Chokkalingam, et al. , “A compre-hensive review on deep learning-based motion planning and end-to-end learning for self-driving vehicle,” IEEE Access , vol. 12, pp. 41983–42014, 2024. [19] T. ¨ Ozaslan, G. Loianno, J. Keller, et al. , “Autonomous navigation and mapping for inspection of penstocks and tunnels with MAVs,” 
+
+IEEE Robotics and Automation Letters , vol. 2, no. 3, pp. 1740– 1747, 2017. [20] W. Hu, S. Chen, Z. Liu, et al. , “HA-RRT: A heuristic and adaptive RRT algorithm for ship path planning,” Ocean Engineering , vol. 316, p. 119906, 2025. [21] C. Huang, T. Wang, S. Wang, et al. , “Dynamic path planning for spacecraft rendezvous and approach based on hybrid honey badger algorithm,” Journal of the Franklin Institute , vol. 362, no. 1, p. 107398, 2025. [22] Y. Zhong and Y. Wang, “Cross-regional path planning based on improved Q-learning with dynamic exploration factor and heuristic reward value,” Expert Systems with Applications , vol. 260, p. 125388, 2025. [23] X. Zhao, R. Yang, L. Zhong, et al. , “Multi-UAV path planning and following based on multi-agent reinforcement learning,” Drones ,vol. 8, no. 1, p. 18, 2024. [24] B. Feng, Y. Bi, M. Li, et al. , “A decentralized multi-agent path planning approach based on imitation learning and selective com-munication,” Journal of Computing and Information Science in Engineering , vol. 24, no. 8, 2024. 
+
+> 22
+
+[25] L. Zhang, Z. Cai, Y. Yan, et al. , “Multi-agent policy learning-based path planning for autonomous mobile robots,” Engineering Applications of Artificial Intelligence , vol. 129, p. 107631, 2024. [26] C. Fang, J. Mao, D. Li, et al. , “A coordinated scheduling approach for task assignment and multi-agent path planning,” Journal of King Saud University-Computer and Information Sciences , vol. 36, no. 1, p. 101930, 2024. [27] J. Li, T. Sun, X. Huang, et al. , “A memetic path planning algorithm for unmanned air/ground vehicle cooperative detection systems,” 
+
+IEEE Trans. Automation Science and Engineering , vol. 19, no. 4, pp. 2724–2737, 2021. [28] G. Niu, L. Wu, Y. Gao, et al. , “Unmanned aerial vehicle (UAV)-assisted path planning for unmanned ground vehicles (UGVs) via disciplined convex-concave programming,” IEEE Trans. Vehicular Technology , vol. 71, no. 7, pp. 6996–7007, 2022. [29] D. Hu, V. J. L. Gan, T. Wang, et al. , “Multi-agent robotic system (MARS) for UAV-UGV path planning and automatic sensory data collection in cluttered environments,” Building and Environment ,vol. 221, p. 109349, 2022. [30] Z. Li, W. Zhao, and C. Liu, “Completion time minimization for UAV-UGV-enabled data collection,” Sensors , vol. 22, no. 15, p. 5839, 2022. [31] S. Martinez-Rozas, D. Alejo, F. Caballero, et al. , “Path and trajectory planning of a tethered UAV-UGV marsupial robotic system,” IEEE Robotics and Automation Letters , vol. 8, no. 10, pp. 6475–6482, 2023. [32] J. Zhang, Z. Huang, X. Zhu, et al. , “LOFF: LiDAR and optical flow fusion odometry,” Drones , vol. 8, no. 8, p. 411, 2024. [33] Q. Zhan, J. Zhang, C. Sun, et al. , “Automatic UAV inspection of hydropower station diversion pipelines using robust cylinder-like fitting for incomplete point clouds,” in Proc. 2024 China Automation Congress (CAC) , 2024, pp. 5931–5937. [34] M. De Petrillo, J. Beard, Y. Gu, et al. , “Search planning of a UAV/UGV team with localization uncertainty in a subterranean environment,” IEEE Aerospace and Electronic Systems Magazine ,vol. 36, no. 6, pp. 6–16, 2021. [35] N. Kottege, J. Williams, B. Tidd, et al. , “Heterogeneous robot teams with unified perception and autonomy: How Team CSIRO Data61 tied for the top score at the DARPA Subterranean Chal-lenge,” Field Robotics , vol. 4, pp. 313–359, 2024. [36] B. Morrell, K. Otsu, A. Agha, et al. , “An addendum to NeBula: Toward extending team CoSTAR’s solution to larger scale envi-ronments,” IEEE Trans. Field Robotics , vol. 1, pp. 476–526, 2024. [37] A. Dixit, D. D. Fan, K. Otsu, et al. , “STEP: Stochastic traversabil-ity evaluation and planning for risk-aware navigation; Results from the DARPA Subterranean Challenge,” Field Robotics , vol. 4, pp. 182–210, 2024. [38] J. Williams, S. Jiang, M. O’Brien, et al. , “Online 3D frontier-based UGV and UAV exploration using direct point cloud visibility,” in Proc. IEEE Int. Conf. Multisensor Fusion and Integration for Intelligent Systems (MFI) , 2020, pp. 263–270. [39] C. Zhang, X. Yang, R. Zhou, et al. , “A path planning method based on improved A* and fuzzy control DWA of underground mine vehicles,” Applied Sciences , vol. 14, no. 7, p. 3103, 2024. [40] X. Chen, C. Yang, H. Hu, et al. , “A hybrid DWA-MPC framework for coordinated path planning and collision avoidance in articulated steering vehicles,” Machines , vol. 12, no. 12, p. 856, 2024. [41] L. Wang, Y. Ning, H. Chen, et al. , “Autonomous flights inside narrow tunnels,” IEEE Trans. Robotics , vol. 41, pp. 596–612, 2025. [42] X. Zhou, Z. Wang, H. Ye, et al. , “EGO-Planner: An ESDF-free gradient-based local planner for quadrotors,” IEEE Robotics and Automation Letters , vol. 6, no. 2, pp. 478–485, 2021. [43] T. Shan, B. Englot, D. Meyers, et al. , “LIO-SAM: Tightly-coupled lidar inertial odometry via smoothing and mapping,” in Proc. IEEE/RSJ Int. Conf. Intelligent Robots and Systems (IROS) , 2020, pp. 5135–5142. [44] J. D. Gammell, S. S. Srinivasa, and T. D. Barfoot, “Informed RRT*: Optimal sampling-based path planning focused via direct sampling of an admissible ellipsoidal heuristic,” in Proc. IEEE/RSJ Int. Conf. Intelligent Robots and Systems (IROS) , 2014, pp. 2997– 3004. [45] W. Xu, Y. Cai, D. He, et al. , “FAST-LIO2: Fast direct LiDAR-inertial odometry,” IEEE Trans. Robotics , vol. 38, no. 4, pp. 2053– 2073, 2022. [46] P. E. Hart, N. J. Nilsson, and B. Raphael, “A formal basis for the heuristic determination of minimum cost paths,” IEEE Trans. Systems Science and Cybernetics , vol. 4, no. 2, pp. 100–107, 1968. [47] F. Guo, R. Shen, J. Zhang, et al., “Adaptive and resilient consensus for UAV-UGV teams via virtual agent mediation and topology switching,” in 2025 IEEE International Conference on Robotics and Biomimetics (ROBIO) . IEEE, 2025, pp. 745–750. 
+
+FENGHE GUO (Student Member, IEEE) received the B.S. degree in mechatronics from Xi’an Aero-nautical University, Xi’an, China, in 2019, and the M.S. degree in advanced control and systems engi-neering from the University of Sheffield, Sheffield, U.K., in 2020. He is currently pursuing the Ph.D. degree in intelligent science and technology with Tongji University, Shanghai, China. His current research interests include heteroge-neous multi-agent systems, integrated planning and control, and interpretable learning for autonomous field robotics (e-mail: guofenghe@tongji.edu.cn). 
+
+RUNJIE SHEN received the B.S. degree from Xi’an Polytechnic University, China, in 1995, the M.S. degree from Xi’an Jiaotong University, China, in 1998, and the Ph.D. degree from Zhe-jiang University, China, in 2004. From 2004 to 2006, he held a post-doctoral position with Zhe-jiang University, where he became an Associate Researcher in 2006. Since 2011, he has been an Associate Researcher at Tongji University. His current research interests are in positioning and navigation of UAVs, sensor measurement, im-age processing and multi-agent cooperative systems. 
+
+CHENYANG SUN received the B.S. degree in Automation from Anhui University, Hefei, China, in 2021. He is currently pursuing the Ph.D. degree in Control Science and Engineering at Tongji Uni-versity, Shanghai, China. His current research interests include the hard-ware design, interactive control and motion plan-ning of heterogeneous multirotors used for com-plex aerial physical interaction tasks. 
+
+JUNRUI ZHANG received the M.S. degree in Advanced control and systems engineering from the University of Sheffield, UK, in 2020, and the B.S. degree in Applied Physics from Northeastern University, Shenyang, China, in 2019. He is a Ph.D. student in Control Science and Engineering at Tongji University, Shanghai, China. His current research interests include the multi-sensor data fusion for pose estimation of UAVs under the GNSS-denied environment. 
+
+> 23 GUO ET AL.: LARGE-SCALE TUNNEL AIR–GROUND COLLABORATION WITH FLISP
+
+QUANXI ZHAN received the B.S. degree in process equipment and control engineering from Dalian University of Technology, Dalian, China, in 2019. He is currently pursuing the Ph.D. degree in control science and engineering with Tongji University, Shanghai, China. His current research interests include position-ing and navigation of UAV, UAV control, drone inspections in underground spaces. 
+
+YONGCHUN WANG received the B.S. degree in automation engineering from Tongji University, Shanghai, China, in 2023. He is currently pursuing the M.Sc. degree in control science and engineer-ing with Tongji University, Shanghai, China. His current research interests include collabo-rative control of UGV and UAV in underground tunnels. 
+
+JUNJIE ZHANG received the B.S. degree in Electrical Engineering and Automation from East China University of Science and Technology, Shanghai, China, in 2024. He is currently pursuing the M.S. degree in Control Science and Engineer-ing with Tongji University, Shanghai, China. His current research interests include relative positioning and multi-agent collaborative system.

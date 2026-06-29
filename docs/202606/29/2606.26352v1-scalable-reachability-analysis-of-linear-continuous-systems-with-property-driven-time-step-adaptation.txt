@@ -1,0 +1,520 @@
+Title: Scalable Reachability Analysis of Linear Continuous Systems with Property-Driven Time-Step Adaptation
+
+URL Source: https://arxiv.org/pdf/2606.26352v1
+
+Published Time: Fri, 26 Jun 2026 00:21:40 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+> Available
+
+QEST +
+
+> FORMATS
+> Artifacts Evaluation
+
+QEST +
+
+> FORMATS
+> Artifacts Evaluation
+> Functional
+
+# Scalable Reachability Analysis of Linear Continuous Systems with Property-Driven Time-Step Adaptation 
+
+Mikkel Bjørn 1[0009 −0004 −7888 −9070] , Daniel H. Hansen 1[0009 −0006 −3085 −7293] ,Grace Melchiors 1, Kim G. Larsen 1[0000 −0002 −5953 −3384] , and Christian Schilling 1[0000 −0003 −3658 −1065] 
+
+Aalborg University, Aalborg, Denmark 
+
+Abstract. We study safety verification for linear time-invariant systems with bounded inputs in continuous time. The standard approach reduces to a reachability analysis in two steps: first discretize time and then ap-ply a forward analysis in the discretized system. Existing algorithms use either a fixed time step or an adaptive time step that changes based on the approximation error compared to the underlying continuous system. In this paper, we present an efficient reachability algorithm that adapts the time step based on a given safety property. Essentially, our algorithm makes the largest possible time step such that it can still prove safety. For this approach to be scalable in practice, we discuss several optimizations such as avoiding the repeated expensive calculation of the matrix expo-nential during discretization and a careful balance how we tame the ap-proximation error stemming from the states and the inputs. This allows our algorithm to yield a moderate approximation error even when using a large time step, thus requiring much fewer steps than prior algorithms. We demonstrate the effectiveness and scalability on the large-scale SLI-COT benchmark suite, where our algorithm consistently outperforms other state-of-the-art approaches. 
+
+Keywords: Reachability Analysis · LTI System · Safety Verification ·
+
+Adaptive Time Step · Discretization. 
+
+# 1 Introduction 
+
+Verification of safety properties for linear time-invariant (LTI) systems is a well-studied problem [14,15,1,5,8,21,24,2]. In this paper, we focus on the common setting with continuous-time dynamics described by ordinary differential equa-tions (ODEs), where the initial states and inputs are uncertain within a bounded domain, and where time is bounded. Formally, our systems have the form 
+
+˙x(t) = Ax (t) + u(t), t ∈ [0 , T ] , (1) where the initial state x(0) ∈ X 0 is constrained to a set of initial states, u(t) ∈ U 
+
+is the input signal constrained to an input domain, and T > 0 is the time horizon.  
+
+> arXiv:2606.26352v1 [eess.SY] 24 Jun 2026 2M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling Our approach
+> Fixed step
+> Unsafe region
+
+Fig. 1: Two overapproximations bR[0 ,T ](X0) of the reachable states. Each block corresponds to one step in time. The green sequence was obtained by a fixed-step approach with a step size chosen such that safety (staying above the bottom unsafe region) is verified. The brown sequence was obtained by our approach, which chooses the time step depending on the distance to the unsafe region. Given a safety property in the form of a set of safe states Xs, the safety verification problem is to determine whether all trajectories emerging from X0
+
+with input signal u(t) ∈ U stay safe within time T . The problem thus reduces to computing the set of reachable states R[0 ,T ](X0) up to time horizon T and checking that R[0 ,T ](X0) is included in Xs. The set R[0 ,T ](X0) is generally not computable except for simple subclasses [19,8,7]. Hence, one typically computes an overapproximation bR[0 ,T ](X0) ⊇ R [0 ,T ](X0); this is sufficient, as bR[0 ,T ](X0) ⊆Xs implies R[0 ,T ](X0) ⊆ X s. The standard approach to obtaining bR[0 ,T ](X0) is to (1) discretize the continuous system and (2) compute a series of discrete steps in the resulting discrete system [10]. The approximation quality can be increased by reducing the time step of the discretization, which, however, then necessitates a larger number of steps to be taken. While most approaches use a fixed time step and thus require a single dis-cretization operation, some more advanced approaches instead use an adaptive time step [22,12,17,25,11]. The latter approaches have in common that they ana-lyze the approximation error (based on error estimates) dynamically and choose a time step such that the error is below a user-defined threshold at all times. In this paper, we propose a new approach that uses neither a fixed time step nor a fixed approximation error. As a motivation, we now discuss the two main drawbacks of these two existing paradigms. First, both paradigms scale poorly when high precision is required at some point during the analysis. This is clear for approaches using a fixed time step, as the time step must be chosen Reachability Analysis with Property-Driven Time-Step Adaptation 3
+
+small enough for such critical points, even if a larger step would be sufficient most of the time. Approaches using a fixed error can sometimes make larger steps, but they are still held back by the prescribed error bound, and, just like above, this error bound must be small enough; hence, the variance in step sizes is often rather modest in practice. This drawback is illustrated in Fig. 1, where the adaptive algorithm would have to use a similar error as the fixed-step algorithm, since the approximation bR[0 ,T ](X0) gets very close to the error states. The second drawback is that the user is expected to anticipate the required precision up-front. Either a small enough step size or an allowed approximation error must be chosen, but it is initially unknown how closely the reachable states (and hence the approximation bR[0 ,T ](X0)) will approach the boundaries of Xs.Our approach does not have these two drawbacks, i.e., it can make large time steps for better scalability and does not require an error bound. Specifically, we assume that the user only wants to verify safety as fast as possible and does not care about the approximation error. At a high level, our approach is optimistic and tries to make large time steps. If at some point the precision is insufficient to prove bR[0 ,T ](X0) ⊆ X s, we backtrack and reduce the step size, which improves the precision. Later, we attempt to increase the step size again to improve scalability. While this property-guided idea is simple, a naive implementation would not scale, especially for high-dimensional systems. In particular, it is costly to re-peatedly compute a discretization whenever the time step changes, among other reasons due to the expensive computation of the matrix exponential. Our main contribution is an efficient implementation of this idea. A key insight is to pre-compute a library of conservative time-discretized systems [10] for different step sizes, which allows us to change the step size fast. Moreover, for efficient cal-culation of this library, we use specific step sizes (powers of two; in particular, this choice avoids the repeated computation of the matrix exponential). Fur-thermore, to deal with the uncertain inputs u(t), we propose a hybrid approach that combines small-step and large-step analysis. Finally, we utilize a mixed set representation when calculating bR[0 ,T ](X0); specifically, we combine zonotopes and the support function [1], where we use zonotopes for the discretization and the support function for taking the discrete steps. As the main limitation of our approach, the precision is selected based on the property; hence, the results are not reusable if the property changes. 
+
+Contributions. First, we present a new algorithm for property-guided reachabil-ity analysis of LTI systems (1), which significantly reduces the computational verification effort. Second, we show how to implement conservative time dis-cretization for variable time steps in a scalable way by reusing intermediate results to obtain a more precise sets for larger step sizes while only calculat-ing the matrix exponential once. Third, we implement our approach efficiently and demonstrate its scalability on a set of high-dimensional benchmark models in comparison to state-of-the-art reachability algorithms. Our source code and benchmark scripts are publicly available [16]. 4 M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling 
+
+1.1 Related Work 
+
+Fixed time step. The standard way to reachability analysis for LTI dynamics discretizes system (1) for a small time step δ > 0 [10]. We shortly sketch the general procedure for the simplified case without inputs u(t) here (and we recall one concrete way in the next section). First, one computes an overapproxima-tion bR[0 ,δ ](X0), for which a coarse approximation suffices because δ, and hence the approximation error, is small. One also computes the matrix eAδ (the matrix exponential of Aδ ); the motivation is that the linear map eAδ X0 describes the set of reachable states R[δ,δ ](X0) at time point δ. Finally, one propagates the set Ω0 = bR[0 ,δ ](X0) forward with the recurrence Ωk+1 = eAδ Ωk until kδ ≥ T .The sets Ωk are the blocks depicted in Fig. 1. There are many algorithms implementing the above procedure in different ways, for instance varying in the choice of the representation or the way to obtain bR[0 ,δ ](X0) [13,14,20,11,1,5,21]. All these approaches have in common that they use a fixed time step δ. As a consequence, the user needs to choose δ small enough for achieving sufficient precision to prove the safety property; hence, k
+
+becomes large in practice, even if most of the sets Ωk are far away from the boundaries of the safe region and would consequently not require high precision. 
+
+Adaptive time step. Existing reachability algorithms with variable time steps have the goal to achieve a prescribed approximation error [22,12,17,25,11]. For that, these algorithms estimate the error and adapt the time step accordingly. Hence, they typically shine if a good approximation is desired throughout the computation. However, this error-bounded paradigm is decoupled from the veri-fication problem: one first approximates the full reachable states and only checks the safety property afterward. Thus, if one is interested in solving the verification problem, one has to guess which precision will be needed. In contrast, we propose a property-driven algorithm, for which the approximation error does not matter as long as it is small enough to prove the property. We automatically adapt to the error such that the safety property can be proven. While our algorithm sometimes has to backtrack if the precision is insufficient to prove safety, this backtracking is always by a single step only, and we only have to approximate the reachable states once in this way, while error-bounded adaptive algorithms would have to redo the whole work if the error parameter was chosen too large. 
+
+Time discretization. Since the seminal work by Girard [13], efficient reachability algorithms use the paradigm of time discretization followed by set propagation, albeit different approximation models have been proposed for the discretiza-tion [10]. Notable approximation models are based on interval matrices [3] or an optimization problem over a forward and a backward approximation [11]. In this paper, we utilize a simplified (forward-only) version of the latter, which avoids the optimization step [5] (see Section 2.2). One of our central contributions is a new approach to compute a time discretization for large time steps with good precision and scalability, which has not been demonstrated before. Reachability Analysis with Property-Driven Time-Step Adaptation 5
+
+# 2 Preliminaries 
+
+In this section, we recall the essential steps to derive classical reachability algo-rithms for LTI systems. We first explain, assuming some discretization method, how to compute a sequence of sets that contain the reachable states. Then, we recall one particular such discretization method. Finally, we discuss two efficient ways to represent and operate with sets: zonotopes and the support function. 
+
+2.1 Approximating the Reachable States 
+
+Recall that we consider the continuous-time LTI dynamics in (1), which are characterized by the triple (A, X0, U), with A ∈ Rn×n and X0, U ⊆ Rn:
+
+˙x(t) = Ax (t) + u(t), t ∈ [0 , T ] (1) Note that this includes systems of the form ˙x(t) = Ax (t) + Bu (t) + c by a standard transformation of the input domain U′ ← BU ⊕ { c}, where ⊕ denotes the Minkowski sum. The unique solution of ODE system (1) at time point t is 
+
+x(t) = eAt x(0) + 
+
+Z t
+
+> 0
+
+eA(t−s)u(s)ds, (2) for initial state x(0) and input signal u(t) ∈ U . We assume that both X0 and U
+
+are compact and convex sets. Let R[t1,t 2](X0) denote the reachable states in a time interval [t1, t 2] starting from the initial set X0; formally: 
+
+R[t1,t 2](X0) = {x(τ ) | t1 ≤ τ ≤ t2, x (0) ∈ X 0, u (t) ∈ U} 
+
+(Our notation omits the implicit dependence of R on U for simplicity.) The exact set of reachable states for a time interval is often not computable, and one typically overapproximates it with a sequence of sets Ω0, . . . , Ω N −1 called a reach tube such that R[tk ,t k+1 ](X0) ⊆ Ωk up to time T , where t0 = 0 and tN = T . Thus, from now on we consider the overapproximation bR[0 ,T ](X0) = Ω0 ∪ · · · ∪ ΩN −1.Given a set of safe states Xs ⊆ Rn, the safety verification problem is to determine whether R[0 ,T ] ⊆ X s holds. A sufficient condition is bR[0 ,T ](X0) ⊆ X s,for any overapproximation; however, a failed inclusion check is inconclusive. As the system is linear, we can utilize the superposition principle of the solution in (2) to compute the input solution (derived by letting x(0) = 0 )separately. For a time step δ > 0, we have that [11, Lemma 1] 
+
+R[t,t +δ](X0) = eAt R[0 ,δ ](X0) ⊕ R [t,t ]({0}). (3) Thus, for any time point t ≥ 0, to overapproximate the reachable states in the time interval [t, t + δ], it suffices to overapproximate the two summands, which cover the reachable states in the interval [0 , δ ] resp. the input solution at time t.Following notation from [11], we introduce shorthands for these approximations: 
+
+Ω[0 ,δ ](X0, U) ⊇ R [0 ,δ ](X0),Ψt(U) ⊇ R [t,t ]({0}).
+
+(4) 6 M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling 
+
+Given a time step δ, we call a triple (eAδ , Ω [0 ,δ ](X0, U), Ψ δ (U)) satisfying (4) a discretized system . Letting Ψ0 = {0} and δk = tk+1 − tk, Eq. (3) yields a recurrence to compute the reach tube Ω0, . . . , Ω N −1 [11, Eq. (6)]: 
+
+Ψk+1 = Ψk ⊕ eAt k Ψδk (U),Ωk = eAt k Ω[0 ,δ k ](X0, U) ⊕ Ψk
+
+(5) Note that (5) does not require to use a constant time step δ. But when mixing different time steps, one also needs to compute multiple discretized systems. It can be shown that the reach tube obtained from (5) for time steps δk with N
+
+chosen such that PN −1 
+
+> k=0
+
+δk ≥ T satisfies [11, Proposition 1] 
+
+R[0 ,T ](X0) ⊆ 
+
+> N−1
+
+[
+
+> k=0
+
+Ωk.
+
+2.2 Forward Discretization Method 
+
+We use the forward approximation model [5] (a simplification of the model in [11] which also goes backward in time) for instantiating Ω[0 ,δ ] and Ψt in (4). 
+
+Ψδ (U) = δU ⊕ EΨ (U, δ ), (6) 
+
+Ω[0 ,δ ](X0, U) = CH (X0, e Aδ X0 ⊕ E+(X0, δ ) ⊕ Ψδ (U)) (7) where CH (X , Y) denotes the convex hull of the union of two sets X and Y and 
+
+EΨ (U, δ ) = ⊡(Φ2(|A|, δ ) ⊡(AU)) ,E+(X0, δ ) = ⊡(Φ2(|A|, δ ) ⊡(A2X0)) ,
+
+where Φ2(A, δ ) = P∞  
+
+> i=0 δi+2
+> (i+2)!
+
+Ai [11], |A| denotes the component-wise absolute value of A, and ⊡(X ) yields the symmetric interval hull of X , which is the smallest axis-aligned box centered in the origin and containing X .
+
+2.3 Zonotopes 
+
+A zonotope is the image of a unit hypercube under an affine map. Equivalently, it is described by a center c ∈ Rn and a finite number of generators g1, . . . , g p ∈ Rn:
+
+Z =
+
+(
+
+c +
+
+> p
+
+X
+
+> i=1
+
+αigi | αi ∈ [−1, 1] 
+
+)
+
+We use the shorthand notations Z = ( c, ⟨g1, . . . , g p⟩) and Z = ( c, G ), where 
+
+G ∈ Rn×p is a matrix whose columns are the generators. The order of a zono-tope is o = pn , describing the relative number of generators with respect to the dimensionality of the state space. Reachability Analysis with Property-Driven Time-Step Adaptation 7
+
+Let Z = ( c, ⟨g1, . . . , g p⟩) = ( c, G ) and Z′ = ( c′, ⟨g′
+
+> 1
+
+, . . . , g ′
+
+> ℓ
+
+⟩) be two zonotopes. Their Minkowski sum is the zonotope Z ⊕ Z ′ = ( c + c′, ⟨g1, . . . , g p, g ′
+
+> 1
+
+, . . . , g ′
+
+> ℓ
+
+⟩).Applying a linear map M to Z yields the zonotope M Z = ( M c, M G ). The convex hull of (the union of) two zonotopes is generally not a zonotope; we utilize the operator CH (Z, Z′) presented in prior work [13] that yields a zonotope overapproximating the exact convex hull CH (Z, Z′), e.g., in (7). The Minkowski sum increases the number of generators, which makes it com-putationally critical when applied repeatedly. We use two countermeasures. First, we apply a classical order-reduction algorithm [13], which overapproximates a zonotope by another zonotope with fewer generators [18]. Second, we some-times use the support function (described below) to represent the effect of the Minkowski sum instead of explicitly computing the zonotope. 
+
+2.4 Support Function 
+
+The support function ρ yields the support of a compact convex set X ⊆ Rn in a direction ℓ ∈ Rn, which is the scalar ρX (ℓ) = max {ℓ⊤x | x ∈ X } . Specifically, the support of a zonotope Z = ( c, ⟨g1, . . . , g p⟩) is ρZ (ℓ) = ℓ⊤c+Ppi=1 |ℓ⊤gi| [1]. Given compatible compact convex sets X , Y and a matrix M , it is easy to evaluate the support function for Minkowski sums and linear maps [1, Table II]: 
+
+ρX ⊕Y (ℓ) = ρX (ℓ) + ρY (ℓ),ρM X (ℓ) = ρX (M ⊤ℓ).
+
+It has previously been shown that reachability analysis can be performed with the use of the support function [20], also in combination with zonotopes [1]. Using the support function has two main benefits: first, evaluating the support function for a small number of directions ℓ is typically cheaper than applying the full set computations. Second, we do not increase the zonotope order when evaluating the support of the Minkowski sum of two zonotopes; instead, we only add the (scalar) support of the sets in the given direction. We will use zonotopes for the discretization, as they avoid the recursive definition of the support function. Note that only knowing the support of the sets Ωk in selected directions is not a restriction for us. We only need to check whether they are contained in the safe region Xs. Typically, Xs is given as a polyhedron in half-space representation, so it suffices to evaluate Ωk in one direction per half-space. If Xs is not given in half-space representation, one can approximate Ωk with template polyhedra [11]. 
+
+# 3 Property-Driven Time-Step Adaptation 
+
+In this section, we describe our adaptive reachability approach with the following roadmap. We first select a finite set of time steps (Section 3.1). Next, given an LTI system (1), we discretize the continuous dynamics using (6)–(7) for each selected time step (Section 3.2). Then, we present our adaptive algorithm to compute the reach tube using the recurrence in (5), where we try to choose the 8 M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling 
+
+time step as large as possible (Section 3.3). During this computation, we check whether the set Ωk violates the safety property. If so, we backtrack and decrease the time step. This way, we dynamically adjust the time step to verify safety. Finally, we propose an adaptation policy for when to increase the time step again (Section 3.4) and discuss how to mitigate high zonotope orders (Section 3.5). 
+
+3.1 Selection of Candidate Time Steps 
+
+We initially make a selection of potential time steps ∆ = [ δ0, δ 1, . . . , δ m] (sorted in ascending order). For each time step, we will need to compute the approxima-tion in (7). To avoid excessive computations of the matrix exponential ϕδi = eAδ i ,given a choice for δ0 > 0, we choose the other step sizes by doubling: 
+
+δi+1 = 2 δi, (8) where (0 ≤ i < m ). Thus, ∆ is defined by the user parameters δ0 and m (tech-nically, m is upper-bounded via the time horizon T ). Let ¯ϕi = eAδ i be the matrix exponential for a given δi. Following (8), ¯ϕi+1 = eAδ i·2 = ( ¯ϕi)2. Thus, we can compute ¯ϕi from ¯ϕ0 using matrix multiplication instead of computing the usual approximation of the power series, which is particularly expensive in high dimensions. For convenience, we introduce the aliases δ− = δ0 and δ+ = δm.
+
+Remark 1. The recurrence (8) makes the time steps grow fast (doubling each time). Using scaling and squaring, one could easily obtain a more fine-grained sequence that still exploits the same idea to avoid explicitly computing the ma-trix exponential. Still, in our empirical evaluation, we observed that the simpler version in (8) always sufficed. Note that having more candidate step sizes is not always beneficial, as it also increases the choices during backtracking later. 
+
+3.2 Discretization for Multiple Time Steps 
+
+Given an LTI system (1) of the form (A, X0, U) and a selection of time steps 
+
+∆ = [ δ0, . . . , δ m], we compute the discretized systems (ϕδ , Ω [0 ,δ ](X0, U), Ψ δ (U)) 
+
+for all δ ∈ ∆ using (6)–(7) (recall that ϕδ = eAδ ). 
+
+Remark 2. While we chose to present our discretization algorithm as a variant of the forward method (cf. Section 2.2), the approach is generic and also applies to other discretization methods [10]. Algorithm 1 shows a naive baseline to compute the discretized systems. The discrete systems are represented as three maps ϕ, X, and V , which for each value δ ∈ ∆ store the corresponding matrix exponential ϕδ respectively the sets Ω[0 ,δ ] and Ψδ . Observe that the algorithm is agnostic to the fact that the time step always doubles in line 8. In particular, the matrix exponential (and, hidden in the references to (6)–(7), the matrix Φ2) is computed for each value δ
+
+from scratch. Moreover, since the approximation error of the discrete systems grows as the time steps grow larger, the results for larger δ are useless in practice. Reachability Analysis with Property-Driven Time-Step Adaptation 9
+
+Algorithm 1 Naive Discretization 
+
+Input: A, X0, U, δ−, δ+ 
+
+> 1:
+
+δ ← δ− 
+
+> 2:
+
+while δ ≤ δ+ do  
+
+> 3:
+
+ϕ[δ] ← eAδ ▷ Compute matrix exponential for each δ ∈ ∆ 
+
+> 4:
+
+Ψ ← Compute using (6)  
+
+> 5:
+
+Ω ← Compute using (7)  
+
+> 6:
+
+X[δ] ← Ω 
+
+> 7:
+
+V [δ] ← Ψ 
+
+> 8:
+
+δ ← 2δ 
+
+> 9:
+
+end while  
+
+> 10:
+
+return (ϕ, X, V )
+
+Algorithm 2 Optimized Discretization 
+
+Input: A, X0, U, δ−, δ+ 
+
+> 1:
+
+δ ← δ− 
+
+> 2:
+
+ϕ[δ] ← eAδ  
+
+> 3:
+
+Ψ ← Compute using (6)  
+
+> 4:
+
+Ω ← Compute using (7)  
+
+> 5:
+
+while δ ≤ δ+ do  
+
+> 6:
+
+X[δ] ← Ω 
+
+> 7:
+
+V [δ] ← Ψ 
+
+> 8:
+
+Ω ← CH (Ω, ϕ [δ]Ω ⊕ Ψ ) ▷ Improved two-step recurrence (5)  
+
+> 9:
+
+Ψ ← Ψ ⊕ ϕ[δ]Ψ 
+
+> 10:
+
+δ ← 2δ 
+
+> 11:
+
+ϕ[δ] ← (ϕ[ δ 
+
+> 2
+
+]) 2 
+
+> 12:
+
+end while  
+
+> 13:
+
+return (ϕ, X, V )
+
+Algorithm 2 shows our optimized discretization method, which exploits the knowledge that the time steps always double to improve both efficiency and precision. The algorithm utilizes two crucial insights. First, as mentioned, despite using multiple time steps δi, we only need to compute the matrix exponential ϕδ0
+
+once from scratch (line 2) and then can utilize matrix multiplication (line 11). The second insight is that it suffices to use the approximation model (6)–(7) for the smallest time step δ− (lines 3–4), for which the approximation error is typically small. For larger time steps, we instead propagate the sets for the previous time step one step forward using the recurrence (5) (lines 8–9). We illustrate the difference between Algorithm 1 and Algorithm 2 in Fig. 2 for the case U = {0}. In theory, the outputs are incomparable because the better approximation of the iterative Algorithm 2 may be partially lost due to the additional approximation when taking the zonotope approximation of the convex hull in line 8 (cf. Section 2.3). In practice, Algorithm 2 yields a much smaller 10 M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling  
+
+> (a) Without zonotope approximation. (b) With zonotope approximation.
+
+Fig. 2: Comparison of the discretization algorithms 1 and 2 for a system with similar dynamics as in Fig. 1 with initial states X0 (white) and U = {0}. On the left, we use the exact convex-hull operator ( CH ), while on the right, we use the zonotope approximation ( CH ). Both algorithms agree on Ω[0 ,δ 0]. Algorithm 2 computes Ω[0 ,δ 1] as the convex hull of Ω[0 ,δ 0] ∪ ϕδ0 Ω[0 ,δ 0] (green). Algorithm 1 computes Ω[0 ,δ 1] from scratch (brown). approximation error, in particular for the larger time steps. This is because the common approximation models (like the one described in Section 2.2 that we use here) are typically only precise for small time steps [10]. 
+
+3.3 Reach Tube Approximation with Adaptive Time Step 
+
+After obtaining the discrete systems, we use Algorithm 3 to compute the ap-proximation of the reach tube. Additional inputs are the safe region Xs, which we assume to be polyhedral, along with the list of directions L that describe its facets, the time horizon T and the available time steps ∆, and a time-step policy π which we explain later. Algorithm 3 is inspired by the well-known reachability algorithm based on the support function [20] (however, that algorithm uses a fixed time step). The motivation to use the support function is to avoid (1) the explicit computation of the reach tube Ω0, . . . , Ω N −1 and (2) the emergence of high-order zonotopes, which would have to be tamed by order reduction (and thus additional approxi-mation errors). Instead, we only evaluate the support function for the reach tube in selected directions, which is sufficient to check inclusion in the safe region Xs.The loop in line 6 computes the next set Ωk of the reach tube by starting with the current time step δ. For each attempted δ, we compute bounds for the candidate set Ωk (line 9) and perform the safety check (line 11). If Ωk is safe, we accept the time step δ and update Φ, which stores the cumulative matrix exponential, for the next iteration (line 14). Otherwise, if Ωk is not safe, we try the next-smaller time step δ (line 17). This process repeats until either t ≥ T
+
+(successful verification) or δ < δ − (failed verification) holds. Reachability Analysis with Property-Driven Time-Step Adaptation 11 
+
+Algorithm 3 Computation of the Reach Tube 
+
+Input: (ϕ, X, V ): discretized systems, 
+
+Input: Xs, L : safe region and collection of corresponding direction vectors, 
+
+Input: T, ∆ : time horizon and available time steps, 
+
+Input: π: policy for increasing time step  
+
+> 1:
+
+for ℓ ∈ L do  
+
+> 2:
+
+Ψ0[ℓ] ← 0 
+
+> 3:
+
+end for  
+
+> 4:
+
+t ← 0, k ← 0, δ ← δ+, Φ ← I 
+
+> 5:
+
+while t < T do ▷ Invariant: Φ = eAt  
+
+> 6:
+
+while δ ≥ δ− do  
+
+> 7:
+
+for ℓ ∈ L do ▷ Evaluate ρΨt+δ (U)(ℓ) and ρΩ[t,t +δ](X0,U)(ℓ) 
+
+> 8:
+
+Ψk+1 [ℓ] ← Ψk[ℓ] + ρV [δ](Φ⊤ℓ) 
+
+> 9:
+
+Ωk[ℓ] ← ρX[δ](Φ⊤ℓ) + Ψk[ℓ] 
+
+> 10:
+
+end for  
+
+> 11:
+
+if Ωk[ℓ] ≤ ρXs (ℓ) for all ℓ ∈ L then ▷ Check Ωk ⊆ X s 
+
+> 12:
+
+t ← t + δ 
+
+> 13:
+
+k ← k + 1  
+
+> 14:
+
+Φ ← Φϕ [δ] ▷ e A(t+δ) = eAt eAδ  
+
+> 15:
+
+break  
+
+> 16:
+
+else ▷ Decrease time step and try again  
+
+> 17:
+
+δ ← 12 δ 
+
+> 18:
+
+end if  
+
+> 19:
+
+end while  
+
+> 20:
+
+if δ < δ − then ▷ Ω k̸ ⊆ X s at maximal precision  
+
+> 21:
+
+return “Could not verify safety”  
+
+> 22:
+
+else ▷ May try a different step size next time  
+
+> 23:
+
+δ ← Adjust according to π 
+
+> 24:
+
+end if  
+
+> 25:
+
+end while  
+
+> 26:
+
+return “System is safe” Clearly, Algorithm 3 terminates because there are finitely many choices for δ.The following theorem asserts that the computed result is correct; moreover, the algorithm can prove safety for the same systems as the induced fixed-step approach that uses the same discretization for the step size δ = δ− all the time. Note that this holds even if Algorithm 3 has not used δ− all the time. 
+
+Theorem 1 (Soundness and relative completeness). If Algorithm 3 re-turns in line 26, the system is safe. If Algorithm 3 returns in line 21, the standard fixed-step algorithm using δ− at all times would also fail. Proof (Sketch). The first property holds trivially since we check safety for each step. The second property holds because (1) we always backtrack when a safety check fails and (2) right before Algorithm 3 fails, we use the smallest step δ−12 M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling 
+
+and t is a multiple of δ−. The latter holds because our time steps are multiples of δ−. Hence, the last set we compute equals precisely the set the fixed-step algorithm would compute at this point, and thus that algorithm would also fail. 
+
+3.4 Adaptation Policy 
+
+While Algorithm 3 yields sound results under any policy π to adjust the next time step δi to a value in ∆, the policy impacts the efficiency. In our implementation, we use a policy that dynamically adjusts δi based on previous adjustments. First, our policy never decreases δi. Moreover, if the time step did not have to be reduced in the previous four steps, we double the time step (provided this would not exceed δ+). We found that this policy works well in practice. 
+
+3.5 Mitigating the Growth of the Zonotope Order 
+
+As mentioned, when using zonotopes, the increase in generators caused by the repeated Minkowski additions can become a bottleneck. We use the support function to represent Ψk in Algorithm 3 (line 8). Furthermore, by accumulating Φ
+
+in line 14, we avoid additional order increases in line 9, since Ωk is not recursively defined. However, order reductions can still be necessary in Algorithm 2 for larger time steps, as that algorithm uses the recurrence formulation. 
+
+Remark 3. The repeated convex hull computations can also significantly increase the zonotope order when δ+ ≫ δ−. As evaluating the support function of a convex hull can be done exactly, this error could also be mitigated. However, empirically we found that this negatively impacts the efficiency of the algorithm. 
+
+# 4 Evaluation 
+
+In this section, we evaluate our implementation of the proposed approach, which we refer to as Algorithm 3 in the following (but which also includes Algorithm 2), in the Julia programming language. For all results, we use a machine with an Intel i5 11400F CPU and 16 GB RAM running Windows and using Julia v1.12. 
+
+4.1 Benchmark Problems and Baseline Algorithms 
+
+We consider a subset of the SLICOT benchmark models [9], which represent high-dimensional real-world applications. All models are LTI systems of the form (1) and are summarized in Table 1. The time horizon is always T = 20 .We compare to two state-of-the-art reachability algorithms that use a fixed time step. The first algorithm is the one based on the support function [20,15], which we denote as LGG . The second algorithm is based on decomposition [5], which we denote as BFFPSV . For both LGG and BFFPSV, we apply the same algorithm options as in a prior evaluation [5] and use the forward discretization. We employ the implementations of these algorithms in the tool JuliaReach [6], which is also written in Julia, for a fair comparison; for instance, we use the same method for calculating the matrix exponential for all three approaches. Reachability Analysis with Property-Driven Time-Step Adaptation 13 
+
+Table 1: SLICOT benchmark statistics. The specifications are taken from [23,4]. Some specifications use a linear combination of the state variables, denoted by y.Model Dimension ( n) Safety property ( Xs)Motor 8 x1 ∈ [0 .35 , 0.4] ∨ x5 /∈ [0 .45 , 0.6] 
+
+Building 48 x25 < 6 · 10 −3
+
+PDE 84 y < 12 
+
+Heat 200 x133 < 0.1
+
+ISS 270 y ∈ [−7, 7] · 10 −4
+
+Beam 384 x89 < 2100 
+
+MNA1 578 x1 < 0.5
+
+Table 2: Evaluation on the SLICOT benchmarks. Bold entries mark the best result and † marks a failure to verify the property. Algorithm 3 uses δ− = δ,where δ is the fixed time step, and δ+ is given as a power of two larger than δ.Algorithm 3 (ours) LGG BFFPSV Model δ− = δ δ +/δ − Steps Time (s) Time (s) Time (s) Steps Motor 1 · 10 −3 23 2503 1.82 · 10 −2 6.45 · 10 −2 1.94 · 10 −1 20000 
+
+Building 2 · 10 −3 29 239 9.35 · 10 −3 2.49 · 10 −1 1.46 · 10 −1 10000 PDE 3 · 10 −4 210 81 4.01 · 10 −2 5.67 322 66667 Heat 1 · 10 −3 210 28 1.83 · 10 −1 9.00 4.71 20000 ISS 6 · 10 −4 25 1042 3.25 · 10 −1 2.87 † (88 .5) 33334 Beam 5 · 10 −5 25 12501 4.44 778 343 400000 MNA1 4 · 10 −4 211 971 2.57 688 123 50000 
+
+4.2 Reach Tube Computation and Verification of Safety Properties 
+
+We report about the results of our evaluation in Table 2. Since LGG and BFF-PSV first compute the full reach tube and then verify safety (whereas in our approach, these steps are interleaved), we report the total time for these tools. We used the same fixed time steps δ for LGG and BFFPSV as in the prior evaluation [5, Table 4]. We selected the step ranges ( δ− and δ+) such that δ− = δ;by Theorem 1, we thus can verify the same safety properties as the baselines. We highlight that we often choose large values for δ+ that would normally seem unrealistic (e.g., δ+ = 1 .024 for the Heat model, which is close to T = 20 ). This highlights the precision we can achieve thanks to Algorithm 2. Our approach consistently outperforms the baselines across all benchmarks, often achieving dramatic speedups of one or two orders of magnitude. The main reason is that we can effectively employ large time steps most of the time, whereas the fixed-step approaches must use tiny steps all the time. For instance, we are able to verify the 578-dimensional MNA1 model in less than 3 seconds, which is a ×47 speedup over BFFPSV and a ×267 speedup over LGG. 14 M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling  
+
+> (a) Building model. (b) Heat model.
+
+Fig. 3: Comparison of Algorithm 3 to LGG and BFFPSV. The step sizes for all algorithms are identical with those reported in Table 2. For the ISS model, BFFPSV is not precise enough to prove the property. This is consistent with previous results [5]. LGG is able to verify the property, and does so efficiently due to the sparsity of the system matrix. However, our approach still outperforms LGG with a ×8 speedup. 
+
+4.3 Approximation Quality 
+
+In contrast to the baselines, our approach is willing to produce large approxima-tion errors as long as the specification can be proven. Hence, a direct comparison of the approximation quality is not meaningful. Nevertheless, we show how the approximations differ empirically for three selected benchmark models. (Since the approximation quality of LGG and BFFPSV is typically similar to each other, we only show one of these approaches per plot.) For the Building model (Fig. 3(a)), the reach tube computed by LGG is clos-est to the unsafe region in the first few steps, after which the high precision would not be needed anymore. Algorithm 3 gets close to the unsafe region (and hence switches the time step) many times. The reach tube computed by Algorithm 3 only consists of 239 steps, whereas LGG computes for 10,000 steps. The Heat model (Fig. 3(b)) highlights multiple benefits of Algorithm 3. We can take large time steps because of the high precision of our discretization. Algo-rithm 3 verifies the Heat model in 28 steps, while BFFPSV computes for 20,000 steps. Additionally, the adaptive approach allows Algorithm 3 to continuously use the best time step from the selection ∆.For the ISS model (Fig. 4), the green sets computed by LGG get close to the unsafe region. This explains why BFFPSV, which is generally less precise than LGG, cannot prove this specification. (Note that using smaller time steps would not necessarily help, as that requires more time steps and hence more error accumulation.) Algorithm 3 can generally take larger time steps in the beginning. The reach tube computed by Algorithm 3 only consists of 1,042 steps, whereas LGG computes for 33,334 steps. Reachability Analysis with Property-Driven Time-Step Adaptation 15 
+
+Fig. 4: Comparison of Algorithm 3 to LGG on the ISS model. The step sizes for the algorithms are identical with those reported in Table 2. 
+
+4.4 Property-Driven Adaptation 
+
+Fig. 3(a) demonstrates how our approach benefits from property-driven time-step adaptation on the Building model. We see that the time step evolves over time for a model where precision is crucial early in the time interval [0 , T ].As time advances, the distance between the green reach tube and the unsafe region becomes larger. This allows our approach to gradually increase δ, which drastically decreases computation time. Notably, the largest time step we use is ×512 larger than the smallest one that is necessary to prove safety. 
+
+4.5 Comparison of Algorithm 1 and Algorithm 2 
+
+As mentioned, our optimized discretization algorithm empirically achieves lower approximation errors compared to the naive algorithm, even at large time steps. This allows us to sometimes even use the largest time step δ+ for several steps during the reach tube computation in Algorithm 3. In Fig. 5, we demonstrate the difference of using the optimized discretization (Algorithm 2) over the naive discretization (Algorithm 1). Both algorithms use the smallest time step δ− =0.001 . With Algorithm 2 and δ+ = 1 .024 , our method successfully verifies the model, for which it only uses the largest time steps 0.512 and 1.024 . Even when limiting Algorithm 1 to δ+ = 0 .002 , our method fails within 10 time units because the precision is not high enough. This is due to the accumulation of the approximation errors in Ψ when using Algorithm 1. 16 M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling 
+
+Fig. 5: Comparison of the discretization algorithms 1 and 2 on the Heat model. Algorithm 2 uses δ− = 0 .001 and δ+ = 1 .024 , while Algorithm 1 uses δ− = 0 .001 
+
+and δ+ = 0 .002 .
+
+# 5 Conclusion 
+
+We have proposed an efficient reachability algorithm for continuous-time linear time-invariant systems with uncertain inputs. Our algorithm is based on time discretization and uses an adaptive step size. In contrast to other adaptive algo-rithms, ours is property-driven instead of error-driven: the precision is increased only when necessary to prove the specification. To achieve efficient performance, we also developed a novel discretization method that allows us to make large time steps in practice. We have implemented our algorithms efficiently and demon-strated performance improvements over state-of-the-art methods of one or two orders of magnitude on high-dimensional benchmark systems. In the future, it will be interesting to investigate how our approach can be used for reach-avoid specifications. We also plan to generalize it to hybrid systems. There we can partially reuse our algorithm and treat transition guards as unsafe regions. In contrast, however, once an intersection with the guard is detected, we are in a new setting. Thus, a key challenge will be to avoid that our discretization algorithm becomes a bottleneck after each discrete transition, both in terms of performance and overapproximation. 
+
+Acknowledgments 
+
+This research was partly supported by the Independent Research Fund Den-mark under reference number 10.46540/3120-00041B and the Villum Investiga-tor Grant S4OS under reference number 37819. Reachability Analysis with Property-Driven Time-Step Adaptation 17 
+
+# References 
+
+1. Althoff, M., Frehse, G.: Combining zonotopes and support functions for efficient reachability analysis of linear systems. In: CDC. pp. 7439–7446. IEEE (2016). https://doi.org/10.1109/CDC.2016.7799418 2. Althoff, M., Frehse, G., Girard, A.: Set propagation techniques for reachability analysis. Annu. Rev. Control. Robotics Auton. Syst. 4, 369–395 (2021). https: //doi.org/10.1146/ANNUREV-CONTROL-071420-081941 3. Althoff, M., Stursberg, O., Buss, M.: Reachability analysis of linear systems with uncertain parameters and inputs. In: CDC. pp. 726–732. IEEE (2007). https://doi. org/10.1109/CDC.2007.4434084 4. Bak, S., Duggirala, P.S.: Simulation-equivalent reachability of large linear systems with inputs. In: CAV. pp. 401–420. LNCS, Springer (2017). https://doi.org/10. 1007/978-3-319-63387-9_20 5. Bogomolov, S., Forets, M., Frehse, G., Podelski, A., Schilling, C.: Decomposing reach set computations with low-dimensional sets and high-dimensional matrices (extended version). Inf. Comput. 289 (2022). https://doi.org/10.1016/j.ic.2022. 104937 6. Bogomolov, S., Forets, M., Frehse, G., Potomkin, K., Schilling, C.: JuliaReach: a toolbox for set-based reachability. In: HSCC. pp. 39–44. ACM (2019). https: //doi.org/10.1145/3302504.3311804 7. Chen, S., Ge, X.: Reachability analysis of linear systems. Acta Informatica 61 (3), 231–260 (2024). https://doi.org/10.1007/S00236-024-00458-8 8. Dantam, M., Pouly, A.: On the decidability of reachability in continuous time linear time-invariant systems. In: HSCC. pp. 15:1–15:12. ACM (2021). https://doi.org/ 10.1145/3447928.3456705 9. Dooren, Y.C.P.V.: A collection of benchmark examples for model reduction of linear time invariant dynamical systems (2002) 10. Forets, M., Schilling, C.: Conservative time discretization: A comparative study. In: iFM. LNCS, vol. 13274, pp. 149–167. Springer (2022). https://doi.org/10.1007/ 978-3-031-07727-2_9 11. Frehse, G., Guernic, C.L., Donzé, A., Cotton, S., Ray, R., Lebeltel, O., Ripado, R., Girard, A., Dang, T., Maler, O.: SpaceEx: Scalable verification of hybrid systems. In: CAV. pp. 379–395. LNCS, Springer (2011). https://doi.org/10.1007/978-3-642-22110-1_30 12. Frehse, G., Kateja, R., Guernic, C.L.: Flowpipe approximation and clustering in space-time. In: HSCC. pp. 203–212. ACM (2013). https://doi.org/10.1145/ 2461328.2461361 13. Girard, A.: Reachability of uncertain linear systems using zonotopes. In: HSCC. pp. 291–305. LNCS, Springer (2005). https://doi.org/10.1007/978-3-540-31954-2_19 14. Girard, A., Guernic, C.L., Maler, O.: Efficient computation of reachable sets of linear time-invariant systems with inputs. In: HSCC. pp. 257–271. LNCS, Springer (2006). https://doi.org/10.1007/11730637_21 15. Guernic, C.L., Girard, A.: Reachability analysis of hybrid systems using support functions. In: CAV. pp. 540–554. LNCS, Springer (2009). https://doi.org/10.1007/ 978-3-642-02658-4_40 16. Hansen, D.H., Melchiors, G., Bjørn, M.: Kyniker/adaptive-algorithm-for-linear-system: React (2026). https://doi.org/10.5281/zenodo.20793291 18 M. Bjørn, D. H. Hansen, G. Melchiors, K. G. Larsen, C. Schilling 17. Kochdumper, N., Bak, S.: Fully automated verification of linear time-invariant systems against signal temporal logic specifications via reachability analysis. Non-linear Analysis: Hybrid Systems 53 , 101491 (2024). https://doi.org/https://doi. org/10.1016/j.nahs.2024.101491 18. Kopetzki, A., Schürmann, B., Althoff, M.: Methods for order reduction of zono-topes. In: CDC. pp. 5626–5633. IEEE (2017). https://doi.org/10.1109/CDC.2017. 8264508 19. Lafferriere, G., Pappas, G.J., Yovine, S.: Symbolic reachability computation for families of linear vector fields. J. Symb. Comput. 32 (3), 231–253 (2001). https: //doi.org/10.1006/JSCO.2001.0472 20. Le Guernic, C., Girard, A.: Reachability analysis of linear systems using support functions. Nonlinear Analysis: Hybrid Systems 4(2), 250–262 (2010). https://doi. org/https://doi.org/10.1016/j.nahs.2009.03.002, iFAC World Congress 2008 21. Luo, E., Kochdumper, N., Bak, S.: Reachability analysis for linear systems with uncertain parameters using polynomial zonotopes. In: HSCC. pp. 17:1–17:12. ACM (2023). https://doi.org/10.1145/3575870.3587130 22. Prabhakar, P., Viswanathan, M.: A dynamic algorithm for approximate flow com-putations. In: HSCC. pp. 133–142. ACM (2011). https://doi.org/10.1145/1967701. 1967722 23. Tran, H., Nguyen, L.V., Johnson, T.T.: Large-scale linear systems from order-reduction. In: ARCH. pp. 60–67. EPiC Series in Computing, EasyChair (2016). https://doi.org/10.29007/XK7X 24. Wetzlinger, M., Althoff, M.: Backward reachability analysis of perturbed continuous-time linear systems using set propagation. IEEE Trans. Autom. Con-trol. 71 (1), 352–367 (2026). https://doi.org/10.1109/TAC.2025.3592719 25. Wetzlinger, M., Kochdumper, N., Bak, S., Althoff, M.: Fully automated verification of linear systems using inner and outer approximations of reachable sets. IEEE Trans. Autom. Control. 68 (12), 7771–7786 (2023). https://doi.org/10.1109/TAC. 2023.3292008
