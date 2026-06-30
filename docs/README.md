@@ -6,59 +6,68 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-29
-- 运行时间：2026-06-29 22:00:47 UTC
+- 最新运行日期：2026-06-30
+- 运行时间：2026-06-30 22:12:51 UTC
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：2
-- 速读区：11
+- 本次总论文数：16
+- 精读区：6
+- 速读区：10
 
 ### 今日简报（AI）
-今日研究聚焦安全机器人控制与风险敏感规划，共13篇，精读2篇高分工作。最值得关注：PPO-EAL提出精确增广拉格朗日方法实现安全强化学习，RS-Diffuser通过分布值引导增强扩散规划的风险敏感能力。建议后续优先精读这两篇，关注强化学习与扩散模型在鲁棒控制中的结合趋势。
-- 详情：[/202606/29/README](/202606/29/README)
+今日共推荐16篇论文，精读6篇，速读10篇；重点值得关注四旋翼无人机网络攻击下的弹性控制及视觉-语言-动作模型的安全诊断基准。建议优先研读这两篇精读论文，深入理解控制系统安全与多模态模型可靠性评估的前沿方法。
+- 详情：[/202606/30/README](/202606/30/README)
 
 ### 精读区论文标签
-1. [PPO-EAL: Exact Augmented Lagrangian Proximal Policy Optimization for Safe Robotic Control](/202606/29/2606.27861v1-ppo-eal-exact-augmented-lagrangian-proximal-policy-optimization-for-safe-robotic-control)  
+1. [Resilient Control Lyapunov Function-based Quadratic Program for Quadrotors Under Cyberattacks](/202606/30/2606.28588v1-resilient-control-lyapunov-function-based-quadratic-program-for-quadrotors-under-cyberattacks)  
    标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：使用增广拉格朗日方法的安全强化学习机器人控制
-2. [RS-Diffuser: Risk-Sensitive Diffusion Planning with Distributional Value Guidance](/202606/29/2606.27766v1-rs-diffuser-risk-sensitive-diffusion-planning-with-distributional-value-guidance)  
+   evidence：基于弹性控制李雅普诺夫函数的四旋翼无人机安全控制
+2. [ForesightSafety-VLA: A Unified Diagnostic Safety Benchmark for Vision-Language-Action Models](/202606/30/2606.27079v1-foresightsafety-vla-a-unified-diagnostic-safety-benchmark-for-vision-language-action-models)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：面向具身智能（视觉-语言-动作模型）的诊断性安全基准
+3. [ForesightSafety-VLA: A Unified Diagnostic Safety Benchmark for Vision-Language-Action Models](/202606/30/2606.27079v2-foresightsafety-vla-a-unified-diagnostic-safety-benchmark-for-vision-language-action-models)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：面向具身智能（视觉-语言-动作模型）的诊断性安全基准
+4. [HJ-SafeDMP: Hamilton-Jacobi Reachability-Guided Dynamic Movement Primitives for Provably Safe Robot Motion](/202606/30/2606.28995v1-hj-safedmp-hamilton-jacobi-reachability-guided-dynamic-movement-primitives-for-provably-safe-robot-motion)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：面向安全关键系统的风险敏感离线强化学习
+   evidence：希J-可达性引导的动态运动基元实现可证明安全机器人运动，概念上等价于基于控制障碍函数的安全控制
+5. [AUSLUN: A Fixed-Hover UAV--USV System for GNSS-Denied Maritime Search and Navigation](/202606/30/2606.29875v1-auslun-a-fixed-hover-uav--usv-system-for-gnss-denied-maritime-search-and-navigation)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：无人机-无人艇系统用于GNSS拒止下的海上搜索
+6. [MOAR Planner: Multi-Objective and Adaptive Risk-Aware Path Planning for Infrastructure Inspection with a UAV](/202606/30/2606.30575v1-moar-planner-multi-objective-and-adaptive-risk-aware-path-planning-for-infrastructure-inspection-with-a-uav)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：面向无人机基础设施检测的风险感知路径规划，考虑自适应安全
 
 ### 速读区论文标签
-1. [FT-WBC: Learning Fault-Tolerant Whole-Body Control for Legged Loco-Manipulation](/202606/29/2606.24466v1-ft-wbc-learning-fault-tolerant-whole-body-control-for-legged-loco-manipulation)  
+1. [AdaReP:Adaptive Re-Planning under Model Mismatch for Neural World-Model Predictive Control](/202606/30/2606.23079v1-adarepadaptive-re-planning-under-model-mismatch-for-neural-world-model-predictive-control)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：容错全身控制保障安全
-2. [Large-Scale Tunnel Air-Ground Collaboration With FLISP: Fast LiDAR-IMU Synchronized Path Planner](/202606/29/2606.25393v2-large-scale-tunnel-air-ground-collaboration-with-flisp-fast-lidar-imu-synchronized-path-planner)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：无人机隧道巡检中的路径规划与避障
-3. [In-Context World Modeling for Robotic Control](/202606/29/2606.26025v1-in-context-world-modeling-for-robotic-control)  
+   evidence：基于神经世界模型的自适应重规划预测控制
+2. [Mixture-of-Experts RL for Fault-Tolerant Legged Locomotion](/202606/30/2606.25965v1-mixture-of-experts-rl-for-fault-tolerant-legged-locomotion)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：用于机器人系统辨识和控制的上下文学习
-4. [Scalable Reachability Analysis of Linear Continuous Systems with Property-Driven Time-Step Adaptation](/202606/29/2606.26352v1-scalable-reachability-analysis-of-linear-continuous-systems-with-property-driven-time-step-adaptation)  
+   evidence：针对机器人控制的强化学习
+3. [Reachability Guarantees for Cart-Pole Swing-Up and Stabilization](/202606/30/2606.28627v1-reachability-guarantees-for-cart-pole-swing-up-and-stabilization)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：通过可达性分析进行安全验证
-5. [ForesightSafety-VLA: A Unified Diagnostic Safety Benchmark for Vision-Language-Action Models](/202606/29/2606.27079v1-foresightsafety-vla-a-unified-diagnostic-safety-benchmark-for-vision-language-action-models)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：具身AI系统安全基准
-6. [Specification-aware Robustness Margins for Symbolic Controllers](/202606/29/2606.28143v1-specification-aware-robustness-margins-for-symbolic-controllers)  
+   evidence：倒立摆系统安全控制的可达性保证
+4. [LNN-Fly: Continuous-Time UAV Navigation for Robust Obstacle Avoidance under Timing Mismatch](/202606/30/2606.28827v1-lnn-fly-continuous-time-uav-navigation-for-robust-obstacle-avoidance-under-timing-mismatch)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：使用符号控制的安全规范鲁棒控制器综合
-7. [Regularized Reward-Punishment Reinforcement Learning](/202606/29/2606.28152v1-regularized-reward-punishment-reinforcement-learning)  
+   evidence：无人机鲁棒避障导航，采用连续时间策略
+5. [CORE Planner: Contextual-memory Oriented Reinforcement-learning in Unknown Environments for Robot Navigation](/202606/30/2606.29222v1-core-planner-contextual-memory-oriented-reinforcement-learning-in-unknown-environments-for-robot-navigation)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：用于奖惩强化学习的策略协调框架
-8. [Safe Packetized Control for Stochastic Constrained Networked Systems](/202606/29/2606.24148v1-safe-packetized-control-for-stochastic-constrained-networked-systems)  
+   evidence：面向未知环境的机器人导航强化学习
+6. [RoamFlow: Reinforcement-Aligned One-Step Action MeanFlow Policy for Image-Goal Navigation](/202606/30/2606.29934v1-roamflow-reinforcement-aligned-one-step-action-meanflow-policy-for-image-goal-navigation)  
+   标签：评分：7.0/10、query:ocean-robot
+   evidence：基于强化学习的图像目标导航方法用于具身机器人
+7. [CKM-Driven Communication-Aware UAV Intelligent Trajectory Optimization for Urban Inspection](/202606/30/2606.24979v1-ckm-driven-communication-aware-uav-intelligent-trajectory-optimization-for-urban-inspection)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：网络化系统分组安全控制器的形式化综合
-9. [Deep Reinforcement Learning-Enhanced Event-Triggered Data-Driven Predictive Control for a 3D Cable-Driven Soft Robotic Arm](/202606/29/2606.26048v2-deep-reinforcement-learning-enhanced-event-triggered-data-driven-predictive-control-for-a-3d-cable-driven-soft-robotic-arm)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：深度强化学习增强的软体机器人控制
-10. [Support-Constrained RL Enables Real-World Policy Improvement without Real-World Experience](/202606/29/2606.27475v1-support-constrained-rl-enables-real-world-policy-improvement-without-real-world-experience)  
+   evidence：使用神经网络进行无人机轨迹优化，与无人机安全控制相关
+8. [Event-Adaptive Motion Planning with Distilled Vision-Language Model in Safety-Critical Situations](/202606/30/2606.25629v1-event-adaptive-motion-planning-with-distilled-vision-language-model-in-safety-critical-situations)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：提出支持约束强化学习框架，确保仿真到实物的安全迁移
-11. [Bearing-based Circumnavigation with Collision Avoidance in Time-varying Graphs under Limited Target Information](/202606/29/2606.27719v1-bearing-based-circumnavigation-with-collision-avoidance-in-time-varying-graphs-under-limited-target-information)  
+   evidence：利用蒸馏视觉-语言模型进行安全关键导航的事件自适应运动规划
+9. [When Multi-Robot Systems Meet Agentic AI:Towards Embodied Collective Intelligence](/202606/30/2606.27929v1-when-multi-robot-systems-meet-agentic-aitowards-embodied-collective-intelligence)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：多智能体系统中的分布式碰撞避免
+   evidence：多机器人系统的具身集体智能
+10. [Building a Scalable, Reproducible, Evaluatable, and Closed-Loop Simulation Environment Foundation for Embodied Intelligence Cloud-Native Simulation Infrastructure for Embodied Intelligence Training, Evaluation, and Data Collection](/202606/30/2606.27962v1-building-a-scalable-reproducible-evaluatable-and-closed-loop-simulation-environment-foundation-for-embodied-intelligence-cloud-native-simulation-infrastructure-for-embodied-intelligence-training-evaluation-and-data-collection)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：云原生模拟基础设施用于具身智能训练与评估
 
 
 <div class="dpr-home-promo-card">
