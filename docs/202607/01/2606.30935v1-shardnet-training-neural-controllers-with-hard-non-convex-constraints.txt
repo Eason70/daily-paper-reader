@@ -1,0 +1,1028 @@
+Title: ShardNet: Training Neural Controllers with Hard, Non-Convex Constraints
+
+URL Source: https://arxiv.org/pdf/2606.30935v1
+
+Published Time: Wed, 01 Jul 2026 00:22:16 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# ShardNet: Training Neural Controllers with Hard, Non-Convex Constraints 
+
+Long Kiu Chung and Shreyas Kousik 
+
+Abstract — While neural network control policies are pow-erful, their deployment on safety critical systems depends on ensuring that they obey strict constraints. Existing work often treats safety as a metric to optimize for, which competes with other performance objectives, if training converges at all. Instead, we introduce ShardNet, a neural network architecture that strictly enforces unions of polyhedral constraints by con-struction , using a differentiable projection layer parameterized by a classification network. The key insight is to embed safety into the neural network’s structure, allowing performance to be optimized independently because formal safety guarantees are 
+
+always given. In contrast with existing neural architectures that can only enforce simple convex constraints, ShardNet enables the first safe-by-construction synthesis of forward-invariant neural network controllers on closed-loop systems where safety constraints are expressed as nonconvex unions of polyhedras or learned value function level sets. To support this, we also introduce a technique to verify and train such value functions 
+
+correctly as rectified linear unit (ReLU) networks, which has not previously been possible. On double integrator benchmarks drawn from the literature, ShardNet policies maintain 100% safety on verified sets and achieves significantly lower objective loss compared to existing formal methods. Furthermore, our value function training technique also produces safe sets more than 3 times larger than existing verification approaches. 
+
+I. I NTRODUCTION 
+
+As autonomous dynamical systems are increasingly de-ployed in everyday tasks, ensuring their safety has become a critical priority. A common way to certify safety is via the use of control invariant sets, which guarantees ad infinitum 
+
+satisfaction of safety constraints when the system remains within the sets. However, when neural networks are used to represent control invariant sets [1]–[5] or learn control policies to stay within these sets (i.e. forward invariance) [6]–[8], existing methods either overlook their approximation errors [9], rely on training convergence to balance between safety and performance [6]–[8], or cannot enforce complex, non-convex safety constraints that are common in many systems [10]. In this work, we present ShardNet, a neural network architecture that enables neural controllers to be trained under hard, non-convex safety constraints, while remaining safe throughout the entire training process. This allows performance objectives to be optimized independently of safety and, to the best of our knowledge, provides the first 
+
+safe-by-construction approach for training neural controllers under unions of input-dependent polyhedral constraints. We achieve this by combining a classifier with a differentiable                
+
+> All authors are with the Department of Mechanical Engineering, Georgia Institute of Technology, Atlanta, GA. Corresponding author:
+> lchung33@gatech.edu .x0
+
+Input  
+
+> ξb(·; θ)
+
+Base 
+
+Network 
+
+> (Pi)n
+> i=1
+> P
+
+Compute 
+
+Safe Sets  
+
+> ξc(·; θc)
+
+Classification 
+
+Network 
+
+> HardNet-Cvx
+
+[10]  (d) (a) 
+
+(b) 
+
+(c) 
+
+> vd
+
+Unsafe Output 
+
+> vd
+
+Unsafe Output 
+
+> xd
+
+Safe Output 
+
+> xd
+
+Safe Output    
+
+> P1
+> P2
+> PnPP1
+> P2
+> PnP
+> vd
+> Pi*P1
+> P2
+> PnPvd
+> xd
+
+(a)  (b)  (c)  (d) 
+
+> (Pi(x0)) n
+> i=1
+> P
+
+Safe Sets  
+
+> Pi*(x0)
+
+Projection Set 
+
+Fig. 1: A flowchart of our proposed ShardNet method, which restricts the output of a neural network to be within a union of input-dependent polyhedral safe sets by-construction . To accomplish this, we train a classification network ξc(·; θc) to estimate the distances from the violating output vd of a base network ξb(·; θ ) to each of the safe sets (Pi(x0)) nP
+
+> i=1
+
+, then use HardNet-Cvx [10] to project the output to the closest polyhedral safe set Pi∗ (x0).
+
+projection layer, restricting the output states to lie within safety constraints, specified either explicitly as unions of polyhedras or implicitly as learned value functions. For the latter case, we additionally provide insights into how they can be learned and verified correctly with rectified linear unit (ReLU) activations, which previous works [8] have failed to accomplish. Our method does not impose structural assumptions on its base neural controller or on its classifier, and we show it to be effective on piecewise affine (PWA) dynamics and ReLU value functions with 1 hidden layer of width 64. An overview of ShardNet is shown in Figure 1. 
+
+A. Contributions 
+
+1) We propose ShardNet, a safe-by-construction neural network architecture that enforces unions of input-dependent convex constraints exactly throughout train-ing. To the best of our knowledge, this is the first neural architecture capable of training under hard non-convex constraints represented as unions of convex sets. 2) We show how ShardNet can synthesize forward-invariant neural controllers for safety specifications ex-pressed either as unions of H-polyhedrons or as sub-zero level sets of learned ReLU value functions. Compared to neural network repair methods, ShardNet guarantees safety independently of training convergence or objec-tive optimization, achieving a 3 times lower objective 
+
+> arXiv:2606.30935v1 [eess.SY] 29 Jun 2026
+
+loss than [6]. 3) We propose a method for training and repairing provably-correct ReLU value functions by augmenting existing sound verification procedures [8] with complete verification checks. This significantly reduces unneces-sary safe-set shrinkage and yields certified invariant sets 3 times larger than [8]. 
+
+B. Paper Organization 
+
+The remainder of the paper is organized as follows: First, we summarize existing works on safe robotic controls and enforcing constraints in neural networks (Section II). Then, we introduce mathematical concepts used throughout the paper (Section III). Next, we present the problem and our solution, ShardNet, to design a neural network architecture that satisfies a union of convex constraint by-construction (Section IV). We show the utility of ShardNet by synthesiz-ing neural control policies for control invariant constraints expressed as unions of H-polyhedrons and sub-zero level sets of ReLU neural networks (Section V). Finally, we demonstrate the validity of our formulation by using Shard-Net to train forward-invariant neural controllers for double integrators, while comparing our approach’s performance against baselines [2], [6], [8] (Section VI). II. R ELATED WORK 
+
+This work is concerned with designing neural network motion controllers that can enforce control invariance, which is a common strategy for ensuring desiderata such as safety and stability. To this end, we first review strategies for representing control invariance and learning neural network controllers, then discuss existing works on enforcing safety constraints during neural network training. 
+
+A. Control Invariant Set Representations 
+
+Control invariant sets are commonly represented in two ways: intersections of half spaces (H-representation), or sub-zero level sets of value functions. 
+
+1) Control Invariant Sets from H-Representations: It is well-known that control invariant sets can be formed by recursively computing the images or preimages of the dy-namics [11], [12]. For systems with linear, affine, or PWA dynamics, these sets admit closed-form representations as unions of H or AH-polyhedrons (convex shapes in half space representations and their affine transformations) [13]–[15]. Then, a forward invariance controller is typically derived via optimization in a model predictive control (MPC) frame-work [16], [17], which can be computationally prohibitive for systems with complex PWA formulations. To enable fast online inference, recent works have proposed learning forward-invariant neural network controllers [6], [7], though successful convergence to a safe solution is not guaranteed. 
+
+2) Control Invariant Sets from Value Functions: Alter-natively, control-invariant sets can be represented implicitly as the sub-zero level set of a function, most commonly via Hamilton-Jacobi (HJ) reachability analysis or control barrier functions (CBF) (see [18], [19] for their connections). Compared to H-representations, these approaches can more naturally encode task constraints (e.g. collision avoidance for autonomous robots) and extend to other classes of dynamics. However, traditional HJ methods suffer from the curse of dimensionality [20], [21], while CBF methods imposes restrictive assumptions (such as control-affineness and continuous time) and requires the value function to be handcrafted [22]–[24]. In response, many methods have resorted to directly learning the value functions in HJ [1], [2] and CBF [3]–[5] with neural networks. However, without properly accounting for the approximation errors, learned value functions may forfeit formal safety guarantees [9]. There are a handful of works that have looked into formally repairing (i.e. training an unsafe neural network until it is safe) and verifying the correctness of learned value functions [8], [25], though their certifications must be associated with a specific control policy, offering no flexibility to find other safe control inputs. 
+
+B. Enforcing Constraints in Neural Network Training 
+
+We now review key approaches for enforcing constraints during neural network training. Our contributions build upon these works. We first briefly note that a variety of methods exist to repair unsafe controllers with neural networks in the loop [6], [7], [26] by extracting training signals from formal verification [27], [28], but have no guarantees in being successful, and constraint satisfaction might be at odds with performance metrics. In contrast, recent work has focused on designing safe-by-consrtuction neural network architectures that enforce hard 
+
+constraints such as affineness over polyhedral regions [29], [30] or outputs being contained within a convex safe set [10], [31]. These approaches guarantee constraint satisfac-tion throughout training, allowing performance objectives to be optimized independently. That said, constraints that commonly arise in dynamics and control are often more complex and non-convex [2], [32]: while works such as [33], [34] have attempted to design safe-by-construction networks for general nonlinear constraints, they do so with iterative projections that can only guarantee convergence towards some tolerance near the constraints, so violations can still 
+
+occur. As such, few [10], [35], [36] have attempted to apply safe-by-construction training methods to problems in control, especially for control invariance. To the best of our knowl-edge, the only exceptions are [10], [36], which trained neural networks to satisfy CBF constraints that are convex on the control inputs assuming control-affine, continuous systems. Instead, in this paper, we show how [10] can be augmented to 
+
+exactly satisfy a class of non-convex constraints (specifically, a union of polyhedral constraints), which we can express complex forward-invariant conditions in, enabling safe-by-construction control policies in a wider range of problem settings. III. P RELIMINARIES 
+
+This work makes extensive use of H-polyhedrons, neural networks, and PWA functions. We now introduce our nota-tion and assumptions for each of these concepts. 
+
+A. H-Polyhedrons 
+
+An H-polyhedron H(A, b) ⊆ Rn is a set of nc ∈ N half spaces, parameterized by the constraint matrix A ∈ Rnc×n
+
+and the constraint vector b ∈ Rnc as follows [37]: 
+
+H(A, b) = {z | Az ≤ b}. (1) An H-polyhedron is called an H-polytope if it is bounded. For a function f : Rnx → Rny , if an ny-dimensional H-polyhedron’s parameters ( A or b) are functions of some input 
+
+x ∈ Rnx , we denote the H-polyhedron as input-dependent 
+
+[10]. Furthermore, if ∄ z ∈ Rn such that Az ≤ b (which can be checked with a feasibility linear program (LP) [14]), we denote the H-polyhedron H(A, b) as empty. As part of our proposed method, when transforming control-invariant constraints with known states, we reduce certain dimensions in an H-polyhedron to a single value. This operation is known as slicing : per [9], [14], we slice the first 
+
+nx < n dimensions of an H-polyhedron P = H(A, b) ⊆ Rn to a constant x ∈ Rnx in closed form as: slice (P1, x) = 
+
+
+
+z |
+
+xz
+
+
+
+∈ P1
+
+
+
+,
+
+= H  (A)1: nc,(nx+1):n, b − (A)1: nc,1: nx x .
+
+(2) 
+
+B. Neural Networks 
+
+A neural network ξ (·; θ ) : Rn0 → Rnd is a nonlinear function approximator composed from layers of trainable parameters θ ∈ Θ and activation functions. While ShardNet does not impose any assumptions on the structure of its base network, we do require some learned components of our method, such as the value function and the optimal control for verification, to be a ReLU neural network, which we define below and differentiate with a tilde ˜ ·. We also briefly summarize the structure of a HardNet-Cvx [10] network, which we primarily built our contributions upon. 
+
+1) ReLU Neural Networks: A fully-connected, ReLU-activated feedforward neural network ˜ξ (·; θ ) : Rn0 → Rnd
+
+returns xd given an input x0 as: 
+
+vi = Wixi−1 + wi, (3a) 
+
+xi = max (vi, 0) , (3b) 
+
+xd = vd = Wd xd−1 + wd , (3c) where i = 1, · · · , d − 1 and max is taken elementwise. We denote W1 ∈ Rn1×n0 , · · · , Wd ∈ Rnd ×nd−1 as weights , w1 ∈
+
+Rn1 , · · · , wd ∈ Rnd as biases , d ∈ N as the depth , ni ∈ N
+
+as the width of the ith layer, and layers 1 to d − 1 as the hidden layers of the network. In this case, the train-able parameters are θ = ( W1, · · · , Wd , w1, · · · , wd ) ∈ Θ =
+
+Rn1×n0 × · · · × Rnd ×nd−1 × Rn1 × · · · × Rnd .It is well known that a ReLU network can be written as a set of mixed-integer linear constraints [38]. Specifically, (3b) can be written as: 
+
+xi ≥ vi, (4a) 
+
+xi ≤ vi − v⊺ 
+
+> i
+
+(1 − ai), (4b) 
+
+xi ≤ v⊺ 
+
+> i
+
+ai, (4c) 
+
+xi ≥ 0 (4d) 
+
+ai ∈ { 0, 1}ni , (4e) where the lower bound vi ∈ Rni and upper bound vi ∈ Rni
+
+of vi can be efficiently obtained through verifiers such as CROWN [39]. This enables us to embed the constraint xd =
+
+˜ξ (x0; θ ) into a mixed-integer linear program (MILP) solver, which we leverage when repairing a learned value function. 
+
+2) HardNet-Cvx: Succinctly, HardNet-Cvx [10] adds a differentiable projection layer to a given neural network such that it always obeys a differentiable convex con-straint during and after training. Consider a safe set defined by an input-dependent H-polyhedron that returns P(x0) = 
+
+H(A(x0), b(x0)) ⊆ Rnd for an input x0 ∈ Rn0 where A :
+
+Rn0 → Rnc×nd and b : Rn0 → Rnc are differentiable, as well as a base neural network ξb(·; θ ) : Rn0 → Rnd . Then, HardNet-Cvx returns xd ∈ Rnd as the optimizer of a quadratic program (QP): 
+
+xd = HardNet-Cvx (x0, P(x0); θ )= arg min 
+
+> xd
+
+{∥ xd − ξb(x0; θ )∥2 | A(x0)xd ≤ b(x0)}. (5) Thus, the output of HardNet-Cvx always lies within the safe set (i.e. xd ∈ P(x0)). Assuming P is not empty for all possible inputs to the network, (5) is differentiable [40], [41] and can therefore be incorporated into training. Note that the HardNet-Cvx structure accepts any differentiable convex constraints; we show only an H-polyhedral constraint in (5) for relevance to our method. Specifically, we extend HardNet-Cvx to the non-convex case when P is a union of input-dependent H-polyhedrons. 
+
+C. PWA Functions 
+
+A PWA function ψ : X → Rny with output y given an input 
+
+x ∈ X ⊆ Rnx is parameterized by Ai ∈ Rnc×nx , bi ∈ Rnc , Ci ∈
+
+Rny×nx , di ∈ Rny for i = 1, · · · , nPWA as: 
+
+ψ(x) = Cix + di ∀ x ∈ H(Ai, bi), (6) where we refer to each H-polyhedron H(Ai, bi) as a PWA region. For a PWA function to be well-defined, we require that X = SnPWA  
+
+> i=1
+
+H(Ai, bi) and that the output is consistent at all intersections of the PWA regions [9], [42]. In this paper, we denote PWA systems as discrete-time dynamical systems for which the dynamics ψ : X ×U → Rnx is a PWA function. Similar to ReLU networks, one can express y = ψ(x) as a MILP constraint [43] by writing (6) as 
+
+Aix ≤ bi + m(1 − ai), (7a) 
+
+y ≤ Cix + d + m(1 − ai), (7b) 
+
+y ≥ Cix + d − m(1 − ai), (7c) 
+
+ai ∈ { 0, 1}, (7d) 
+
+> nPWA
+
+# ∑
+
+> i=1
+
+ai = 1, (7e) where m ∈ R+ is a sufficiently large number. Consider a union of H-polyhedrons P =SnP 
+
+> j=1
+
+H(AP, j, bP, j) ⊆ Rny . Its preimage ψ−1(P) = {x |
+
+ψ(x) ∈ P} ⊆ X through the PWA function ψ is exactly a union of H-polyhedrons [9], [42]: 
+
+ψ−1(P) = 
+
+> nPWA [
+> i=1
+> nP[
+> j=1
+
+H
+
+ AP, jCi
+
+Ai
+
+
+
+,
+
+bP, j − AP, jdi
+
+bi
+
+ 
+
+. (8) In practice, many of the H-polyhedrons in ψ−1(P) are empty and can be omitted for a more memory-efficient representation. Importantly, ReLU networks can be exactly written as PWA functions [15], [42], meaning that the preimage ˜ξ −1(·; θ ) of a union of H-polyhedrons through a ReLU network has a closed-form expression as another union of H-polyhedrons. We leverage this property to formulate the forward invariant constraints in our method. IV. P ROPOSED METHOD : S HARD NET 
+
+ShardNet is the core technique that enables our contri-butions in this paper. In this section, we first formalize the problem of designing a neural network architecture that obeys a union of H-polyhedral constraints by-construction, then explain how ShardNet solves this problem using a dif-ferentiable projection layer characterized by a classification network. An overview of ShardNet is shown in Figure 1. 
+
+A. Problem Setup 
+
+We wish to design a neural network structure with dif-ferentiability and trainable parameters such that it can only return outputs within a safe set, defined as a union of input-dependent H-polyhedrons. Formally, 
+
+Problem 1 (Hard-Constrained Neural Network with In-put-Dependent, Polyhedral Union Constraints) . Consider an input-dependent safe set represented as a union of H-polyhedrons: P(x0) = 
+
+> nP[
+> i=1
+
+Pi(x0) = 
+
+> nP[
+> i=1
+
+H(Ai(x0), bi(x0)) ⊆ Rnd , (9) 
+
+for an input x0 ∈ X0 ⊆ Rn0 . Design a neural network ξ (·; θ ) :
+
+X0 → Rnd with learnable parameters θ ∈ Θ that satisfies 
+
+ξ (x0; θ ) ∈ P(x0) (10) 
+
+for all x0 ∈ X0 and θ ∈ Θ.
+
+For a union of input-dependent polyhedrons, it is possible that some of them might be empty for certain inputs. As such, we assume at least one of them is always non-empty for all possible inputs ( ∃ i ∈ { 1, · · · , nP} s.t. Pi(x0)̸ = /0 ∀ x0 ∈ X0) so that it is always possible to return a safe output for any input. 
+
+B. Proposed Method 
+
+To design a neural network architecture that only returns outputs within a union of H-polyhedrons, we follow the strategy in HardNet-Cvx [10] by first establishing a base network ξb(·; θ ) : X0 → Rnd with learnable parameters θ ∈ Θ:
+
+vd = ξb(x0; θ ). (11) We do not impose a specific structure on the base network but the output vd may or may not be within the safe set. To correct vd to be within the safe set, we need to decide which H-polyhedron in the polyhedral union it should project onto. Our strategy is to train a classification network 
+
+ξc(·; θc) : X0 × Rnd → RnP with parameters θc ∈ Θc:
+
+
+
+s1
+
+...
+
+snP
+
+ = ξc
+
+ x0
+
+vd
+
+
+
+; θc
+
+
+
+, (12) where si ∈ R is the predicted distance from vd to Pi(x0).We train this network offline a modified mean squared error (MSE) loss ℓdist ∈ R+:
+
+ℓdist =
+
+∑nsample  
+
+> j=1
+
+∑i∈I̸= /0, j
+
+ 
+
+ξc
+
+ x0, j
+
+vd, j
+
+
+
+; θc
+
+ 
+
+> i
+
+− si, j
+
+2
+
+∑nsample  
+
+> j=1
+
+#  I̸= /0, j
+
+ , (13) 
+
+I̸= /0, j = {i ∈ { 1, · · · , nP} | Pi(x0, j)̸ = /0}, (14) 
+
+si, j = min {∥ vd − v∥2 | v ∈ Pi(x0)}, (15) where # (·) is the cardinality of a set, (x⊺  
+
+> 0,j
+
+v⊺ 
+
+> d,j
+
+⊺)nsample 
+
+> j=1
+
+are training features uniformly sampled from some domain 
+
+X × V ⊂ X0 × Rnd , I̸= /0, j ⊆ { 1, · · · , nP} is the index set of non-empty Pi, and si, j is the distance between a point and the H-polyhedron Pi, which can be computed with a QP. To isolate cases where vd is already in a safe set or when an H-polyhedron is empty, we normalize the output of ξc(·; θc) as  ˆs1 · · · ˆsnP
+
+⊺ = normalize (s1 · · · snP
+
+⊺),defined as ˆsi =
+
+
+
+1 if Pi(x0) = /0,
+
+0 if vd ∈ Pi(x0),  
+
+> 11+e−σ(si−μ)
+
+otherwise ,
+
+(16) where σ ∈ R+ and μ ∈ R are constants controlling a logistic function such that 0 < ˆsi < 1 if Pi(x0)̸ = /0 and vd /∈ Pi(x0).This normalization ensures that the predicted distance would always be minimum if vd is already in the H-polyhedron, and maximum if the H-polyhedron is empty. Note that the con-dition Pi(x0) = /0 requires solving an LP. In practice, instead of solving nP LPs at inference time, we can precompute the feasible region of each Pi via polyhedral projection [14] to reduce the condition to an inequality check. Finally, we project vd to the H-polyhedron with the minimum normalized predicted distance and return it as our final output: 
+
+xd = ShardNet (x0, P; θ ),
+
+= HardNet-Cvx (x0, Pi∗ ; θ ), where (17a) 
+
+i∗ = arg min 
+
+> i
+
+ 
+
+normalize 
+
+
+
+ξc
+
+ x0
+
+ξb(x0; θ )
+
+
+
+; θc
+
+ 
+
+> i
+
+
+
+.
+
+(17b) Thus, vd is not altered if it is already in a safe set, and is never projected onto an empty safe set. Thus, one can think of ShardNet as HardNet-Cvx, but with the projection condi-tion controlled by a classification network, thereby preserv-ing its ability to be differentiated and safe-by-construction. This pipeline, summarized in Figure 1, enables the pa-rameters θ in the base network to be trained while ensuring the output is always in the safe set, which is a union of H-polyhedrons. We verify that it solves Problem 1: 
+
+Theorem 2 (ShardNet Enforces H-Polyhedral Union Con-straints) . The output xd of ShardNet is always within the union of H-polyhedrons P for all θ ∈ Θ, θc ∈ Θc, σ ∈ R+,
+
+μ ∈ R, and x0 ∈ X0.Proof. From Section IV-A, we know that at least one H-polyhedron is non-empty for any x0 ∈ X0. From (16), the normalized predicted distances for all non-empty H-polyhedrons must be strictly less than 1. As such, Pi∗ from (17) always corresponds to a non-empty H-polyhedron, on which HardNet-Cvx would project to. 
+
+Remark 3. An important consequence of Theorem 2 is that ShardNet still holds its safety guarantees regardless of how poorly ξc(·; θc) is trained. Though a poorly trained ξc(·; θc)
+
+and non-smooth operations such as arg min from (17b) may affect the performance of the overall network, we find such cases to be rare in practice. We leave a more thorough investigation of their effects to future work. 
+
+V. A PPLICATIONS 
+
+While solving Problem 1 generally enables polyhedral union constraint satisfaction on neural networks, it is not immediately obvious, however, how the solution can be applied to synthesize safe control policies: a neural control policy with ShardNet architecture imposes constraints on the controller output, whereas control invariance constraints are most naturally placed on the output of the dynamics .In this section, we demonstrate the utility of ShardNet by showing how control invariance constraints, expressed as a union of H-polyhedrons (Section V-A) or the sub-zero level set of a ReLU network (Section V-B), can be formulated into Problem 1 by computing the preimage of PWA systems. 
+
+A. Forward-Invariance from Union of H-Polyhedrons 
+
+We first discuss how to synthesize forward-invariant neural policies with ShardNet for a union of H-polyhedrons, which is a common specification for systems with linear, affine, or PWA dynamics with explicit safety constraints such as actuator limits or state bounds. 
+
+1) Problem Setup: For a discrete-time PWA dynamics system, given a union of H-polyhedrons, we wish to design neural network control policies such that the next state will be within the polyhedral union, assuming it can be done. Formally, 
+
+Problem 4 (Learning Forward-Invariant Controller for Union of H-Polyhedrons) . For a discrete-time PWA system with dynamics ψ : X × U → Rnx , where X × U ⊆ Rnx × Rnu is a union of H-polyhedrons, render the set XFI =
+
+> nFI [
+> i=1
+
+XFI ,i =
+
+> nFI [
+> i=1
+
+H(AFI ,i, bFI ,i) ⊆ X (18) 
+
+forward-invariant by designing a neural network control policy ξπ (·; θπ ) : X → U with learnable parameters θπ ∈ Θπ .That is, ensure that 
+
+ψ
+
+ xt
+
+ξπ (xt ; θπ )
+
+ 
+
+∈ XFI , (19) 
+
+for all θπ ∈ Θπ and xt ∈ X where ∃ut ∈ U such that 
+
+ψ(x⊺ 
+
+> t
+
+u⊺
+
+> t
+
+⊺) ∈ XFI .
+
+If XFI can indeed be rendered forward-invariant, then the control policy from solving Problem 4 would maintain the states within XFI for all future timesteps: 
+
+Assumption 5 (XFI Is A Control-Invariant Set) . We assume that for all xt ∈ XFI , ∃ ut ∈ U such that ψ(x⊺ 
+
+> t
+
+u⊺
+
+> t
+
+⊺) ∈ XFI .
+
+Remark 6. Assumption 5 is non-trivial to fulfill, which is why we and other learned forward-invariant control policies [6], [7] are limited to simple dynamical systems in practice, even though Problem 4 theoretically extends to all general PWA systems, including those learned as ReLU or convolu-tional neural networks (CNN). This motivates us to develop forward-invariant policies for value functions in Section V-B, which slightly alleviates the assumption by enabling the invariant sets to be learned as neural networks. We leave directly reducing the difficulty of Assumption 5 to future work. 2) Proposed Method: The difficulty of applying ShardNet to Problem 4 lies in defining the H-polyhedral union con-straints P at the output of the control policy ξπ (·; θπ ), which is separated from the given constraint set XFI by a PWA system ψ. Na¨ ıvely, one might attempt to set P(xt ) = Pxu ,where 
+
+Pxu =
+
+> nP[
+> i=1
+
+Pxu ,i = ψ−1(XFI ), (20) which is a union of H-polyhedrons from (8). However, this is incorrect, as the output of ξπ (·; θπ ) is ut ∈ U, whereas 
+
+Pxu ⊆ X ×U.That said, since we know the current state xt at inference time, we can reduce Pxu to U by expressing it as a function of xt via slicing: 
+
+P(xt ) = slice (Pxu , xt ) = 
+
+> nP[
+> i=1
+
+slice (Pxu ,i, xt ), (21) which is still a union of H-polyhedrons according to (2). We show that Problem 4 can be solved by applying ShardNet to (21): 
+
+Theorem 7 (ShardNet Control Policy for Union of H-Poly-hedrons) . The control policy 
+
+ut = ShardNet  xt , slice  ψ−1(XFI ), xt
+
+ ; θπ
+
+ (22) 
+
+satisfies ψ(x⊺ 
+
+> t
+
+u⊺
+
+> t
+
+⊺) ∈ XFI for all learnable parame-ters θπ ∈ Θπ and all xt ∈ X where ∃ u ∈ U such that 
+
+ψ(x⊺ 
+
+> t
+
+u⊺⊺) ∈ XFI .Proof. By the definition of preimage, ψ−1(XFI ) =
+
+{x⊺ u⊺⊺ | ψ(x⊺ u⊺⊺) ∈ XFI }. Thus, by the definition of slicing in (2), we have P = slice (ψ−1(XFI ), xt ) = {u |
+
+ψ(x⊺ 
+
+> t
+
+u⊺⊺) ∈ XFI }. Since, from Theorem 2, we have 
+
+ut ∈ P for all θπ ∈ Θπ and xt where P is non-empty, and that the slicing and preimage operations are exact, Theorem 7 must be true. Since ShardNet is guaranteed to return a forward-invariant control for xt if it exists, the neural control policy can be optimized while always satisfying safety constraints, which are enforced independently of the performance objective. Furthermore, if the system starts at a state xt where ∄ ut to stay in XFI , this dangerous condition can be quickly verified by checking if  ˆs1 · · · ˆsnP
+
+⊺ = 1 (whether all safe sets for xt is empty), which contrasts sharply with ad hoc repair methods that cannot verify if the problem is solvable in the first place [6], [7]. 
+
+B. Forward-Invariance from Learned Value Functions 
+
+When a system’s dynamics and constraint specification are more complex, such as controlling a quadruped to stand up [2] or navigating a drone through obstacles [5], it is typical to represent the control invariant set as the sub-zero level set of a value function. Here, we discuss how to learn these value functions correctly as a ReLU network, and how to synthesize safe neural polices for them using ShardNet. 
+
+1) Problem Setup: Given a control invariant set expressed as the sub-zero level set of a ReLU neural network value function, we wish to design neural network control policies such that the next state will remain in the sub-zero level set of the value function. Formally, 
+
+Problem 8 (Learning Forward-Invariant Controller for Value Functions) . Given a ReLU value function ˜ξQ(·; θQ) : X ×U →
+
+R, design a neural network policy ξπ (·; θπ ) : X → U with learnable parameters θπ ∈ Θπ that are differentiable and satisfy 
+
+˜ξQ
+
+ xt
+
+ξπ (xt ; θπ )
+
+
+
+; θQ
+
+
+
+≤ 0, (23) 
+
+for all θ ∈ Θ and xt ∈ X ⊂ Rnx where ∃ut ∈ U ⊂ Rnu such that ˜ξQ(x⊺ 
+
+> t
+
+u⊺
+
+> t
+
+⊺ ; θQ) ≤ 0. Assume X × U is a union of H-polytopes. 
+
+This specific form of value function ˜ξQ(·; θQ) is known as a Q-network [8] or a state-action CBF (SACBF) [44]; we will henceforth refer to it as a Q-network. Q-networks share close ties HJ value functions [2] and CBFs [44], and can be approximated as a neural network using deep reinforcement learning (RL) methods such as soft actor-critic (SAC) [2], [45]. Similar to Assumption 5, we assume that the given Q-network can actually represent a control-invariant set. In this case, for a discrete-time deterministic, bounded, and Lips-chitz continuous dynamical system and some user-defined constraint value function, the Q-network must fulfill con-straint satisfaction and forward invariance to be considered safe [8]. Mathematically, 
+
+Assumption 9 (Sublevel Set of Q-Network Denotes Safety) .
+
+Let the system dynamics f : X × U → X be discrete-time, deterministic, bounded, and Lipschitz continuous: 
+
+xt+1 = f
+
+ xt
+
+ut
+
+ 
+
+. (24) 
+
+Consider a user-defined constraint function h : Rnx → R,where constraints are considered violated at the current timestep t iff h (xt ) > 0. We assume the sub-zero level set of a Q-network {x | ˜ξQ(x⊺ u⊺⊺ ; θQ) ≤ 0} is a safe invariant set [8], meaning that ˜ξQ(·; θQ) satisfies: 1) (Constraint Satisfaction). If ˜ξQ(x⊺ u⊺⊺ ; θQ) ≤ 0,then h(x) ≤ 0. (25) 
+
+2) (Forward Invariance). If ˜ξQ(x⊺ u⊺⊺ ; θQ) ≤ 0, then there exists u′ ∈ U such that 
+
+˜ξQ
+
+f
+
+ xu
+
+ 
+
+u′
+
+ ; θQ
+
+ ≤ 0. (26) Then, the control policy ξπ (·; θπ ) from solving Problem 8 would ensure that any states that starts within the sub-zero level set of the Q-network would satisfy the constraint 
+
+h(xt ) ≤ 0 for all future timesteps t.Unfortunately, Assumption 9 is not trivial to satisfy either. Existing methods that train Q-networks do not bother to formally verify (25) and (26), and offer no solution to fix them even if violations are found [2], [44]. The only relevant work is [8], though they reported having failed to train a safe ReLU Q-network with a non-empty sub-zero level set even for a double integrator system. Instead, they have to propose a new network structure ( multiplicative Q-network )where the preimage can no longer be computed by (8) and the complexity of the verification becomes a more complex mixed-integer quadratically constrained program (MIQCP) in place of a MILP. This motivates us to offer preliminary insights on how a safe, non-trivial Q-network can be trained with a ReLU network to enable provable forward-invariance on systems using level sets and ShardNet. Particularly, given a ReLU Q-network, we wish to verify whether it satisfies conditions (25) and (26). If it does not, we wish to extract violation signal from the verification and repair the network until it is safe. Formally, Problem 10 (Verification and Repair of Q-Network) . Given a ReLU Q-network ˜ξQ(·; θQ) : X × U → R, system dy-namics f : X × U → X, and constraint value function h :
+
+Rnx → R, we wish to find learnable parameters θQ =(W1, · · · , Wd , w1, · · · , wd ) such that ˜ξQ(·; θQ) satisfies (25) 
+
+and (26) , assuming f and h are PWA functions. In addition, we wish to maximize the size of its sub-zero level set {x |
+
+˜ξQ(x⊺ u⊺⊺ ; θQ) ≤ 0}.
+
+Maximizing the sub-zero level set ensures a large safe invariant set and discourages the trivial solution of the Q-network being positive everywhere. 
+
+Remark 11. Unlike Problem 4 and Problem 8, we are not aiming to design a network that satisfies (25) and (26) 
+
+by-construction in Problem 10, but are instead modifying the parameters of an existing network structure. This is because (26) incurs a recursive condition that is non-trivial to solve with ShardNet or any existing hard-constrained neural network architectures; so, we leave this to future work. 2) Safe Controller Synthesis: We first solve Problem 8 given Assumption 9 (i.e. assuming Problem 10 has been solved). Surprisingly, we find that Problem 8 can be solved in a very similar way to Problem 4 using ShardNet due to ReLU networks being PWA functions. The key is to compute the preimage of the negative half space instead of XFI :
+
+Theorem 12 (ShardNet Control Policy for Sublevel Sets) .
+
+The control policy 
+
+ut = ShardNet 
+
+
+
+xt , slice 
+
+ ˜ξ −1 
+
+> Q
+
+(H(1, 0); θQ), xt
+
+
+
+; θπ
+
+
+
+, (27) 
+
+satisfies ˜ξQ(x⊺ 
+
+> t
+
+u⊺
+
+> t
+
+⊺ ; θQ) ≤ 0 for all θπ ∈ Θπ in (27) and all xt ∈ X where ∃ u ∈ U such that ˜ξQ(x⊺ 
+
+> t
+
+u⊺⊺ ; θQ) ≤ 0.Proof. The H-polyhedron H(1, 0) represents the set of all non-positive real numbers {z | z ≤ 0} by the definition in (1). The rest of the proof follows that of Theorem 7 except with XFI replaced with H(1, 0).Unlike [2], [8], [25] where the learned Q-network must be tied with a specific control policy, Theorem 12 allows the control policy to be freely altered with additional objectives while still always satisfying constraints by being within the sub-zero level set of the Q-network. However, the control policy (27) relies heavily on Assump-tion 9. This is because the policy projects constraint-violating outputs of the base network to the boundary of the sub-zero level set of the value function, which is where violations of (25) and (26) are most likely to occur [8], [25]. In practice, one must either project further away from the boundary of the sub-zero level set [44] (e.g. use H(1, −ε) instead of H(1, 0)
+
+in (27) for some small number ε ∈ R+), or find a way to verify and repair a ReLU Q-network, which we address next. 
+
+3) Training a Safe Q-Network: Our pipeline for training a safe Q-network is summarized in Figure 2. It follows closely to the method proposed in [8], with the difference in adding complete verification conditions to check the validity of the ˜ξQ(·;  θQ)   
+
+> Unsafe
+> Q-Network
+> Original Pipeline [8]
+> Proposed Pipeline
+> ✔
+> ✔
+> ✔
+> ✔
+> ✔
+> (28)
+> Constraint
+> satisfied?
+> ˜ξQ(·; θQ)
+> Safe
+> Q-Network
+> Finetune
+> Q-Network
+> Proposition 13
+> Is counter-
+> example false
+> positive?
+> ✔
+> [25]
+> Verified
+> by BGB? Proposition 13
+> Are counter-
+> examples false
+> positive?
+> ✘
+> ✘
+> (33)
+> Verified
+> by ReLU
+> controller?
+> Finetune
+> ReLU
+> controller
+> ✘
+> ✘
+> ✘
+
+Fig. 2: Flowchart for our proposed method (green) of repairing an unsafe Q-network. The original pipeline proposed by [8] (blue) con-sists of sound verification methods, which penalizes the Q-network with false positives and causes unnecessary level-set shrinkage. We augment their method by adding complete verification techniques to double-check whether the identified counterexamples are legitimate. 
+
+counterexamples found by the sound verification techniques in [8]. Our key insight is that, if a safe sample is mistakenly identified as a counterexample through a sound verification method, we should alter the verification method instead of the Q-network, as penalizing a Q-network when unnecessary would result in over-shrinkage of the level set (especially if it is a ReLU network) [8]. To start, we attempt to find multiple points that vi-olate conditions (25) and (26) with boundary-guided backtracking (BGB) [25]. Succinctly, we collect samples from within the sub-zero level set of the Q-network, then update them by following the gradient to maxi-mize a violation loss of either (25) or (26). Refer to [25] for details. After some gradient steps, we retain the samples that violate (25) or (26). Per [8], a sam-ple (xcon ,i, ucon ,i) ∈ { (xcon ,1, ucon ,1), · · · , (xcon ,ncon , ucon ,ncon )}
+
+is constraint-violating (violation of (25)) if ˜ξQ
+
+ xcon ,i
+
+ucon ,i
+
+
+
+; θQ
+
+
+
+≤ 0, and (28a) 
+
+h(xcon ,i) > 0, (28b) which involves inequality checks. Similarly, a sam-ple (xinv ,i, uinv ,i) ∈ { (xinv ,1, uinv ,1), · · · , (xinv ,ninv , uinv ,ninv )} is invariance-violating (violation of (26)) if ˜ξQ
+
+ xinv ,i
+
+uinv ,i
+
+
+
+; θQ
+
+
+
+≤ 0, and (29a) min 
+
+> u′∈U
+
+ ˜ξQ
+
+f
+
+ xinv ,i
+
+uinv ,i
+
+ 
+
+u′
+
+ ; θQ
+
+ > 0. (29b) To check (29b), [8] uses a sound interval arithmetic technique, which means if a solution cannot be found, 
+
+(xinv ,i, uinv ,i) is not an invariance-violating sample; otherwise, the verification is inconclusive. Despite this, [8] would treat potentially false positive samples as if they were true counterexamples, altering θQ when it might not be needed. We fix this issue by instead formulating (29b) exactly into a MILP check: 
+
+Proposition 13 (Forward Invariance MILP Check) . Consider some x ∈ X and u ∈ U. (x, u) is an invariance-violating sample iff ˜ξQ(x⊺ u⊺⊺ ; θQ) ≤ 0 and u∗(x, u) > 0, where 
+
+u∗ : X ×U → U is the optimal solution of the MILP: 
+
+u∗(x, u) = arg min 
+
+> u′∈U
+
+ ˜ξQ
+
+f
+
+ xu
+
+ 
+
+u′
+
+ ; θQ
+
+ . (30) 
+
+Proof. Since we assume f is PWA and ˜ξQ(·; θQ) is ReLU, (30) is a MILP from (4) and (7). The rest of the proof follows from the definition of an invariance-violating sample from (29b). If true constraint-violating samples and invariance-violating samples are found, per [8], we train the Q-network ˜ξQ(·; θQ) for one iteration with the loss function ℓ given below in (31c), then repeat from BGB [25]: 
+
+ℓcon = −
+
+> ncon
+
+# ∑
+
+> i=1
+
+˜ξQ
+
+ xcon ,i
+
+ucon ,i
+
+
+
+; θQ
+
+
+
+, (31a) 
+
+ℓinv =
+
+> ninv
+
+# ∑
+
+> i=1
+
+˜ξQ
+
+f
+
+ xinv ,i
+
+uinv ,i
+
+ 
+
+u∗
+
+ ; θQ
+
+!
+
+− ˜ξQ
+
+ xinv ,i
+
+uinv ,i
+
+
+
+; θQ
+
+!
+
+,
+
+(31b) 
+
+ℓ = ℓcon + ℓinv 
+
+ncon + ninv 
+
+. (31c) If not, we need to formally verify that there exists no 
+
+x ∈ X and u ∈ U that violates (28) and (29) (i.e. check every possible point in the domain, not just samples). For (28), the condition can be checked using a MILP [8], which also returns a true counterexample if found. If (28) is violated, we similarly train ˜ξQ(·; θQ) for one iteration with ℓcon and repeat from BGB. Otherwise, we proceed to check violations to (29) for the whole domain. Unfortunately, a complete verification of (29) for all x ∈ X
+
+and u ∈ U involves a bilevel MILP, which is very difficult to solve [46]. Instead, [8] proposed a sound verification technique by approximating an optimal controller with a ReLU network ˜ξu(·; θu) : Rnx × Rnu → Rnu with supervised learning: 
+
+u′ = ˜ξu
+
+ xu
+
+
+
+; θu
+
+
+
+≈ u∗(x, u), (32) where labels can be generated by sampling or solving MILPs. Then, if the MILP find x, u
+
+s.t. ˜ξQ
+
+ xu
+
+
+
+; θQ
+
+
+
+≤ 0,
+
+˜ξQ
+
+
+
+f
+
+ xu
+
+ 
+
+˜ξu
+
+ xu
+
+
+
+; θu
+
+ ; θQ
+
+ ≥ ε,
+
+(33) is infeasible for some small positive number ε ∈ R+, then we can conclude that ˜ξQ(·; θQ) is safe and Problem 10 has been solved. Otherwise, the verification is inconclusive, despite (33) returning a counterexample candidate. Here, [8] would again ignore false positive cases, penalizing ˜ξQ(·; θQ) even when it might already be safe. Instead, we again verify if the candidate is a true invariance-violating counterexample using Proposition 13. If it is, we train ˜ξQ(·; θQ) for one iteration with ℓinv and repeat from BGB. If not, we instead opt to 
+
+tighten the soundness of the verification by training ˜ξu(·; θu)
+
+with more samples and epochs, until either ˜ξQ(·; θQ) is verified safe, or a true counterexample is found. A flowchart of the method is summarized in Figure 2. 
+
+Remark 14. Similar to [8], we note that many of the tech-niques used here (such as MILP and sampling) scale poorly with dimensions and thus defeat the purpose of learning an HJ value function in the first place. Moreover, as with many counterexample neural network repair methods [8], [25], [47]–[49], a “whac-a-mole” problem might occur [6], [27], where making the counterexamples safe might make other samples unsafe, providing no guarantees in the training being successful. We present this preliminary method in the paper to shine light on how a provably-correct ReLU Q-network can be trained, which has not previously been done, to the best of our knowledge. We leave investigation of how to repair Q-networks, potentially by set-based training methods [6], [7], [27] or by-construction [10], [31], to future work. 
+
+VI. E XPERIMENTS 
+
+We now assess our method by validating ShardNet on double integrator benchmarks drawn from the literature [2], [6], [8]. All experiments were performed on a desktop computer with a 24-core i9 CPU, 32 GB RAM, and an NVIDIA RTX 4090 GPU. Our method is implemented in Python. We are preparing our code for open-source release. 
+
+A. Effects of Hard-Constrained Forward Invariance 
+
+To compare safe-by-construction neural networks with neural network repair methods, we replicate the experiment from [6, Sec. VI-A], where we wish to train a neural network controller to certify forward invariance for a double integra-tor in a non-convex region. Our hypothesis is that ShardNet Objective Only  Neural Network 
+
+Repair [6] 
+
+ShardNet 
+
+(Ours)     
+
+> Before Training After Training
+> 1.300992 Loss: 1.300992 1.295130
+> 0.000008 Loss: 0.804024 0.274792 Fig. 3: Results of the experiment to certify forward invariance for a double integrator over non-convex safe sets defined by H-polyhedrons. The complement of the safe states are shown in pink, the states at the next timestep (with current states sampled from the safe sets) using the neural network policy is shown in blue, and the next states violating the forward invariance constraints are highlighted in red. The objective loss at each stage is listed below each subfigure. ShardNet is safe by construction, allowing the objective to be optimized without needing to balance for safety.
+
+creates a more optimal safe control policy, since neural network repair methods need to optimize both safety and performance at the same time, whereas safe-by-construction methods like ours only need to optimize performance since safety is always given. 
+
+1) Experiment Setup: We consider double integrator dy-namics with XFI defined as the union of two H-polyhedrons (see [6, Sec. VI-A.3] for details and Figure 3 for visualiza-tion). The neural network controller is a ReLU network with 1 hidden layer of width 3, and the objective is to approximate the policy ut = −2 −1⊺ xt without violating the forward invariant constraints. For ShardNet, the classification network has 2 hidden layers of width 20 with σ = 2.5, μ = 2 and is trained with 10 5 samples using the Adam optimizer [50] in PyTorch [51] for 10 5 iterations and learning rate decaying from 0 .1 to 8 × 10 −5. The HardNet-Cvx was trained similarly using 10 3
+
+samples using Adam [50] and CVXPYlayers [40] for 100 iterations with a learning rate of 0 .1. For comparison, we first na¨ ıvely train using only the objective policy with the same hyperparameters as [6]. We then repair the na¨ ıvely trained policy by interleaving repair steps (same setup and hyperparameters as [6]) with training steps on the objective policy (same hyperparameters as na¨ ıve training with learning rate of 10 −4) similar to [27], in an attempt to further lower their objective loss. We report the MSE loss with 10 4 samples of the objective policy within XFI at each stage for evaluation. 
+
+2) Results and Discussion: The results of this experiment is shown in Figure 3. After na¨ ıvely training, the objective loss decreases to 8 ×10 −6, though many samples violated the forward invariance constraints. The baseline [6] successfully repairs the network, but raises the objective loss to 0 .8. On the other hand, under the ShardNet structure, the control policy is automatically safe before training even starts, allow-ing the method to focus on optimizing the objective loss to 0.3. This confirms our hypothesis, showing that ShardNet is able to optimize over a union of polyhedral constraints while 
+
+always being safe, whereas repair methods may not always train successfully; even if they do, having to balance safety with the objective at the same time can yield suboptimal performance. 
+
+B. Effects of Q-Network Repair Method 
+
+To assess the quality of our Q-network training method, we compare the ReLU Q-network for a double integrator trained under [8] and our pipeline. Our hypothesis is that our complete verification method would result in a Q-network with a larger sub-zero level set than [8]. 
+
+1) Experiment Setup: We consider the double integrator example from [8] with the same dynamics, domains, and constraints. We seek to train a ReLU Q-network with 1 hidden layer of width 64 to satisfy (25) and (26). To begin, we first approximate the Q-network using SAC [2] with an actor with 2 hidden layers of width 128 using the annealing schedule from [52], then attempt to repair it using [8] and our pipeline. For both methods, the hyperparameters follow mostly those from [25]. The ReLU controller has 2 hidden layers of width 32, and is allowed to train for 6 × 10 3
+
+iterations with Adam [50] and a learning rate of 1 × 10 −4
+
+each time before (33) is evaluated. For [8] specifically, we use CROWN [39] to soundly verify the invariance-violating BGB samples. Finally, we report the number of iterations needed to finetune (whether through BGB [25], (28), or (33)) the Q-network to safety, as well as the area of the sub-zero level set for the verified Q-network, computed by uniformly sampling in a 10 3 × 10 3 grid in the state domain and 512 points in the control domain. 
+
+2) Results and Discussion: The results of this experiment is shown in Figure 4. Surprisingly, [8] produces a non-empty sub-zero level set after 444 iterations, which is the opposite of what was reported. This is possibly due to differences in hyperparameters, as [8] never disclosed theirs. Regardless, our pipeline produces a 3 times larger sub-zero level set in fewer (113) iterations for the same network structure. This result disproves the claim that verifiable Q-networks cannot be trained on ReLU networks [8], enabling the synthesis of forward-invariant policies on value functions using ShardNet, which we show next. 
+
+C. Forward-Invariant Control from Learned Value Function 
+
+Finally, we verify our formulation in Section V-B by synthesizing forward-invariant ShardNet controllers on the Q-networks trained in Section VI-B. 
+
+1) Experiment Setup: For each of the 3 ReLU Q-networks trained in Section VI-B, we first use Reachable Polyhedral Marching (RPM) [15] to exactly convert them into PWA functions. Then, we follow the procedure in Section V-B by training classification networks with the same setup 1 0 1
+
+> 21012
+
+Unverified RL 
+
+(SAC) [2] 
+
+Sound 
+
+Verification [8] 
+
+Complete 
+
+Verification (Ours) 
+
+3.332 Area:   
+
+> 101
+> 21012
+
+0.529   
+
+> 101
+> 21012
+
+1.627 Fig. 4: Results of ShardNet policies on different ReLU Q-network repairing methods. The network before repair is shown on the left. The minimum value output of each state is shown in a yello-blue gradient, with the colorbar displayed on the left. For each method, we outline the sub-zero level set in white and report their area below. The rollouts of 100 trajectories using ShardNet policies are shown in orange, with constraint or invariance violating trajectories shown in red (with end-points marked with X). ShardNet do not induce any violations on verified Q-networks, and our Q-network repair method produces a 3 times larger sub-zero level set compared to [8]. 
+
+as Section VI-A.1 except with 2 × 10 4 iterations, learning rate decaying from 0 .1 to 0 .02, and 3 .5 × 10 3 samples. The control policy was also trained to approximate the stabilizing PD control policy ut = −2 −1.5⊺ xt with the same setup except with 300 iterations and learning rate decaying from 0.1 to 0 .004. For evaluation, we sampled 3 × 10 3 points from within the sub-zero level set of the Q-network, then roll out the trajectory for 10 timesteps using the ShardNet policy. We report the number of violations on the safety constraints and forward invariance, the latter is detected when ShardNet cannot return a control that stays within the sub-zero level set, which is caused by a violation of the assumptions in Problem 1. 
+
+2) Results and Discussion: We visualize 100 of the re-sulting trajectories in Figure 4. This is a considerably more difficult problem compared with Section VI-A, since the number of safe sets ranges from 5 , 325 (for [8]) to 13 , 251 (for [2]) instead of just 2. Despite this, all trajectories from ShardNet are still 100% safe on the verified Q-networks trained with [8] and our method. On the unverified Q-network trained with [2], 0 .667% of the trajectories violate the safety constraints, and 0 .167% of the trajectories violate forward invariance. The results show that ShardNet can still maintain safety on unverified Q-networks, if ≈ 1% of failure can be tolerated. This is especially promising, since Q-networks can be difficult to repair for more complicated systems and scenarios [8]. VII. C ONCLUSION 
+
+This paper introduces ShardNet, a neural network archi-tecture designed to enforce hard constraints, expressed as unions of input-dependent H-polyhedrons, by construction. By integrating a classification network with a differentiable projection layer, ShardNet ensures that the network’s output remains within the safe set throughout the training process. The utility of ShardNet is demonstrated by synthesizing forward-invariant control policies for systems with PWA dy-namics and learned ReLU value functions. Experimental re-sults show that ShardNet maintains formal safety guarantees without sacrificing performance, achieving lower objective losses compared to traditional neural network repair methods, while ensuring 100% safety on verified Q-networks. 
+
+Limitations: We observe 3 major limitations for ShardNet. Firstly, we have only applied ShardNet on low-dimensional examples drawn from the literature [2], [6], [8]. We are exploring extension to more complex systems. Secondly, the inference time of ShardNet is bottlenecked by solving a differentiable LP projection. While this issue is inherited from our use of HardNet-Cvx [10], future work may explore replacing it polyhedral constraints as a union of halfspace constraints, where closed-form projection exists [10]. Finally, when ShardNet is applied on unverified Q-networks, the control policy may fail to return an output when no safe action is possible. In this case, ShardNet needs to be paired with a backup policy to recover safety or to fail gracefully. Future work may explore the co-design of such a backup policy that is aware of the capabilities of ShardNet. REFERENCES [1] S. Bansal and C. J. Tomlin, “Deepreach: A deep learning approach to high-dimensional reachability,” in 2021 IEEE International Con-ference on Robotics and Automation (ICRA) , IEEE, 2021, pp. 1817– 1824. [2] J. F. Fisac, N. F. Lugovoy, V. Rubies-Royo, S. Ghosh, and C. J. Tomlin, “Bridging hamilton-jacobi safety analysis and reinforce-ment learning,” in 2019 International Conference on Robotics and Automation (ICRA) , IEEE, 2019, pp. 8550–8556. [3] C. Dawson, S. Gao, and C. Fan, “Safe control with learned certificates: A survey of neural lyapunov, barrier, and contraction methods for robotics and control,” IEEE Transactions on Robotics ,vol. 39, no. 3, pp. 1749–1767, 2023. [4] C. Dawson, B. Lowenkamp, D. Goff, and C. Fan, “Learning safe, generalizable perception-based hybrid control with certificates,”                                         
+
+> IEEE Robotics and Automation Letters , vol. 7, no. 2, pp. 1904– 1911, 2022. [5] C. Dawson, Z. Qin, S. Gao, and C. Fan, “Safe nonlinear control using robust neural lyapunov-barrier functions,” in Conference on Robot Learning , PMLR, 2022, pp. 1724–1735. [6] L. K. Chung and S. Kousik, “Provably-safe neural network train-ing using hybrid zonotope reachability analysis,” arXiv preprint arXiv:2501.13023 , 2025. [7] A. Harapanahalli and S. Coogan, “Certified robust invariant polytope training in neural controlled odes,” arXiv preprint arXiv:2408.01273 , 2024. [8] J. Li, H. Hu, Y. Yang, and C. Liu, “Verifiable safety q-filters via hamilton-jacobi reachability and multiplicative q-networks,” arXiv preprint arXiv:2506.15693 , 2025. [9] L. K. Chung, W. Jung, C. Kong, and S. Kousik, “Goal-reaching trajectory design near danger with piecewise affine reach-avoid computation,” arXiv preprint arXiv:2402.15604 , 2024. [10] Y. Min and N. Azizan, “Hardnet: Hard-constrained neural net-works with universal approximation guarantees,” arXiv preprint arXiv:2410.10807 , 2024. [11] D. Bertsekas, “Infinite time reachability of state-space regions by using feedback control,” IEEE Transactions on Automatic Control ,vol. 17, no. 5, pp. 604–613, 1972. [12] F. Blanchini, S. Miani, et al. ,Set-theoretic methods in control .Springer, 2008, vol. 78. [13] T. Anevlavis and P. Tabuada, “Computing controlled invariant sets in two moves,” in 2019 IEEE 58th Conference on Decision and Control (CDC) , IEEE, 2019, pp. 6248–6254. [14] M. Herceg, M. Kvasnica, C. N. Jones, and M. Morari, “Multi-parametric toolbox 3.0,” in 2013 European control conference (ECC) , IEEE, 2013, pp. 502–510.
+
+[15] J. A. Vincent and M. Schwager, “Reachable polyhedral marching (rpm): An exact analysis tool for deep-learned control systems,” 
+
+IEEE Transactions on Neural Networks and Learning Systems ,2025. [16] C. E. D´ orea, E. B. Castelan, and J. G. Ernesto, “Robust positively in-variant polyhedral sets and constrained control using fuzzy ts mod-els: A bilinear optimization design strategy,” IFAC-PapersOnLine ,vol. 53, no. 2, pp. 8013–8018, 2020. [17] B. Houska, M. A. M¨ uller, and M. E. Villanueva, “Polyhedral control design: Theory and methods,” arXiv preprint arXiv:2412.13082 ,2024. [18] J. J. Choi, D. Lee, K. Sreenath, C. J. Tomlin, and S. L. Herbert, “Robust control barrier–value functions for safety-critical control,” in 2021 60th IEEE Conference on Decision and Control (CDC) ,IEEE, 2021, pp. 6814–6821. [19] K. P. Wabersich, A. J. Taylor, J. J. Choi, et al. , “Data-driven safety filters: Hamilton-jacobi reachability, control barrier functions, and predictive methods for uncertain systems,” IEEE Control Systems Magazine , vol. 43, no. 5, pp. 137–177, 2023. [20] S. Bansal, M. Chen, S. Herbert, and C. J. Tomlin, “Hamilton-jacobi reachability: A brief overview and recent advances,” in 2017 IEEE 56th Annual Conference on Decision and Control (CDC) , IEEE, 2017, pp. 2242–2253. [21] C. J. Tomlin, I. Mitchell, A. M. Bayen, and M. Oishi, “Computa-tional techniques for the verification of hybrid systems,” Proceed-ings of the IEEE , vol. 91, no. 7, pp. 986–1001, 2003. [22] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada, “Control barrier functions: Theory and applica-tions,” in 2019 18th European control conference (ECC) , Ieee, 2019, pp. 3420–3431. [23] A. D. Ames, J. W. Grizzle, and P. Tabuada, “Control barrier function based quadratic programs with application to adaptive cruise control,” in 53rd IEEE conference on decision and control ,IEEE, 2014, pp. 6271–6278. [24] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, “Control barrier function based quadratic programs for safety critical systems,” IEEE Transactions on Automatic Control , vol. 62, no. 8, pp. 3861–3876, 2016. [25] Y. Yang, H. Hu, T. Wei, S. E. Li, and C. Liu, “Scalable synthesis of formally verified neural value function for hamilton-jacobi reacha-bility analysis,” Journal of Artificial Intelligence Research , vol. 83, 2025. [26] P. Chaudhury, A. Estornell, and M. Everett, “Learning verifi-able control policies using relaxed verification,” arXiv preprint arXiv:2504.16879 , 2025. [27] L. K. Chung, A. Dai, D. Knowles, S. Kousik, and G. X. Gao, “Constrained feedforward neural network training via reachability analysis,” arXiv preprint arXiv:2107.07696 , 2021. [28] M. Korda, “Stability and performance verification of dynamical systems controlled by neural networks: Algorithms and complexity,” 
+
+IEEE Control Systems Letters , vol. 6, pp. 3265–3270, 2022. [29] M. Ataei, H. Cheong, and A. Butscher, “Mpolice: Provable enforce-ment of multi-region affine constraints in deep neural networks,” 
+
+arXiv preprint arXiv:2502.02434 , 2025. [30] R. Balestriero and Y. LeCun, “Police: Provably optimal linear constraint enforcement for deep neural networks,” in ICASSP 2023-2023 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , IEEE, 2023, pp. 1–5. [31] A. V. Konstantinov and L. V. Utkin, “A new computationally simple approach for implementing neural networks with output hard constraints,” in Doklady Mathematics , Springer, vol. 108, 2023, S233–S241. [32] B. Aceituno-Cabezas, J. Cappelletto, J. C. Grieco, and G. Fern´ andez-L´ opez, “A generalized mixed-integer convex program for multilegged footstep planning on uneven terrain,” arXiv preprint arXiv:1612.02109 , 2016. [33] G. Lastrucci and A. M. Schweidtmann, “Enforce: Nonlinear con-strained learning with adaptive-depth neural projection,” arXiv preprint arXiv:2502.06774 , 2025. [34] A. Iftakher, R. Golder, B. N. Roy, and M. F. Hasan, “Physics-informed neural networks with hard nonlinear equality and inequal-ity constraints,” Computers & Chemical Engineering , p. 109 418, 2025. [35] J.-B. Bouvier, K. Nagpal, and N. Mehr, “Policed rl: Learning closed-loop robot control policies with provable satisfaction of hard constraints,” arXiv preprint arXiv:2403.13297 , 2024. [36] K. Wong, W. Xiao, and D. Rus, “Posafenet: Safe learning with poset-structured neural nets,” arXiv preprint arXiv:2601.22356 ,2026. [37] M. J. Kochenderfer, S. M. Katz, A. L. Corso, and R. J. Moss, 
+
+Algorithms for validation , 2025. [38] V. Tjeng, K. Xiao, and R. Tedrake, “Evaluating robustness of neural networks with mixed integer programming,” arXiv preprint arXiv:1711.07356 , 2017. [39] H. Zhang, T.-W. Weng, P.-Y. Chen, C.-J. Hsieh, and L. Daniel, “Effi-cient neural network robustness certification with general activation functions,” Advances in neural information processing systems ,vol. 31, 2018. [40] A. Agrawal, B. Amos, S. Barratt, S. Boyd, S. Diamond, and J. Z. Kolter, “Differentiable convex optimization layers,” Advances in neural information processing systems , vol. 32, 2019. [41] B. Amos and J. Z. Kolter, “Optnet: Differentiable optimization as a layer in neural networks,” in International conference on machine learning , PMLR, 2017, pp. 136–145. [42] L. K. Chung, W. Jung, S. Pullabhotla, et al. , “Guaranteed reach-avoid for black-box systems through narrow gaps via neural network reachability,” in 2025 IEEE International Conference on Robotics and Automation (ICRA) , IEEE, 2025, pp. 3574–3581. [43] T. Marcucci and R. Tedrake, “Mixed-integer formulations for opti-mal control of piecewise-affine systems,” in Proceedings of the 22nd ACM International Conference on Hybrid Systems: Computation and Control , 2019, pp. 230–239. [44] K. He, S. Shi, T. v. d. Boom, and B. De Schutter, “State-action control barrier functions: Imposing safety on learning-based control with low online computational costs,” arXiv preprint arXiv:2312.11255 , 2023. [45] T. Haarnoja, A. Zhou, P. Abbeel, and S. Levine, “Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor,” in International conference on machine learning ,Pmlr, 2018, pp. 1861–1870. [46] M. Fischetti, I. Ljubi´ c, M. Monaci, and M. Sinnl, “A new general-purpose algorithm for mixed-integer bilevel linear programs,” Op-erations Research , vol. 65, no. 6, pp. 1615–1637, 2017. [47] H.-D. Tran, S. Bak, W. Xiang, and T. T. Johnson, “Verification of deep convolutional neural networks using imagestars,” in Interna-tional conference on computer aided verification , Springer, 2020, pp. 18–42. [48] H. D. Tran, S. W. Choi, X. Yang, T. Yamaguchi, B. Hoxha, and D. Prokhorov, “Verification of recurrent neural networks with star reachability,” in Proceedings of the 26th ACM International Conference on Hybrid Systems: Computation and Control , 2023, pp. 1–13. [49] H. Dai, B. Landry, L. Yang, M. Pavone, and R. Tedrake, “Lyapunov-stable neural-network control,” arXiv preprint arXiv:2109.14152 ,2021. [50] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimiza-tion,” arXiv preprint arXiv:1412.6980 , 2014. [51] A. Paszke, S. Gross, F. Massa, et al. , “Pytorch: An imperative style, high-performance deep learning library,” Advances in neural information processing systems , vol. 32, 2019. [52] K.-C. Hsu, V. Rubies-Royo, C. J. Tomlin, and J. F. Fisac, “Safety and liveness guarantees through reach-avoid reinforcement learn-ing,” arXiv preprint arXiv:2112.12288 , 2021.
