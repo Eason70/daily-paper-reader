@@ -6,77 +6,71 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-01
-- 运行时间：2026-07-01 21:46:36 UTC
+- 最新运行日期：2026-07-03
+- 运行时间：2026-07-03 21:26:02 UTC
 - 运行状态：成功
-- 本次总论文数：19
-- 精读区：7
+- 本次总论文数：17
+- 精读区：5
 - 速读区：12
 
 ### 今日简报（AI）
-今日共19篇论文，聚焦多模态AI无人机自主着陆与层次化具身推理两大热点。最值得关注的是《Robust Autonomous UAV Landing》提出的主动波浪补偿方案（9.0分）和《ObsGraph》的观察表示框架（8.0分）。建议普通读者优先精读这两篇，并留意在线安全学习与跨机器人泛化策略的交叉方向。
-- 详情：[/202607/01/README](/202607/01/README)
+今日共推17篇论文，精读2篇高分（9.0/10）聚焦四旋翼飞行安全滤波与无人机在波浪平台上的分层控制。最值得关注的方向是结合3D高斯喷溅的模型闭环安全滤波器，以及用于复杂着陆环境的强化学习分层框架。建议普通读者优先精读这两篇高分期论文，以快速把握当前无人机安全与自主控制的前沿方法。
+- 详情：[/202607/03/README](/202607/03/README)
 
 ### 精读区论文标签
-1. [Robust Autonomous UAV Landing on Maritime Platforms via Multimodal Agentic AI and Active Wave Compensation](/202607/01/2606.31613v1-robust-autonomous-uav-landing-on-maritime-platforms-via-multimodal-agentic-ai-and-active-wave-compensation)  
+1. [FastBridge: Closing the Model-Based Realization Gap in Safety Filters on 3D Gaussian Splatting for Fast Quadrotor Flight](/202607/03/2607.01200v1-fastbridge-closing-the-model-based-realization-gap-in-safety-filters-on-3d-gaussian-splatting-for-fast-quadrotor-flight)  
    标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：基于深度强化学习的UAV在USV上着陆，带有主动波浪补偿
-2. [ObsGraph: Hierarchical Observation Representation for Embodied Reasoning and Exploration](/202607/01/2606.24068v1-obsgraph-hierarchical-observation-representation-for-embodied-reasoning-and-exploration)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：具身推理与探索场景图
-3. [ViPSim: Collaborating Visual and Parameter Spaces for Consistent Long-Horizon Embodied World Models](/202607/01/2606.28804v1-vipsim-collaborating-visual-and-parameter-spaces-for-consistent-long-horizon-embodied-world-models)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：具身世界模型实现一致的长视距生成
-4. [Dual-Flow Reinforcement Learning with State-Aware Exploration](/202607/01/2606.29820v1-dual-flow-reinforcement-learning-with-state-aware-exploration)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：基于流匹配的强化学习连续控制
-5. [Joint Chance Constrained Safe-Optimal Control](/202607/01/2606.30829v1-joint-chance-constrained-safe-optimal-control)  
+   evidence：使用指数CBF和备份CBF的无人机执行器感知安全滤波器
+2. [WaveLander: A Generalizable Hierarchical Control Framework for UAV Landing on Wave-Disturbed Platforms via Reinforcement Learning](/202607/03/2607.01281v1-wavelander-a-generalizable-hierarchical-control-framework-for-uav-landing-on-wave-disturbed-platforms-via-reinforcement-learning)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：基于强化学习的无人机在波动平台上安全着陆
+3. [Lightweight Safe Reinforcement Learning for End-to-End UAV Navigation](/202607/03/2607.01794v1-lightweight-safe-reinforcement-learning-for-end-to-end-uav-navigation)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：面向端到端无人机导航的轻量安全强化学习
+4. [Diffusion-based 4D Trajectory Prediction and Distributed Control for UAV Swarms](/202607/03/2606.31197v1-diffusion-based-4d-trajectory-prediction-and-distributed-control-for-uav-swarms)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：随机系统的联合机会约束安全最优控制
-6. [Sampling-Based Coordination-Informed Multi-Objective Multi-Robot Reinforcement Learning](/202607/01/2606.30893v1-sampling-based-coordination-informed-multi-objective-multi-robot-reinforcement-learning)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：多目标多机器人强化学习
-7. [ShardNet: Training Neural Controllers with Hard, Non-Convex Constraints](/202607/01/2606.30935v1-shardnet-training-neural-controllers-with-hard-non-convex-constraints)  
+   evidence：基于扩散的轨迹预测和分布式控制用于无人机群安全
+5. [Reference-Governed Distributed Safe Gradient Flow for Safe Optimal Output Agreement of Multi-Agent Systems](/202607/03/2607.02192v1-reference-governed-distributed-safe-gradient-flow-for-safe-optimal-output-agreement-of-multi-agent-systems)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：强制执行硬安全约束的神经网络控制器架构
+   evidence：使用控制屏障函数实现安全最优输出一致
 
 ### 速读区论文标签
-1. [Safe Online Learning via Smooth Safety-Structured Policy Composition](/202607/01/2606.31320v1-safe-online-learning-via-smooth-safety-structured-policy-composition)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：具有平滑安全结构化策略组合的安全在线强化学习
-2. [SPACE: Enabling Learning from Cross-Robot Data Toward Generalist Policies](/202607/01/2606.24049v1-space-enabling-learning-from-cross-robot-data-toward-generalist-policies)  
+1. [SurgVLA-Bench: Towards Evaluating Vision-Language-Action Models for Laparoscopic Surgical Robotics](/202607/03/2606.29247v1-surgvla-bench-towards-evaluating-vision-language-action-models-for-laparoscopic-surgical-robotics)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：跨机器人强化学习与通用策略
-3. [Deep Reinforcement Learning-Enhanced Event-Triggered Data-Driven Predictive Control for a 3D Cable-Driven Soft Robotic Arm](/202607/01/2606.26048v1-deep-reinforcement-learning-enhanced-event-triggered-data-driven-predictive-control-for-a-3d-cable-driven-soft-robotic-arm)  
+   evidence：手术机器人具身智能基准
+2. [MVP-Nav: Multi-layer Value Map Planner Navigator](/202607/03/2606.31919v1-mvp-nav-multi-layer-value-map-planner-navigator)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：深度强化学习增强的事件触发预测控制在软体机器人中的应用
-4. [Vision-Language Models for Deployable Social Robot Navigation: Bridging Semantic Reasoning and Low-Level Control](/202607/01/2606.28760v1-vision-language-models-for-deployable-social-robot-navigation-bridging-semantic-reasoning-and-low-level-control)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：基于视觉语言模型的安全关键社交机器人导航
-5. [Machine Learning-based Feedback Linearization Control of Quadrotor Subject to Unmodeled Dynamics](/202607/01/2606.31199v1-machine-learning-based-feedback-linearization-control-of-quadrotor-subject-to-unmodeled-dynamics)  
+   evidence：面向具身智能体的物理感知纯视觉导航
+3. [Distributed Multi Robot Lunar Cargo Transportation via Phase Decomposed Reinforcement Learning](/202607/03/2607.00160v1-distributed-multi-robot-lunar-cargo-transportation-via-phase-decomposed-reinforcement-learning)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：基于机器学习的方法使用径向基神经网络控制四旋翼
-6. [FormIDEAble: Safe and Socially-aware Autonomous Systems](/202607/01/2606.31572v1-formideable-safe-and-socially-aware-autonomous-systems)  
+   evidence：多机器人货物运输中带安全约束的强化学习
+4. [Communication-Aware and Safety-Aware UAV Control via Predictive Latent Models](/202607/03/2607.00288v1-communication-aware-and-safety-aware-uav-control-via-predictive-latent-models)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：自主代理的形式化安全保证
-7. [Adapting Generalist Robot Policies with Semantic Reinforcement Learning](/202607/01/2606.31958v1-adapting-generalist-robot-policies-with-semantic-reinforcement-learning)  
+   evidence：利用预测潜在模型实现安全感知无人机控制
+5. [Queue-Aware Graph Reinforcement Learning for UAV-ISAC-Assisted Maritime Data Collection](/202607/03/2607.00324v1-queue-aware-graph-reinforcement-learning-for-uav-isac-assisted-maritime-data-collection)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：强化学习用于通用机器人策略适应
-8. [Layered Outer-Loop Control for Disturbance-Robust Multi-Waypoint UAV Arrival](/202607/01/2606.26315v1-layered-outer-loop-control-for-disturbance-robust-multi-waypoint-uav-arrival)  
+   evidence：无人机海上数据收集结合强化学习
+6. [NeHMO: Neural Hamilton-Jacobi Reachability Learning for Decentralized Safe Multi-Arm Motion Planning](/202607/03/2607.00326v1-nehmo-neural-hamilton-jacobi-reachability-learning-for-decentralized-safe-multi-arm-motion-planning)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：神经网络哈密顿-雅可比可达性用于安全控制
+7. [LAMP: Long-Horizon Adaptive Manipulation Planning for Multi-Robot Collaboration in Cluttered Space](/202607/03/2606.29358v1-lamp-long-horizon-adaptive-manipulation-planning-for-multi-robot-collaboration-in-cluttered-space)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：分层外环控制增强了无人机抗扰到达的安全性
-9. [MPC-Injection: Biasing Off-Policy Locomotion RL Toward Controller-Induced Behavior Basins](/202607/01/2606.26392v1-mpc-injection-biasing-off-policy-locomotion-rl-toward-controller-induced-behavior-basins)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：通过模型预测控制器注入引导离线强化学习走向期望步态
-10. [SSI-Policy: Learning Structured Scene Interfaces for Vision-Language Robotic Manipulation](/202607/01/2606.26800v2-ssi-policy-learning-structured-scene-interfaces-for-vision-language-robotic-manipulation)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：面向视觉-语言机器人操作的结构化场景接口
-11. [Human2Any: Human-to-Robot Transfer via Constraint-Aware Compositional Planning](/202607/01/2606.28813v1-human2any-human-to-robot-transfer-via-constraint-aware-compositional-planning)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：通过约束感知组合规划实现人-机器人技能迁移
-12. [Modification-Considering Value Learning for Reward Hacking Mitigation in RL](/202607/01/2606.28955v1-modification-considering-value-learning-for-reward-hacking-mitigation-in-rl)  
+   evidence：安全多机器人操作规划与碰撞避免
+8. [Towards World Model-Empowered Integrated Sensing, Communication, and Decision for Complex Unmanned Systems](/202607/03/2606.30568v1-towards-world-model-empowered-integrated-sensing-communication-and-decision-for-complex-unmanned-systems)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：修改感知价值学习缓解强化学习中的奖励黑客问题
+   evidence：面向无人系统安全决策的世界模型
+9. [Stabilization Learning: A Paradigm Transition Bridging Control Theory and Machine Learning](/202607/03/2606.31562v1-stabilization-learning-a-paradigm-transition-bridging-control-theory-and-machine-learning)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：桥接控制理论与机器学习实现安全关键稳定化
+10. [Managed Autonomy at Runtime: Gear-Based Safety and Governance for Single- and Multi-Agent Cyber-Physical Systems](/202607/03/2607.00334v1-managed-autonomy-at-runtime-gear-based-safety-and-governance-for-single--and-multi-agent-cyber-physical-systems)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：自主代理运行时安全治理
+11. [Learning from Demonstration via Spatiotemporal Tubes for Unknown Euler-Lagrange Systems](/202607/03/2607.00534v1-learning-from-demonstration-via-spatiotemporal-tubes-for-unknown-euler-lagrange-systems)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：通过时空管将演示作为安全规范的示教学习
+12. [Neuro-Symbolic Safety Guidance for Vision-Language-Action Models via Constrained Flow Matching](/202607/03/2607.01378v1-neuro-symbolic-safety-guidance-for-vision-language-action-models-via-constrained-flow-matching)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：面向VLA模型的神经符号安全引导，约束流匹配
 
 
 <div class="dpr-home-promo-card">

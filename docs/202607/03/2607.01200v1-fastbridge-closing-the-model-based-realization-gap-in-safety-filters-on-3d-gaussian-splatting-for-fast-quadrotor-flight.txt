@@ -1,0 +1,549 @@
+Title: FastBridge: Closing the Model-Based Realization Gap in Safety Filters on 3D Gaussian Splatting for Fast Quadrotor Flight
+
+URL Source: https://arxiv.org/pdf/2607.01200v1
+
+Published Time: Thu, 02 Jul 2026 01:23:51 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# FastBridge: Closing the Model-Based Realization Gap in Safety Filters on 3D Gaussian Splatting for Fast Quadrotor Flight 
+
+Dario Tscholl, Yashwanth Nakka, and Brian Gunter 
+
+Abstract — Fast quadrotor flight requires safe obstacle avoid-ance under tight onboard compute limits. While 3D Gaussian Splatting (3DGS) provides a continuous, geometry-aware scene representation for perception-driven navigation, existing 3DGS safety filters use reduced-order models such as single- and double-integrators that ignore actuator limits and assume commanded accelerations are realized instantaneously. Building on an analytic collision cone barrier for 3DGS, we introduce a nonlinear, actuator-aware safety filter enforced through the full quadrotor dynamics. We derive a high-relative-degree collision cone exponential CBF and a backup CBF that preserves QP feasibility under input constraints using a forward-simulated backup policy. Compared with a state-of-the-art 3DGS safety filter, our approach reduces trajectory jerk by 47% and runs 2.25 × faster. We validate the method in simulation and on hardware for real-time navigation in cluttered, perception-derived environments. 
+
+I. I NTRODUCTION 
+
+Quadrotors can navigate cluttered environments faster than any comparable aerial platform when flown aggressively. In time-critical missions such as search and rescue, disaster response, and rapid inspection, mission value decays with time, so flying fast translates directly into mission suc-cess [1]. Pushing a quadrotor to high speeds, however, drives the vehicle toward the limits of its dynamics and actuation while leaving a tight onboard compute budget for perception, planning, and control [2], which makes fast, safe obstacle avoidance a defining challenge of agile autonomous flight. Optimization-based methods exploit differential flatness to generate smooth, dynamically feasible trajectories, from minimum-snap polynomials [3] to time-optimal genera-tion [4] and model predictive contouring control at the limit of actuation [5]. Learning-based methods instead train policies mapping observations directly to commands, with re-inforcement learning reaching champion-level racing [6] and rivaling optimal control at the platform’s physical limits [7]. Both families fold obstacle avoidance into a planning or training stage and offer limited runtime guarantees. Control barrier functions (CBFs), which are typically solved via an online quadratic program (QP), take a complementary view. Rather than re-planning, CBFs act as a lightweight safety filter that minimally modifies a nominal input to render a safe set forward invariant. This lightweight filtering is ideal for compute-constrained, safety-critical flight, but CBF guarantees and conservativeness depend heavily on how the environment is represented. Traditional navigation pipelines encode obstacles using occupancy grids, point clouds, or signed-distance fields. Compared with radiance-field representations such as Neural Radiance Fields (NeRFs) [8] and 3D Gaussian Splatting (3DGS) [9], these are discrete and lack the photometric infor-mation useful for leveraging semantics. NeRFs enable vision-only quadrotor navigation [10] but are implicit and costly to query for collision checking. 3DGS instead keeps geometry explicit as anisotropic Gaussian ellipsoids, allowing fast ren-dering and direct spatial queries, which makes it well suited to safe, real-time navigation. In terms of safety, prior works on 3DGS either enforce safety on an inflated approximation of the map or act directly on the splat ellipsoids. As an example of the former, PolyMerge builds a voxel occupancy grid, over-approximates the scene with convex polytopes, and enforces avoidance through a polytope-based CBF [11]. Although lightweight, this adds conservatism. SAFER-Splat instead operates on the scene directly, applying a distance-based CBF to the splats themselves [12]. Exploiting the fact that each splat is an ellipsoid, previous work derives an analytic collision cone CBF that activates proactively along the direction of motion, yielding smoother avoidance at lower computational cost than distance-based filters [13]. These 3DGS safety filters all enforce safety on a reduced-order model whose input is the translational velocity or acceleration. This implicitly assumes any command is re-
+
+Fig. 1: FastBridge architecture. FastBridge demonstrates nonlinear safety and control for a real-world quadrotor on 3DGS. 
+
+> arXiv:2607.01200v1 [cs.RO] 1 Jul 2026
+
+alized instantaneously, ignoring actuator limits and offering no guarantee that the safe set is control invariant under them. The result is a model-based realization gap: The barrier rate the filter commands and the rate the quadcopter achieves diverge, so forward invariance can be lost even when the commanded CBF condition holds. We close this gap with a nonlinear, actuator-aware safety filter that enforces the collision cone barrier through the full quadrotor dynamics. To guarantee QP feasibility under rotor limits, which cannot be assumed a priori during aggressive flight, we further intro-duce a collision cone backup CBF that implicitly represents a control-invariant subset of the safe set through forward simulation of a backup policy that brings the vehicle to rest. This letter extends previous work [13] by adding full non-linear quadrotor dynamics, a realization error analysis, col-lision cone ECBF, backup CBF, actuator-aware constraints, and fast-flight demonstrations. Our main contributions are summarized as follows: 
+
+(i) We identify and characterize a model-based realization gap failure mode in reduced-order 3DGS safety filters, and quantify how the unrealized barrier rate grows with flight speed. 
+
+(ii) We derive a nonlinear collision cone ECBF that enforces safety through the true quadrotor dynamics, showing smoother and faster flight than a state-of-the-art 3DGS safety filter. 
+
+(iii) We develop a collision cone backup CBF with aforward-simulated backup policy that guarantees QP feasibility under actuator constraints. 
+
+(iv) We validate the collision cone backup CBF filter in both simulation and initial hardware experiments. The remainder of this letter is organized as follows. Sec-tion II covers the problem setup and the ECBF and backup CBF preliminaries. Section III develops the control stack: A geometric tracking controller and a feedback linearization of the nonlinear quadrotor model, followed by the collision cone CBF, its exponential extension through the true dynamics and the backup CBF that guarantees QP feasibility under actuator limits. Section IV presents the realization-gap study, a state-of-the-art comparison and hardware validation, followed by a conclusion in Section V. II. PRELIMINARIES 
+
+A. Problem Formulation 
+
+We consider a quadrotor flying through a cluttered envi-ronment that is reconstructed as a 3DGS map, in which the obstacles are the Gaussian splats themselves. The objective is to track a reference trajectory that drives the vehicle from an initial state x(0) = x0 to a goal state x(T ) = xf while remaining collision-free, i.e., keeping the vehicle clear of every splat, for all t ∈ [0 , T ]. We consider a control-affine system of the form 
+
+˙x = f (x) + g(x)u, x(0) = x0, (1) where x ∈ X ⊂ Rn is the state and u ∈ U ⊂ Rm the admissible control input. The functions f : Rn → Rn and 
+
+g : Rn → Rn×m are continuous and locally Lipschitz. The quadcopter is modeled as a rigid body on SE(3) with state 
+
+(p, σ, v, ω )⊤ ∈ R3 × SO(3) × R3 × R3, whose elements denote the position, attitude, linear velocity, and angular velocity, respectively. The attitude is parametrized using Modified Rodrigues Parameters (MRPs) [14]. The input is 
+
+u = ( T, τ m)⊤ ∈ R4, where T ∈ R+ is the total thrust and 
+
+τm ∈ R3 are the body torques. The kinematic and dynamic equations are 
+
+˙p = v, ˙σ = Z(σ)ω, (2) 
+
+m ˙v = −mge 3 + T R (σ)⊤e3, J ˙ω = −ω × Jω + τm, (3) where R(σ) and Z(σ) denote the MRP rotation and attitude matrix, respectively. We represent the environment using 3D Gaussian Splatting [9], which models the scene as a set of anisotropic Gaussian primitives. Each primitive carries a mean μ ∈ R3, a covariance Σ ∈ S3++ , an opacity and spherical-harmonic color coefficients. However, for collision avoidance, only the geometric properties (μ, Σ) are relevant. Unlike a traditional covariance matrix, the covariance ma-trix Σ = RSS ⊤R⊤ used in 3DGS describes the spatial configuration of a splat where R ∈ SO(3) is defined by a unit quaternion and S = diag( s1, s 2, s 3) with si ∈ R++ 
+
+is a diagonal scaling matrix. Geometrically, each splat is described by its confidence ellipsoid 
+
+E = {x ∈ R3 | (x − μ)⊤Σ−1(x − μ) ≤ c2}, (4) where c2 = χ23,0.99 is the 99th percentile of the chi-squared distribution with three degrees of freedom (setting c = 1 
+
+recovers the standard triaxial ellipsoid). In terms of safety, the vehicle is collision-free when its position p lies outside the ellipsoid Ei of every splat i. Safety is therefore formalized as the forward invariance of a safe set [15]. For a continuously differentiable function h : X → R,define the safe set as the superlevel set C = {x ∈ X |
+
+h(x) ≥ 0}, with boundary ∂C = {x | h(x) = 0 } and interior 
+
+Int( C) = {x | h(x) > 0}. To enforce forward invariance of 
+
+C through feedback, we use CBFs [16], [17]. The function 
+
+h is a CBF for (1) on C if there exists an extended class-K
+
+function α (continuous, strictly increasing, with α(0) = 0 )such that 
+
+sup 
+
+> u∈U
+
+Lf h(x) + Lg h(x) u ≥ − α h(x) ∀ x ∈ X . (5) Since (5) is affine in u, it defines at each state a set of admissible inputs and any locally Lipschitz feedback derived from it renders C forward invariant. This affine structure makes CBFs cheap to enforce in a quadratic program (QP) that minimally adjusts a reference control input ˆuu∗ = arg min  
+
+> u∈U
+> 12
+
+∥u − ˆu∥2
+
+s.t. L f h(x) + Lg h(x)u ≥ − α h(x),
+
+(6) with u∗ being the resulting safe control input. This CBF-QP formulation is often also referred to as a safety filter and has become a standard approach for enforcing safety in robotic systems. The specific barrier h used in this letter is derived in Section III-C. B. Exponential Control Barrier Function 
+
+The CBF condition in (5) presumes that h has rela-tive degree one. For constraints such as a position limit on a force- or torque-controlled system, this assumption does not hold and h has relative degree r ≥ 2. Expo-nential CBFs (ECBFs) extend CBFs to arbitrary relative degree [18], with the barrier-derivative vector ηb(x) =[ h(x) Lf h(x) · · · Lr−1 
+
+> f
+
+h(x) ] ⊤. The barrier h is an ECBF if there exists Kα ∈ Rr with 
+
+sup 
+
+> u∈U
+
+Lrf h(x) + Lg Lr−1 
+
+> f
+
+h(x) u ≥ − Kα ηb(x), (7) for all x ∈ Int( C), where Kα is chosen by pole placement so that the induced barrier dynamics are Hurwitz, guaranteeing forward invariance of C whenever h(x0) ≥ 0 [18], [16]. The condition in (7) remains affine in u and can therefore be directly incorporated into a QP of the same form as (6), preserving the real-time tractability of the standard CBF approach while accomodating high-relative-degree safety constraints. 
+
+C. Backup Control Barrier Functions 
+
+Athough (5) guarantees forward invariance of C, the CBF-QP is feasible only if C is control invariant under the input bound U. Explicitly verifying this is generally intractable for high-dimensional nonlinear systems since Hamilton-Jacobi reachability scales poorly beyond four to five states, while Sum-of-Squares programming is typically limited to roughly ten states with polynomial dynamics [19]. Backup CBFs [19], [20] avoid this explicit construction by defining a control-invariant subset of C through forward simulation. Let 
+
+S0 ⊆ C be a known invariant set rendered invariant by a backup policy π : X → U , and let Φ( x, t ) denote the flow of ˙x = f (x) + g(x)π(x). For a horizon T , the set S consists of states whose backup trajectories remain in C over [0 , T ]
+
+and reach S0 at T , yielding S0 ⊆ S ⊆ C . The backup CBF is defined by the minimum of the clearance along the simulated trajectory and the terminal margin in S0, with S as its superlevel set. In practice, the horizon is discretized and the state sensitivity ∂Φ/∂x is integrated alongside the flow, yielding affine constraints in u. For these constraints to be well posed the backup policy must be admissible ( π(x) ∈ U 
+
+for all x) and continuously differentiable, so that the flow 
+
+Φ and its sensitivity ∂Φ/∂x exist and are unique, and it must drive the closed loop into the invariant terminal set S0.Under mild controllability assumptions, the backup CBF has relative degree one and enters the CBF-QP directly, without a high-relative-degree extension. We derive the collision cone backup CBF in Section III-E. III. METHODS We design our control stack in two layers: A nominal tracking controller (well studied) and a safety filter that min-imally modifies it (proposed contribution). Since we operate on the full nonlinear quadrotor, we use a geometric tracking controller driven by a smooth minimum snap/septic (7-th 
+
+degree) polynomial reference (Sec. III-A). Furthermore, we recast the dynamics into an input–output linear form through dynamic feedback linearization (Sec. III-B), which is needed because the true thrust and torque inputs first reach the position output at the snap. We then construct the collision cone filter in increasing fidelity (Secs. III-C–III-E). 
+
+A. Geometric Control 
+
+A quadcopter, as described in Section II-A, is differentially flat, so a smooth reference (pref , ψ ref ) and its derivatives determine the reference thrust, attitude and angular rates. We combine this flatness construction with the geometric tracking law of [21] where we use the jerk and snap to generate analytic feed-forward terms rather than relying on numerical differentiation [3]. With position and velocity errors ep = p − pref , ev = v − vref and positive-definite gains Kp, K v , the commanded inertial force fc = m aref +
+
+ge 3
+
+−Kpep−Kv ev , determines the desired body-z axis b3 =
+
+fc/∥fc∥ (for fc̸ = 0 ) and the collective thrust T = f ⊤ 
+
+> c
+
+Re 3.Differentiating fc yields the reference angular velocity and acceleration analytically. The attitude is then regulated by the geometric body-torque of [21]. 
+
+B. Dynamic Feedback Linearization 
+
+For the high-order safety filter, we exploit the quadro-tor’s differential flatness to impose constraints on the trans-lational motion directly in flat-output coordinates y =[x, y, z, ψ (σ)] ⊤. Because the quadcopter is underactuated, the torques reach the position output only at higher deriva-tives, so static feedback does not linearize the system. Following [22], we add a dynamic extension on the thrust channel, giving the augmented state ¯x = [ p, σ, v, ω, u T , ˙uT ]⊤
+
+(uT = T /m ) and input ¯u = [¨ uT , τ m]⊤. Differentiating yp
+
+four times and yψ twice gives the control-affine form ¯y =
+
+Ftot (¯ x)+ M (¯ x) ¯ u, with M invertible on the operating domain and thus away from uT = 0 (explicit Ftot , M in [22]). Including yaw keeps M square and avoids internal zero dynamics. The linearizing input ¯u = −M −1Ftot + M −1v
+
+with diffeomorphism w = ξ(¯ x) = [p, ˙p, ¨p, p (3) , ψ, ˙ψ]⊤
+
+reduces the closed loop to Brunovsky form ˙w = Aw + Bv ,
+
+y = Cw , with the new input v = [ y(4) ⊤ 
+
+> p
+
+, ¨yψ ]⊤.
+
+C. Collision Cone Control Barrier Function 
+
+A collision cone characterizes a set of relative velocities that would ultimately lead to collision. As introduced in Section II-A, each Gaussian splat can be formulated as an ellipsoid. Hence, if we assume the quadcopter to be a point robot moving at a constant velocity along a ray, we can solve a ray-ellipsoid intersection problem to obtain the necessary and sufficient conditions for a collision cone on 3DGS 
+
+(v⊤Av )( r⊤Ar − c2) − (r⊤Av )2 ≤ 0, (8) 
+
+r⊤Av ≥ 0. (9) The derivation can be found in [13]. To enforce safety, we take the complement of the collision cone which yields a collision cone control barrier function 
+
+h(r, v ) = ( v⊤Av )
+
+| {z }
+
+> β
+
+(r⊤Ar − c2)
+
+| {z }
+
+> γ
+
+− (r⊤Av )2
+
+| {z }
+
+> δ2
+
+≥ 0, (10) with the safe set Ci := {(p, v ) : hi(p, v ) ≥ 0} defined for the 
+
+i-th splat. The scalars β, γ and δ are introduced only to sim-plify notation. Unlike distance-based barrier functions, the collision cone barrier accounts for the direction of motion. As a result, the constraint activates proactively when the robot is moving toward an obstacle, even before the robot is close to an ellipsoid. For a double-integrator (DI) model, the input is the translational acceleration, so the collision cone barrier has relative degree one. In that setting, the standard CBF condition is affine in the acceleration and yields a simple linear inequality in the safety filter. However, this model implicitly assumes that any com-manded acceleration can be realized instantaneously and without actuator limits. This assumption is not valid for a real-world quadrotor, resulting in a realization gap between the linear and nonlinear system as mentioned in Section I. The DI safety filter returns a commanded translational acceleration acmd ∈ R3, which is also the control input for its double-integrator model ˙v = acmd . On the quadrotor, this acceleration is applied as the gravity-compensated force 
+
+fcmd = m(acmd + ge 3), yet the acceleration the airframe actually achieves follows from the true dynamics (2), 
+
+areal := ˙ v = −ge 3 + Tm R(σ)⊤e3, (11) with T , σ the thrust and attitude given by the closed loop. The realization error is then 
+
+ea := areal − acmd , (12) hence, the gap between the acceleration the reduced-order filter commands and the one the airframe realizes. Under perfect attitude-thrust tracking T R (σ)⊤e3 = fcmd and so 
+
+ea = 0 (the ideal DI, in gray shown in Fig. 2). 
+
+Proposition 1 (Realization gap in the barrier rate) . Let the collision cone barrier h(p, v ) be continuously differentiable, with acmd , areal , ea as in (11) –(12) . Then the barrier rate realized on the airframe and the rate predicted by the reduced-order model are related by 
+
+˙hreal = ˙hDI + ∇v h⊤ea.
+
+Proof. The barrier depends on the state only through position (via r = μ − p) and velocity v, so along any trajectory 
+
+˙h = ∇ph⊤ ˙p + ∇v h⊤ ˙v = ∇ph⊤v + ∇v h⊤ ˙v, 
+
+where ˙p = v holds for both models. Evaluating with the modeled input ˙v = acmd gives ˙hcmd = ∇ph⊤v+∇v h⊤acmd ,and with the achieved input ˙v = areal gives ˙hreal = ∇ph⊤v+
+
+∇v h⊤areal . Subtracting cancels the common drift ∇ph⊤v
+
+and leaves ˙hreal − ˙hcmd = ∇v h⊤(areal − acmd ) = ∇v h⊤ea.The DI filter selects acmd so that the relative-degree-one condition ˙hcmd + α(h) ≥ 0 holds in the reduced model. By Proposition 1, the condition actually realized on the airframe is ˙hreal + α(h) = ˙hcmd + α(h)
+
+| {z }  
+
+> ≥0(enforced)
+
++∇v h⊤ea. (13) Whenever the unmodeled term ∇v h⊤ea is sufficiently neg-ative, the realized condition is violated even though the commanded one is satisfied, and forward invariance of the safe set is lost. 
+
+D. Exponential Collision Cone CBF 
+
+In the nonlinear case, e.g., through dynamic feedback lin-earization (DFL), the true input (T, τ m) enters the flat output first at the snap p(4) . Therefore, for a nonlinear model, the collision cone has relative degree three. Note that instead of applying the DFL to the dynamical system, we integrate the DFL into the CBF constraint which allows us to formulate the QP in (16) with the true nonlinear input. We enforce the collision cone with a third-order exponential CBF (ECBF) with constraint functions ψ0 = h and ψi = ˙ψi−1 +αi(ψi−1).Considering linear class-K functions α1 = α2 = α3 = λ,where λ > 0 (a triple pole at −λ), gives the high-order CBF condition L3 
+
+> f
+
+h + Lg L2 
+
+> f
+
+h u + α3(ψ2) ≥ 0. Collecting the snap yields ˙ψ2 = w⊤p(4) + Φ( r, v, a, j ), with control direction w = 2 A(γv − δr ) and a known drift Φ in the lower derivatives. The snap is itself affine in the input, 
+
+p(4) = Fp(¯ x, u T ) + GT (¯ x, u T ) ¨ uT + Gτ (¯ x, u T ) τm, (14) where T enters through a finite-difference thrust cascade and 
+
+τm enters directly. Substituting (14) and the triple-pole gains gives a constraint affine in (T, τ m),
+
+w⊤Gτ τm ≥ − w⊤GT ¨uT − w⊤Fp − Φ − 3λ¨h − 3λ2 ˙h − λ3h. 
+
+(15) Therefore, we can formulate the safety filter as an ECBF-QP subject to the hard safety constraint (15) and a rotor polytope to enforce actuator constraints 
+
+u∗ = arg min  
+
+> u
+> 12
+
+∥u − ˆu∥2
+
+s.t. (15) 
+
+fmin ≤ G−1u ≤ fmax ,
+
+(16) where u = ( T, τ m) is the nonlinear control input and G is a rotor allocation matrix. 
+
+E. Collision Cone Backup CBF 
+
+The ECBF-QP (16) is feasible only if C is control invariant under U (Sec. II-C). During fast, aggressive flight this cannot be guaranteed a priori , which motivates the collision cone backup CBF. Rather than verifying control invariance offline, the backup CBF represents a control-invariant subset of C
+
+implicitly, through forward simulation of a backup policy that brings the vehicle to rest. A second motivation is degeneracy. As v → 0 the linear and ECBF collision cone constraints vanish, since β = δ = 0 ⇒ h = 0 . From a safety standpoint this is desirable because if the QP becomes infeasible, the constraint naturally drives the robot to rest. For the backup CBF we use a position-only terminal barrier that remains well defined at zero velocity. Concretely, the running constraint uses the linear collision cone CBF (10), while the terminal constraint uses γi(p) = r⊤ 
+
+> i
+
+Airi − c2, whose zero level set is the Minkowski-inflated safe zone and which is non-degenerate at v = 0 . Both ∇hi and ∇γi are available in closed form. 1) Backup Policy and Implicit Control-Invariant Set: 
+
+We fix a backup policy πb : R12 → U , a saturated hover regulator that drives the vehicle to a stationary hover. The raw commands are a gravity feed-forward with vertical-velocity damping and a PD-plus-braking torque, 
+
+eT = mg − m k vz vz ,
+
+eτm = −Kσ σ − Kω ω + kvh S R (σ) v, (17) with positive scalar gains kvz , k vh , K σ , K ω > 0 and the constant selection matrix S = −ˆe3, where ˆ(·) denotes the skew-symmetric (cross-product) operator, so that S R (σ)v
+
+rotates the horizontal body velocity by − π 
+
+> 2
+
+to produce a braking tilt. Each channel is then mapped smoothly into a box centered at hover, 
+
+Tsat = mg + cT tanh 
+
+ κ( eT −mg )
+
+> cT
+
+
+
+,τ sat  
+
+> m,i
+
+= τi,c tanh 
+
+ κ eτm,i 
+
+> τi,c
+
+
+
+,
+
+(18) giving πb = ( Tsat , τ sat 
+
+> m,x
+
+, τ sat  
+
+> m,y
+
+, τ sat  
+
+> m,z
+
+)⊤, where κ = βsat /10 
+
+with βsat > 0 sets the sharpness of the saturation. The caps cT , τ i,c are sized to the per-rotor thrust margin about hover. Let G ∈ R4×4 map per-rotor thrust f to input 
+
+u = Gf with bounds fmin , f max , and let fhov = mg  
+
+> 4
+
+14,
+
+uhov = Gf hov = ( mg, 0, 0, 0) ⊤ be the hover allocation, feasible whenever fmin ,i ≤ mg/ 4 ≤ fmax ,i . With per-rotor thrust margin ηi := min( fmax ,i − fhov ,i , f hov ,i − fmin ,i ) and a design weight d ∈ R4+ (d = (2 .0, 3.0, 0.3, 0.05) in our tests), set 
+
+s := ηfrac min 
+
+> i
+
+ηi
+
+(|G−1|d)i
+
+, (cT , c x, c y , c z )⊤ := s d, (19) with safety fraction ηfrac ∈ (0 , 1) (0.95 in our tests), 
+
+Tcap /floor = mg ± cT , and τi,c = ci.
+
+Proposition 2 (Admissibility) . For every x ∈ R12 , πb(x) ∈U.Proof. Let ∆ := πb −uhov . By (18), |∆T | ≤ cT and |∆τi | ≤ 
+
+τi,c = ci. The per-rotor thrust is f = G−1πb = fhov +G−1∆,so |fi − fhov ,i | ≤ P 
+
+> k
+
+|G−1 
+
+> ik
+
+| ck = ( |G−1|sd)i. Substituting 
+
+s gives, 
+
+|fi − fhov ,i | ≤ ηfrac 
+
+ηi⋆
+
+(|G−1|d)i⋆
+
+(|G−1|d)i ≤ ηfrac ηi,
+
+where i⋆ is the rotor attaining the minimum in (19). With the thrust margin definition this gives fmin ,i ≤ fi ≤ fmax ,i ,i.e. πb(x) ∈ U , with strict slack 1 − ηfrac .This construction meets the three requirements of Sec. II-C. (i) Admissibility: πb(x) ∈ U for all x (Prop. 2) where the cap scale is chosen so that even under worst-case simulta-neous saturation every per-rotor thrust stays in [fmin , f max ].
+
+(ii) Regularity: Since tanh and R(σ) are smooth away from the MRP singularity, πb ∈ C∞ and is globally Lipschitz (App. VI-B), so the flow Φ and sensitivity Q in (20) exist and are unique on [0 , T ]. (iii) Convergence: The only equilibria of fcl are the hover manifold E = {(p, 0, 0, 0) }, which is locally exponentially stable on the (σ, v, ω ) block (App. VI-C), so ∥vΦT ∥, ∥ωΦT ∥ decay exponentially along Φ and the terminal residual ρi in Prop. 3 is small for a sufficiently long horizon. Let Φ( x, s ) denote the time-s flow of fcl from x. The backup hover set S0 (collision-free states with v, ω, σ ≈ 0)is control invariant under πb. Following [20], the T -horizon constrained reachable set 
+
+S = {x : Φ( x, s ) ∈ C ∀ s ∈ [0 , T ] ∧ Φ( x, T ) ∈ S 0}
+
+is a larger control-invariant subset of C = {hi ≥ 0},represented implicitly by forward integration rather than computed offline. 
+
+2) Backup Trajectory and Sensitivity Propagation: At each control instant we forward-integrate, from the current state x, the joint flow and its state sensitivity Q(s) =
+
+∂Φ( x, s )/∂x ,
+
+˙Φ = fcl (Φ) , ˙Q = Jcl (Φ) Q, (20) with Φ(0) = x, Q(0) = I12 , and Jcl = ∂f cl /∂x the closed-loop Jacobian (derived analytically through the MRP kinematics, SO (3) coupling, and policy saturation). Equa-tion (20) is integrated by RK4 and sampled at N +1 nodes 
+
+sk = kT /N , yielding {Φk, Q k}Nk=0 , where Φk := Φ( x, s k).
+
+3) Feasible-by-Construction Safety Filter: We track each running barrier at a fixed horizon age where at every control instant we look a fixed time sk ahead of the current state and require the predicted value ηi,k (x) := hi(Φ k) to stay nonnegative. Since the age sk is fixed while the state evolves under ˙x = f (x)+ g(x)u, the chain rule with Qk gives ˙ηi,k =
+
+∇hi(Φ k)⊤Qk
+
+ f (x) + g(x)u. Imposing ˙ηi,k + αRηi,k ≥ 0
+
+yields the running constraint, affine in u,
+
+∇hi(Φ k)⊤Qk g(x) u + ∇hi(Φ k)⊤Qk f (x)+ αR hi(Φ k) ≥ 0, (21) for every active obstacle i and sample k = 0, . . . , N .This is the mechanism by which the high-relative-degree obstacle constraints are reduced to a single relative-degree-one condition on u where the sensitivity Qk propagates the input’s effect on the future state back to the present [19]. The terminal constraint is imposed at the fixed horizon s = T ,whose age does not shrink and therefore carries no intrinsic term, 
+
+∇γi(Φ T )⊤QT
+
+ f (x) + g(x)u + αT γi(Φ T ) ≥ 0, (22) enforcing that the hover state reached by the backup is itself collision-free. The complete safety filter is the collision cone backup CBF-QP 
+
+u∗ = arg min  
+
+> u
+> 12
+
+∥u − ˆu∥2
+
+s.t. (21) for all active (i, k ),
+
+(22) for all active i, fmin ≤ G−1u ≤ fmax ,
+
+(23) a convex program solved online by an interior-point method. The defining property of the construction is that πb is itself a feasible point of (23) whenever the simulated trajectory is safe, which we now make precise. Proposition 3 (Backup-policy feasibility) . Let hb(x) := min  min s∈[0 ,T ], i hi(Φ( x, s )) , min i γi(Φ T ) be the backup CBF, and suppose the predicted flow from x is safe, hb(x) ≥
+
+0, with terminal residual ρi := ∇γi(Φ T )⊤fcl (Φ T ) + 
+
+αT γi(Φ T ) ≥ 0 for all active i. Then u = πb(x) satisfies the backup CBF condition ˙hb + α h b ≥ 0.Proof. The proof uses the flow identity Qsfcl (x) =
+
+fcl (Φ( x, s )) , from differentiating Φ( x, s +δ) = Φ(Φ( x, δ ), s )
+
+at δ = 0 [19]. By Danskin’s theorem ˙hb equals the rate of the active term. If it is a running barrier hi⋆ (Φ s⋆ ), then under 
+
+πb its rate is ∇hi⋆ (Φ s⋆ )⊤Qs⋆ fcl (x) = dds hi⋆ (Φ( x, s )) s⋆ by the flow identity. Since s⋆ minimizes s 7 → hi⋆ (Φ( x, s )) ,this rate is nonnegative (zero at an interior minimizer), so 
+
+˙hb + αRhb ≥ 0. If the active term is a terminal barrier 
+
+γi⋆ (Φ T ), the same identity gives ˙hb + αT hb = ρi⋆ ≥ 0.Since γi depends only on position, the residual reduces to ρi = αT γi(Φ T ) + ∇pγi(Φ T )⊤vΦT = αT γi(Φ T ) + 
+
+O(∥vΦT ∥), so ρi ≥ 0 holds, meaning the predicted hover position is safe and the residual terminal velocity is small. That is exactly what the exponential decay of ∥vΦT ∥ estab-lished above guarantees for a sufficiently long horizon. The pointwise constraints (21), (22) enforce ˙hb + αh b ≥ 0
+
+through a sufficient inner approximation on the grid {sk},solvable by (23). Because the relaxation is only sufficient, (23) can become infeasible (between grid points, or as the state leaves S). In that case the filter applies u = πb(x),which is admissible (Prop. 2) and, by Proposition 3, satisfies the backup CBF condition. IV. EXPERIMENTS & RESULTS In this letter we present three experiments. For all three experiments, we use a custom, real-world 3DGS scene with approximately 395k Gaussian splats. We trained the scene using Nerfstudio and specifically Splatfacto [23]. For train-ing, we used a scale regularizer and scale adjustments as described in [13] to improve the numerical stability. For each trajectory, we specified start and goal points and connected them with a straight-line reference trajectory parameterized as a septic polynomial. Each safety-filter QP also includes a control Lyapunov function (CLF) on the position and velocity errors, with a slack variable ξ ≥ 0 that relaxes the QP whenever the CBF and CLF constraints compete. The CLF derivation is omitted for brevity. We assume the attitude remains in a compact subset of the MRP domain that excludes the singularity at 360 degrees such that R(σ)
+
+and Z(σ) are smooth and bounded. 
+
+A. Reduced-Order vs Full-Order Model Comparison 
+
+This experiment shows why closing the realization gap between the full nonlinear dynamics and a reduced-order double integrator (DI) model matters. We sweep the max-imum reference velocity and, for each trajectory, report the peak instantaneous realization error. The instantaneous realization error ∥ea∥∞ := sup t∈[0 ,T f ] areal (t) − acmd (t) 2,where we take the inner ℓ2 norm over the three axes and the outer ℓ∞ over time. 
+
+Fig. 2: Realization error and minimum clearance versus max-imum reference velocity. The left image shows the realization error of the reduced-order double integrator (green) grows rapidly with speed, while the nonlinear ECBF (blue) and the ideal double integrator (gray) remain near zero. The right image shows that the double integrator retains almost no clearance margin, whereas the nonlinear filter grows more conservative with speed. The double integrator’s increasing realization error and minuscule margin highlight the lack of robustness at high speeds. Figure 2 compares three ways of enforcing the collision cone CBF. The reduced-order DI filter (green) commands an acceleration fed to the nonlinear quadrotor as fcmd =
+
+m(acmd +ge 3), so its realization error captures the mismatch between the commanded and achieved acceleration on the real quadcopter. The nonlinear ECBF (blue) enforces safety through the true dynamics, while the ideal DI (gray) runs the linear CBF on a pure double integrator and is therefore zero by construction. The left image shows the realization error against refer-ence velocity. Below 1 m s −1 the DI error is small, and since the DI is cheaper to compute, the DI may even be prefer-able for low-speed applications. As the velocity increases, however, the DI error grows rapidly while the ECBF stays flat, which is exactly the regime where accounting for the full dynamics pays off. The right image shows the minimum clearance γmin = min( r⊤Ar −c2) over each trajectory. Both filters remain safe ( γmin ≥ 0), but the DI collision cone keeps almost no constraint margin and rides the obstacle boundary, whereas the nonlinear filter grows increasingly conservative with speed and maintains a clear safety buffer. Together, the figures shows that the DI’s growing realization error combined with a tiny clearance margin leaves no room for robustness, particularly at high speeds. 
+
+B. Comparison to the State-of-the-Art 
+
+This experiment shows that a collision cone safety filter produces smoother trajectories with lower computation time than a distance-based filter such as SAFER-Splat. For a fair comparison, both filters share the same start/goal point, reference trajectory, translational gains ( Kp = 3 , Kv = 2 ), control-loop frequency, and splat-filter radius. The splat-filter radius corresponds to a distance gate that keeps only the splats within a ball of the vehicle. Figure 3 sweeps the max-imum reference speed from 1.1 m s −1 to 5.1 m s −1. The first two images show the resulting xy -trajectories under SAFER-Splat and the collision cone ECBF, and the last two compare Fig. 3: Comparison between SAFER-Splat and our proposed method. The left two images show the xy-trajectory of a drone under increasing velocity using the SAFER-Splat and the collision cone ECBF filter, respectively. The right two images show the corresponding trajectory jerk and computation time of those trajectories. The simulation results show that our method generates smoother trajectories at a fraction of the computational cost. the trajectory jerk and computation time of those trajectories. Across the sweep, the ECBF cuts the average jerk by 47% 
+
+and maximum jerk by 46% and computes trajectories 2.25 ×
+
+faster, because it encodes safety as a closed-form constraint rather than solving a distance program at each step. Further-more, SAFER-Splat’s maximum achieved velocity saturates near 3.5 m s −1. As expected, a reactive filter cannot approach obstacles arbitrarily fast without risking penetration. The collision cone filter instead reaches the 4.5 m s −1 reference velocity while handling the model-based realization gap. Since the conditions are held fixed across runs, both filters eventually fail to reach the goal within the allotted time, i.e., beyond a reference velocity of approximately 5 m s −1
+
+(earlier path-incompletion is marked by the shaded column in the jerk panel), but neither compromise safety. 
+
+C. backup CBF Validation 
+
+Reaching higher speeds safely requires the backup CBF to formally address the actuator QP feasibility that the ECBF cannot guarantee a priori . We validate the collision cone backup CBF in software-in-the-loop (SITL) and on hardware, but omit the SITL results due to space constraints. Nerfstudio/Splatfacto reconstructs the scene in a normal-ized training frame, which we refer to as the gsplat frame, that is geometrically consistent with the input views but not metrically scaled. We recover metric units by estimating a similarity transform between the gsplat and physical-world frames. The hardware platform is a custom 0.461 kg quadrotor with a 0.078 m half-span and roughly 17 N of thrust. A Raspberry Pi Zero 2W bridges the flight controller and the ground control station (GCS). For the GCS we use an Intel i7 laptop that runs the full stack on CPU and streams the safe control inputs over Wi-Fi. For the flight controller we use Ardupilot, which only exposes a body-rate interface rather than direct thrust and torque for the control input. Therefore, we convert the geometric controller’s torque into a rate command ωdes by RK4-integrating ˙ω = J−1(τ − ω × Jω )
+
+over one rate-loop period ∆t from the measured ω with τ
+
+held constant. For safety, we then clip each component to 
+
+±ωmax before sending it to the flight controller. To localize the quadcopter we use a Vicon motion capture system, which provides position and velocity but not accel-eration or jerk. Therefore, we drop the −Kv ˙ev term in ˙fc
+
+and the −Kp ˙ev − Kv ¨ev terms in ¨fc, and to simplify, hold the reference yaw constant ( ˙ψref = ¨ψref = 0 ) to fix the heading toward the goal. Finally, we prune the obstacle set before assembling (23). A distance gate keeps splats within a ball of the vehicle. An approach gate r⊤ 
+
+> i
+
+Aiv ≥ 0, based on the sufficient condition of the collision cone (9), discards obstacles behind the motion, and a k-nearest-neighbors cap bounds the rest to the available compute, with running rows dropped when hi is far from the boundary or the speed is low. Figure 4 shows the run visualized in our real-world 3DGS scene, where the robot’s extent confirms it stays clear of the obstacles, and the table reports its performance. The filter runs comfortably at 30 Hz (21 ms p99 per full loop of the stack), with the active set pruner/distance gate at 10 Hz and the geometric controller at 50 Hz . The QP stays feasible 
+
+91 .8% of the time with the backup policy engaging only near obstacles. We ended the run manually, as the backup CBF was not yet perfectly tuned, but sufficient to demonstrate the initial concept. We chose a brake-and-tilt backup policy to show that such a filter can run in real-time on 3DGS. For sustained fast flight, a cone-escape policy would be preferable. A cone-escape policy, rather than braking to rest, pushes the velocity vector out of the collision cone and thus preserves the quadcopter’s full speed. However, such a backup policy is more involved and therefore left to future work. V. CONCLUSIONS This letter closed the model-based realization gap in 3D Gaussian Splatting safety filters by enforcing an analytic collision cone barrier through the full nonlinear quadrotor dynamics. We derived a collision cone exponential CBF that explicitly handles the high relative degree, and a backup CBF that guarantees QP feasibility under actuator limits through a forward-simulated backup policy. Against a state-of-the-art 3DGS filter, the ECBF reduces trajectory jerk by 47% Metric Value 
+
+Loop max 34.836 ms Loop p99 21.043 ms Loop mean 12.318 ms Loop overruns 1/822 (0.12%) Feasible ticks 755/822 (91.8%) Main QP infeasibilities 67 Min clearance 0.154 m Mean speed 0.378 m/s Max speed 1.481 m/s Termination Manual shutdown Fig. 4: Hardware validation of the backup CBF safety filter. The image shows the quadrotor successfully avoiding the obstacles in the scene at a maximum speed of approximately 
+
+1.5 m s −1. The table captures the hardware performance of the run via loop-timing, feasibility and motion metrics. and runs 2.25 × faster in simulation, while the backup filter flies collision-free in real time on hardware. Future work will pursue a cone-escape backup policy that allows the quadrotor to preserve its speed for sustained fast flight. REFERENCES [1] D. Hanover, A. Loquercio, L. Bauersfeld, A. Romero, R. Penicka, Y. Song, G. Cioffi, E. Kaufmann, and D. Scaramuzza, “Autonomous drone racing: A survey,” IEEE Transactions on Robotics , vol. 40, 2024. [2] P. Foehn, E. Kaufmann, A. Romero, R. Penicka, S. Sun, L. Bauersfeld, T. Laengle, G. Cioffi, Y. Song, A. Loquercio, and D. Scaramuzza, “Ag-ilicious: Open-source and open-hardware agile quadrotor for vision-based flight,” Science Robotics , vol. 7, no. 67, p. eabl6259, 2022. [3] D. Mellinger and V. Kumar, “Minimum snap trajectory generation and control for quadrotors,” in 2011 IEEE International Conference on Robotics and Automation , 2011, pp. 2520–2525. [4] R. Penicka and D. Scaramuzza, “Minimum-time quadrotor waypoint flight in cluttered environments,” CoRR , vol. abs/2202.03947, 2022. [Online]. Available: https://arxiv.org/abs/2202.03947 [5] A. Romero, S. Sun, P. Foehn, and D. Scaramuzza, “Model predictive contouring control for near-time-optimal quadrotor flight,” 
+
+CoRR , vol. abs/2108.13205, 2021. [Online]. Available: https: //arxiv.org/abs/2108.13205 [6] E. Kaufmann, L. Bauersfeld, A. Loquercio, M. M¨ uller, V. Koltun, and D. Scaramuzza, “Champion-level drone racing using deep reinforce-ment learning,” Nature , vol. 620, no. 7976, pp. 982–987, 2023. [7] Y. Song, A. Romero, M. M¨ uller, V. Koltun, and D. Scaramuzza, “Reaching the limit in autonomous racing: Optimal control versus reinforcement learning,” Science Robotics , vol. 8, no. 82, Sept 2023. [Online]. Available: http://dx.doi.org/10.1126/scirobotics.adg1462 [8] B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoor-thi, and R. Ng, “Nerf: Representing scenes as neural radiance fields for view synthesis,” in Computer Vision – ECCV 2020 , A. Vedaldi, H. Bischof, T. Brox, and J.-M. Frahm, Eds. Cham: Springer International Publishing, 2020, pp. 405–421. [9] B. Kerbl, G. Kopanas, T. Leimk¨ uhler, and G. Drettakis, “3d gaussian splatting for real-time radiance field rendering,” 2023. [Online]. Available: https://arxiv.org/abs/2308.04079 [10] M. Adamkiewicz, T. Chen, A. Caccavale, R. Gardner, P. Culbertson, J. Bohg, and M. Schwager, “Vision-only robot navigation in a neural radiance world,” IEEE Robotics and Automation Letters , vol. 7, no. 2, pp. 4606–4613, 2022. [11] J. Hong, C.-Y. Chiu, S. Fridovich-Keil, and G. Chou, “Polymerge: Compressing 3d gaussian splats with polytope coverings for provably safe resource-constrained navigation,” IEEE Robotics and Automation Letters , vol. 11, no. 7, p. 8512–8519, 2026. [Online]. Available: http://dx.doi.org/10.1109/LRA.2026.3692083 [12] T. Chen, A. Swann, J. Yu, O. Shorinwa, R. Murai, M. K. III, and M. Schwager, “Safer-splat: A control barrier function for safe navigation with online gaussian splatting maps,” 2025. [Online]. Available: https://arxiv.org/abs/2409.09868 [13] D. Tscholl, Y. Nakka, and B. Gunter, “Perception-integrated safety critical control via analytic collision cone barrier functions on 3d gaussian splatting,” 2025. [Online]. Available: https://arxiv.org/abs/ 2509.14421 [14] J. Crassidis, F. Markley et al. , “Attitude estimation using modified rodrigues parameters,” in NASA Conference Publication . NASA, 1996, pp. 71–86. [15] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, “Control barrier function based quadratic programs for safety critical systems,” IEEE Transactions on Automatic Control , vol. 62, no. 8, pp. 3861–3876, 2017. [16] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada, “Control barrier functions: Theory and applications,” in 2019 18th European Control Conference (ECC) , 2019, pp. 3420– 3431. [17] P. Wieland and F. Allg¨ ower, “Constructive safety using control barrier functions,” IFAC Proceedings Volumes , vol. 40, no. 12, pp. 462–467, 2007, 7th IFAC Symposium on Nonlinear Control Systems. [Online]. Available: https://www.sciencedirect.com/science/article/pii/ S1474667016355690 [18] Q. Nguyen and K. Sreenath, “Exponential control barrier functions for enforcing high relative-degree safety-critical constraints,” in 2016 American Control Conference (ACC) , 2016, pp. 322–328. [19] Y. Chen, M. Jankovic, M. Santillo, and A. D. Ames, “Backup control barrier functions: Formulation and comparative study,” in 2021 60th IEEE Conference on Decision and Control (CDC) , 2021, pp. 6835– 6841. [20] T. Gurriet, M. Mote, A. D. Ames, and E. Feron, “An online approach to active set invariance,” in 2018 IEEE Conference on Decision and Control (CDC) , 2018, pp. 3592–3599. [21] T. Lee, M. Leok, and N. H. McClamroch, “Geometric tracking control of a quadrotor uav on se(3),” in 49th IEEE Conference on Decision and Control (CDC) , 2010, pp. 5420–5425. [22] Z. Cai, S. Zhang, and X. Jing, “Model Predictive Controller for Quadcopter Trajectory Tracking Based on Feedback Linearization,” 
+
+IEEE Access , vol. 9, pp. 162 909–162 918, 2021. [Online]. Available: https://ieeexplore.ieee.org/document/9642982 [23] M. Tancik, E. Weber, E. Ng, R. Li, B. Yi, J. Kerr, T. Wang, A. Kristoffersen, J. Austin, K. Salahi, A. Ahuja, D. McAllister, and A. Kanazawa, “Nerfstudio: A modular framework for neural radiance field development,” in ACM SIGGRAPH 2023 Conference Proceedings , ser. SIGGRAPH ’23, 2023. 
+
+VI. APPENDIX This appendix collects the derivations deferred from Sec-tion III-E. Admissibility of the backup policy πb of (17)– (18) is established in the main text (Prop. 2) but here we derive the horizontal-braking torque underlying (17), and we prove the two remaining backup-policy properties [19]: Regularity (Lemma 1), which guarantees that the flow Φ and the sensitivity Q in (20) are well defined, and convergence to hover (Sec. VI-C), which is what makes the terminal residual 
+
+ρi in Proposition 3 small. 
+
+A. Horizontal-braking torque 
+
+At σ = 0 the linear-velocity dynamics in (2) reduce to 
+
+˙v = −ge 3 + ( T /m )R⊤e3, so the only available horizontal acceleration is the tilt of the thrust axis R⊤e3 away from 
+
+e3. To brake the horizontal motion the policy must, at any yaw, tilt the thrust axis against the inertial horizontal velocity 
+
+vh := ( I −e3e⊤ 
+
+> 3
+
+)v. Expressed in the body frame this is vb := 
+
+Rv , with horizontal components (vbx, v by ) = ( e⊤ 
+
+> 1
+
+Rv, e ⊤ 
+
+> 2
+
+Rv ).A pure roll about ˆeb 
+
+> 1
+
+tilts the thrust toward −ˆeb 
+
+> 2
+
+and a pure pitch about ˆeb 
+
+> 2
+
+tilts the thrust toward +ˆ eb 
+
+> 1
+
+(assuming a right-handed body frame with eb 
+
+> 3
+
+pointing upward). Hence, to brake vby a roll torque of sign sgn( vby ) is needed, and to brake vbx a pitch torque of sign −sgn( vbx) is needed. Taking magnitudes linear in body velocity gives 
+
+eτbrk = kvh
+
+
+
+vby
+
+−vbx
+
+0
+
+ = kvh S v b = kvh S R (σ) v, (24) which is the braking term in (17). No yaw braking is applied. For simplicity this term uses the heuristic projection SR (σ)v
+
+rather than a tracked attitude projection from the geometric controller. 
+
+B. Regularity 
+
+Lemma 1. The backup policy satisfies πb ∈ C∞(R12 ; R4)
+
+and is globally Lipschitz with constant 
+
+Lπb ≤ κ (mk vz + Kσ + Kω + kvh ), (25) 
+
+in any norm under which ∥R(σ)∥ ≤ 1 and SR (σ)v is differentiated through both factors. Proof sketch. R(σ) and Z(σ) are real-analytic on R3 away from the MRP singularity, and the shadow-set projection is applied only between integration steps, so within one evaluation of πb all maps are smooth. The raw commands in (17) are affine in (v, σ, ω ) once R(σ) is fixed, and 
+
+tanh is real-analytic with | tanh ′ | ≤ 1. Hence πb ∈ C∞,which exceeds the C1 required for the flow and its sensi-tivity. The Lipschitz bound then follows because saturation contracts slopes (| tanh ′ | ≤ 1) , the saturation argument carries the factor κ from (18), and the raw commands are affine in (v, σ, ω ) with state-gradients bounded by the gains 
+
+mk vz , K σ , K ω , k vh .Lemma 1 guarantees the existence and uniqueness of the flow Φ( x, s ) and the sensitivity Q(s) = ∂Φ/∂x on [0 , T ] ×
+
+R12 .
+
+C. Convergence to hover 
+
+Finally, we show that the closed loop settles to hover. At any equilibrium of f + gπ b, ˙x = 0 forces v = 0 (from 
+
+˙p = v), then ω = 0 (from ˙σ = Z(σ)ω = 0, with Z
+
+invertible), then σ = 0 (with v = ω = 0 the braking term kvh SR (σ)v = 0 , so ˙ω = 0 reduces to −Kσ σ = 0 ). The velocity row −ge 3 + ( Tsat /m )e3 = 0 then closes with 
+
+Tsat = mg at eT = mg . The equilibrium set is therefore 
+
+E = {(p, 0, 0, 0) : p ∈ R3}: the policy regulates attitude and velocity but is intentionally agnostic to position. Local exponential stability of any xh ∈ E follows from linearizing about xh. In the unsaturated region of tanh , ∂π b/∂x at xh
+
+has the structure −κ diag( mk vz /c T , τ −1 
+
+> i,c
+
+Kσ , τ −1 
+
+> i,c
+
+Kω , . . . )
+
+and therefore contributes −κ times the PD gains on the 
+
+(vz , σ, ω ) channels, yielding a Jcl (xh) that is Hurwitz on the (σ, v, ω ) block with position as the single uncontrollable mode, consistent with E being a continuum of equilibria. Hence ∥vΦT ∥ and ∥ωΦT ∥ decay exponentially along Φ,which is what makes the terminal residual ρi in Proposition 3 small and quantifiable.
