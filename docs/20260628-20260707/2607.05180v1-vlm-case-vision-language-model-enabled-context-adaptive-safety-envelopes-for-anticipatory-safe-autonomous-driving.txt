@@ -1,0 +1,788 @@
+Title: VLM-CASE: Vision-Language Model Enabled Context-Adaptive Safety Envelopes for Anticipatory Safe Autonomous Driving
+
+URL Source: https://arxiv.org/pdf/2607.05180v1
+
+Published Time: Tue, 07 Jul 2026 03:39:01 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# VLM-CASE: vision-language model enabled context-adaptive safety envelopes for anticipatory safe autonomous driving 
+
+Tianjia Yang a, Ke Li b, Ruwen Qin b, Xianbiao (XB) Hu a, ∗
+
+> aDepartment of Civil and Environmental Engineering, The Pennsylvania State University, University Park, PA, 16802, United States
+> bDepartment of Civil Engineering, Stony Brook University, Stony Brook, NY, 11794, United States
+
+Abstract 
+
+Adverse driving conditions, such as bad weather, remain a principal barrier to autonomous driving because they degrade two things at once: what the vehicle can perceive and what it can physically do. Human drivers cope by anticipation, reasoning about the scene and re-budgeting speed, following distance, and steering before grip or sight is lost, whereas current autonomous driving systems at best react after the fact. This paper proposes VLM-CASE, a framework that gives an autonomous vehicle this anticipatory capacity while keeping its motion bounded by a formal safety model at all times. A vision-language model (VLM), fine-tuned with low-rank adaptation (LoRA), reasons about the scene from the front-camera image and reports the road surface and visibility conditions. This output parametrizes a context-adaptive safety envelope (CASE), derived from physical limits and the guarantees of responsibility-sensitive safety, that couples braking and steering through a shared friction budget. A model predictive controller then drives freely within the envelope, while the VLM runs asynchronously so it never blocks the real-time control loop. We validate the framework in closed-loop CARLA simulation on tasks that demand both lateral and longitudinal control, across a range of weather, road-surface, and lighting conditions. The resulting controller, VLM-CASE-MPC, completes all trials, outperforming a conventional MPC baseline and a state-of-the-art VLM-integrated controller. Ablations confirm that the gains come from context adaptation, with the friction and visibility adaptations proving complementary. Fur-thermore, the framework is controller-agnostic and pairs with almost any low-level controller, offering a promising direction for safe autonomous driving. The dataset and supplementary materials for VLM-CASE are available at https://github.com/ytj254/VLM-CASE .
+
+Keywords: Vision-language models, Automated vehicles, Responsibility-sensitive safety, Adverse driving conditions, Model predictive control, Safety guarantee 
+
+1. Introduction 
+
+Human drivers handle adverse conditions by anticipation; current autonomous driving systems, at best, by reaction. A driver who notices snow slows before the wheels lose grip,        
+
+> ∗Corresponding author.
+> Email addresses: tjyang@psu.edu (Tianjia Yang), ke.li.1@stonybrook.edu (Ke Li),
+> Ruwen.Qin@stonybrook.edu (Ruwen Qin), xbhu@psu.edu (Xianbiao (XB) Hu)
+> arXiv:2607.05180v1 [cs.RO] 6 Jul 2026
+
+and drops back from the car ahead as fog sets in. Instead of measuring friction and visibility, or consulting a forecast, the driver reasons about the scene ahead and adjusts the driving behavior (speed, following distance, steering) to match what the vehicle can do and what the driver can see. Autonomous driving systems lack this anticipatory capacity, making adverse driving conditions one of the principal barriers to their deployment (Neumeister and Pape, 2019; Boyapati et al., 2023). Adverse conditions degrade driving in two ways. First, they weaken perception by reducing visibility and impairing lane and object detection (Zang et al., 2019; Zhang et al., 2023). Second, they alter vehicle maneuverability by changing tire–road friction and therefore its physical capability (Wang et al., 2022). Conditions such as rain and snow impair perception and maneuverability at once, and the effects are coupled: the vehicle must make safety-critical decisions precisely when both its environmental awareness and its physical capability are reduced. Existing autonomous driving systems handle adverse conditions in ways that fall short of the human pattern. Perception research under adverse conditions restores what the ve-hicle can see through robust sensing and fusion (Zhang et al., 2023), yet recovers sensing capability without translating the remaining visibility loss into adapted driving behavior. Friction estimation gauges what the vehicle can do, but only once the surface is already underneath the wheels, too late for an anticipatory response (Khaleghian et al., 2017; Wang et al., 2022). Fixed worst-case safety models such as Responsibility-Sensitive Safety (RSS) (Shalev-Shwartz et al., 2017) and control barrier functions (CBFs) (Ames et al., 2017) impose principled constraints, but their parameters are calibrated offline. Parameters conservative enough for ice cripple driving on dry asphalt, while parameters tuned for asphalt turn unsafe on ice (Koopman et al., 2019). Vision-language models (VLMs) can supply the scene under-standing these responses lack: shown a snow-covered road, a VLM knows that snow implies low friction (Zhou et al., 2024; Tian et al., 2025). Recent work accordingly uses VLMs to tune controller parameters (Long et al., 2026), shape learning rewards (Huang et al., 2025), or output actions directly through vision-language-action (VLA) models (Hwang et al., 2024; Xu et al., 2024; Zhou et al., 2025). Yet across all of them, scene understanding flows into the driving decision but never into the vehicle’s safety limits: the bounds on what it may do. Those bounds stay fixed regardless of what the model understands, so any added caution carries no safety guarantee. What is still missing is a formulation that makes the vehicle’s safety limits a function of scene understanding, while preserving the formal safety guarantee. Two challenges make this difficult. The first is to connect a foundation model to the controller: the model offers a semantic interpretation of the scene, while the controller acts on a quantitative set of admissible actions backed by a formal guarantee. Joining two such different objects so that the result still carries that guarantee is nontrivial. The second lies in the safety model itself. Adverse conditions do not merely shrink the vehicle’s physical limits; they couple braking and steering, since on a low-friction surface the two draw on one shared friction budget. A safety model built on fixed, decoupled worst-case rules is therefore either unsafe on a low-friction curve or needlessly restrictive elsewhere. The challenge is to formulate a safety model that captures these coupled, condition-dependent physical limits while still admitting a formal guarantee that a safe action always remains available. We propose VLM-CASE, a framework that resolves both challenges by letting scene un-derstanding set the vehicle’s safety limits while capturing how adverse conditions couple 2them. This marks a shift in how scene understanding reaches control. In the prevailing paradigm, exemplified by VLM-MPC (Long et al., 2026) and VLM-RL (Huang et al., 2025), it flows into the driving decision while the safety limits stay fixed. In VLM-CASE, it flows into the safety envelope, which bounds the vehicle’s action with a formal guarantee. As shown in Figure 1, the framework has three components. A VLM, fine-tuned with low-rank adaptation (LoRA), reasons about the driving scene from the front camera and reports the safety-relevant conditions. These conditions parametrize a context-adaptive safety envelope 
+
+(CASE), a quantitative set of admissible actions formulated from physical constraints and the formal guarantees of RSS. Its parameters couple the two effects of adverse conditions in one constraint set: lower friction shrinks the feasible accelerations and ties braking to steer-ing through a shared friction budget, while reduced visibility widens the required following margins. An MPC controller, one realization among many, then drives freely within the en-velope, so the vehicle gains the anticipation that scene understanding provides while what it is allowed to do stays formally bounded. The VLM runs asynchronously, so its second-scale inference never blocks the millisecond-scale control loop. We validate VLM-CASE through closed-loop simulation in CARLA across a range of adverse driving conditions. 
+
+> Figure 1: Overview of VLM-CASE, an anticipatory, safety-guaranteed autonomous driving framework.
+
+The contributions of this paper are fourfold: 
+
+• VLM-driven anticipatory safety. We propose a framework in which the VLM’s scene understanding sets the vehicle’s formal safety limits instead of only guiding its driving decisions, giving autonomous driving the anticipatory capacity of human drivers while preserving the safety guarantee. 
+
+• Context-adaptive safety envelope. We realize this framework through the context-adaptive safety envelope, a context-parametrized admissible action set that couples lateral and longitudinal RSS constraints through a shared friction budget. 3• Asynchronous architecture. We present an asynchronous architecture that inte-grates second-scale semantic inference with millisecond-scale safety-constrained control without compromising real-time operation. 
+
+• Closed-loop evidence. We provide closed-loop empirical evidence that anticipatory, human-like caution (slowing before curves on snow, extending headway in rain at night) can substantially enhance autonomous driving safety. The remainder of this paper is organized as follows. Section 2 reviews related work. Section 3 formulates the safety envelope and describes the framework. Section 4 details the experimental setup, Section 5 presents results, and Section 6 concludes. 
+
+2. Literature review 
+
+Research related to this work falls into three streams: autonomous driving under changing environmental conditions, safety-constrained vehicle control, and vision-language models for autonomous driving. This section reviews each stream in turn. 
+
+2.1. Autonomous driving under changing environmental conditions 
+
+Adverse weather challenges many elements of the autonomous driving task: rain, fog, and snow attenuate and scatter the signals on which cameras, lidar, and radar depend, obscure lane markings, and reduce the range at which other road users can be detected (Zang et al., 2019; Zhang et al., 2023; Yang et al., 2025). At the same time, precipitation changes the road surface itself, cutting the available tire–road friction by half or more between dry and snow-covered asphalt. Field evaluations of autonomous vehicle technology in adverse weather consistently identify this dual degradation, of information and of physical capability, as a principal barrier to deployment beyond fair-weather operational design domains (Neumeister and Pape, 2019; Boyapati et al., 2023). A first line of response targets perception. Multimodal fusion exploits the complementary strengths of camera, lidar, and radar to keep detection alive in fog and rain (Bijelic et al., 2020), point-cloud de-noising removes the clutter that falling snow introduces into lidar returns (Heinzler et al., 2020), and a growing body of work benchmarks and improves the robustness of detection and segmentation under weather corruptions (Song et al., 2024; Ding et al., 2026). Runtime sensor monitoring complements these methods by detecting online how severely the sensors are degraded so that downstream systems can respond (Sezgin et al., 2023). A smaller body of work accepts that perception will remain imperfect and hardens the decision layer instead: robust perception-based control retains safety guarantees under bounded perception errors (Dean et al., 2020), and perception-aware MPC propagates perception uncertainty into the controller’s constraints (Bonzanini et al., 2021). A second line of response targets the vehicle’s physical capability, such as the tire–road friction. Dynamics-based estimators infer friction from the vehicle’s own response (wheel slip, lateral force buildup, yaw-rate deviation) and are accurate once the tires are sufficiently excited, but they identify the surface the vehicle is already driving on (Khaleghian et al., 2017; Wang et al., 2022; Liu et al., 2025). Vision-based methods move the estimate ahead of the vehicle by classifying or regressing surface condition from camera images (Zhao et al., 2024), fusion schemes combine the two for faster convergence at surface transitions (Zhao 4et al., 2025), and friction-adaptive controllers embed such estimates into the prediction model or constraints (Vaskov et al., 2024; Li et al., 2024). Both lines strengthen individual components, but neither translates an overall under-standing of the driving conditions into the safety limits the vehicle respects. 
+
+2.2. Safety-constrained vehicle control 
+
+Formal safety models constrain vehicle behavior through explicit rules with proven guar-antees. RSS formalizes minimum longitudinal and lateral distances from worst-case as-sumptions about response times and accelerations, such that a vehicle executing the proper response never causes a collision (Shalev-Shwartz et al., 2017). CBFs keep the vehicle inside a designated safe set through a quadratic-program filter on the control input (Ames et al., 2014, 2017; He et al., 2021). Such models encode physical assumptions, such as response times, braking capabilities, and safety margins, as fixed parameters chosen at design time. In practice, however, no single parameter set is appropriate for all conditions. Calibra-tion studies using naturalistic driving data show that parameters matching average human behavior may be neither conservative enough for adverse conditions nor efficient enough for nominal ones (Xu et al., 2021; Liu et al., 2021; Chai et al., 2020). Koopman et al. (2019) make the underlying problem explicit: braking capability and road friction vary substantially across operational conditions, so parameters fixed at design time are either unsafe or overly conservative once the vehicle meets the physical world. Salvi et al. (2022) further show that adapting RSS parameters preserves safety across changing operating conditions. Accord-ingly, efforts to move beyond fixed parameters have emerged. Robust variants strengthen the guarantee against disturbances (Alan et al., 2023) or calibrate the assumed noise level online from recent vehicle trajectories (Qi, 2025), while Lyu et al. (2022) adjust the bar-rier parameters to the characteristics of surrounding drivers. Related robust and adaptive tracking controllers maintain path-following performance under model uncertainty and dis-turbances (Li et al., 2022), though without an explicit environmental knowledge source to inform the adaptation. These methods enforce safety constraints effectively, but their parameters lack a runtime environmental knowledge source, and the longitudinal and lateral rules are typically treated independently. 
+
+2.3. Vision-language models for autonomous driving 
+
+Trained on web-scale image and text corpora, VLMs carry broad world knowledge that task-specific driving models lack. This knowledge lets them understand the driving environ-ment from camera input and reason about what it implies, including rare situations outside any training distribution (Zhou et al., 2024). In general, the typical pipeline couples a VLM, as the high-level decision maker, to a low-level controller. DriveVLM pairs a VLM’s scene analysis with a conventional planning pipeline in a dual slow–fast architecture (Tian et al., 2025). VLM-MPC has the VLM set desired speed, headway, and cost weights for a longitudi-nal MPC at low frequency (Long et al., 2026). VLM-RL uses language goals to shape rewards for reinforcement learning (Huang et al., 2025). In parallel, vision-language-action (VLA) models go further: the model itself becomes the driving policy. Originating in robotic manip-ulation (Kim et al., 2024), the paradigm has moved rapidly into driving (Sapkota et al., 2025; Jiang et al., 2025). EMMA maps raw camera input directly to planned trajectories (Hwang 5et al., 2024), and DriveGPT4 produces low-level control signals end to end alongside textual explanations (Xu et al., 2024). AutoVLA unifies chain-of-thought reasoning with physically feasible trajectory tokens in a single autoregressive policy (Zhou et al., 2025). These models, however, place a large network inside the control loop, and the resulting inference latency remains a practical concern (Sapkota et al., 2025; Jiang et al., 2025). Across these architectures, scene understanding influences the driving decision through planning, parameters, rewards, or actions, yet none of them carries a safety guarantee within the system’s structure. 
+
+3. Methodology 
+
+This section presents the proposed VLM-CASE framework, shown in Figure 1. We first give a system overview, then detail its three modules in turn: the VLM context inference, the context-adaptive safety envelope, and its MPC realization. 
+
+3.1. System overview 
+
+The proposed framework aims at safety-guaranteed autonomous driving under varying environmental conditions: the vehicle adapts its behavior to the conditions it encounters, while its motion remains bounded by a formal safety model at all times. We study this goal on combined lane keeping and car following, two basic driving tasks whose safe execution depends directly on the road surface and the visibility. The framework computes the control action through the composition 
+
+ut = π(xt; Usafe (xt, Φ(Ψ( It; P )))) , (1) where It is the front-camera image and xt the measured vehicle state at control time t.The composition chains three modules: a VLM context inference Ψ, a context-to-parameter mapping Φ, and an MPC policy π constrained by a safety envelope Usafe . Each module is specified below. The VLM, fine-tuned for this task, reasons about the driving scene and reports a discrete semantic context 
+
+ct = Ψ( It; P ) ∈ C , (2) where P is a fixed instruction prompt and C is a finite set of categorical judgments about the road surface and the visibility conditions (Section 3.2). The mapping Φ converts the semantic context into quantitative parameters 
+
+θt = Φ( ct) = [ μt, o f,t ] ∈ Θ, (3) where μ ∈ (0 , 1] is the tire–road friction coefficient and of ∈ [0 , 1] is the forward observability, how reliably the road ahead and the lead vehicle can be perceived. The two parameters capture how adverse conditions degrade driving: μ bounds what the vehicle can do , while 
+
+of bounds what it can know .The parameters θ are then passed to the safety envelope 
+
+Usafe (x, θ) ⊆ U , (4) 6the set of control actions u = [ a, δ ] ∈ U , with a the commanded longitudinal acceleration and δ the front steering angle, that remain safe at state x given the parameters θ, formulated from physical constraints and the formal safety guarantees of RSS (Section 3.3). The MPC policy π then optimizes driving performance over a prediction horizon subject to the envelope at every step and applies the first optimized action (Section 3.4). The composition in Eq. (1) makes this explicit: scene understanding reaches the vehicle’s motion through θ, a compact and interpretable set of environment parameters, which set the boundaries of the admissible action set, the safety envelope. All driving decisions are then made by the controller inside the envelope. The VLM and the controller run on different timescales: the VLM performs semantic inference every 2 seconds, while the controller runs at 20 Hz, so the slow reasoning never blocks the real-time control loop (Section 3.2). 
+
+3.2. VLM context inference 
+
+The VLM context inference module forms the upper level of the framework: it reasons about the driving scene from the front-camera image and produces the parameters that the safety envelope consumes. We present its parts in sequence: the scene reasoning the VLM performs and the prompt that drives it, the supervised fine-tuning that adapts the VLM to the task, and the mapping from the predicted context to the envelope parameters. Figure 2 summarizes the pipeline, from training images to the parameters consumed by the safety envelope. 
+
+> Figure 2: Overview of the VLM context inference pipeline.
+
+3.2.1. VLM reasoning 
+
+The two parameters the safety envelope needs, the friction coefficient and the forward observability , are each governed by a few scene factors that a camera can resolve. The road 7surface governs the available tire–road friction, the vehicle’s physical capability. Weather, time of day, and illumination assistance together govern how far ahead the scene can be reliably perceived, its forward observability. We therefore have the VLM reason about the scene through these four factors and report a discrete context 
+
+c = [ cs, c w, c d, c l] ∈ C , (5) with road surface cs ∈ { dry , wet , snow }, weather cw ∈ { clear , heavy rain , dense fog }, time of day cd ∈ { day , night }, and illumination assistance cl ∈ { none , partial , strong }. Each label set is drawn from the available conditions in the CARLA simulator used for training and evaluation (the snow surface is overlaid manually, as CARLA has no built-in snow), so every category names a scene the framework actually encounters. Each field is a categorical judgment, which suits the nature of a vision-language model: built on a language backbone, it reasons reliably about discrete, semantic categories but is less reliable at predicting precise numerical values. The VLM therefore reports labels rather than numbers, and the mapping 
+
+Φ converts them into the envelope parameters. The reasoning is elicited by an instruction prompt P that frames the task as scene-context classification. The prompt encodes a structured decision procedure, organized in five parts (Figure 3): (i) a role that frames the model as a visual classifier of road-scene context; (ii) appearance-grounded label definitions that give the model concrete criteria for each class, for example snow as a surface with visible snow or slush cover; (iii) a decision order that judges the surface from the pavement, the weather from the atmosphere and precipitation, the time of day from the ambient light, and the illumination assistance from the artificial light supporting forward perception; (iv) tie-break rules for ambiguous scenes, such as assigning 
+
+none illumination assistance in daytime scenes; and (v) a strict output schema , a single JSON object with the four fields and no explanation. Each response is checked to be valid JSON with every field holding an allowed label, so what the mapping receives is exactly the structured context it expects.               
+
+> You are a visual classifier for road-scene context. Predict exactly one label per field from visible evidence. Fields: road_surface ∈{dry, wet, snow} weather ∈{clear, heavy_rain, dense_fog} time_of_day ∈{day, night} illumination_assistance ∈{none, partial, strong} Label definitions: appearance criteria for each label. Decision order: surface, weather, time of day, illumination. Tie-breaks: wet road, no rain →clear; day →none. Output: one JSON object with the four fields; no explanation.
+> Figure 3: Structure of the context-classification prompt P.
+
+3.2.2. Fine-tuning with LoRA 
+
+A compact open-source VLM is adapted to this task by supervised fine-tuning. For training sample i with image Ii and ground-truth context ci, the target yi is the context 8written as the JSON object the prompt requires, and the model learns to generate it token by token. The objective is the negative log-likelihood of the answer tokens, conditioned on the image and prompt, 
+
+L(ϕ) = − X
+
+> i
+
+X
+
+> j∈A i
+
+log pϕ(yi,j | Ii, P, y i,<j ) , (6) where Ai indexes the answer tokens and the prompt tokens are excluded from the loss, so training rewards the model for producing the correct labels. Updating all of the VLM’s weights would be costly and counterproductive here: the model has billions of parameters, and tuning them on a limited labeled set risks overfitting and eroding the broad world knowledge the framework depends on. Researchers have observed, however, that the weight change which specializes a large pretrained model to a narrow task tends to have low intrinsic rank (Hu et al., 2022). This motivates low-rank adaptation (LoRA), which freezes each pretrained weight matrix W and learns a small additive update, 
+
+W ′ = W + αr BA, B ∈ Rd×r, A ∈ Rr×k, r ≪ min( d, k ), (7) with rank r and scaling factor α. The update αr BA , the trainable adapter , is a product of two thin matrices, so it has rank at most r and adds only r(d + k) trainable parameters per matrix, against the dk in W . The adapter thus recovers most of the benefit of full fine-tuning at a small fraction of the trainable parameters, leaving intact the base model’s broad knowledge, on which the framework relies. The dataset and training configuration are detailed in Section 4. 
+
+3.2.3. Context-to-parameter mapping 
+
+The mapping Φ of Eq. (3) turns the categorical context into the two scalar parameters. Friction is a table lookup on the road surface, μ = Φ μ(cs), assigning each class a single coefficient with μdry > μ wet > μ snow . The three values are calibrated in CARLA so that each matches the friction the vehicle experiences on that surface. Forward observability is a composite visibility index over the three perception-related fields. Each field value carries a visibility score in [0 , 1] , denoted sw(cw), sd(cd), and sl(cl),with clear weather, daytime, and strong lighting scoring highest and the degraded values scoring lower. The index is the equal-weight mean of the active scores, 
+
+of = 1
+
+|S| 
+
+X
+
+> s∈S
+
+s, S =
+
+({ sw(cw), s d(cd) }, cd = day ,
+
+{ sw(cw), s d(cd), s l(cl) }, cd = night , (8) clamped to [0 , 1] . Illumination assistance enters the average at night; in daylight it carries no usable visibility information and is dropped. The most degraded inputs, dense fog or heavy rain, night, and absent lighting, drive of toward zero. 
+
+3.3. Context-adaptive safety envelope 
+
+The envelope is defined on the vehicle’s lane-frame state x = [ ey, e ψ, v, s, ∆v], comprising the lateral offset ey and heading error eψ relative to the lane centerline, the speed v, the bumper-to-bumper gap s to the lead vehicle, and the relative speed ∆v. The control is 9u = [ a, δ ], the longitudinal acceleration and front steering angle. The safety envelope is the intersection of three constraint sets, 
+
+Usafe (x, θ) = Ufric (x; μ) ∩ U lon (x; μ, o f ) ∩ U lat (x; μ), (9) derived below. 
+
+3.3.1. Physical capability: the shared friction budget 
+
+The tire–road contact can transmit a bounded total force. In the vehicle body frame, the longitudinal acceleration is ax = a and the lateral (centripetal) acceleration is ay =
+
+v2 tan( δ)/L for wheelbase L. With g the gravitational acceleration, the friction circle requires 
+
+q
+
+a2 
+
+> x
+
++ a2 
+
+> y
+
+≤ μg. (10) Constraint (10) couples steering and braking through a single budget: lateral demand con-sumes braking authority and vice versa. It defines the friction-limited action set 
+
+Ufric (x; μ) =  u = [ a, δ ] : 
+
+q
+
+a2 
+
+> x
+
++ a2 
+
+> y
+
+≤ μg . (11) 
+
+3.3.2. Longitudinal safety: visibility-aware following distance 
+
+Longitudinal safety follows the RSS proper-response argument with context-dependent parameters. If the lead vehicle brakes at up to bL, while the ego accelerates at up to ¯a during a response time ρlon before braking at b(μ) = min {μg, b max }, with bmax the mechanical braking limit, the minimum safe gap is 
+
+dlon (x; θ) = vρ lon + 12 ¯aρ 2lon + (v + ¯ aρ lon )2
+
+2 b(μ) − v2
+
+> L
+
+2 bL
+
++ ∆ lon (v, o f ), (12) where v and vL are the ego and lead speeds. The braking term b(μ) ties the ego’s assumed stopping capability to the reported surface condition, so the safety limit reflects the vehicle’s actual physical capability. The final term ∆lon (v, o f ) is an observability margin. Degraded perception cannot change the physics of stopping, but it widens the uncertainty about where hazards are, which the envelope absorbs as extra following distance. The margin grows with speed and shrinks as forward observability improves, 
+
+∆lon (v, o f ) = ( d0 + τ v ) (1 − of )α , α ∈ (0 , 1] , (13) where d0 and τ set a base and a speed-proportional buffer, and the exponent α reflects the nonlinear relationship between observability and the margin: moderate observability loss produces only a small margin increase, while severe loss approaches the full buffer. The margin vanishes under ideal observability, recovering nominal RSS. Longitudinal safety then requires the gap to cover this distance, which defines 
+
+Ulon (x; μ, o f ) =  u : s ≥ dlon (x; θ) . (14) 10 3.3.3. Lateral safety: an RSS rule for lane keeping 
+
+Original RSS formulates lateral safety between two moving vehicles. Here, we re-derive it against the lane boundaries to ensure lane keeping. Let vL 
+
+> out
+
+= max {0, v sin( eψ)} and 
+
+vR 
+
+> out
+
+= max {0, −v sin( eψ)} be the lateral speeds toward the left and right boundaries. In the worst case such a speed persists during a lateral response time ρlat and is then arrested at the lateral deceleration available under the friction budget, aresp  
+
+> y
+
+= p(μg )2 − a2
+
+> x
+
+. The resulting worst-case drift toward each boundary is 
+
+dσ
+
+> lat
+
+(x, u; μ) = vσ 
+
+> out
+
+ρlat + (vσ
+
+> out
+
+)2
+
+2 aresp 
+
+> y
+
+, σ ∈ { L, R }. (15) Consider a vehicle of length Lv and width wv in a lane of width w. When the vehicle yaws relative to the lane, its corners swing outward, so it reaches further toward the boundaries than its width alone: the distance from its center to its outer edge, measured across the lane, is 12 (Lv| sin eψ| + wv| cos eψ|) and grows with the heading error eψ. With ey the lateral offset from the centerline (positive toward the right), the clearances to the two boundaries are 
+
+cL = 12 w + ey − 12 (Lv| sin eψ| + wv| cos eψ|) ,cR = 12 w − ey − 12 (Lv| sin eψ| + wv| cos eψ|) . (16) Lateral safety requires each drift to stay within its clearance, which defines 
+
+Ulat (x; μ) =  u : cL ≥ dL
+
+> lat
+
+, c R ≥ dR 
+
+> lat
+
+. (17) The drift depends on the control through ax: braking harder while drifting outward reduces 
+
+aresp  
+
+> y
+
+and lengthens the drift, a coupling absent from decoupled formulations. 
+
+3.4. VLM-CASE-MPC: an MPC realization 
+
+Any controller whose actions stay inside Usafe satisfies the safety constraints, independent of how it is realized. We realize the framework with MPC and refer to the resulting controller as VLM-CASE-MPC. 
+
+3.4.1. State and prediction model 
+
+Within one solve at control time t, the controller predicts the state x of Section 3.3 over steps k = 0 , . . . , N , written xk = [ ey,k , e ψ,k , v k, s k, ∆vk] and initialized from the observed state. The lead state sets s0 and ∆v0 when a valid lead is present. Otherwise, s0 takes a large default value and ∆v0 = 0 , which deactivates car following. The prediction model is a kinematic bicycle in the lane frame, 
+
+˙ey = v sin( eψ), ˙eψ = vL tan( δ) − v cos( eψ) κref , ˙v = a, ˙s = ∆ v, ˙∆v = −a, (18) with κref the reference-path curvature and a constant-speed lead assumption over the horizon, discretized by forward Euler with interval ∆t to give xk+1 = f (xk, uk).11 3.4.2. Objective 
+
+The stage cost serves both driving tasks together with control smoothness: 
+
+ℓ(xk, uk) = wy e2 
+
+> y,k
+
++ wψ e2 
+
+> ψ,k
+
++ wv (vk − vref )2 + β w s
+
+ sk − sdes 
+
+> k
+
+2
+
++ wa a2 
+
+> k
+
++ wδ δ2 
+
+> k
+
++ w∆a (ak − ak−1)2 + w∆δ (δk − δk−1)2 . (19) The lane-keeping terms wy e2 
+
+> y,k
+
+and wψ e2 
+
+> ψ,k
+
+penalize the lateral offset and heading error from the lane centerline. The car-following terms wv(vk − vref )2 and β w s(sk − sdes  
+
+> k
+
+)2 track the reference speed and, when a lead is present, the desired spacing sdes  
+
+> k
+
+= dh + τhvk, a standstill gap dh plus a time-headway term. The remaining terms penalize control effort and its rate of change. Here vref is the lead speed when a lead is present and the desired cruising speed otherwise, β ∈ { 0, 1} is the lead-valid flag, and the weights wy, . . . , w ∆δ are nonnegative. The terminal cost ℓN applies the same lane-keeping and car-following terms at the final state 
+
+xN .On a curve, the centripetal demand v2|κ| consumes friction that braking may suddenly need. To anticipate this, the objective adds a cornering penalty 
+
+Jcorner = wcNX
+
+> k=0
+
+max {0, v 2 
+
+> k
+
+|κk| − η μ t g}2, (20) where wc ≥ 0 weights the penalty and η ∈ (0 , 1) reserves a fraction of the friction budget for cornering. Because κk is the reference curvature ahead of the vehicle, the penalty acts before the curve is reached. When the VLM reports a low-friction surface, μt shrinks, the reserved budget tightens, and the controller reduces speed in advance, mimicking a human driver who eases off before a snowy curve. 
+
+3.4.3. Complete problem 
+
+At each control time t, the controller solves 
+
+min   
+
+> u0: N−1
+> N−1
+
+X
+
+> k=0
+
+ℓ (xk, uk) + ℓN (xN ) + Jcorner 
+
+s.t. xk+1 = f (xk, uk),
+
+x0 = xt,
+
+uk ∈ U safe (xk, θt),
+
+(21) together with actuator bounds and rate limits. The safety envelope is imposed at every step of the horizon with the current context-derived parameters θt. The controller thus optimizes performance while respecting the safety constraints that the VLM’s scene understanding implies. The first optimized action is applied to the vehicle, and the problem is re-solved at the next step in receding-horizon fashion. 
+
+4. Experimental setup 
+
+We evaluate the framework in closed-loop simulation with the CARLA simulator on two maps that cover complementary operating regimes: Town03, a dense urban map driven 12 at 40–60 km/h, and Town04, which includes high-speed highway segments driven at 70– 90 km/h. The ego vehicle performs combined lane keeping and car following: it tracks the lane centerline while regulating its speed and, when a lead vehicle is present, the following distance. The VLM updates the context every 2 s while the controller runs at 20 Hz, so the two operate asynchronously. The evaluation comprises three experiment groups organized around the two envelope parameters: two groups vary one factor each, the tire–road friction 
+
+μ or the forward observability of , and the third degrades both at once as an integrated stress test. Together the groups span 66 scenarios, each defined by a map, a condition, and a speed, and repeated over three runs, for 198 evaluation runs in total. The rest of this section details the scenarios, the controllers compared, the VLM inference settings, and the evaluation metrics. 
+
+4.1. Driving scenarios 
+
+The ego drives a 350 m route on Town03 and a 1000 m route on Town04, each mixing curved and straight segments, and each scenario is swept over three speeds per map, 40, 50, and 60 km/h on Town03 and 70, 80, and 90 km/h on Town04. The swept speed is the ego’s target speed in the no-lead group and the lead vehicle’s speed in the two following groups. CARLA provides no native snow surface, so snow scenes overlay a snow and slush texture on the road with the tire friction reduced accordingly. Figure 4 shows representative front-camera frames across the conditions. The three experimental groups are: 
+
+• No-lead driving (18 scenarios: 3 surfaces × 2 maps × 3 speeds). Tests lateral safety under friction alone. The ego drives without a lead vehicle on dry (N1, μ = 0 .8), wet (N2, μ = 0 .4), and snow (N3, μ = 0 .2) surfaces. 
+
+• Constant-lead following (30 scenarios: 5 conditions × 2 maps × 3 speeds). Tests the following distance under visibility alone. The ego follows a constant-speed lead in clear day (L1), foggy day (L2), and clear night with strong (L3), partial (L4), and no (L5) illumination assistance. 
+
+• Lead braking (18 scenarios: 3 conditions × 2 maps × 3 speeds). The integrated stress test with both factors degraded. The lead travels at constant speed and then brakes hard to a stop at 40% of the route, under three compound conditions: C1, dry surface in clear daylight; C2, wet surface in heavy rain at night with partial illumination; and C3, snow surface on a clear night with strong illumination. 13 dry, clear, day, none wet, heavy rain, day, none snow, clear, day, none     
+
+> dry, dense fog, day, none dry, clear, night, strong dry, clear, night, partial
+> dry, clear, night, none wet, heavy rain, night, partial snow, clear, night, strong
+
+Figure 4: Front-camera frames for the evaluated conditions (road surface, weather, time of day, illumination). 
+
+4.2. Controllers 
+
+To validate the effectiveness of the proposed VLM-CASE-MPC, we compare it against three controllers: Base MPC, VLM-MPC, and Fixed-Envelope MPC. Their settings are detailed as follows: 
+
+• Base MPC is the vanilla MPC controller with no context-adaptive safety envelope, while all other settings remain the same. It has both lane-keeping and car-following abilities. 
+
+• VLM-MPC reproduces the recent VLM controller of Long et al. (2026). It relies on the VLM to reason about the driving conditions and adjust MPC parameters such as the desired speed, headway, and cost weights accordingly. Because the original controller is longitudinal only, we supplement it with a basic waypoint-following lateral controller so that it can keep the lane in our combined task. 
+
+• Fixed-Envelope MPC applies the full safety envelope but freezes the context at nominal good-condition values ( μ = 0 .8, of = 1 ). Therefore, its margins never adapt to the conditions the vehicle meets. 
+
+• VLM-CASE-MPC is the proposed controller, in which the live VLM reasoning con-tinuously drives the envelope parameters θ = [ μ, o f ], tightening the margins as condi-tions worsen and relaxing them as conditions improve. 14 To attribute the effect of each adaptation, we additionally evaluate two variants of the proposed controller: adapting friction only and adapting visibility only, each freezing the other parameter at its nominal value. 
+
+4.3. VLM inference settings 
+
+The backbone model used in this research is Qwen3-VL, a state-of-the-art open-source VLM. Among its variants we adopt the 8B model: as the accuracy results below show, it is the strongest on illumination assistance, the field that most separates the variants, while keeping an inference time compatible with the asynchronous control loop. We further fine-tune it with LoRA to ensure reliable performance on our driving scenes. The fine-tuning dataset comprises 10,560 front-camera frames at 1280 × 720 , collected in CARLA across the road surfaces, weather types, times of day, and illumination settings of Section 3.2 and labeled with the four context fields, split into 8,448 training, 1,056 validation, and 1,056 test frames stratified over the joint distribution of the four fields. The adapters use rank r = 16 
+
+and scaling factor α = 32 , applied to the query and value projections of the last twelve transformer layers. Training runs for 2,000 optimization steps at a learning rate of 1 × 10 −4
+
+with an effective batch size of 8 (a per-step batch of 1 accumulated over 8 steps), about two passes over the training set, and the checkpoint with the highest validation accuracy is retained. Table 1 reports per-field and overall accuracy on the held-out test set. Among the zero-shot base models the 2B model is by far the weakest, at 8.6% all-fields accuracy. The 4B and 8B models perform comparably on road surface, weather, and time of day, but they diverge on illumination assistance: accuracy rises from 30.3% (2B) to 68.9% (4B) to 76.6% (8B). The 8B model leads on this field by a clear margin, at a zero-shot inference time of 1.30 s that still fits the asynchronous update budget. However, none of the base models reliably gets all four fields right at once, the 8B reaching only 42.5% all-fields accuracy, so we fine-tune with LoRA. Adaptation raises every field above 99% and the all-fields accuracy to 98.3%, and the adapted model infers in 1.18 s.                                    
+
+> Table 1: Scene-context accuracy (%) and inference time: LoRA versus zero-shot base models. Model Variant Road surface Weather Time of day Illumination Overall Inference (s) Qwen3-VL-2B Zero-shot 78.88 44.41 99.15 30.30 8.62 0.69 Qwen3-VL-4B Zero-shot 84.75 57.39 98.58 68.94 43.75 0.91 Qwen3-VL-8B Zero-shot 84.47 56.72 98.30 76.61 42.52 1.30 Qwen3-VL-8B LoRA fine-tuned 99.43 99.81 100.00 99.05 98.30 1.18
+
+4.4. Evaluation metrics 
+
+We assess each controller on driving safety and lane-keeping quality. A run is a success if the vehicle completes the route within its lane or, in the lead-braking group, stops safely behind the lead. Departing the lane or stopping inside the minimum safe gap counts as a failure. From the runs we compute the following metrics. 
+
+• Success rate is the fraction of runs that succeed. It is the primary measure of safe task completion: a controller with a higher success rate more reliably keeps the vehicle in its lane and avoids collision across the route. 15 • Failure rate per kilometer is the number of failures divided by the total distance driven, expressed per kilometer. Normalizing by distance makes the measure compa-rable across routes of different length and across runs that terminate early. A lower value is safer. 
+
+• Minimum time-to-collision (TTC) is a widely used surrogate safety metric that measures the time that would remain before two road users collide if they maintained their current motion. A larger TTC indicates a safer interaction. In our setting the relevant interaction is car following, so we evaluate the TTC between the ego and the lead vehicle. For each run we record the minimum TTC, and we report the average of these minimum values across all runs. Because TTC captures the longitudinal margin to the lead, we aggregate it only over runs without a lane-keeping failure, since a vehicle that has left the lane no longer faces the lead and its TTC is no longer meaningful. 
+
+• Minimum boundary clearance is the lateral margin left at the most critical moment of a run: the distance between the vehicle side and the nearer lane edge, c = 12 (w −
+
+wv) − | ey|, where w is the lane width and wv the vehicle width. For each run we record the minimum clearance, and we report the average of these minima across runs. A positive per-run minimum means the vehicle kept a margin to the lane boundary throughout the run; a negative one means the boundary was crossed. 
+
+• Mean lateral error is the absolute deviation of the vehicle from the lane centerline, averaged over each run and then over runs. It reflects typical tracking accuracy; smaller values indicate tighter lane keeping. 
+
+5. Results 
+
+We present the lead-braking group first, the main safety test with both friction and visibility degraded at once, followed by the two single-factor groups, no-lead under varying friction and constant-lead under varying visibility, and an ablation study that separates the two adaptations. 
+
+5.1. Lead braking experiments under combined adverse conditions 
+
+Table 2 reports the lead-braking results. Over the three conditions, the Base MPC succeeds in 51.9% of its runs, the VLM-MPC in 75.9%, and the Fixed-Envelope MPC in 81.5%, while the VLM-CASE-MPC completes all 54 runs. The controllers diverge as the conditions worsen. On the dry condition (C1) all of them succeed. On the wet condition (C2) the Base MPC drops to 50.0% and the VLM-MPC to 77.8%. On the snow condition (C3) the Base MPC reaches only 5.6%, and the VLM-MPC and Fixed-Envelope MPC both fall to 50.0%. The VLM-CASE-MPC stays at 100% on both adverse conditions. The three baselines fail for different reasons, as the outcome breakdown in Figure 5 shows. The Base MPC has no safety guarantee, so it fails in every way. It keeps no following margin: its minimum TTC drops to 0.96 s on wet and 0.27 s on snow, against 4.76 s and 4.72 s for the VLM-CASE-MPC, so it nearly contacts the stopped lead. It also has no friction-aware control, so on snow it slides out of the lane. Its snow failures are thus a mix of unsafe stops and lane departures. The Fixed-Envelope MPC keeps a fixed following gap. 16 In these scenarios the gap is large enough to stop for the sudden brake, so the car-following rarely fails. Its problem is the frozen friction: assuming dry grip on snow, it brakes and steers harder than the surface allows and leaves the lane, its minimum boundary clearance falling to 0.08 m on average across runs. The VLM-MPC follows the lead safely. It keeps a minimum TTC above 3 s to avoid any rear-end conflict. Its failures stem from the lack of a tire–road friction model: the controller does not account for the reduced grip on wet and snow, and keeps a speed the surface cannot support on curves. On a curve the available grip is then too small to hold the vehicle, which runs off the lane or slides out, giving four heading-error failures on wet and nine lane departures on snow. This is especially apparent in the high-speed, low-friction runs in Figure 6. The VLM-CASE-MPC avoids all three failure modes. Told that grip is low, it lowers the assumed braking capability b(μ), couples braking and steering through the shared friction budget, and widens the following gap in advance. It therefore brakes within the budget and stays in the lane, keeping a minimum boundary clearance of 0.71 m on snow, where the failing baselines retain 0.16 m or less. 
+
+Table 2: Lead-braking experimental results by condition and controller. ↑ means higher is better, ↓ means lower is better; the best result is in bold.                                                                                                                                        
+
+> Condition Controller Success (%) Failure/km ↓Min TTC (s) ↑Min clearance (m) ↑Mean |ey|(m) ↓
+> C1 dry Base MPC 100.00 0.00 1.51 ±0.42 0.764 ±0.022 0.0074 ±0.0041 VLM-MPC 100.00 0.00 3.48 ±0.04 n/a n/a Fixed-Envelope MPC 100.00 0.00 2.72 ±0.21 0.761 ±0.021 0.0070 ±0.0040 VLM-CASE-MPC (Ours) 100.00 0.00 2.73 ±0.20 0.762 ±0.020 0.0070 ±0.0040
+> C2 wet Base MPC 50.00 1.50 0.96 ±0.89 0.732 ±0.045 0.0155 ±0.0126 VLM-MPC 77.78 0.70 4.18 ±0.24 n/a n/a Fixed-Envelope MPC 94.44 0.17 2.71 ±0.18 0.595 ±0.209 0.0196 ±0.0166
+> VLM-CASE-MPC (Ours) 100.00 0.00 4.76 ±0.17 0.759 ±0.030 0.0083 ±0.0071
+> C3 snow Base MPC 5.56 2.85 0.27 ±0.38 0.155 ±0.532 0.0583 ±0.0313 VLM-MPC 50.00 2.09 3.42 ±0.30 n/a n/a Fixed-Envelope MPC 50.00 1.62 2.39 ±0.57 0.079 ±0.683 0.0451 ±0.0399
+> VLM-CASE-MPC (Ours) 100.00 0.00 4.72 ±0.13 0.712 ±0.071 0.0300 ±0.0281
+
+Note: Min TTC is over runs without a lane-keeping failure; other metrics are over all runs. Lateral metrics are omitted for VLM-MPC (no lateral control). 
+
+17 0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Episodes (%)
+
+100 
+
+> Base
+
+50 
+
+50 Base 
+
+44 
+
+50 Base 
+
+100 
+
+> VLM-MPC
+
+78 
+
+22 VLM-MPC 
+
+50 
+
+50 VLM-MPC 
+
+100 
+
+> Fixed-Envelope
+
+94 Fixed-Envelope 
+
+50 
+
+50 Fixed-Envelope 
+
+100 
+
+> VLM-CASE-MPC
+
+100 
+
+> VLM-CASE-MPC
+
+100 
+
+> VLM-CASE-MPC
+
+C1 dry C2 wet C3 snow 
+
+Safe completion Unsafe stop Lane-keeping failure Figure 5: Run outcomes in lead-braking experiments by condition and controller. 0 5 10 15 20 25 
+
+0
+
+25 
+
+50 
+
+75 
+
+100 
+
+125 
+
+150 
+
+175 
+
+> Distance (m)
+
+Town03 / 40 km/h 
+
+0 5 10 15 20 25 
+
+0
+
+25 
+
+50 
+
+75 
+
+100 
+
+125 
+
+150 
+
+175 
+
+Town03 / 50 km/h 
+
+0 5 10 15 20 25 
+
+0
+
+25 
+
+50 
+
+75 
+
+100 
+
+125 
+
+150 
+
+175 
+
+200 
+
+Town03 / 60 km/h 
+
+0 10 20 30 40 
+
+Time (s) 
+
+0
+
+100 
+
+200 
+
+300 
+
+400 
+
+> Distance (m)
+
+Town04 / 70 km/h 
+
+0 10 20 30 40 
+
+Time (s) 
+
+0
+
+100 
+
+200 
+
+300 
+
+400 
+
+500 
+
+Town04 / 80 km/h 
+
+0 10 20 30 40 
+
+Time (s) 
+
+0
+
+100 
+
+200 
+
+300 
+
+400 
+
+500 
+
+Town04 / 90 km/h 
+
+Base MPC VLM-MPC Fixed-Envelope MPC VLM-CASE-MPC Lead vehicle 
+
+Figure 6: Trajectories under the snow condition (C3) in lead-braking experiments. 
+
+18 5.2. No-lead driving experiments under varying road friction 
+
+Table 3 reports the no-lead results. On the dry and wet surfaces all controllers complete every run and keep the lane almost identically, with mean lateral error near 0.02–0.03 m and minimum boundary clearance of at least 0.65 m. The performance diverges on snow. The Base and Fixed-Envelope controllers complete only 33% of the snow runs (6 of 18): they succeed at the lowest speed on each map but leave the lane at every higher speed. The VLM-CASE-MPC completes all 18. 
+
+Table 3: No-lead experimental results by road surface and controller. ↓ means lower is better; the best result is in bold.                                                                                                                  
+
+> Condition Controller Success (%) Failure/km ↓Mean speed (km/h) Min clearance (m) ↑Mean |ey|(m) ↓
+> N1 dry Base MPC 100.00 0.00 58.8 ±15.8 0.719 ±0.040 0.0198 ±0.0112
+> Fixed-Envelope MPC 100.00 0.00 58.8 ±15.8 0.718 ±0.042 0.0198 ±0.0113 VLM-CASE-MPC (Ours) 100.00 0.00 58.8 ±15.8 0.719 ±0.042 0.0199 ±0.0112 N2 wet Base MPC 100.00 0.00 58.1 ±15.6 0.699 ±0.047 0.0264 ±0.0180
+> Fixed-Envelope MPC 100.00 0.00 58.1 ±15.6 0.698 ±0.050 0.0264 ±0.0182 VLM-CASE-MPC (Ours) 100.00 0.00 57.9 ±15.5 0.650 ±0.150 0.0316 ±0.0306 N3 snow Base MPC 33.33 1.67 48.7 ±13.6 -0.073 ±0.614 0.0565 ±0.0270 Fixed-Envelope MPC 33.33 1.68 48.7 ±13.6 -0.140 ±0.636 0.0546 ±0.0239 VLM-CASE-MPC (Ours) 100.00 0.00 44.0 ±5.5 0.184 ±0.214 0.1966 ±0.1258
+
+Note: Mean speed is over successful runs; other metrics are over all runs. VLM-MPC is omitted (no lateral control). 
+
+The failure is friction-limited cornering. On a curve, the centripetal demand v2|κ| must fit within the available grip μg . On snow ( μ = 0 .2) this budget is small. A controller that carries too high a speed into the curve exceeds this budget and slides out of the lane, which is what the Base and Fixed-Envelope controllers do at 50 km/h and above. The VLM-CASE-MPC is told that the surface is snow and lowers μ. A lower μ tightens both the friction constraint of Eq. (10) and the cornering penalty of Eq. (20), so the controller slows before each curve, to a mean of 44 km/h on snow. Figure 7 shows the effect in the speed profiles: the non-adaptive controllers hold their speed until they depart, while the proposed controller slows through each curve and completes the route, as human drivers do. At the cost of a modest reduction in speed, the controller eliminates loss-of-control failures entirely. The two lateral columns in Table 3 should be read together. On snow the Base and Fixed-Envelope controllers show a smaller mean lateral error (about 0.05 m) than the VLM-CASE-MPC ( 0.20 m), a counting effect: a failed run ends the moment the vehicle leaves the lane, so the failing controllers are scored mostly on the easy driving before their departure, while the VLM-CASE-MPC is scored on the full route at every speed. The boundary clearance resolves the comparison: every run of the VLM-CASE-MPC ends with a positive minimum clearance, averaging 0.18 m, while the runs that crossed the lane edge pull the failing controllers’ averages below zero ( −0.07 and −0.14 m). 19 0            
+
+> 10
+> 20
+> 30
+> 40
+> 50
+> Speed (km/h)
+> Town03 / 50 km/h
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Town03 / 60 km/h
+> 020 40 60 80 100
+> Route completion (%)
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> Speed (km/h)
+> Town04 / 80 km/h
+> 020 40 60 80 100
+> Route completion (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> Town04 / 90 km/h
+> Base MPC Fixed-Envelope MPC VLM-CASE-MPC
+
+Figure 7: Ego speed profiles in no-lead experiments on the snow surface. 
+
+5.3. Constant-lead following experiments under varying visibility 
+
+Constant-speed following poses no emergency, and all four controllers complete every run in this group (Table 4). They also keep the lane equally well, with mean lateral error near 0.02 m and minimum boundary clearance near 0.72 m in every condition (VLM-MPC excepted, as it steers with a separate tracker). What sets the controllers apart is the following gap, the room left if the lead behaves unexpectedly: it stays near 24 m for the Base and Fixed-Envelope controllers and near 51 m for VLM-MPC, whereas for the VLM-CASE-MPC it widens as visibility falls. We therefore examine this gap in detail. Figure 8 shows the gap as visibility falls from clear day (L1) to dark night (L5), for both maps at their top speed (Town03 at 60 km/h and Town04 at 90 km/h). The Base and Fixed-Envelope controllers keep the same gap pattern in every condition, around 27 m and 35 m, and do not respond to visibility. The VLM-CASE-MPC widens its gap as the forward observability drops, through the visibility margin of Eq. (13): at 90 km/h on Town04 its mean gap at top speed opens from 36 m in clear conditions to 66 m on the darkest night. In clear conditions the margin vanishes, so its gap coincides with the Fixed-Envelope baseline. The adaptation engages only as perception degrades. The VLM-MPC also varies its gap with the conditions, but only slightly, between about 72 and 76 m. This small variation is not what keeps it safe. Its safety comes from a conservative following preference that holds a large gap even in clear and moderate visibility, around 73 m, and does not open much further as the night darkens. The two controllers are therefore safe in different ways: VLM-MPC by staying conservative in every condition, and the VLM-CASE-MPC by adapting, keeping a 20 moderate gap when sight is clear and opening it up as the night deepens, the way a careful human driver does. 
+
+Table 4: Constant-lead experimental results by visibility condition and controller. ↓ means lower is better; the best result is in bold. 
+
+Condition Controller Success (%) Mean gap (m) Min clearance (m) ↑ Mean |ey| (m) ↓
+
+L1 clear day Base MPC 100.00 23.8 ± 4.2 0.719 ± 0.029 0.0195 ± 0.0112 VLM-MPC 100.00 50.7 ± 13.2 n/a n/a Fixed-Envelope MPC 100.00 23.9 ± 6.3 0.723 ± 0.035 0.0188 ± 0.0107 
+
+VLM-CASE-MPC (Ours) 100.00 24.0 ± 6.3 0.725 ± 0.032 0.0187 ± 0.0106 
+
+L2 fog day Base MPC 100.00 23.7 ± 4.2 0.717 ± 0.032 0.0194 ± 0.0114 VLM-MPC 100.00 51.3 ± 13.8 n/a n/a Fixed-Envelope MPC 100.00 23.8 ± 6.1 0.722 ± 0.035 0.0189 ± 0.0108 
+
+VLM-CASE-MPC (Ours) 100.00 41.3 ± 10.3 0.718 ± 0.030 0.0184 ± 0.0094 
+
+L3 night strong Base MPC 100.00 23.8 ± 4.2 0.717 ± 0.032 0.0197 ± 0.0113 VLM-MPC 100.00 50.6 ± 12.7 n/a n/a Fixed-Envelope MPC 100.00 24.2 ± 6.1 0.719 ± 0.034 0.0187 ± 0.0107 
+
+VLM-CASE-MPC (Ours) 100.00 38.7 ± 9.9 0.719 ± 0.028 0.0186 ± 0.0095 
+
+L4 night partial Base MPC 100.00 23.8 ± 4.2 0.719 ± 0.030 0.0195 ± 0.0111 VLM-MPC 100.00 51.2 ± 12.8 n/a n/a Fixed-Envelope MPC 100.00 23.9 ± 6.1 0.722 ± 0.033 0.0190 ± 0.0106 
+
+VLM-CASE-MPC (Ours) 100.00 44.2 ± 10.3 0.722 ± 0.028 0.0180 ± 0.0095 
+
+L5 night none Base MPC 100.00 23.8 ± 4.1 0.717 ± 0.031 0.0195 ± 0.0113 VLM-MPC 100.00 51.4 ± 13.7 n/a n/a Fixed-Envelope MPC 100.00 24.0 ± 6.4 0.720 ± 0.033 0.0189 ± 0.0106 
+
+VLM-CASE-MPC (Ours) 100.00 47.6 ± 12.0 0.719 ± 0.028 0.0184 ± 0.0088 
+
+Note: Mean gap is over successful runs; other metrics are over all runs. Lateral metrics are omitted for VLM-MPC (no lateral control). 0                            
+
+> 10
+> 20
+> 30
+> 40
+> 50
+> Town03 (60 km/h)
+> Gap (m)
+> L1 clear day
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> L2 fog day
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> L3 night strong
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> L4 night partial
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> L5 night none
+> 020 40 60 80 100
+> Route (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> Town04 (90 km/h)
+> Gap (m)
+> 020 40 60 80 100
+> Route (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> 020 40 60 80 100
+> Route (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 020 40 60 80 100
+> Route (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 020 40 60 80 100
+> Route (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Base MPC VLM-MPC Fixed-Envelope MPC VLM-CASE-MPC
+
+Figure 8: Following gap versus route completion under varying visibility. 
+
+5.4. Ablation study 
+
+Table 5 isolates the two adaptations on the lead-braking task, each variant adapting one parameter and freezing the other at its nominal value. The three conditions stress them 21 differently. The dry condition (C1) stresses neither, with good grip and good visibility, and every variant succeeds. Each adverse condition stresses one of them: the snow condition (C3) is friction-limited, with low grip ( μ = 0 .2) but fair visibility ( of = 0 .83 ), while the wet condition (C2) is visibility-limited, with moderate grip ( μ = 0 .4) but a rainy night and only partial illumination, the poorest visibility of the three ( of = 0 .5). In both adverse conditions the envelope keeps the vehicle from rear-ending the lead, so the failures that remain are lateral, and each adaptation removes the failures in the condition that matches it. On snow, friction adaptation keeps the vehicle in the lane. Friction-only clears the condition completely (100% success) and keeps a minimum boundary clearance of 0.71 m, because the correct grip lets the controller brake and steer within the snow friction budget. The variants that do not adapt friction, visibility-only and the Fixed-Envelope baseline, assume more grip than the surface offers, steer harder than it allows, and slide off the lane: their minimum clearance collapses to about 0.1 m on average and only half of their runs succeed. On wet, the remaining failure is again lateral, but visibility adaptation prevents it through the longitudinal margin. Visibility-only widens the following gap to match the low observ-ability, raising the minimum TTC to 4.56 s, against 2.93 s for friction-only. This is the coupling that matters: the larger margin lets the controller brake gently when the lead stops, so it spends little of the friction budget on braking and keeps enough for steering, holding its heading and clearing every run. Friction-only, keeping a tighter gap, must brake hard, exhausts the shared budget, and suffers a heading-error failure. Neither adaptation covers the other condition: friction-only stays at 94% on wet and visibility-only at 50% on snow, matching the non-adaptive Fixed-Envelope baseline. Only the full controller, which adapts both, reaches 100% on both. The two adaptations are therefore complementary, each covering the condition the other cannot. 
+
+Table 5: Ablation of the proposed controller on the lead-braking task. ↑ means higher is better, ↓ means lower is better; the best result is in bold.                                                                                                                                                    
+
+> Condition Controller Success (%) Failure/km ↓Min TTC (s) ↑Min clearance (m) ↑Mean |ey|(m) ↓
+> C1 dry Fixed-Envelope MPC 100.00 0.00 2.72 ±0.21 0.761 ±0.021 0.0070 ±0.0040 Visibility-only adaptation 100.00 0.00 2.74 ±0.17 0.761 ±0.021 0.0070 ±0.0040 Friction-only adaptation 100.00 0.00 2.73 ±0.18 0.761 ±0.022 0.0069 ±0.0041 VLM-CASE-MPC (Ours) 100.00 0.00 2.73 ±0.20 0.762 ±0.020 0.0070 ±0.0040 C2 wet Fixed-Envelope MPC 94.44 0.17 2.71 ±0.18 0.595 ±0.209 0.0196 ±0.0166 Visibility-only adaptation 100.00 0.00 4.56 ±0.14 0.711 ±0.122 0.0100 ±0.0084 Friction-only adaptation 94.44 0.17 2.93 ±0.11 0.723 ±0.066 0.0112 ±0.0072
+> VLM-CASE-MPC (Ours) 100.00 0.00 4.76 ±0.17 0.759 ±0.030 0.0083 ±0.0071
+> C3 snow Fixed-Envelope MPC 50.00 1.62 2.39 ±0.57 0.079 ±0.683 0.0451 ±0.0399 Visibility-only adaptation 50.00 1.67 3.53 ±0.40 0.108 ±0.666 0.0419 ±0.0387 Friction-only adaptation 100.00 0.00 3.56 ±0.12 0.708 ±0.068 0.0332 ±0.0296
+> VLM-CASE-MPC (Ours) 100.00 0.00 4.72 ±0.13 0.712 ±0.071 0.0300 ±0.0281
+
+Note: Visibility-only and friction-only each adapt a single parameter, with the other frozen at its nominal value. Min TTC is over runs without a lane-keeping failure; other metrics are over all runs. 
+
+6. Conclusion and discussion 
+
+This paper introduced a framework that gives an autonomous vehicle anticipatory, human-like caution under adverse driving conditions: a VLM interprets the scene and translates its 22 environmental understanding into the vehicle’s safety limits. The model reads the road sur-face and visibility from a front camera and parametrizes a context-adaptive safety envelope that couples braking and steering through a shared friction budget and widens the following margin as perception degrades; an MPC controller then drives freely within the envelope. Because the VLM sets the envelope’s parameters, this caution stays bounded by a physically grounded safety model at all times, and because the VLM runs asynchronously, it does not slow the real-time control loop. Closed-loop experiments in CARLA support the design. On the no-lead snow surface, friction adaptation eliminated loss-of-control failures, lifting the success rate from 33% to 100% by constraining the vehicle to a moderate cornering speed within the friction budget. In constant-speed following, visibility adaptation widened the mean following gap, averaged over all runs, from 24 m in clear daylight (L1) to 48 m on the darkest night (L5), while the non-adaptive controllers held a fixed gap. On the integrated emergency-braking task, the proposed controller completed all 54 trials (100%), against 82% for Fixed-Envelope MPC, 76% for VLM-MPC, and 52% for Base MPC. The ablation confirmed that the two adaptations are complementary: adapting friction alone solved the friction-limited condition, where the correct grip is what keeps the vehicle in its lane; adapting visibility alone solved the visibility-limited condition, where a wider following margin is what averts the emergency; only the full controller, supplying both, succeeded in both conditions. Several limitations point to future work. The evaluation is in simulation, and transferring the framework to real vehicles will require closing the appearance gap and validating the fric-tion calibration on real surfaces. The context is a small set of discrete categories converted to envelope parameters by a calibrated table; a continuous mapping from richer scene de-scriptions could capture finer gradations of condition and would let the envelope respond to situations outside the present category set. Finally, the safety envelope is controller-agnostic, and pairing it with controllers other than MPC, or composing it with formal runtime moni-tors, is a natural extension of this work. 
+
+CRediT authorship contribution statement Tianjia Yang: Writing – review & editing, Writing – original draft, Methodology, Soft-ware, Investigation, Conceptualization. Ke Li: Writing – review & editing, Validation, Investigation. Ruwen Qin: Writing – review & editing, Conceptualization. Xianbiao Hu: 
+
+Writing – review & editing, Supervision, Methodology, Conceptualization. 
+
+References 
+
+Alan, A., Taylor, A.J., He, C.R., Ames, A.D., Orosz, G., 2023. Control Barrier Functions and Input-to-State Safety With Application to Automated Vehicles. IEEE Transactions on Control Systems Technology 31, 2744–2759. doi: 10.1109/TCST.2023.3286090 .Ames, A.D., Grizzle, J.W., Tabuada, P., 2014. Control barrier function based quadratic pro-grams with application to adaptive cruise control, in: 53rd IEEE Conference on Decision and Control, pp. 6271–6278. doi: 10.1109/CDC.2014.7040372 .23 Ames, A.D., Xu, X., Grizzle, J.W., Tabuada, P., 2017. Control Barrier Function Based Quadratic Programs for Safety Critical Systems. IEEE Transactions on Automatic Control 62, 3861–3876. doi: 10.1109/TAC.2016.2638961 .Bijelic, M., Gruber, T., Mannan, F., Kraus, F., Ritter, W., Dietmayer, K., Heide, F., 2020. Seeing Through Fog Without Seeing Fog: Deep Multimodal Sensor Fusion in Unseen Adverse Weather, in: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 11682–11692. Bonzanini, A.D., Mesbah, A., Di Cairano, S., 2021. Perception-Aware Chance-Constrained Model Predictive Control for Uncertain Environments, in: 2021 American Control Con-ference (ACC), pp. 2082–2087. doi: 10.23919/ACC50511.2021.9483203 .Boyapati, R.K., Eddy, M.M., Seitz, T., 2023. Automated Vehicles and Adverse Weather Phase 3 – Final Report. Technical Report FHWA-HOP-21-047. U.S. Department of Trans-portation. Chai, C., Zeng, X., Wu, X., Wang, X., 2020. Evaluation and Optimization of Responsibility-Sensitive Safety Models on Autonomous Car-Following Maneuvers. Transportation Re-search Record 2674, 662–673. doi: 10.1177/0361198120948507 .Dean, S., Matni, N., Recht, B., Ye, V., 2020. Robust Guarantees for Perception-Based Control, in: Proceedings of the 2nd Conference on Learning for Dynamics and Control, PMLR. pp. 350–360. Ding, Y., Biswas, D., Liang, K., Li, K., Qin, R., Hu, X., 2026. From clear to adverse: A survey of all-weather LiDAR semantic segmentation for autonomous driving. Artificial Intelligence for Transportation 6, 100061. doi: 10.1016/j.ait.2026.100061 .He, S., Zeng, J., Zhang, B., Sreenath, K., 2021. Rule-Based Safety-Critical Control De-sign using Control Barrier Functions with Application to Autonomous Lane Change, in: 2021 American Control Conference (ACC), pp. 178–185. doi: 10.23919/ACC50511.2021. 9482848 .Heinzler, R., Piewak, F., Schindler, P., Stork, W., 2020. CNN-Based Lidar Point Cloud De-Noising in Adverse Weather. IEEE Robotics and Automation Letters 5, 2514–2521. doi: 10.1109/LRA.2020.2972865 .Hu, E.J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang, S., Wang, L., Chen, W., 2022. Lora: Low-rank adaptation of large language models. ICLR 1, 3. Huang, Z., Sheng, Z., Qu, Y., You, J., Chen, S., 2025. Vlm-rl: A unified vision language models and reinforcement learning framework for safe autonomous driving. Transportation Research Part C: Emerging Technologies 180, 105321. Hwang, J.J., Xu, R., Lin, H., Hung, W.C., Ji, J., Choi, K., Huang, D., He, T., Covington, P., Sapp, B., Zhou, Y., Guo, J., Anguelov, D., Tan, M., 2024. EMMA: End-to-End Multimodal Model for Autonomous Driving. arXiv:2410.23262 .24 Jiang, S., Huang, Z., Qian, K., Luo, Z., Zhu, T., Zhong, Y., Tang, Y., Kong, M., Wang, Y., Jiao, S., 2025. A Survey on Vision-Language-Action Models for Autonomous Driving, in: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV), pp. 4524–4536. Khaleghian, S., Emami, A., Taheri, S., 2017. A technical survey on tire-road friction esti-mation. Friction 5, 123–146. doi: 10.1007/s40544-017-0151-0 .Kim, M.J., Pertsch, K., Karamcheti, S., Xiao, T., Balakrishna, A., Nair, S., Rafailov, R., Foster, E., Lam, G., Sanketi, P., 2024. Openvla: An open-source vision-language-action model. arXiv preprint arXiv:2406.09246 arXiv:2406.09246 .Koopman, P., Osyk, B., Weast, J., 2019. Autonomous vehicles meet the physical world: RSS, variability, uncertainty, and proving safety, in: International Conference on Computer Safety, Reliability, and Security, Springer. pp. 245–253. Li, M., Jia, Y., Lei, T., 2024. Path tracking of varying-velocity 4WS autonomous vehicles un-der tire force friction ellipse constraints. Robotics and Autonomous Systems 173, 104621. doi: 10.1016/j.robot.2024.104621 .Li, X., Liu, C., Chen, B., Jiang, J., 2022. Robust Adaptive Learning-Based Path Tracking Control of Autonomous Vehicles Under Uncertain Driving Environments. IEEE Transac-tions on Intelligent Transportation Systems 23, 20798–20809. doi: 10.1109/TITS.2022. 3176970 .Liu, J., Liu, Y., Wang, L., Qu, X., 2025. A Survey and Comprehensive Taxonomy of Tire-Road Adhesion Coefficient Estimation for Intelligent Vehicles. IEEE Transactions on Intelligent Transportation Systems 26, 12819–12833. doi: 10.1109/TITS.2025.3565542 .Liu, S., Wang, X., Hassanin, O., Xu, X., Yang, M., Hurwitz, D., Wu, X., 2021. Calibration and evaluation of responsibility-sensitive safety (RSS) in automated vehicle performance during cut-in scenarios. Transportation Research Part C: Emerging Technologies 125, 103037. doi: 10.1016/j.trc.2021.103037 .Long, K., Shi, H., Liu, J., Xiao, C., Li, X., 2026. VLM-MPC: Model predictive controller augmented vision language model for autonomous driving. Transportation Research Part C: Emerging Technologies 183. doi: 10.1016/j.trc.2025.105487 .Lyu, Y., Luo, W., Dolan, J.M., 2022. Adaptive Safe Merging Control for Heterogeneous Au-tonomous Vehicles using Parametric Control Barrier Functions, in: 2022 IEEE Intelligent Vehicles Symposium (IV), pp. 542–547. doi: 10.1109/IV51971.2022.9827329 .Neumeister, D.M., Pape, D.B., 2019. Automated Vehicles and Adverse Weather. Technical Report FHWA-JPO-19-755. U.S. Department of Transportation. Qi, H., 2025. Robust responsibility-sensitive safety: Noise disturbed adaptive cruise control. Systems & Control Letters 196, 106021. doi: 10.1016/j.sysconle.2025.106021 .25 Salvi, A., Weiss, G., Trapp, M., Oboril, F., Buerkle, C., 2022. Safety implications of runtime adaptation to changing operating conditions, in: 2022 IEEE 25th International Conference on Intelligent Transportation Systems (ITSC), IEEE. pp. 2444–2449. Sapkota, R., Cao, Y., Roumeliotis, K.I., Karkee, M., 2025. Vision-language-action mod-els: Concepts, progress, applications and challenges. arXiv preprint arXiv:2505.04769 
+
+arXiv:2505.04769 .Sezgin, F., Vriesman, D., Steinhauser, D., Lugner, R., Brandmeier, T., 2023. Safe Au-tonomous Driving in Adverse Weather: Sensor Evaluation and Performance Monitoring, in: 2023 IEEE Intelligent Vehicles Symposium (IV), pp. 1–6. doi: 10.1109/IV55152.2023. 10186596 .Shalev-Shwartz, S., Shammah, S., Shashua, A., 2017. On a formal model of safe and scalable self-driving cars. doi: 10.48550/arXiv.1708.06374 .Song, Z., Liu, L., Jia, F., Luo, Y., Jia, C., Zhang, G., Yang, L., Wang, L., 2024. Robustness-Aware 3D Object Detection in Autonomous Driving: A Review and Outlook. IEEE Transactions on Intelligent Transportation Systems 25, 15407–15436. doi: 10.1109/TITS. 2024.3439557 .Tian, X., Gu, J., Li, B., Liu, Y., Wang, Y., Zhao, Z., Zhan, K., Jia, P., Lang, X., Zhao, H., 2025. DriveVLM: The Convergence of Autonomous Driving and Large Vision-Language Models, in: Proceedings of the 8th Conference on Robot Learning (CoRL), pp. 4698–4726. Vaskov, S., Quirynen, R., Menner, M., Berntorp, K., 2024. Friction-Adaptive Stochastic Nonlinear Model Predictive Control for Autonomous Vehicles. Vehicle System Dynamics 62, 347–371. doi: 10.1080/00423114.2023.2219791 , arXiv:2305.03798 .Wang, Y., Hu, J., Wang, F., Dong, H., Yan, Y., Ren, Y., Zhou, C., Yin, G., 2022. Tire Road Friction Coefficient Estimation: Review and Research Perspectives. Chinese Journal of Mechanical Engineering 35, 6. doi: 10.1186/s10033-021-00675-z .Xu, X., Wang, X., Wu, X., Hassanin, O., Chai, C., 2021. Calibration and evaluation of the Responsibility-Sensitive Safety model of autonomous car-following maneuvers using naturalistic driving study data. Transportation Research Part C: Emerging Technologies 123, 102988. doi: 10.1016/j.trc.2021.102988 .Xu, Z., Zhang, Y., Xie, E., Zhao, Z., Guo, Y., Wong, K.Y.K., Li, Z., Zhao, H., 2024. DriveGPT4: Interpretable End-to-End Autonomous Driving Via Large Language Model. IEEE Robotics and Automation Letters 9, 8186–8193. doi: 10.1109/LRA.2024.3440097 .Yang, T., Ding, Y., Li, K., Pan, Y., Qin, R., Yin, Z., Hu, X., 2025. SimLKAS: A simulation-based framework for the verification and validation of lane keeping assistance systems. Journal of Intelligent Transportation Systems , 1–25doi: 10.1080/15472450. 2025.2559224 .26 Zang, S., Ding, M., Smith, D., Tyler, P., Rakotoarivelo, T., Kaafar, M.A., 2019. The Impact of Adverse Weather Conditions on Autonomous Vehicles: How Rain, Snow, Fog, and Hail Affect the Performance of a Self-Driving Car. IEEE Vehicular Technology Magazine 14, 103–111. doi: 10.1109/MVT.2019.2892497 .Zhang, Y., Carballo, A., Yang, H., Takeda, K., 2023. Perception and sensing for autonomous vehicles under adverse weather conditions: A survey. ISPRS Journal of Photogrammetry and Remote Sensing 196, 146–177. doi: 10.1016/j.isprsjprs.2022.12.021 .Zhao, S., Zhang, J., Jiang, Y., He, C., Han, J., 2025. Tire-Road friction coefficients adaptive estimation through image and vehicle dynamics integration. Mechanical Systems and Signal Processing 224, 112039. doi: 10.1016/j.ymssp.2024.112039 .Zhao, T., Guo, P., Wei, Y., 2024. Road friction estimation based on vision for safe au-tonomous driving. Mechanical Systems and Signal Processing 208, 111019. doi: 10.1016/ j.ymssp.2023.111019 .Zhou, X., Liu, M., Yurtsever, E., Zagar, B.L., Zimmer, W., Cao, H., Knoll, A.C., 2024. Vision Language Models in Autonomous Driving: A Survey and Outlook. IEEE Transactions on Intelligent Vehicles doi: 10.1109/TIV.2024.3402136 .Zhou, Z., Cai, T., Zhao, S.Z., Zhang, Y., Huang, Z., Zhou, B., Ma, J., 2025. Au-toVLA: A Vision-Language-Action Model for End-to-End Autonomous Driving with Adaptive Reasoning and Reinforcement Fine-Tuning. arXiv preprint arXiv:2506.13757 
+
+arXiv:2506.13757 .27
