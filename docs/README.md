@@ -6,81 +6,74 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-07
-- 运行时间：2026-07-07 21:29:25 UTC
+- 最新运行日期：2026-07-09
+- 运行时间：2026-07-09 21:30:50 UTC
 - 运行状态：成功
-- 本次总论文数：19
-- 精读区：7
+- 本次总论文数：18
+- 精读区：6
 - 速读区：12
 
 ### 今日简报（AI）
-今日共处理19篇论文，精读7篇速读12篇，重点挖掘了Transformer在无人机交通管理安全场景及高效视觉-语言-动作模型的突破。
-
-最值得关注的是两篇8.0高分工作：Transformer揭示UTM安全关键场景，以及Z-1算法提升VLA模型强化学习效率。
-
-建议后续可深入探讨Transformer在无人机交通管理中的实用化方案，并尝试将Z-1的高效学习思路迁移至其他视觉-语言-动作任务。
-- 详情：[/202607/07/README](/202607/07/README)
+今日精选18篇论文，聚焦无人机动态空管与机器人单演示强化学习两大突破。最值得关注：无人机城市空域协作安全（9.0分）和真实世界机器人单次演示高效学习（8.0分）。建议下一步深入阅读这两篇精读论文，并关注因果推理强化学习（7.0分）在自主系统恢复中的应用。
+- 详情：[/202607/09/README](/202607/09/README)
 
 ### 精读区论文标签
-1. [Revealing Safety-Critical Scenarios for UTM via Transformer](/202607/07/2606.31114v1-revealing-safety-critical-scenarios-for-utm-via-transformer)  
+1. [Dynamic Airspace Management for UAVs in Evolving Urban Environments: Collaborative Coordination and Human Safety](/202607/09/2607.04825v1-dynamic-airspace-management-for-uavs-in-evolving-urban-environments-collaborative-coordination-and-human-safety)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：使用多智能体强化学习的无人机安全控制
+2. [One Demonstration Is Enough for Real-World Robotic Reinforcement Learning](/202607/09/2607.01651v1-one-demonstration-is-enough-for-real-world-robotic-reinforcement-learning)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：基于单次演示的实际机器人强化学习与安全恢复
+3. [Efficient Transfer Learning of Robot Dynamic Models Using Morphological Similarity](/202607/09/2607.05665v1-efficient-transfer-learning-of-robot-dynamic-models-using-morphological-similarity)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：神经网络迁移学习用于水下机器人动力学建模
+4. [Residual-Conservative Model Predictive Path Integral Control](/202607/09/2607.06950v1-residual-conservative-model-predictive-path-integral-control)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：使用基于Transformer的强化学习发现无人机交通管理安全关键场景
-2. [Z-1: Efficient Reinforcement Learning for Vision-Language-Action Models](/202607/07/2606.31846v1-z-1-efficient-reinforcement-learning-for-vision-language-action-models)  
+   evidence：具有自适应安全保守性的采样型模型预测控制
+5. [Disturbance-aware Motion Planning for Over-actuated Underwater Vehicles Exploiting Actuation Redundancy for High-fidelity 3D Reconstruction](/202607/09/2607.07139v1-disturbance-aware-motion-planning-for-over-actuated-underwater-vehicles-exploiting-actuation-redundancy-for-high-fidelity-3d-reconstruction)  
    标签：评分：8.0/10、query:ocean-robot
-   evidence：通过VLA模型对机器人控制进行强化学习
-3. [Real-Time Visual Intelligence on Low-Cost UAVs: A Modular Approach for Tracking, Scanning, and Navigation](/202607/07/2607.02298v1-real-time-visual-intelligence-on-low-cost-uavs-a-modular-approach-for-tracking-scanning-and-navigation)  
+   evidence：过驱动水下机器人的运动规划
+6. [Safe Reinforcement Learning using Ideas from Model Predictive Control](/202607/09/2607.07252v1-safe-reinforcement-learning-using-ideas-from-model-predictive-control)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：轻量级神经网络用于无人机实时视觉智能
-4. [Hope for the Best, Prepare for the Worst: Occlusion-Aware Contingency Planning for Autonomous Vehicles](/202607/07/2607.03155v1-hope-for-the-best-prepare-for-the-worst-occlusion-aware-contingency-planning-for-autonomous-vehicles)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：面向自动驾驶车辆的遮挡感知安全轨迹规划
-5. [HiMe: Hierarchical Embodied Memory for Long-Horizon Vision-Language-Action Control](/202607/07/2607.03449v1-hime-hierarchical-embodied-memory-for-long-horizon-vision-language-action-control)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：分层具身记忆用于长时视觉-语言-动作控制
-6. [High-Precision Formation Control for Heterogeneous Multi-Robot Systems via Hierarchical Hybrid Physics-Informed Deep Reinforcement Learning](/202607/07/2607.03512v1-high-precision-formation-control-for-heterogeneous-multi-robot-systems-via-hierarchical-hybrid-physics-informed-deep-reinforcement-learning)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：物理信息深度强化学习用于多机器人编队控制
-7. [ObjRetarget: An Object-Aware Motion Retargeting Framework with Anthropomorphic Arm Constraints and Polyhedral Hand Modeling](/202607/07/2607.03828v1-objretarget-an-object-aware-motion-retargeting-framework-with-anthropomorphic-arm-constraints-and-polyhedral-hand-modeling)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：物体感知的运动重定向用于具身灵巧操作
+   evidence：安全强化学习结合模型预测控制实现硬安全约束
 
 ### 速读区论文标签
-1. [Flying to Image-Specified Objects: 3D Quadrotor Navigation via Cross-Graph Memory and Viewpoint Planning](/202607/07/2606.29917v1-flying-to-image-specified-objects-3d-quadrotor-navigation-via-cross-graph-memory-and-viewpoint-planning)  
+1. [CRRL: A Causality-Based Reinforcement Learning Framework for Autonomous System Recovery](/202607/09/2607.03177v1-crrl-a-causality-based-reinforcement-learning-framework-for-autonomous-system-recovery)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：四旋翼导航具有安全约束，用于实例特定图像目标
-2. [Distributed Containment of a Compromised Agent through Repulsive Cages](/202607/07/2607.01230v1-distributed-containment-of-a-compromised-agent-through-repulsive-cages)  
+   evidence：基于因果关系的强化学习用于系统安全恢复
+2. [Direct Data Driven Natural Gradient Descent for Control](/202607/09/2607.03393v1-direct-data-driven-natural-gradient-descent-for-control)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：利用排斥笼作为安全层的无人机群分布式遏制
-3. [Cross-Platform Control for Autonomous Surface Vehicles via Adaptive Reinforcement Learning](/202607/07/2607.02037v1-cross-platform-control-for-autonomous-surface-vehicles-via-adaptive-reinforcement-learning)  
+   evidence：具有稳定性保证的数据驱动控制
+3. [Intercepting an Agile Target with Net-Carrying Drones using Competitive Multi-Agent Reinforcement Learning](/202607/09/2607.05939v1-intercepting-an-agile-target-with-net-carrying-drones-using-competitive-multi-agent-reinforcement-learning)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：自适应强化学习实现无人艇跨平台轨迹跟踪，隐含安全性
-4. [RCOA Extension and Applications](/202607/07/2607.02797v1-rcoa-extension-and-applications)  
+   evidence：竞争性多智能体强化学习用于无人机拦截
+4. [Neural-ESO: A Dual-Pathway Architecture for Provably Robust Learning-Based Control](/202607/09/2607.06535v1-neural-eso-a-dual-pathway-architecture-for-provably-robust-learning-based-control)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：用于无人机导航的凸优化避障方法
-5. [CoRE-VLA: Towards Scalable and Robust Vision-Language-Action Modeling via Conditional Routing of Experts](/202607/07/2607.03693v1-core-vla-towards-scalable-and-robust-vision-language-action-modeling-via-conditional-routing-of-experts)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：视觉-语言-动作模型用于具身机器人
-6. [Anytime Plug-and-Play Control with Contract-Based Distributed MPC](/202607/07/2607.04215v1-anytime-plug-and-play-control-with-contract-based-distributed-mpc)  
+   evidence：基于神经扩展状态观测器的可证明鲁棒学习控制
+5. [Learning Spatiotemporal Tubes for Full Class of Signal Temporal Logic Tasks for Control of Unknown Systems under Input Constraints](/202607/09/2607.07136v1-learning-spatiotemporal-tubes-for-full-class-of-signal-temporal-logic-tasks-for-control-of-unknown-systems-under-input-constraints)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：具有碰撞避免约束的安全控制
-7. [Multi-UAV Formation Cooperative Obstacle Avoidance and Adaptive Shape Deformation Control in Complex Environments Based on BI-APF-RRT and Affine Transformation](/202607/07/2606.29755v1-multi-uav-formation-cooperative-obstacle-avoidance-and-adaptive-shape-deformation-control-in-complex-environments-based-on-bi-apf-rrt-and-affine-transformation)  
-   标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：多无人机编队避障
-8. [Anticipatory Reinforcement Learning for Trajectory Tracking](/202607/07/2607.03132v1-anticipatory-reinforcement-learning-for-trajectory-tracking)  
-   标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：基于PPO的深度强化学习在1自由度直升机轨迹跟踪中的应用
-9. [Exp2VLA: Enabling Vision-Language-Action for Drone Navigation from Expert Demonstrations](/202607/07/2607.03146v1-exp2vla-enabling-vision-language-action-for-drone-navigation-from-expert-demonstrations)  
-   标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：基于神经网络的无人机导航VLA模型
-10. [Strouhal-Aware Model Predictive Control for Efficient Multi-Fin Flapping Locomotion](/202607/07/2607.03216v1-strouhal-aware-model-predictive-control-for-efficient-multi-fin-flapping-locomotion)  
+   evidence：学习时空管实现输入约束下的安全控制
+6. [ASPIRE: Agentic /Skills Discovery for Robotics](/202607/09/2607.00272v1-aspire-agentic-skills-discovery-for-robotics)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：用于AUV推进效率的模型预测控制
-11. [ACE: Agentic Control for Embodied Manipulation via Zero-shot Workflow Reasoning](/202607/07/2607.04162v1-ace-agentic-control-for-embodied-manipulation-via-zero-shot-workflow-reasoning)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：面向具身操作的零样本工作流推理框架
-12. [GPU-Accelerated Polygonal Signed Distance Functions for Real-Time Collision Avoidance](/202607/07/2607.04310v1-gpu-accelerated-polygonal-signed-distance-functions-for-real-time-collision-avoidance)  
+   evidence：面向具身机器人的自主技能发现与程序合成
+7. [Context-Triggered Robust MPC for Temporal Logic Specifications](/202607/09/2607.01515v1-context-triggered-robust-mpc-for-temporal-logic-specifications)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：基于GPU加速的多边形符号距离函数实时碰撞避免
+   evidence：具有时序逻辑安全保证的鲁棒模型预测控制
+8. [Reachability-Based Safe-Start Regions for Approach to a Tumbling Target with Rotating LOS Constraints](/202607/09/2607.02128v1-reachability-based-safe-start-regions-for-approach-to-a-tumbling-target-with-rotating-los-constraints)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：基于可达性的安全启动区域设计
+9. [Multimodal Nonblocking Supervisory Control Synthesis](/202607/09/2607.03263v1-multimodal-nonblocking-supervisory-control-synthesis)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：面向安全关键系统的监督控制综合
+10. [Scenario-based Data-Enabled Predictive Control: Robustification via the Scenario Approach](/202607/09/2607.04165v1-scenario-based-data-enabled-predictive-control-robustification-via-the-scenario-approach)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：在数据驱动预测控制中提供概率约束满足保证
+11. [FLOAT Drone for Physical Interaction: Lateral Airflow Reduction, Wrench Modeling, and Adaptive Control](/202607/09/2607.04260v1-float-drone-for-physical-interaction-lateral-airflow-reduction-wrench-modeling-and-adaptive-control)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：无人机物理交互考虑安全性
+12. [CCFM: Collision-Constrained Flow Matching for Safety-Critical Scenario Generation](/202607/09/2607.04451v1-ccfm-collision-constrained-flow-matching-for-safety-critical-scenario-generation)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：安全关键场景生成，使用硬碰撞约束
 
 
 <div class="dpr-home-promo-card">

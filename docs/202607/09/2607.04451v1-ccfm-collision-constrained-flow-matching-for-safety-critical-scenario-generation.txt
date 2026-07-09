@@ -1,0 +1,1194 @@
+Title: CCFM: Collision-Constrained Flow Matching for Safety-Critical Scenario Generation
+
+URL Source: https://arxiv.org/pdf/2607.04451v1
+
+Published Time: Tue, 07 Jul 2026 03:02:57 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+# CCFM: Collision-Constrained Flow Matching for Safety-Critical Scenario Generation 
+
+Ke Li 1 , Kaidi Liang 1 , Yuxin Ding 2 , Debojyoti Biswas 2 , Xianbiao Hu 2 ,and Ruwen Qin 1∗ 
+
+> 1
+
+Stony Brook University, Stony Brook, NY 11794, USA  
+
+> 2
+
+Pennsylvania State University, University Park, PA 16802, USA 
+
+{ke.li.1, kaidi.liang, ruwen.qin}@stonybrook.edu {ymd5170, dbb5917, xbhu}@psu.edu  
+
+> ∗
+
+Corresponding author 
+
+Abstract. Evaluation of autonomous vehicle (AV) planners in safety-critical closed-loop simulation is essential for real-world deployment. How-ever, generating controllable safety-critical scenarios remains challeng-ing. Existing approaches use soft guidance that provides only probabilis-tic preferences and cannot guarantee the satisfaction of geometric and severity constraints associated with specific collision types. We introduce Collision-Constrained Flow Matching (CCFM), a novel framework that guarantees precise collision control through hard physical constraints. CCFM consists of three key components: (i) a heuristic collision selector that optimally identifies an adversarial agent and collision type via com-posite scoring; (ii) structured hard constraints that explicitly define four collision types (rear-end, side, cut-in, head-on) through contact point, heading, and severity requirements; and (iii) a collision-constrained flow matching sampler that enforces the constraints via Gauss-Newton man-ifold projection. CCFM achieves collision rate up to 46.4% on nuScenes and 83.1% on nuPlan, significantly outperforming baselines while pre-serving realistic driving behavior. By enabling controllable collision char-acteristics in safety-critical scenario generation, CCFM provides a reli-able foundation for AV safety evaluation and sim-to-real crash data gen-eration. The code and implementation details are available at https: //github.com/KELISBU/CCFM .
+
+## 1 Introduction 
+
+Safety-critical scenario generation is essential for evaluating the robustness of autonomous vehicles (AV) [7], as such scenarios are rare, lying in the long tail of the driving-event distribution [18] and often lead to highly consequential in-teractions. These events are difficult to collect at scale from naturalistic driving data due to their low frequency and high risk. Therefore, closed-loop simulation provides a critical alternative by enabling repeatable and scalable interactive AV testing. In this context, explicitly generating realistic and controllable scenarios, in which an adversarial agent is designated to challenge the ego vehicle, is essen-tial to expose the vulnerabilities of AV planners before real-world deployment.  
+
+> arXiv:2607.04451v1 [cs.CV] 5 Jul 2026 2K. Li et al.
+
+While recent advancements have explored safety-critical scenario generation and closed-loop simulation, significant gaps remain in balancing controllability ,precise collision constraints , and behavior realism . First, traditional optimization-based [10] or RL-based [14] methods often induce overly aggressive maneuvers that deviate from human-like driving behavior, making it difficult to preserve realistic multi-agent interaction patterns. More recently, diffusion-based gener-ative approaches [3, 16, 33] improve behavior realism by learning from traffic priors. However, their controllability typically relies on cost-based soft guidance ,which cannot rigorously ensure the satisfaction of spatial-geometric and severity constraints. Moreover, under dense and dynamic traffic context, pre-selecting an adversarial agent and its most feasible collision mode remains an underexplored problem. In this work, we reformulate the safety-critical scenario generation as a collision-constrained sampling problem rather than unconstrained guided sam-pling or adversarial optimization. Our key idea is to preserve the learned prior of realistic traffic scenarios, while enforcing structured collision constraints that specify the desired event type. Built upon flow matching [17,28], which generates samples by integrating an ordinary differential equation (ODE), our framework naturally allows intermediate projection steps to correct the evolving sample toward a collision-constrained feasible set. In summary, we propose a Collision-Constrained Flow Matching ( CCFM )framework. The main contributions of this paper are as follows: 
+
+– Introduction of a Heuristic Collision Selector (HCS) that scores candidate agent-collision pairs based on topological reachability, geometry, and road le-gality, enabling dynamic identification of the most threatening yet physically viable interaction. 
+
+– Formulation of a comprehensive collision-type-specific constraint set that mathematically formulates the physical constraints governing the contact point, relative heading, and severity metrics for different collision types in adversarial trajectory generation. 
+
+– Development of a Gauss-Newton manifold projection method that projects intermediate action sequences onto the feasible set while preserving plausible driving behavior. Extensive experiments on nuScenes [1] and nuPlan [2] closed-loop simulation illustrate that CCFM generates more safety-critical scenarios than prior meth-ods, while achieving interpretable collision-type controllability, diverse collision outcomes, and competitive realism. 
+
+## 2 Related Work 
+
+2.1 Generative Models for Traffic Scenario Generation 
+
+Early data-driven approaches established the foundation for multimodal inter-active trajectory generation using diverse paradigms, including conditional vari-ational autoencoders (CVAEs) [25], generative adversarial networks (GANs) [9], CCFM 3
+
+energy-based models [22], and autoregressive transformers [8, 39]. To achieve better distributional expressivity and controllability, diffusion models [12, 26] and Flow Matching [17, 19, 28] methods have recently emerged as the dominant baseline. By framing generation as a progressive denoising process, frameworks such as Diffuser [13] unify generative priors with planning objectives through classifier-guided sampling. However, Flow Matching provides a more efficient continuous-time formulation for distribution transport. For instance, Flow Plan-ner [27] and GoalFlow [32] successfully leverage it to model interactive multi-agent behaviors and goal-driven multimodal trajectories, demonstrating signifi-cant inference speedups and robust performance on large-scale planning bench-marks. 
+
+2.2 Safety-critical Scenario Generation with Controllability 
+
+Rigorous validation of autonomous vehicles necessitates closed-loop simulation to generate rare, but safety-critical scenarios. Existing generation paradigms can be broadly grouped into (i) optimization-based methods, such as AdvSim [31], ReGentS [35], and KING [10], which iteratively perturb trajectories toward risk; (ii) hybrid approaches combining learned priors with optimization and rule-based rollouts, like STRIVE [24] and SLEDGE [5]. More recently, frameworks such as DiffScene [33] and SAFE-SIM [3] exemplify the diffusion-based paradigm, employing guided cost functions to steer realistic multi-agent distributions to-ward collision-prone outcomes during closed-loop rollouts. Recent studies further improve controllability from different perspectives, including closed-loop adver-sarial resampling [37], feasibility-guided adversarial policy learning [4], inverse motion prediction for inserted adversarial agents [20], and preference-aligned steerable scenario generation [21]. To further enhance high-level controllabil-ity, recent studies integrate large language models (LLMs). For instance, LD-Scene [23] translates natural language intents into executable adversarial loss functions for latent diffusion, whereas ChatScene [36] acts as an autonomous agent that bridges unstructured text into structured configurations of CARLA simulator. Diffusion models steer generative distributions toward risk via soft guid-ance [3, 16, 23], rather than enforcing hard constraints, thereby limiting con-trollability. To overcome this limitation, recent works such as PCFM [30] and HardFlow [15] enforce hard constraints at inference time by projecting inter-mediate flow states onto the constraint manifold without retraining. However, both methods have been developed and evaluated exclusively in the context of physics-governed PDE systems. Whether such hard-constraint enforcement transfers to interactive scenario generation remains an open question, since traf-fic constraints are dynamics-mediated and defined relative to an evolving ego trajectory. 4 K. Li et al. 
+
+## 3 Methodology 
+
+We propose Collision-Constrained Flow Matching (CCFM), a framework for safety-critical scenario generation, illustrated in Fig. 1. CCFM is formulated within a closed-loop simulation environment. The Heuristic Collision Selector (HCS) dynamically identifies the most threatening yet physically viable col-lision type and the associated adversarial vehicle. For each collision type, a set of collision-type-specific constraints are defined, resulting in the collision-constrained Flow Matching problem. CCFM is solved via a damped Gauss-Newton projection for generating the desired safety-critical scenario. Details of the methodology are presented as follows.  
+
+> Fig. 1: Overview of the proposed safety-critical scenario generation by CCFM.
+
+3.1 Safety-critical Traffic Generation in Closed-loop Simulation 
+
+In the closed-loop simulation, we consider a traffic scene with N vehicles: an ego vehicle (i = ego ) and N − 1 non-ego vehicles. One non-ego vehicle is selected as the adversarial agent and tasked with colliding with the ego vehicle, while the others are reactive agents that respond to traffic to preserve realism. Our goal is to generate safety-critical scenarios that satisfy controllable conditions for any specific collision type. 
+
+si,t = [ xi,t , y i,t , ϑ i,t , v i,t ] denotes the state of vehicle i at timestep t, ∀ i ∈{1, . . . , N − 1} ∪ { ego }. pi,t = [ xi,t , y i,t ] represents vehicle i’s 2D position, while 
+
+ϑi,t and vi,t denote its heading angle and linear velocity, respectively. At timestep 
+
+t, the action of vehicle i, ai,t = [ ˙ vi,t , ˙ϑi,t ], consists of its acceleration and yaw CCFM 5
+
+rate. The selection of this action is conditioned on the vehicle’s context, ci,t ,defined in the supplementary material. The state evolution is governed by a one-step deterministic unicycle dynamics model f :
+
+si,t +1 = f (si,t , ai,t ). (1) The ego vehicle drives autonomously, with its future trajectory τ ego ,t :t+T
+
+controlled by an AV planner π:
+
+τ ego ,t :t+T = π(cego ,t ). (2) Non-ego vehicles are governed by a generative prior pθ (· | ct) learned via Flow Matching, which captures the distribution of realistic driving trajectories. We generate the action sequence for each non-ego vehicle, ai,t :t+T −1, from this learned prior: 
+
+ai,t :t+T −1 ∼ pθ (· | ci,t ), (3) and obtain the corresponding trajectory, τ i,t :t+T , using a forward T -step rollout function F:
+
+τ i,t :t+T = F(si,t , ai,t :t+T −1). (4) The generation of trajectories for reactive agents is unconstrained , whereas the sampled action sequence for the adversarial agent must yield a trajectory satis-fying the hard physical constraints for a given collision type, to be introduced in Sec. 3.3. In a receding-horizon closed-loop simulation, all vehicles update their con-texts from the latest states, re-plan their horizon-T action sequences, execute only the first action, and repeat. 
+
+3.2 Heuristic Collision Selector 
+
+At each timestep t, the selection of the most plausible safety-critical scenario to generate is formulated as an optimization problem that jointly identifies the adversarial agent and its specific collision type with the ego vehicle. Directly optimizing over all candidate agents and collision types when solving the con-strained Flow Matching problem for trajectory generation is computationally inefficient and often physically implausible. Therefore, we decouple this selec-tion process from the constrained Flow Matching formulation by introducing a Heuristic Collision Selector (HCS) to identify an optimal pair of adversarial agent and collision type, (i∗, m ∗), that maximizes the collision score function: 
+
+St(i, m ) = wrch Srch ,t (i) + wgeo Sgeo ,t (i, m ) + wlgt Slgt ,t (i, m ), (5) where i ∈ { 1, . . . , N −1} and m ∈ M = {Rear-End , Side , Cut-In , Head-On }. The collision score in Eq. (5) is defined as a weighted sum of the reachability score (Srch ,t ), the geometry score ( Sgeo ,t ), and the legality score ( Slgt ,t ), with weights 
+
+w(·) summing to one. These similarity-based scores are outlined below, and their modeling details are provided in the supplementary material. 6 K. Li et al. 
+
+The reachability score for agent i at timestep t is calculated from its position relative to the ego vehicle: 
+
+Srch ,t (i) = ψrch (pi,t , pego ,t ), (6) where ψrch (·) measures the proximity-based similarity between the two vehicles, reflecting the higher collision likelihood of nearby agents. The geometry score for agent i under collision type m is computed by com-paring the agent’s relative pose with respect to the ego vehicle at time t, pos i,t ,against the typical pose associated with that collision type, pos m:
+
+Sgeo ,t (i, m ) = ψgeo (pos i,t , pos m), (7) where pos i,t is derived from the positions and heading angles of the two vehicles, and ψgeo (·) measures the similarity between pos i,t and the reference pose pos m.The legality score is computed by comparing the topological relationship between agent i and the ego vehicle at timestep t, tpl i,t , against the typical relationship for collision type m, tpl m:
+
+Slgt ,t (i, m ) = ψlgt (tpl i,t , tpl m), (8) where tpl i,t is determined based on the contexts, positions, and heading angles of the two vehicles. ψlgt (·) measures the similarity between tpl i,t and tpl m,ensuring that the generated adversarial behavior remains map-compliant and realistic. We note that HCS is implemented as a plug-in function that can be overrid-den by users’ manual selections, providing flexibility to generate user-specified scenarios. 
+
+3.3 Collision-Type-Specific Constraints 
+
+At timestep t, after HCS identifies the adversarial agent i∗ and the collision type 
+
+m∗ for the generation of safety-critical scenario, a set of constraints is imposed to ensure that the adversarial agent’s trajectory will lead to the desired collision type at the future timestep t + Tcol . Here, Tcol is the target time-to-collision, with details of its selection provided in the supplementary material. We formulate these constraints through residual measures: 
+
+ht =
+
+ hcnt ,t 
+
+hhdg ,t 
+
+hsvt ,t 
+
+ , (9) where hcnt ,t , hhdg ,t , and hsvt ,t denote the residual functions related to contact-point (cnt), relative-heading (hdg), and impact severity (svt) constraints, respec-tively: 
+
+hj,t = ϕj (lj,t , ¯lj ), for j ∈ { cnt , hdg , svt }. (10) In eq. (10), lj,t denotes the j-measure computed from the predicted states of the adversarial agent and the ego vehicle at the target time of impact t + Tcol , and CCFM 7
+
+¯lj represents the corresponding target value for collision type m∗. The function 
+
+ϕj (·) maps lj,t and ¯lj to a dissimilarity score, enabling the related constraints to be imposed in action sequence generation. Details of the derivations for lj,t , ¯lj ,and ϕj for all j are provided in the supplementary material. 
+
+3.4 Collision-Constrained Flow Matching Unconstrained Action Sequence Sampling. Following the conditional Flow Matching method [28], a velocity field vθ (λ, a(λ), c) is learned, where λ ∈ [0 , 1] 
+
+is the flow time variable. At inference time, to sample an action sequence for agent i, ai,t :t+T −1, we draw an initial action sequence from a standard Gaussian distribution: ai(λ0) ∼ N (0, I), and then transport it to the learned conditional action prior pθ (·| ci,t ) by solving the ordinary differential equation (ODE): 
+
+dai(λ)/dλ = vθ (λ, ai(λ), ci,t ), (11) from λ=0 to λ=1 . The terminal point ai(1) is the planned action sequence 
+
+ai,t :t+T −1 in Eq. (3), which is subsequently propagated through the dynamics model F in Eq. (4) to produce the future state trajectory τ i,t :t+T .We numerically integrate the unconstrained ODE in Eq. (11) using a dis-crete Euler solver with K steps. The intermediate sample is updated at each integration step k = 0 , 1, . . . , K − 1:
+
+ai(λk+1 ) = ai(λk) + ∆λ · vθ (λk, ai(λk), ci,t ), (12) where ∆λ = 1 /K and λk = k∆λ . However, this unconstrained integration alone does not guarantee that the adversarial trajectory satisfies the desired collision conditions. 
+
+Manifold Projection in Flow Matching. With the set of three residual functions ht(·) defined in Sec.3.3, CCFM enforces collision conditions when sampling adversarial action sequences. Following the step-wise projection strat-egy of PCFM [30], we project intermediate action sequences onto the collision-constrained feasible set at every ODE step, and propagate the projected sequence back to the current flow time via an optimal-transport (OT) reverse update. 
+
+Collision-constrained Feasible Set. At each integration step, the intermediate action sequence is projected onto the collision-constrained feasible set: 
+
+C = {ai∗,t :t+T −1 | ht = 0} , (13) where ht is the set of residual functions defined in Eq.(9). We denote the corresponding projection operator by ΠC : RT ×2 → C , which maps an action se-quence to the closest sequence satisfying ht = 0 at the dynamic time-to-collision 
+
+Tcol . Here, Tcol is updated once per closed-loop re-planning step. In practice we implement ΠC as a damped Gauss-Newton (GN) projection with Jacobians obtained by automatic differentiation through the forward-dynamics rollout F.Full algorithmic details of the dynamic time-to-collision and GN projection are provided in the supplemental material. 8 K. Li et al. 
+
+Algorithm 1 Collision-Constrained Flow Matching (CCFM) Sampling 
+
+1: Input: Adversarial agent’s context ci∗,t and state si∗,t , ego trajectory τ ego ,t :t+T ,target collision type m∗, ODE integration steps K
+
+2: Output: Adversarial action sequence ai∗,t :t+T −1
+
+3: Sample ai∗ (λ0) ∼ N (0, I); ∆λ ← 1/K 
+
+4: Compute Tcol from current ego–adversary kinematics  ▷ See supplementary 5: for k = 0 , 1, . . . , K − 1 do 
+
+6: λk ← k · ∆λ 
+
+7: v ← vθ (λk , ai∗ (λk ), ci∗,t ) ▷ Predict flow velocity 8: ˆai∗ (λk+1 ) ← ai∗ (λk ) + ∆λ · v ▷ Euler step 9: aproj ← ΠC (ˆ ai∗ (λk+1 ))  ▷ Damped GN projection; see supplementary 10: ai∗ (λk+1 ) ← λk+1 aproj + (1 − λk+1 ) ai∗ (λ0) ▷ OT reverse update 11: end for 
+
+12: return ai∗ (λK )
+
+OT Reverse Update. Applying ΠC directly at the current flow time λk+1 pro-duces a large discontinuity when λk+1 is small, since the unprojected sample is still far from the data manifold. Similar to PCFM [30], we blend the projected sequence with the initial noise ai∗ (λ0) along the optimal-transport interpolant: 
+
+ai∗ (λk+1 ) = λk+1 ΠC (ˆ ai∗ (λk+1 )) + (1 − λk+1 ) ai∗ (λ0), (14) where ˆai∗ (λk+1 ) = ai∗ (λk) + ∆λ vθ (λk, ai∗ (λk), ci∗,t ) is the unprojected Eu-ler step. Eq. (14) recovers the unprojected sample as λk+1 → 0 and the fully-projected sample at λk+1 = 1 , so the constraint is satisfied exactly at the terminal step while early-step iterates remain close to the learned flow. The sampling pro-cedure is summarized in Algorithm 1. 
+
+## 4 Experimental Setup 
+
+4.1 Datasets 
+
+We conduct extensive experiments on the real-world driving dataset nuScenes [1], and nuPlan [2]. Our CCFM model is trained on the nuScenes train split and evaluated in the closed-loop simulation on the nuScenes validation split and nuPlan mini validation split. In addition to the standard planning setting with an 8-second horizon, we further perform the closed-loop simulation over the duration of 20 seconds. 
+
+4.2 Implementation Details Closed-loop Simulation Setup. Our closed-loop traffic simulation is built upon TBSim [34] with a re-planning frequency of 2 Hz. We consider three plan-ners for the ego vehicle: (i) a rule-based planner operating on the lane graph following STRIVE [24], (ii) PDM [6], a deterministic closed-loop planner, and CCFM 9
+
+(iii) the Intelligent Driver Model (IDM) [29]. To evaluate the effectiveness of our approach, we compare CCFM against three baselines for closed-loop simulation: STRIVE [24], CCDiff [16], and SAFE-SIM [3]. 
+
+Flow Matching Model. Following previous studies [3, 38], we encode the rasterized map and contextual trajectories using a ResNet [11] backbone, and adopt a U-Net architecture with several 1D convolutional blocks to model tem-poral consistency. During training, we use 10 historical frames (i.e., Thist =10) as context and predict the 32 future frames (i.e., T =32). Additional details about training and inferring the Flow Matching model are provided in the supplemen-tary material. 
+
+4.3 Evaluation Metrics 
+
+To generate controllable and diverse safety-critical scenarios with realistic be-haviors, we validate the proposed CCFM method on three dimensions: scenario criticality, behavior realism, and scenario controllability and diversity. 
+
+Scenario Criticality. We quantify the criticality of generated scenarios us-ing (i) the Collision Rate (CR) and (ii) the collision severity. Specifically, CR is defined as the percentage of simulated scenes in which at least one collision involving the ego vehicle and the adversarial agent. For collision severity, we compute the value of relative speed (MS) between the ego and the adversarial vehicles at the collision time, and report the mean value over all collision events. 
+
+Behavioral Realism. Adopting the approach from SAFE-SIM [3] and CTG [38], we evaluate realism (RM) by computing the Wasserstein distance between ground truth and generated scene on normalized histograms of the driving lon-gitudinal acceleration, lateral acceleration, and jerk. In addition, the Off-Road (OR) rate reports the ratio of reactive agents driving off-road across the scene level. 
+
+Scenario Controllability and Diversity. We assess controllability by measuring the ratio of generated safety-critical events that match the desired event specification. Specifically, we compute the collision Type-Match (TM) rate between the generated event and the target type selected from HCS. To quantify diversity among generated safety-critical outcomes, we measure the distribution of collision contact regions on the ego vehicle at impact, reported as the Front, Rear, and Side rates by entropy score (EN). Meanwhile, we report the standard deviation of (i) the relative speed (SD) and (ii) the relative heading (HD) at first impact. We also report the wall-clock runtime of a full closed-loop simulation (TIME), and provide detailed formulations of all metrics and composite scores, including the Criticality Score (CS), Diversity Score (DS), Realism Score (RS), and the overall Composite Weighted Score (CWS), in the supplementary material. 
+
+## 5 Evaluation and Analysis 
+
+In this section, we evaluate the proposed CCFM framework for controllable safety-critical scenario generation in closed-loop traffic simulation on nuScenes 10 K. Li et al.                                                                                                  
+
+> Table 1: Closed-loop simulation results under different rollout horizons. CR is the collision rate for adversarial agent and OR is the off-road rate for reactive agents. †
+> denotes relative composite scores normalized within this comparison table.
+> Dataset Model CR
+> (%) ↑
+> MS
+> (m/s )↑
+> TM
+> (%) ↑
+> CS †
+> ↑
+> OR
+> (%) ↓
+> RM
+> ↓
+> RS †
+> ↑
+> Time
+> (s) ↓
+> Horizon = 80
+> nuScenes [1] CCDiff [16] 4.0 0.3 –0.10 4.4 0.49 1.00 180.5 STRIVE [24] 20.8 1.9 –0.56 5.8 0.83 0.67 466.3 SAFE-SIM [3] 25.8 0.8 –0.42 5.0 0.63 0.83 128.9 CCFM (Ours) 46.4 2.8 84.3 1.00 5.4 0.78 0.72 123.0
+> nuPlan [2] SAFE-SIM [3] 42.1 2.4 –0.48 3.6 0.33 0.74 271.4
+> CCFM (Ours) 83.1 5.2 85.6 1.00 1.7 0.33 1.00 356.3
+> Horizon = 200
+> nuScenes [1] CCDiff [16] 11.3 0.7 –0.18 9.1 0.56 0.90 533.6 SAFE-SIM [3] 26.1 1.5 –0.41 11.4 0.45 0.90 322.5 CCFM (Ours) 59.9 4.0 85.4 1.00 11.4 0.71 0.72 316.3
+> nuPlan [2] SAFE-SIM [3] 50.6 3.0 –0.51 8.7 0.27 0.61 728.4
+> CCFM (Ours) 95.2 6.1 84.7 1.00 1.9 0.30 0.95 970.5
+
+and nuPlan. Unless otherwise specified, all experiments are conducted on nuScenes. The results show that our method can generate safety-critical scenarios with ex-plicit control over desired collision types while preserving physical plausibility. 
+
+5.1 Comparison with SOTA Models 
+
+First, we compare CCFM with STRIVE, CCDiff, and SAFE-SIM on nuScenes and nuPlan under different rollout horizons using the same Lane-graph ego plan-ner [24]. As shown in Table 1, under the practical setting of an 80-frame roll-out horizon, CCFM achieves the highest collision rate on both datasets, reach-ing 46.4% on nuScenes and 83.1% on nuPlan. CCFM also achieves the high-est severity of collision with the highest relative speed, demonstrating stronger safety-critical scenario generation capability. Extending the rollout horizon to 200 frames further improves the collision rate to 59.9% on nuScenes, and 95.2% on nuPlan, suggesting that a longer generation horizon evolves more safety-critical events with controllability. Despite some reduction in realism metrics, the substantial improvements in collision rate and severity make the trade-off acceptable. To further explore the observed trade-off between realism and criticality, Table 2 details the realism evaluation of generated safety-critical scenarios at the scene level and the adversary agent level, respectively. The results show that CCFM achieves the highest collision rate, but maintains competitive behavior realism at both levels. Critically, the deviations are kinematically regulated, CCFM 11                               
+
+> Table 2: Trade-off between criticality and realism. ADV.ADE and ADV.FDE denote the average displacement error and final displacement error of the adversarial agent, respectively. ADE, and FDE report the corresponding metrics over all generated trajec-tories. ADV.OR and OR report the off-road rate of the adversarial agent and reactive agents respectively. Metric definitions are detailed in the supplementary material.
+> Model CR
+> (%) ↑
+> ADV.OR
+> (%) ↓
+> ADV.ADE
+> (m) ↓
+> ADV.FDE
+> (m) ↓
+> OR
+> (%) ↓
+> ADE
+> (m) ↓
+> FDE
+> (m) ↓
+> STRIVE 20.8 11.2 15.9 27.4 5.8 6.8 14.5 SAFE-SIM 25.8 8.7 8.1 18.7 5.0 4.6 11.1
+> CCFM 46.4 10.0 12.0 24.9 5.4 5.9 13.3
+
+reflecting aggressive yet physically plausible maneuvers rather than unrealistic artifacts. 
+
+5.2 Evaluation on Controllability and Diversity Controllability. Quantitative results in Table 1 illustrate that only CCFM provides explicit collision-type controllability. CCFM achieves 84.3% type match under the 80-frame rollout horizon and 85.4% under the 200-frame rollout hori-zon, whereas STRIVE, CCDiff, and SAFE-SIM do not provide explicit type-level control. The consistent performance across the two rollout horizons indicates that CCFM can reliably steer generated scenarios toward the desired collision outcome, rather than merely increasing the overall collision rate. Furthermore, Fig. 2 qualitatively illustrates the controllability of CCFM. Given identical initial scene contexts and a fixed ego-adversary pair, CCFM can generate distinct safety-critical interactions by altering the target constraint. In particular, the Cut-in , Head-on , Side , and Rear-end examples are generated from the same scene context. These visualizations demonstrate that CCFM provides fine-grained, interpretable control over the final collision outcomes.                                                     
+
+> Fig. 2: Qualitative visualization of collision-type controllability. Given an assigned ego–adversary pair and scene context, CCFM generates distinct scenarios by specifying target collision types. 12 K. Li et al.
+> Table 3: Comparison of diversity results with baseline models. We evaluate the distri-bution of three contact regions at collision by EN. Meanwhile, the standard deviation SD and HD reflect the diversity of relative speed and heading angle. †denotes relative composite scores normalized within this comparison table.
+> Model Rear
+> (%)
+> Front
+> (%)
+> Side
+> (%)
+> EN
+> ↑
+> SD
+> (m/s )↑
+> HD
+> (◦)↑
+> DS †
+> ↑
+> STRIVE [24] 18.4 24.2 57.4 0.86 1.9±2.82.2±12 .90.62 CCDiff [16] 26.6 28.2 45.2 0.97 0.3±1.71.5±14 .10.59 SAFE-SIM [3] 10.2 28.6 61.2 0.81 0.8±2.52.4±15 .80.61 CCFM (Ours) 50.5 14.2 35.3 0.89 2.8±4.912 .3±30 .90.96
+
+Diversity. Compared to STRIVE, CCDiff, and SAFE-SIM, our method achieves the second-best contact-region entropy with EN=0.89, indicating a relatively di-verse distribution over Rear, Front, and Side ego contact regions, as shown in Table 3. Although CCDiff obtains the highest entropy score of EN=0.97, its collision rate remains much lower at only 4.0%. In addition, CCFM achieves a larger standard deviation in relative speed (SD = 4.9 m/s) and relative angle (HD = 30 .9◦), indicating richer diversity in collision kinematics and interaction geometry. The highest DS = 0.96 suggests that CCFM does not collapse to a single collision configuration, but is able to generate safety-critical scenarios with various impact forms and motion characteristics. 
+
+5.3 Assessment Across Ego Planners 
+
+We evaluate the proposed CCFM framework with three ego planners: IDM [29], PDM [6], and the lane-graph method used in STRIVE [24]. As shown in Table 4, CCFM consistently achieves high collision rate, and strong type match perfor-mance across different ego planners, indicating planner-agnostic controllability and robust effectiveness. Although CCFM achieves a relatively lower collision rate with the PDM planner, this is expected because PDM’s structured mo-tion planning and explicit collision-avoidance mechanism allow the ego vehicle to execute more robust evasive maneuvers. Meanwhile, the variation across ego planners further suggests that stronger planning algorithms can avoid a subset of the generated safety-critical interac-tions. However, our current evaluation does not explicitly distinguish avoidable                                                                                        
+
+> Table 4: Closed-loop simulation results using different ego planners for assessing CCFM planner-agnostic controllability and effectiveness.
+> Planner CR (%) ↑MS (m/s )↑TM (%) ↑OR (%) ↓RM ↓
+> IDM [29] 51.6 3.3 82.7 5.1 0.81 PDM [6] 36.1 2.6 81.2 8.5 0.85 Lane-graph [24] 46.4 2.8 84.3 5.4 0.78 CCFM 13
+> Table 5: Ablation study on the Heuristic Collision Selector (HCS). We compare fixed single-type selectors with the HCS, which adaptively assigns ego-adversary pair and feasible collision type. †denotes relative composite scores normalized within this com-parison table.
+> HCS CR
+> (%) ↑
+> TM
+> (%) ↑
+> MS
+> (m/s )↑
+> CS †
+> ↑
+> EN
+> ↑
+> DS †
+> ↑
+> OR
+> (%) ↓
+> RM
+> ↓
+> RS †
+> ↑
+> CWS †
+> ↑
+> Rear-end only 30.2 70.7 2.2 0.51 0.96 0.69 7.0 0.86 0.84 0.68 Head-on only 27.7 16.4 2.7 0.36 0.72 0.83 7.5 0.85 0.82 0.67 Side only 31.4 14.5 3.1 0.41 0.64 0.75 6.7 0.87 0.85 0.67 Cut-in only 40.0 4.6 4.4 0.52 0.79 0.82 5.5 0.80 0.98 0.77 HCS 46.4 84.3 2.8 0.82 0.89 0.84 5.4 0.78 1.00 0.89
+
+collisions from physically unavoidable ones. Future work will incorporate avoid-ability analysis to better quantify the planner relevance of generated scenarios, and explore their use as targeted training data to enhance the robustness and generalization of downstream planning models. 
+
+5.4 Ablation Study 
+
+We conduct a series of ablation studies to evaluate the effectiveness of three key components: Heuristic Collision Selector, Collision-Type-specific Constraints, and Collision-Constrained Gauss–Newton Projection of our CCFM framework in safety-critical closed-loop simulation. 
+
+Effectiveness of Heuristic Collision Selector. Table 5 shows that HCS achieves the best overall performance compared to fixed single-type selectors. Although individual fixed strategies may perform well on a single metric, such as higher EN for Rear-end only or higher MS for Cut-in only , they suffer from limited controllability or realism. In contrast, HCS provides a more effective trade-off among criticality, diversity, controllability, and realism. These results demonstrate that adaptively selecting the adversarial agent and collision type based on reachability, geometric alignment, and lane-graph legality provides a feasible basis for satisfying the subsequent collision-type-specific constraints. 
+
+Effectiveness of Collision Type-specific Constraint Components. As shown in Table 6, each constraint component contributes differently to control-lability, diversity, realism, and overall generation quality. Using only the contact point constraint already produces safety-critical scenarios with a collision rate of 51.6% and a type match of 82.1%, showing that hcnt ,t is effective for trig-gering collisions at the desired contact region. Adding the relative heading con-straint slightly reduces the collision rate to 48.4%, but improves the type match to 83.8% and diversity score to 0.92, indicating that hhdg ,t provides stronger 14 K. Li et al. 
+
+Table 6: Ablation study on different components in collision-type-specific constraint. We evaluate the contribution of contact point constraint hcnt , relative heading con-straint hhdg , and severity constraint hsvt to safety-critical scenario generation in closed-loop simulation. † denotes relative composite scores normalized within this comparison table. 
+
+hcnt ,t hhdg ,t hsvt ,t 
+
+CR 
+
+(%) ↑
+
+TM 
+
+(%) ↑
+
+MS 
+
+(m/s ) ↑
+
+CS †
+
+↑
+
+EN 
+
+↑
+
+DS †
+
+↑
+
+RS †
+
+↑
+
+CWS †
+
+↑
+
+✓ 51.6 82.1 2.3 0.91 0.85 0.90 0.94 0.92 
+
+✓ ✓ 48.4 83.8 2.6 0.94 0.86 0.92 0.94 0.93 
+
+✓ ✓ ✓ 46.4 84.3 2.8 0.96 0.89 0.96 0.96 0.96 
+
+geometric controllability over the target collision type and greater diversity re-spectively. When the full set of constraints is applied, the type match further increases to 84.3%, and the relative speed increases to 2.8 m/s, suggesting that the severity constraint hsvt ,t encourages more intense safety-critical interactions. Meanwhile, the full model achieves the highest criticality score, entropy score, di-versity score, RS, and composite weighted score, demonstrating the best overall balance among criticality, diversity, realism, and controllability. 
+
+Effectiveness of Manifold Projection versus Soft Guidance. As shown in Table 7, the soft collision guidance Jcol , implemented following SAFE-SIM [3], only marginally improves the collision rate from 8.2% to 10.2% compared to the baseline Flow Matching model. In contrast, the proposed GN manifold pro-jection substantially increases the collision rate to 46.4% with fewer denoising steps. Beyond collision rate, GN projection also leads to more critical and di-verse collision outcomes, achieving the highest relative speed of 2.8 m/s, and the highest diversity score of 0.97. Although its realism score is lower than the FM baseline, the overall CWS reaches 0.89, significantly outperforming both FM and soft guidance. Overall, the results suggest that hard projection onto the collision-constrained feasible set is significantly more effective than soft guid-ance for structured safety-critical generation. However, the final outcome still 
+
+Table 7: Ablation study comparing soft collision guidance and manifold projection. Starting from the baseline Flow Matching (FM) model, we evaluate the effect of adding soft collision guidance Jcol and the proposed Gauss-Newton (GN) manifold projection.  
+
+> †
+
+denotes relative composite scores normalized within this comparison table. 
+
+Model CR 
+
+(%) ↑
+
+MS 
+
+(m/s ) ↑
+
+CS †
+
+↑
+
+EN 
+
+↑
+
+DS †
+
+↑
+
+OR 
+
+(%) ↓
+
+RM 
+
+↓
+
+RS †
+
+↑
+
+CWS †
+
+↑
+
+FM 8.2 0.7 0.21 0.63 0.48 2.3 0.77 1.00 0.56 FM +Jcol 10.2 0.8 0.25 0.70 0.43 6.2 0.92 0.60 0.43 FM +GN 46.4 2.8 1.00 0.89 0.97 5.4 0.78 0.71 0.89 CCFM 15 
+
+depends on the road topology, traffic context, projection feasibility, and the ego planner’s closed-loop response. Therefore, CCFM explicitly targets collision con-figurations, but a collision is realized only when the constraint can be satisfied within the evolving interactive scenario. 
+
+## 6 Conclusion 
+
+In this paper, we developed a Collision-Constrained Flow Matching (CCFM) method for controllable safety-critical scenario generation. Extensive experi-ments on nuScenes closed-loop simulation demonstrated that CCFM generates more safety-critical scenarios than prior methods, while achieving interpretable collision-type controllability, diverse collision outcomes, and competitive real-ism. In particular, our results showed that hard projection is considerably more effective than soft guidance for enforcing structured collision constraints in gener-ation. Future work will focus on using CCFM-generated safety-critical scenarios to stress-test and improve end-to-end AV systems, as well as integrating it into sim-to-real safety-critical scenario generation for improving real-world valida-tion. 
+
+## Acknowledgments 
+
+Qin receives funding from the Rural Safe Efficient Advanced Transportation (R-SEAT) Center, a Tier-1 University Transportation Center (UTC) funded by the United States Department of Transportation (USDOT), through agreement number 69A3552348321. The contents of this paper reflect the views of the au-thors. USDOT assumes no liability for the contents or use thereof. 
+
+## References 
+
+> 1. Caesar, H., Bankiti, V., Lang, A.H., Vora, S., Liong, V.E., Xu, Q., Krishnan, A., Pan, Y., Baldan, G., Beijbom, O.: nuScenes: A multimodal dataset for autonomous driving. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2020) 2. Caesar, H., Kabzan, J., Tan, K.S., Fong, W.K., Wolff, E., Lang, A., Fletcher, L., Beijbom, O., Omari, S.: nuplan: A closed-loop ml-based planning benchmark for autonomous vehicles. arXiv preprint arXiv:2106.11810 (2021) 3. Chang, W.J., Pittaluga, F., Tomizuka, M., Zhan, W., Chandraker, M.: SAFE-SIM: Safety-critical closed-loop traffic simulation with diffusion-controllable adversaries. In: Computer Vision – ECCV 2024. pp. 242–258 (2025) 4. Chen, K., Lei, Y., Cheng, H., Wu, H., Sun, W., Zheng, S.: FREA: Feasibility-guided generation of safety-critical scenarios with reasonable adversariality. In: 8th Annual Conference on Robot Learning (2024) 5. Chitta, K., Dauner, D., Geiger, A.: SLEDGE: Synthesizing driving environments with generative models and rule-based traffic. In: Computer Vision – ECCV 2024. pp. 57–74 (2025)
+
+16 K. Li et al. 6. Dauner, D., Hallgarten, M., Geiger, A., Chitta, K.: Parting with misconceptions about learning-based vehicle motion planning. In: Conference on Robot Learning (CoRL) (2023) 7. Ding, W., Xu, C., Arief, M., Lin, H., Li, B., Zhao, D.: A survey on safety-critical driving scenario generation—a methodological perspective. IEEE Transactions on Intelligent Transportation Systems 24 (7), 6971–6988 (2023) 8. Feng, L., Li, Q., Peng, Z., Tan, S., Zhou, B.: Trafficgen: Learning to generate diverse and realistic traffic scenarios. In: 2023 IEEE International Conference on Robotics and Automation (ICRA). pp. 3567–3575. IEEE (2023) 9. Gupta, A., Johnson, J., Fei-Fei, L., Savarese, S., Alahi, A.: Social GAN: Socially acceptable trajectories with generative adversarial networks. In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) (2018) 10. Hanselmann, N., Renz, K., Chitta, K., Bhattacharyya, A., Geiger, A.: KING: Gen-erating safety-critical driving scenarios for robust imitation via kinematics gradi-ents. In: Computer Vision – ECCV 2022. pp. 335–352 (2022) 11. He, K., Zhang, X., Ren, S., Sun, J.: Deep residual learning for image recognition. In: Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) (June 2016) 12. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. In: Advances in Neural Information Processing Systems. vol. 33, pp. 6840–6851 (2020) 13. Janner, M., Du, Y., Tenenbaum, J.B., Levine, S.: Planning with diffusion for flex-ible behavior synthesis. In: International Conference on Machine Learning (2022) 14. Koren, M., Alsaif, S., Lee, R., Kochenderfer, M.J.: Adaptive stress testing for au-tonomous vehicles. In: 2018 IEEE Intelligent Vehicles Symposium (IV). pp. 1–7 (2018) 15. Li, Z., Alim, K., Azizan, N.: HardFlow: Hard-constrained sampling for flow-matching models via trajectory optimization. arXiv preprint arXiv:2511.08425 (2025) 16. Lin, H., Huang, X., Phan, T., Hayden, D., Zhang, H., Zhao, D., Srinivasa, S., Wolff, E., Chen, H.: Causal composition diffusion model for closed-loop traffic generation. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 27542–27552 (2025) 17. Lipman, Y., Chen, R.T.Q., Ben-Hamu, H., Nickel, M., Le, M.: Flow matching for generative modeling. In: The Eleventh International Conference on Learning Representations (2023) 18. Liu, H.X., Feng, S.: Curse of rarity for autonomous vehicles. Nature Communica-tions 15 (1), 4808 (2024) 19. Liu, X., Gong, C., qiang liu: Flow straight and fast: Learning to generate and transfer data with rectified flow. In: The Eleventh International Conference on Learning Representations (2023) 20. Liu, Y., Peng, Z.M., Cui, X., Zhou, B.: Adv-BMT: Bidirectional motion transformer for safety-critical traffic scenario generation. In: Advances in Neural Information Processing Systems. vol. 38, pp. 55310–55335 (2025) 21. Nie, T., Mei, Y., Tang, Y., He, J., Sun, J., Shi, H., Ma, W., Sun, J.: Steerable adver-sarial scenario generation through test-time preference alignment. arXiv preprint arXiv:2509.20102 (2025) 22. Pang, B., Zhao, T., Xie, X., Wu, Y.N.: Trajectory prediction with latent belief energy-based model. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 11814–11824 (2021) CCFM 17 23. Peng, M., Xie, Y., Guo, X., Yao, R., Yang, H., Ma, J.: Ld-scene: Llm-guided diffusion for controllable generation of adversarial safety-critical driving scenarios. arXiv preprint arXiv:2505.11247 (2025) 24. Rempe, D., Philion, J., Guibas, L.J., Fidler, S., Litany, O.: Generating useful accident-prone driving scenarios via a learned traffic prior. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 17305–17315 (2022) 25. Salzmann, T., Ivanovic, B., Chakravarty, P., Pavone, M.: Trajectron++: Dynamically-feasible trajectory forecasting with heterogeneous data. In: Computer Vision – ECCV 2020. pp. 683–700 (2020) 26. Song, Y., Sohl-Dickstein, J., Kingma, D.P., Kumar, A., Ermon, S., Poole, B.: Score-based generative modeling through stochastic differential equations. In: Interna-tional Conference on Learning Representations (2021) 27. Tan, T., Zheng, Y., Liang, R., Wang, Z., Zheng, K., Zheng, J., Li, J., Zhan, X., Liu, J.: Flow matching-based autonomous driving planning with advanced interactive behavior modeling. In: Advances in Neural Information Processing Systems. vol. 38, pp. 38310–38335 (2025) 28. Tong, A., Malkin, N., Huguet, G., Zhang, Y., Rector-Brooks, J., Fatras, K., Wolf, G., Bengio, Y.: Conditional flow matching: Simulation-free dynamic optimal trans-port. arXiv preprint arXiv:2302.00482 (2023) 29. Treiber, M., Hennecke, A., Helbing, D.: Congested traffic states in empirical ob-servations and microscopic simulations. Physical review E 62 (2), 1805 (2000) 30. Utkarsh, U., Cai, P., Edelman, A., Gomez-Bombarelli, R., Rackauckas, C.V.: Physics-constrained flow matching: Sampling generative models with hard con-straints. In: The Thirty-ninth Annual Conference on Neural Information Process-ing Systems (2025) 31. Wang, J., Pun, A., Tu, J., Manivasagam, S., Sadat, A., Casas, S., Ren, M., Ur-tasun, R.: AdvSim: Generating safety-critical scenarios for self-driving vehicles. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 9909–9918 (2021) 32. Xing, Z., Zhang, X., Hu, Y., Jiang, B., He, T., Zhang, Q., Long, X., Yin, W.: GoalFlow: Goal-driven flow matching for multimodal trajectories generation in end-to-end autonomous driving. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 1602–1611 (2025) 33. Xu, C., Petiushko, A., Zhao, D., Li, B.: DiffScene: Diffusion-based safety-critical scenario generation for autonomous vehicles. Proceedings of the AAAI Conference on Artificial Intelligence 39 (8), 8797–8805 (2025) 34. Xu, D., Chen, Y., Ivanovic, B., Pavone, M.: Bits: Bi-level imitation for traffic simulation. In: 2023 IEEE International Conference on Robotics and Automation (ICRA). pp. 2929–2936. IEEE (2023) 35. Yin, Y., Khayatan, P., Zablocki, É., Boulch, A., Cord, M.: ReGentS: Real-world safety-critical driving scenario generation made stable. In: Computer Vision – ECCV 2024 Workshops. pp. 262–276 (2025) 36. Zhang, J., Xu, C., Li, B.: ChatScene: Knowledge-enabled safety-critical scenario generation for autonomous vehicles. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR). pp. 15459–15469 (2024) 37. Zhang, L., Peng, Z., Li, Q., Zhou, B.: CAT: Closed-loop adversarial training for safe end-to-end driving. In: Proceedings of The 7th Conference on Robot Learning. Proceedings of Machine Learning Research, vol. 229, pp. 2357–2372 (2023) 18 K. Li et al. 38. Zhong, Z., Rempe, D., Xu, D., Chen, Y., Veer, S., Che, T., Ray, B., Pavone, M.: Guided conditional diffusion for controllable traffic simulation. In: 2023 IEEE International Conference on Robotics and Automation (ICRA). pp. 3560–3566 (2023) 39. Zhou, Z., Hu, H., Chen, X., Wang, J., Guan, N., Wu, K., Li, Y.H., Huang, Y.K., Xue, C.J.: BehaviorGPT: Smart agent simulation for autonomous driving with next-patch prediction. In: Advances in Neural Information Processing Systems. vol. 37, pp. 79597–79617 (2024) Supplementary Material: CCFM: Collision-Constrained Flow Matching for Safety-Critical Scenario Generation 
+
+Ke Li 1 , Kaidi Liang 1 , Yuxin Ding 2 , Debojyoti Biswas 2 , Xianbiao Hu 2 ,and Ruwen Qin 1∗ 
+
+> 1
+
+Stony Brook University, Stony Brook, NY 11794, USA  
+
+> 2
+
+Pennsylvania State University, University Park, PA 16802, USA 
+
+{ke.li.1, kaidi.liang, ruwen.qin}@stonybrook.edu {ymd5170, dbb5917, xbhu}@psu.edu  
+
+> ∗
+
+Corresponding author 
+
+https://github.com/KELISBU/CCFM 
+
+The supplementary material provides details on modeling the heuristic colli-sion selector, deriving collision-type-specific constraints, the Gauss-Newton pro-jection algorithm, evaluation metrics, and additional experimental results that are omitted from the main paper due to page limits. 
+
+## A Heuristic Collision Selector Modeling 
+
+A.1 Notation 
+
+The major symbols and notations used in modeling the Heuristic Collision Se-lector (HCS) are summarized in Table 1. 
+
+A.2 Detailed Score Functions for HCS 
+
+HCS is based on the estimation of three similarity-based scores, which are de-lineated as follows. 
+
+Reachability Score. This score for agent i at timestep t is estimated using a similarity function ψrch (·), an isotropic Gaussian kernel centered on the ego vehicle: 
+
+Srch ,t (i) = ψrch (pi,t , pego ,t ) = exp − ∥pi,t − pego ,t ∥2
+
+σ2
+
+!
+
+, (1) where pi,t is the position of the candidate agent i at timestep t; pego ,t is the position of the ego vehicle at t; and the bandwidth σ = 50 m is the shape parameter of the function. Eq. (1) means that the reachability score decays exponentially when the Euclidean distance between agent i and the ego vehicle increases, approaching zero beyond the typical interaction range. 20 K. Li et al. 
+
+Table 1: Symbols for Modeling HCS 
+
+Symbol Description 
+
+ϑi,t , ϑ ego ,t Heading angles of agent i and the ego vehicle 
+
+bi,t Relative bearing of agent i with respect to the ego vehicle at tdi,t Heading alignment between agent i and the ego vehicle at tgt Proximity-aware gate for activating the geometry constraint 
+
+vi,t , v ego ,t Speeds of agent i and the ego vehicle 
+
+Lego , W ego The length and width of ego vehicle 
+
+Si,t Collision score for agent i at tSrch ,t (i) Reachability score for agent i at tSgeo ,t (i, m ) Geometry score of agent i in type m collision at tSlgt ,t (i, m ) Legality score of agent i in type m collision at t
+
+ai,t :t+T −1 Action sequence 
+
+ci,t , cego ,t Lane-centerline contexts of agent i and the ego vehicle 
+
+pi,t , pego ,t World-frame positions of agent i and the ego vehicle at time t
+
+pos i,t , pos m Pose feature vector of agent i at t, and the target pose in type m collision 
+
+ni,t , nego ,t Unit heading vectors of agent i and the ego vehicle 
+
+nrel  
+
+> i,t
+
+Unit relative position vector from agent i to the ego vehicle 
+
+n⊥ 
+
+> ego ,t
+
+Lateral axis of the ego vehicle 
+
+tpl i,t , tpl m Topological relationship between agent i and the ego vehicle at t and the typical relationships 
+
+vi,t , vego ,t Velocities of agent i and the ego vehicle at time t
+
+M = {Rear-end, Side, Cut-in, Head-on }, Set of collision types 
+
+L = {intersection, merging, same lane, nearby lanes, others }, Set of topo-logical relationships 
+
+Geometry Score. As illustrated in Fig. 1, computing this score for candidate agent i under collision type m at timestep t requires first determining the heading alignment between the two vehicles, di,t , and the relative bearing of the agent i
+
+with respect to the ego vehicle, bi,t :
+
+di,t = ni,t · nego ,t , bi,t = nrel  
+
+> i,t
+
+· ni,t , (2) where ni,t = [cos ϑi,t , sin ϑi,t ] and nego ,t = [cos ϑego ,t , sin ϑego ,t ] denote the unit heading vectors of agent i and the ego vehicle, respectively, and the unit vector 
+
+nrel  
+
+> i,t
+
+= pego ,t − pi,t 
+
+∥pego ,t − pi,t ∥ . (3) represents the relative position direction from agent i to the ego vehicle. CCFM 21 
+
+Fig. 1: Illustration of the geometry score Sgeo ,t (i, m ) for different collision types. For each collision type, the top row shows the target geometric configuration in terms of heading alignment di,t and bearing feature bi,t , while the bottom visualizes the corresponding geometry score landscape over the (di,t , b i,t ) space. The star marks the target feature vector pos m for each collision type m.
+
+The dot product di,t ∈ [−1, 1] encodes the heading alignment: 1 represents the same direction, -1 denotes the opposite direction, and 0 indicates the per-pendicular direction. The dot product bi,t ∈ [−1, 1] encodes the bearing of agent 
+
+i relative to the ego vehicle: 1 means approaching directly, -1 represents directly moving away, and 0 denotes a relative lateral position. Together, they form the relative pose feature vector: 
+
+pos i,t (pi,t , ϑ i,t , pego ,t , ϑ ego ,t ) = di,t , b i,t 
+
+. (4) Each collision type m is associated with a specific target pose pos m =[dm, b m], identified as the star symbol illustrated in Fig. 1. The similarity func-tion ψgeo (·) is a weighted sum of Gaussian kernels over the two pose features: 22 K. Li et al. 
+
+Sgeo ,t (i, m ) = ψgeo 
+
+ pos i,t , pos m
+
+ =
+
+"αm
+
+1 − αm
+
+#T "exp( −(di,t − dm)2/β d,m )exp( −(bi,t − bm)2/β b,m )
+
+#
+
+(5) where αm ∈ [0 , 1] controls the relative importance between the two pose fea-tures; and the bandwidth parameters βd,m and βb,m control the tolerance of the similarity function with respect to deviations from their target values. Each Gaussian kernel in eq. (5) produces a high response when the corresponding fea-ture is close to its target value and decays smoothly as the deviation increases. The final geometric similarity score Sgeo ,t (i, m ) is obtained as a weighted com-bination of the two responses, capturing both heading alignment and relative bearing of agent i with respect to the ego vehicle in a collision of type m.The collision-type-specific parameters for calculating the geometry score are summarized in Table 2 and also displayed in Fig. 1.                           
+
+> Table 2: Geometry score parameters by collision type
+> mdmβd,m bmβb,m αm
+> Rear-end +1 0.3 +1 0.50.6
+> Side 00.3+1 0.50.5
+> Cut-in cos 30 ◦0.05 +1 0.50.6
+> Head-on −10.3+1 0.50.6
+
+Legality Score. The score for agent i at timestep t measures the likelihood that the agent can cause a collision of type m, according to the observed topological relationship between agent i and the ego vehicle, tpl i,t , in comparison to the typical topological configuration associated with the collision type m, tpl m.Following SAFE-SIM [3], the topological relationship between agent i and the ego vehicle at timestep t is derived from their contexts, positions, and headings, and represented as a one-hot vector: 
+
+tpl i,t (ci,t , pi,t , ϑ i,t , cego ,t , pego ,t , ϑ ego ,t ) ∈ { 0, 1}|L| . (6) where: 
+
+L = {same_lane , nearby_lanes , merging , intersection , others }. (7) To model the typical topological configurations associated with different col-lision types, we define a compatibility matrix in Table 3, Mlgt ∈ R|L|×|M| , whose entries take values in the range [0 , 1] and specify the typicality of each relation-ship for each collision type. This matrix can be calibrated using historical data in crash reporting systems. CCFM 23 
+
+Accordingly, the typical topological configuration for crash type m is given by 
+
+tpl m = Mlgt em, (8) where em is the one-hot indicator vector for collision type m.The legality score is then defined as: 
+
+Slgt ,t (i, m ) = ψlgt 
+
+ tpl i,t , tpl m
+
+ = tpl T 
+
+> i,t
+
+tpl m, (9) where the similarity function ψlgt is a dot product operator that selects the compatibility score corresponding to the observed topological relationship.                         
+
+> Table 3: Base compatibility scores for each topological relationship and collision type Collision Type Side Head-on Cut-in Rear-end Topological Relationship
+> intersection 0.95 0.70 0.30 0.30
+> merging 0.60 0.10 0.95 0.40
+> same_lane 0.05 0.05 0.05 0.95
+> nearby_lanes 0.40 0.20 0.70 0.60
+> others 0.01 0.01 0.01 0.01
+
+The Weighted Score. The weights used to combine the three scores are wrch ,
+
+wgeo , and wlgt , which sum to one. They are set to be equal, making St(i, m )
+
+the simple average of the three scores. The score function is evaluated over all candidate agents and collision types to identify the optimal pair of adversarial vehicle and collision type that maximizes the score: 
+
+(i∗, m ∗) = arg max  
+
+> i∈{ 1,...,N −1}, m ∈M
+
+St(i, m ). (10) Based on this, the trajectory of the adversarial agent i∗ is generated using the proposed Collision-Constrained Flow Matching (CCFM) method to induce a collision with the ego vehicle of the target type m∗.
+
+## B Collision-Type-Specific Constraints 
+
+We define a set of constraints for each representative collision type and imposes them on the predicted residual ht to guide trajectory generation for the adver-sarial agent during closed-loop simulation. Specifically, ht is measured at Tcol ,the target future timestep at which a collision of the target type m∗ will occur. Its estimation is delineated in Sec. C.1. All collision-type-specific constraints are imposed at the target collision timestep, 
+
+t + Tcol , and are derived from the predicted states of the adversarial vehicle i∗24 K. Li et al. 
+
+and the ego vehicle for a collision of type m∗. For notational simplicity, we define 
+
+ˆpi∗ ≜ pi∗,t +Tcol , ˆni∗ ≜ ni∗,t +Tcol , ˆvi∗ ≜ vi∗,t +Tcol , ˆϑi∗ ≜ ϑi∗,t +Tcol 
+
+ˆpego ≜ pego ,t +Tcol , ˆnego ≜ nego ,t +Tcol , ˆvego ≜ vego ,t +Tcol , ˆϑego ≜ ϑego ,t +Tcol 
+
+(11) following the notation of Section A.1. We define dissimilarity measures based on the predicted states in Eq. (11) and impose constraints on them when generating the adversarial agent’s action sequence. These measurements are introduced below. 
+
+B.1 Contact Constraint 
+
+At timestep t, we define lcnt ,t as the predicted distance between the target contact points of the adversarial agent i∗ and the ego vehicle for a collision of type m∗
+
+after Tcol steps, calculated as: 
+
+lcnt ,t =
+
+
+
+min( ∥ˆpr 
+
+> i∗
+
+− ˆpf
+
+> ego
+
+∥, ∥ˆpf 
+
+> i∗
+
+− ˆpr
+
+> ego
+
+∥), if m∗ = Rear-end ;
+
+∥ˆpf 
+
+> i∗
+
+− ˆpf
+
+> ego
+
+∥, if m∗ = Head-on ;
+
+∥ˆpc 
+
+> i∗
+
+− ˆps
+
+> ego
+
+∥, if m∗ = Side ;
+
+∥ˆpc 
+
+> i∗
+
+− ˆpf
+
+> ego
+
+∥, if m∗ = Cut-in ;
+
+(12) where the superscripts f, r, s, and c denote the front, rear, side, and center points of the vehicles, respectively. We define ˜lcnt as the threshold distance between the contact points for a collision of type m∗, as summarized in Table 4. Accordingly, a dissimilarity function calculates the contact residual: 
+
+hcnt ,t = ϕcnt (lcnt ,t , ˜lcnt ) = wcnt · ReLU( lcnt ,t − ˜lcnt ), (13) where ReLU denotes the Rectified Linear Unit function and wcnt is a scaling factor. hcnt ,t measures how much the predicted contact distance exceeds the threshold defined for that collision type. 
+
+B.2 Heading Constraint 
+
+At timestep t, we also define lhdg ,t as the predicted heading alignment between the adversarial agent i∗ and the ego vehicle in a collision of type m∗ after Tcol 
+
+steps, calculated as: 
+
+lhdg ,t = ˆdi∗ = ˆ ni∗ · ˆnego . (14) 
+
+˜lhdg = [ d, d ] is the target alignment interval in a collision of type m∗, specified in Table 4. Then, a dissimilarity function calculates the heading residual: 
+
+hhdg ,t = ϕhdg 
+
+
+
+lhdg ,t , ˜lhdg 
+
+
+
+= whdg · gt · ReLU 
+
+
+
+max( d − ˆdi∗ , ˆdi∗ − d)
+
+2
+
+,
+
+(15) CCFM 25 
+
+where whdg is a scaling factor and gt is a proximity-aware gate function defined as 
+
+gt = sigmoid 
+
+ 10 − ∥ pi∗,t − pego ,t ∥
+
+3
+
+
+
+, (16) which approaches zero when the adversarial vehicle is far from the ego vehicle and gradually increases toward one as it gets closer. Therefore, the constraint on 
+
+hhdg ,t penalizes the squared deviation of the predicted relative heading indicator 
+
+ˆdi∗ from the admissible interval [d, d ] associated with the target collision type m∗.The penalty is modulated by the gate function, so that the heading alignment constraint becomes active primarily when the adversarial vehicle is sufficiently close to the ego vehicle. 
+
+B.3 Severity Constraint 
+
+At timestep t, we further define lsvt ,t as the predicted closing speed at the target impact timestep t + Tcol :
+
+lsvt ,t = ˆ r(m∗)⊤  ˙ˆpi∗ − ˙ˆpego 
+
+
+
+, (17) which projects the relative velocity between the adversarial agent i∗ and ego vehicle at the target impact timestep, ˙ˆpi∗ − ˙ˆpego , onto ˆr(m∗), the unit direction corresponding to the target collision type m∗.We define the collision-relevant unit direction as: 
+
+ˆr(m∗) = 
+
+
+
+ˆnego , Rear-end 
+
+−ˆnego , Head-on 
+
+ˆn⊥
+
+> ego
+
+, Side 
+
+ˆni∗ , Cut-in 
+
+(18) where ˆn⊥ 
+
+> ego
+
+denotes the lateral axis of the ego vehicle at t + Tcol :
+
+ˆn⊥ 
+
+> ego
+
+=
+
+(
+
+[sin ˆϑego , − cos ˆϑego ]⊤, if i∗ approaches from the left. 
+
+[− sin ˆϑego , cos ˆϑego ]⊤, if i∗ approaches from the right.  (19) 
+
+˜lsvt denotes the lower bound required for the closing speed in a collision of type m∗, as specified in Table 4. Then, a dissimilarity function measures the closing speed residual: 
+
+hsvt ,t = ϕsvt 
+
+
+
+lsvt , ˜lsvt 
+
+
+
+= wsvt · ReLU 
+
+˜lsvt − lsvt 
+
+
+
+, (20) where wsvt is a scaling factor. hsvt ,t measures the shortfall of impact severity. Therefore, the corresponding constraint penalizes cases where the predicted clos-ing speed lsvt ,t falls below the required lower bound ˜lsvt associated with the target collision type. The penalty increases linearly with the amount of closing speed shortfall and becomes zero once the closing speed meets or exceeds the required threshold. 26 K. Li et al. 
+
+Table 4: Collision-type-specific constraint thresholds 
+
+m∗ ˜lcnt ˜lhdg ˜lsvt (m/s) Rear-end −10 −6 [0 .95 , 1.00] 2Side −10 −6 [−0.17 , 0.17] 1Cut-in −10 −6 [0 .71 , 0.97] 4Head-on −10 −6 [−1.00 , −0.95] 7
+
+## C Gauss–Newton Projection Details 
+
+This section details two components abstracted in the main text: (i) the dynamic time-to-collision Tcol used in the residual ht, and (ii) the damped Gauss–Newton projection that implements ΠC .
+
+C.1 Dynamic time-to-collision 
+
+The target collision horizon Tcol is updated at the same frequency as the closed-loop re-planning. At the beginning of each re-planning step, we recompute Tcol 
+
+using the states of the ego vehicle and the adversarial agent observed at the current closed-loop timestep t.Specifically, we estimate the time to closest approach under a constant-velocity assumption and convert it into a discrete planning-step index: 
+
+Tcol = clip 
+
+ 1
+
+dt 
+
+−∆v⊤ 
+
+> t
+
+∆pt
+
+∥∆vt∥2
+
+
+
+, T min , T max 
+
+
+
+, (21) where dt is the simulation step time, ∆pt(= pego ,t − pi∗,t ) and ∆vt(= vego ,t −
+
+vi∗,t ) denote the relative position and relative velocity between the adversarial agent and the ego vehicle, respectively. The clipping range [Tmin , T max ] = [5 , 10] 
+
+constrains the target collision horizon to a practical range: a horizon that is too short may lead to an infeasible or collapsed constraint window, whereas a horizon that is too long may delay the induced collision. When ∥∆vt∥2 is close to zero or when ∆v⊤ 
+
+> t
+
+∆pt ≥ 0, the estimated closest-approach time is undefined, unstable, or non-positive. In these cases, we set 
+
+Tcol = Tmax . Updating Tcol at every re-planning step keeps the constraint window aligned with the evolving ego–adversary geometry during closed-loop simulation. 
+
+C.2 Damped Gauss–Newton projection 
+
+Given the unprojected Euler step ˆai∗ (λk+1 ), the damped Gauss–Newton pro-jection computes a locally minimal correction that moves the action sequence toward the collision-constraint set. Formally, the projection can be written as 
+
+ΠC (ˆ ai∗ (λk+1 )) = arg min  
+
+> aproj ∈C
+
+∥aproj − ˆai∗ (λk+1 )∥2. (22) CCFM 27 
+
+Because the residual ht is evaluated using the adversarial-agent state at the target future step t + Tcol , only the actions up to that step can influence the residual through the forward dynamics. Under the causal discrete-time rollout, the state at t + Tcol depends on the actions from t to t + Tcol − 1, but not on the later actions ai∗,t +Tcol :t+T −1. Therefore, the projection only updates the first 
+
+Tcol action steps. Within this section, we denote this action slice as a ∈ RTcol ×2
+
+and use F(si∗,t , a) to denote the corresponding Tcol -step rollout. The Jacobian 
+
+J = ∂h(F(si∗,t , a)) 
+
+∂a ∈ Rnh×2Tcol , (23) is obtained by reverse-mode automatic differentiation through the differentiable forward-dynamics rollout F, where nh = 3 is the number of residual components in ht. We then take a damped Gauss–Newton Projection step: 
+
+a ← a − α J⊤ JJ ⊤ + γ I−1 h(F(si∗,t , a)) , (24) where the step size is set to be α = 0 .8 and the Levenberg–Marquardt damping is set to γ = 10 −4. The damping term improves the condition of (JJ ⊤ +γI) when the residual rows are nearly colinear, and α < 1 mitigates overshooting that may occur with a full GN update under highly nonlinear constraints. Applying ΠC
+
+at every ODE step (combined with the OT reverse update) progressively drives the trajectory toward C as the flow time λ approaches 1. The full procedure is summarized in Algorithm 2. 
+
+Algorithm 2 Damped Gauss–Newton Projection ΠC
+
+1: Input: Unprojected Euler step ˆai∗ (λk+1 ), adversarial initial state si∗,t , ego trajec-tory τ ego ,t :t+T , target collision type m∗, dynamic time-to-collision Tcol 
+
+2: Output: Projected action sequence aproj 
+
+3: a ← ˆai∗ (λk+1 )[ 0: Tcol −1 ]  ▷ Slice to first Tcol steps 4: τ ← F (si∗,t , a) ▷ Forward-dynamics rollout 5: h ← ϕj (lj,t , ˜lj ), for j ∈ { cnt , hdg , svt } ▷ Evaluation of residuals 6: J ← ∂h/∂ a ▷ Via reverse-mode automatic differentiation through F
+
+7: a ← a − α J⊤ JJ ⊤ + γI−1 h ▷ Damped GN step 8: Clamp a to valid acceleration and yaw-rate bounds 9: aproj ← concatenate a with the unchanged tail ˆai∗ (λk+1 )[ Tcol :T ]
+
+10: return aproj 
+
+## D Details on Training and Inference Settings 
+
+In closed-loop simulation, each agent’s action selection is conditioned on its con-text ci,t , which encapsulates: (i) an agent-centric rasterized map Ii ∈ RH×W ×C28 K. Li et al. 
+
+encoding road geometry and lane structure; and (ii) historical states of neigh-boring vehicles st−Thist :t ∈ R(N −1) ×Thist ×4 over the past Thist = 10 timesteps. The CCFM framework is trained on 2 × H200 GPUs using AdamW optimizer for 30,000 steps. The initial learning rate is set to 1 × 10 −5, with a batch size of 1,024 per GPU. CCFM is trained to predict 32 future frames conditioned on his-torical frames Thist = 10 , with a step-time 0.1 s. During closed-loop simulation, all experiments are conducted on a single L40S GPU. Meanwhile, the details of inference are as follows: 
+
+– Heuristic Collision Selector. In closed-loop simulation, we dynamically select the collision event type and the adversarial vehicle pair at a frequency of 2 Hz, consistent with the ego re-planning frequency. The three scoring terms are assigned equal weights. 
+
+– Sampling Strategy. We use an Euler solver with 20 flow matching steps (i.e., 
+
+K = 20 ). To preserve driving realism and reduce unnecessary collisions with other reactive agents, we incorporate realism guidance and generate 20 can-didate future trajectories. Among them, we select the trajectory with the lowest cost, following the strategy in SAFE-SIM [3]. 
+
+## E Evaluation Metrics Definition 
+
+We define the metrics for evaluating CCFM and its benchmarks. All metrics are calculated from the states of the adversarial and ego vehicles at the actual collision time tcol .
+
+E.1 Scenario Criticality 
+
+Collision Rate (CR) measures the fraction of closed-loop simulations in which a collision occurs between the ego and adversarial vehicles, computed as: 
+
+CR = 1
+
+M
+
+> M
+
+X
+
+> q=1
+
+1( collision occurs in scenario q), (25) where M is the total number of simulated scenarios. Collision severity (MS) is another indicator for scenario criticality. To char-acterize the severity of the collision, we report the relative speed at impact. For a collided pair of ego and adversarial vehicles, the magnitude of relative speed at impact is defined as: 
+
+MS = 1
+
+Mcol 
+
+> Mcol
+
+X
+
+> n=1
+
+˙pn 
+
+> ego ,t col
+
+− ˙pni∗,t col 2 (across collided scenario n). (26) We further define the Criticality Score (CS) to jointly summarize collision rate and collision severity. Since higher CR and higher MS indicate more safety-critical scenarios, both metrics are first normalized by the maximum value among CCFM 29 
+
+the compared methods under the same experimental setting: 
+
+\CR · TM = CR · TM max(CR · TM) , dMS = MS max(MS) , (27) where TM is Type Match defined in Eq. 38, and TM = 1 if Type-Match rate is not available. The Criticality Score is then computed as 
+
+CS = 12
+
+ \CR · TM + dMS 
+
+
+
+, (28) A higher CS indicates stronger overall scenario criticality in terms of both colli-sion occurrence and impact severity. 
+
+E.2 Behavioral Realism 
+
+The Off-Road (OR) rate measures the proportion of scenarios in which reactive agents leave the drivable area, computed as: 
+
+OR = 1
+
+M
+
+> M
+
+X
+
+> q=1
+
+1( reactive agent that goes off-road in scenario q). (29) Correspondingly, the adversarial Off-Road rate (ADV.OR) evaluates the propor-tion that the adversarial agent goes off-road among scenarios where a collision occurs. It is computed as: 
+
+ADV .OR = 1
+
+Mcol 
+
+> Mcol
+
+X
+
+> n=1
+
+1( adversarial agent goes off-road in collided scenario n),
+
+(30) where Mcol denotes the number of generated scenarios in which a collision occurs between ego agent and adversarial agent. To quantify motion realism, we compare the distributions of longitudinal ac-celeration ( ˙vlon ), lateral acceleration ( ˙vlat ), and jerk ( ¨v) between simulated and real trajectories for reactive agents. For each attribute, we construct normalized histograms and compute the Wasserstein distance W1(·) between the simulated and real distributions. The realism deviation is defined as the average Wasser-stein distance across the three motion attributes: 
+
+RM = 13
+
+X  
+
+> v∈{ ˙vlon ,˙vlat ,¨v}
+
+W1(pv , q v ), (31) where  pv and  qv denote the normalized histograms of the simulated and real data, respectively, for motion attribute v ∈ { ˙vlon , ˙vlat , ¨v}. We further define the Realism Score (RS) to jointly summarize off-road safety and motion realism across scenarios. Since lower OR and lower RM indicate more realistic behaviors, both metrics are converted into positive scores by comparing them with the 30 K. Li et al. 
+
+minimum value among the compared methods under the same experimental setting: 
+
+dOR = min(OR) OR , dRM = min(RM) RM . (32) The Realism Score is then computed as 
+
+RS = 12
+
+dOR + dRM 
+
+
+
+. (33) A higher RS indicates better overall behavioral realism, with fewer off-road vi-olations and smaller deviation from ground truth motion distributions. We further report displacement-based realism metrics, including Average Dis-placement Error (ADE) and Final Displacement Error (FDE). Let ˆpqi,t and pqi,t 
+
+denote the generated and ground-truth positions of agent i in scenario q at fu-ture timestep t, respectively, and let Nq denote the number of agents in the q-th scenario. ADE and FDE are computed over all generated trajectories as: 
+
+ADE = 1
+
+T PMq=1 NqMX
+
+> q=1
+> Nq
+
+X
+
+> i=1
+> T
+
+X
+
+> t=1
+
+ˆpqi,t − pqi,t 2 , (34) 
+
+FDE = 1
+
+PMq=1 NqMX
+
+> q=1
+> Nq
+
+X
+
+> i=1
+
+ˆpqi,T − pqi,T 2
+
+. (35) Correspondingly, ADV.ADE and ADV.FDE evaluate the displacement errors of the adversarial agent among scenarios where a collision occurs. Let i∗ 
+
+> n
+
+and 
+
+tcol ,n denote the adversarial agent and the actual collision timestep in the n-th collided scenario, respectively. They are computed as: 
+
+ADV .ADE = 1
+
+PMcol  
+
+> n=1
+
+tcol ,n Mcol X
+
+> n=1
+> tcol ,n
+
+X
+
+> t=1
+
+ˆpni∗ 
+
+> n,t
+
+− pni∗ 
+
+> n,t 2
+
+, (36) 
+
+ADV .FDE = 1
+
+Mcol 
+
+> Mcol
+
+X
+
+> n=1
+
+ˆpni∗ 
+
+> n,t col ,n
+
+− pni∗ 
+
+> n,t col ,n 2
+
+, (37) 
+
+E.3 Scenario Controllability and Diversity 
+
+To assess the controllability of the actual collision type with respect to the target collision type, we formulate the collision Type-Match (TM) rate as: 
+
+TM = 1
+
+Mcol 
+
+> Mcol
+
+X
+
+> n=1
+
+1( mact  
+
+> n
+
+= mtar  
+
+> n
+
+), (38) where mact  
+
+> n
+
+and mtar  
+
+> n
+
+denote the actual and target collision types for the n-th collided scenario, respectively, and Mcol is the number of samples that result in a collision between the ego and adversarial vehicles. CCFM 31 
+
+To evaluate the diversity of collision events, we further report the contact region on the ego vehicle at impact. For each collision scenario, the contact location is categorized into front, rear, or side according to the geometry of the first collision frame. The corresponding rate for region r is defined as 
+
+Region r = 1
+
+Mcol 
+
+> Mcol
+
+X
+
+> n=1
+
+1(reg n = r), (39) where reg n denotes the contact-region label of the n-th collision scenario, and 
+
+r ∈ R = {front , rear , side } denotes a contact region category. The normalized entropy of the contact-region distribution, denoted as EN , is computed as 
+
+EN = − 1log |R| 
+
+X
+
+> r∈R
+
+Region r log (Region r ) , (40) where we use the convention 0 log 0 = 0 . EN takes values from the range [0, 1]: it is zero when all collisions occur in one contact region, and one if collisions are uniformly distributed across impact region categories. Therefore, a higher EN 
+
+indicates a more diverse and balanced distribution of collision contact regions. Additionally, we report the standard deviation of the relative speed (SD) and relative heading angle (HD) between the ego and adversarial vehicles across all scenarios of collision. The standard deviation of relative speed SD is defined as: 
+
+SD = 1
+
+Mcol 
+
+> Mcol
+
+X
+
+> n=1
+
+Std   ˙pn 
+
+> ego ,t col ,n
+
+− ˙pni∗,t col ,n 
+
+ . (41) where pn 
+
+> ego ,t col ,n
+
+and pni∗,t col ,n denote the position vectors of the ego vehicle and the adversarial agent i∗ at the collision time tcol ,n in the n-th collision event. The standard deviation of the relative heading angle HD is defined as: 
+
+HD = 1
+
+Mcol 
+
+> Mcol
+
+X
+
+> n=1
+
+Std 
+
+
+
+arccos 
+
+
+
+nn 
+
+> ego ,t col ,n
+
+· nni∗,t col ,n 
+
+ 
+
+, (42) where nn 
+
+> ego ,t col ,n
+
+and nni∗,t col ,n denote the unit heading vectors of the ego vehicle and adversarial vehicle i∗ at the collision time tcol ,n for the n-th collision event. Based on these metrics, we define the Diversity Score (DS) to jointly measure the diversity of contact-region distribution, relative speed, and relative heading angle. Since EN is already normalized to [0 , 1] , we only normalize SD and HD by the maximum value among the compared methods under the same experimental setting: 
+
+cSD = SD max(SD) , dHD = HD max(HD) . (43) The Diversity Score is then computed as 
+
+DS = 13
+
+
+
+EN + cSD + dHD 
+
+
+
+. (44) A higher DS indicates more diverse collision outcomes in terms of contact loca-tion, impact-speed variation, and relative heading geometry. 32 K. Li et al.                      
+
+> Table 5: Quantitative collision-type controllability analysis. The table reports the Type-Match (TM) confusion matrix between the target collision type selected by HCS and the actual collision type observed in closed-loop simulation. Diagonal entries indi-cate successful type-level control, and off-diagonal entries indicate mismatched collision outcomes. Target Actual Rear-end Head-on Side Cut-in Rear-end 83.4% 1.2% 3.6% 11.2%
+> Head-on 0.0% 91.7% 8.3% 0.0%
+> Side 0.0% 0.0% 90.0% 10.0%
+> Cut-in 7.7% 0.0% 7.7% 84.6%
+
+E.4 Overall Composite Weighted Score 
+
+To provide an overall comparison across scenario criticality, diversity, and be-havioral realism, we define the Composite Weighted Score (CWS) by combining the Criticality Score (CS), Diversity Score (DS), and Realism Score (RS): 
+
+CWS = 13 (CS + DS + RS) . (45) A higher CWS indicates better overall performance, reflecting a more compre-hensive trade-off among safety-critical scenario generation, collision diversity, and behavioral realism. 
+
+## F Details on Supplementary Experiments 
+
+In this section, we provide additional experiments and analyses to further evalu-ate the controllability and robustness of CCFM, including quantitative collision-type controllability results and failure cases and infeasible constraints analysis. 
+
+F.1 Quantitative Controllability Analysis 
+
+The results in Table 5 further demonstrate the collision-type controllability of CCFM. The diagonal entries remain consistently high across all target collision types, ranging from 83.4% to 91.7%, indicating that the generated collisions largely match the target types selected by HCS. The majority of off-diagonal cases occur between geometrically related collision types, such as rear-end col-lisions being generated as cut-in collisions and side collisions being generated as cut-in collisions. These discrepancies are expected in closed-loop interaction, where the relative pose between the ego vehicle and the adversarial agent can evolve over time and consequently shift the apparent collision type. Overall, the confusion matrix shows that CCFM provides reliable semantic control over collision outcomes rather than merely increasing the collision rate. CCFM 33 
+
+Table 6: Per-collision-type analysis of failure cases and infeasible-constraint analysis. We report the success and failure rates for each HCS-selected target collision type, together with the cumulative infeasibility ratios of the contact-point, relative-heading, and severity constraints in collided scenarios, denoted as Inf cnt , Inf hdg , and Inf svt ,respectively. 
+
+HCS Target Success (%) Failure (%) Inf cnt (%) Inf hdg (%) Inf svt (%) Rear-end 83.4 16.6 28.77 0.85 2.97 Head-on 91.7 8.3 32.86 1.43 39.29 
+
+Side 90.0 10.0 72.86 7.14 11.43 Cut-in 84.6 15.4 55.64 6.39 19.17 
+
+F.2 Failure Cases and Infeasible-constraint Analysis 
+
+Table 6 also provides the cumulative infeasibility ratios of the collision con-straints (Inf cnt /hdg /svt ) in collided scenarios, evaluated against kinematic feasi-bility bounds at Tcol . Among the constraint components, side and cut-in sce-narios are primarily limited by contact-point feasibility, indicating that lateral reachability and precise contact alignment are more challenging for these interac-tion patterns. In contrast, head-on scenarios are mainly constrained by severity feasibility, reflecting the difficulty of satisfying the required relative-speed condi-tion under closed-loop simulation. Nevertheless, through successive re-planning, the adversary can progressively correct infeasible intermediate targets, continue the intended maneuver, and ultimately induce a collision with the ego vehicle.

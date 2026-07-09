@@ -1,0 +1,523 @@
+Title: Reachability-Based Safe-Start Regions for Approach to a Tumbling Target with Rotating LOS Constraints
+
+URL Source: https://arxiv.org/pdf/2607.02128v1
+
+Published Time: Fri, 03 Jul 2026 01:02:57 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+## Reachability-Based Safe-Start Regions for Approach to a Tumbling Target with Rotating LOS Constraints 
+
+Omer Burak Iskender a,b,* , Keck Voon Ling a, Wee Seng Lim b, Erick Lansard ba Nanyang Technological University, Singapore. E-mail: iske0001@e.ntu.edu.sg, ekvling@ntu.edu.sg  
+
+> b
+
+Satellite Research Center, Nanyang Technological University (NTU), Singapore. E-mail: limWS@ntu.edu.sg, erick.lansard@ntu.edu.sg  
+
+> *
+
+Corresponding author 
+
+Preprint of a paper submitted to the 77th International Astronautical Congress (IAC 2026), Antalya, Türkiye, 5–9 October 2026. 
+
+Abstract 
+
+This paper presents a reachability-aware guidance architecture for autonomous approach to a tumbling, uncooperative target under a rotating line-of-sight (LOS) docking corridor. The LOS admissible set rotates with the target body frame, producing time-varying polyhedral constraints in the chaser’s relative coordinates. A safe-start region is constructed via two conservative criteria: (i) directional per-constraint erosion, quantifying the margin consumed by rotation-induced drift before the thruster can arrest it, and (ii) a synchronization range bound 𝑟 < 2𝑎 max /𝜔 2 
+
+> 𝑡
+
+ensuring the chaser can cancel the apparent rotational velocity without overshooting the hold point. Closed-loop guidance uses a receding-horizon MPC controller with Clohessy-Wiltshire-Hill (CWH) prediction dynamics and explicit LOS corridor constraints embedded in the quadratic program. Truth propagation uses the exact discrete CWH state-transition matrix with sub-stepping, ensuring physically honest feasibility claims: no reference blending or state projection is applied. A three-regime tracking law (far LVLH approach, close body-frame tracking, synchronized hold) manages the transition from long-range inertial approach to body-frame co-rotation. The analytical safe-start region is benchmarked against four standard reachability engines (backward and forward polytopic reachable sets, Hamilton–Jacobi level sets, and closed-loop Monte Carlo), revealing that the closed-form synchronization criteria are ∼250 × faster than Hamilton–Jacobi reachability while predicting closed-loop feasibility with precision 0.80 and recall 0.91 (overall accuracy 0.92 , Matthews correlation 0.80 ) on a 500-case closed-loop sweep. The residual 6% false-positive rate (concentrated at high tumble rate) and the IoU gap against Hamilton–Jacobi (0.008–0.375 across 𝜔 𝑡 = 1–5 deg/s) quantify a structural property rather than a method error: the synchronization set (reach and co-rotate) is a strict subset of the positional reachable set, the gap widening with 𝜔 𝑡 . The analytical bound is therefore a sound inner certificate for onboard go/no-go decisions where Hamilton–Jacobi is prohibitively expensive. The framework is reproducible from a single command. 
+
+Keywords: proximity operations, uncooperative target, time-varying LOS corridor, safe-start region, synchronization bound, Hamilton-Jacobi reachability, MPC 
+
+# Nomenclature 
+
+𝑛 target orbit mean motion (rad/s) 
+
+x = [𝑥, 𝑦, 𝑧, ¤𝑥, ¤𝑦, ¤𝑧 ]⊤ 3D LVLH relative state 
+
+u = [𝑎 𝑥 , 𝑎 𝑦 , 𝑎 𝑧 ]⊤ LVLH control acceleration 
+
+𝑎 max maximum thrust-to-mass ratio 
+
+𝜔 𝑡 target tumble rate about LVLH 𝑧 𝑅 𝑧 (𝜃 ) rotation matrix about 𝑧 by angle 𝜃 𝑐 𝑥 , 𝑐 𝑧 LOS cone half-angle slopes 
+
+𝑥 0, 𝑧 0 docking port lateral half-widths 
+
+𝑟 ℎ hold stand-off radius 
+
+𝑟 sync synchronization range limit 
+
+Φ(𝜏 ) CWH state-transition matrix 
+
+𝐵 𝑑 (𝜏 ) CWH zero-order-hold input matrix 
+
+# Acronyms/Abbreviations 
+
+BRS: Backward Reachable Set BRT: Backward Reachable Tube CWH: Clohessy-Wiltshire-Hill FRS: Forward Reachable Set HCW: Hill-Clohessy-Wiltshire HJ: Hamilton-Jacobi HJI: Hamilton-Jacobi-Isaacs IoU: Intersection over Union LOS: line of sight LVLH: local vertical local horizontal MC: Monte Carlo MPC: model predictive control QP: quadratic program 1
+
+> arXiv:2607.02128v1 [eess.SY] 2 Jul 2026
+
+# 1 Introduction 
+
+Autonomous rendezvous and docking with a tumbling un-cooperative target requires guidance that respects time-varying geometric constraints imposed by the rotat-ing docking corridor. Classical Hill-Clohessy-Wiltshire (HCW) relative motion [1, 2] provides a compact linear prediction model suitable for online guidance, but the con-straint landscape is complicated by the target’s attitude mo-tion: the line-of-sight corridor rotates with the target body frame, producing time-varying feasibility boundaries in the chaser’s coordinate system. A critical pre-mission question is: from which initial states can the chaser safely approach and synchronize with the rotating hold point? This paper addresses that ques-tion through a reachability-aware guidance architecture that combines: 
+
+• geometric safe-start region analysis via directional per-constraint erosion and a synchronization range bound, 
+
+• a receding-horizon MPC controller [3, 4] with CWH prediction dynamics and explicit LOS corridor con-straints in the QP, 
+
+• a three-regime tracking law that transitions from far-field LVLH approach to body-frame co-rotation and synchronized hold, 
+
+• benchmarking of the closed-form criteria against four standard reachability engines (polytopic backward and forward reach, Hamilton–Jacobi [5], and closed-loop Monte Carlo). The central contribution is structural. Synchronization 
+
+(reaching the rotating hold point and matching its co-rotation velocity 𝜔 𝑡 𝑟 , certified in closed form) and reacha-bility (reaching the target position with any terminal veloc-ity, certified by the Hamilton–Jacobi backward reachable tube) are not two estimates of one set but distinct objects re-lated by the strict containment Ssync ⊊ Sreach , with the gap widening as 𝜔 𝑡 grows. Quantifying this decoupling is the operationally relevant result; the analytical synchronization bound is a sound inner certificate, not an approximation of HJ reachability. 
+
+# 2 Dynamics Model 
+
+## 2.1 CWH Relative Motion 
+
+Both the guidance prediction model and the truth propa-gation use the three-dimensional Clohessy-Wiltshire-Hill (CWH) linearised relative dynamics in the LVLH frame. The continuous-time equations are: 
+
+¥𝑥 = 3𝑛 2𝑥 + 2𝑛 ¤𝑦 + 𝑎 𝑥 ,
+
+¥𝑦 = −2𝑛 ¤𝑥 + 𝑎 𝑦 , (1) 
+
+¥𝑧 = −𝑛 2𝑧 + 𝑎 𝑧 .
+
+The exact discrete-time state-transition matrix Φ(𝜏 ) and zero-order-hold input matrix 𝐵 𝑑 (𝜏 ) [6] are used for both MPC horizon predictions and truth propagation. Writing 
+
+𝑐 = cos (𝑛𝜏 ), 𝑠 = sin (𝑛𝜏 ):Truth propagation uses sub-stepping (3 sub-steps per control interval) with this exact matrix exponential to main-tain numerical accuracy. 
+
+## 2.2 Physically Honest Propagation 
+
+A key design principle is that the truth simulation uses only 
+
+CWH dynamics plus the commanded acceleration: no ref-erence blending, position projection, or velocity overrides are applied. This ensures that all feasibility claims are physically honest: if the chaser reports “hold achieved”, it genuinely reached the hold band through dynamically consistent motion. 
+
+# 3 Backward Reachability: From Double Integrator to CWH 
+
+Before adding the rotating line-of-sight corridor, we build intuition on the backward reachable set itself, first on a simple double integrator and then on the orbital CWH dynamics. This isolates two effects that the constrained safe-start analysis (§6) later inherits: how process uncer-tainty shapes the reachable set, and how orbital coupling alone deforms it relative to a naive double integrator. The Backward Reachable Set admits three classical vari-ants distinguished by their treatment of process uncertainty, a canonical sequence in standard predictive-control refer-ences [3, 4]: 
+
+• Nominal BRS: 𝑥 0 ∈ X nom 0 iff ∃𝑢 0, . . . , 𝑢 𝑁 −1 such that 𝑥 𝑁 ∈ T under the deterministic dynamics 𝑥 𝑘 +1 =
+
+𝐴𝑥 𝑘 + 𝐵𝑢 𝑘 .
+
+• Stochastic BRS: additive Gaussian noise 𝑤 𝑘 ∼N ( 0, Σ𝑤 ) enters the recursion as 𝑥 𝑘 +1 = 𝐴𝑥 𝑘 + 𝐵𝑢 𝑘 +
+
+𝑤 𝑘 . The BRS is computed by Monte Carlo over the noise samples; it gives an empirical reach set that contracts toward the nominal as Σ𝑤 → 0.
+
+• Robust BRS: bounded disturbance 𝑤 𝑘 ∈ W (a box); the predecessor step is accepted only when feasible for every vertex of W. The resulting set is the largest sub-set of the nominal BRS that tolerates any disturbance realization, equivalent to the Mayne–Seron–Raković rigid tube cross-section [7] in its 1-step form. 2Φ(𝜏 ) =
+
+
+
+4 − 3𝑐 0 0 𝑠 /𝑛 2(1 − 𝑐 )/ 𝑛 06(𝑠 − 𝑛𝜏 ) 1 0 −2(1 − 𝑐 )/ 𝑛 (4𝑠 − 3𝑛𝜏 )/ 𝑛 00 0 𝑐 0 0 𝑠 /𝑛 
+
+3𝑛𝑠 0 0 𝑐 2𝑠 0
+
+−6𝑛 (1 − 𝑐 ) 0 0 −2𝑠 4𝑐 − 3 00 0 −𝑛𝑠 0 0 𝑐 
+
+
+
+. (2) Figure 1 illustrates these on the canonical double-integrator 𝐴 = [[ 1, 1], [0, 1]] , 𝐵 = [0, 1]⊤, |𝑢 | ≤ 1,
+
+|𝑥 𝑖 | ≤ 5, with target at the origin and horizon 𝑁 = 5.The robust set is a strict subset of the nominal set, 
+
+Xrobust 0 ⊆ X nom 0 (it must tolerate every disturbance-box vertex), while the stochastic set is an empirical sample that brackets the nominal boundary and expands with the noise covariance. 
+
+Mapping to the present problem. For the CWH+rotating-LOS setting of §6, the three forms spe-cialize as follows. Nominal BRS corresponds to the deter-ministic LOS-tightening described in §7 and benchmarked in §8; this is the engine reported as “Backward-Reach” in Table 2. Stochastic BRS models thruster jitter / naviga-tion noise as Gaussian process disturbance and produces an empirical sample of feasible ICs; robust BRS models bounded thruster calibration error and produces a strict in-ner approximation of the nominal set tolerated against the worst-case disturbance realization. Figure 2 contrasts the planar CWH backward reachable set with that of a same-order double integrator (the CWH model with mean motion 
+
+𝑛 = 0) over a realistic 𝑁 = 20 (40 s) terminal-approach horizon, isolating the effect of the orbital dynamics: the only difference between the two models is the Coriolis and gravity-gradient coupling of the CWH equations. The or-bital dynamics contract the radial (𝑥 𝐵 ) reach to ∼81% of the double integrator’s (nominal radial range ≈ 84 m vs 
+
+103 m): the coupling curves radial excursions into along-track drift, so fewer radial offsets can be driven back to the hold point within the horizon, while the along-track reach is comparable; the contraction grows with the horizon-to-orbit-period ratio. In each panel the solid hull is CWH and the dashed hull the double integrator; across panels the robust set is a subset of the nominal set for each model, with the stochastic cloud bracketing the nominal boundary. (Point clouds in Figs. 1–2 are uniformly subsampled for rendering; the set extents, not the marker counts, carry the comparison.) The robust BRS is conceptually the closest of the three to the analytical synchronization criterion: both require feasibility under the worst-case realization of an exogenous perturbation (bounded disturbance for robust BRS, worst-case rotation-induced drift for the analytical bound). Code reproducing Fig. 1 and 2 is available in the open-source repository accompanying this paper. Having characterised the unconstrained reachable set and the deformation introduced by orbital dynamics, we now add the rotating LOS corridor, which turns the safe-start question into a time-varying constrained problem. 
+
+# 4 Time-Varying LOS Corridor 
+
+## 4.1 3D Body-Frame Formulation 
+
+Let p = [𝑥, 𝑦, 𝑧 ]⊤ denote relative position in LVLH. The target body frame rotates about the LVLH 𝑧 -axis at rate 𝜔 𝑡 :
+
+p𝐵 = 𝑅 𝑧 (− 𝜔 𝑡 𝑡 ) p. (3) In body-frame coordinates [𝑥 𝐵 , 𝑦 𝐵 , 𝑧 𝐵 ]⊤, the LOS cor-ridor is a polyhedral cone defined by five half-space in-equalities; constraint tightening of this polyhedral corridor for MPC-based rendezvous and docking with uncoopera-tive targets is developed in [8, 9], and for elliptical orbits in [10]: 
+
+
+
+0 −1 01 −𝑐 𝑥 0
+
+−1 −𝑐 𝑥 00 −𝑐 𝑧 10 −𝑐 𝑧 −1
+
+| {z }
+
+> 𝐴 𝑐
+
+
+
+𝑥 𝐵 
+
+𝑦 𝐵 
+
+𝑧 𝐵 
+
+
+
+≤
+
+
+
+−𝑟 ℎ
+
+𝑥 0 − 𝑐 𝑥 𝑟 ℎ
+
+𝑥 0 − 𝑐 𝑥 𝑟 ℎ
+
+𝑧 0 − 𝑐 𝑧 𝑟 ℎ
+
+𝑧 0 − 𝑐 𝑧 𝑟 ℎ
+
+| {z }
+
+> 𝑏 𝑐
+
+. (4) With parameters 𝑐 𝑥 = 𝑐 𝑧 = 1.5, 𝑥 0 = 𝑧 0 = 2.5 m, and 𝑟 ℎ = 0.5 m, the corridor opens at approximately 56 ◦
+
+half-angle in both lateral directions. 
+
+## 4.2 Body–LVLH Coordinate Transforms 
+
+The body-to-LVLH velocity transform includes the Corio-lis transport term: 
+
+v𝐿 = 𝑅 𝑧 (𝜃 ) ( v𝐵 + 𝝎 × r𝐵 ) , 𝝎 = [0, 0, 𝜔 𝑡 ]⊤. (5) This is critical for correct velocity matching: at range 𝑟 ,a body-frame–stationary chaser must maintain co-rotation velocity 𝑣 corot = 𝜔 𝑡 𝑟 in the LVLH frame. 
+
+# 5 Guidance Architecture 
+
+## 5.1 Three-Regime Controller 
+
+The controller operates in three regimes based on range 
+
+𝑟 = ∥r∥ relative to the synchronization radius 𝑟 sync =
+
+2𝑎 max /𝜔 2 
+
+> 𝑡
+
+:35.0 2.5 0.0 2.5 5.0  
+
+> x1(position)
+> 6
+> 4
+> 2
+> 0
+> 2
+> 4
+> 6
+> x2 (velocity)
+
+Nominal      
+
+> 5.0 2.5 0.0 2.5 5.0
+> x1(position)
+
+Stochastic ( w = 0.1 I)     
+
+> 5.0 2.5 0.0 2.5 5.0
+> x1(position)
+
+Robust (| w| 0.2) 
+
+2-D double-integrator: three BRS variants (target = origin, N = 5) Fig. 1: Nominal, stochastic, and robust backward reachable sets on the canonical double-integrator ( 𝑢 ∈ [− 1, 1], |𝑥 𝑖 | ≤ 5,target = origin, 𝑁 = 5). Robust ⊆ nominal; the stochastic cloud brackets the nominal boundary (see text). 50 0 50               
+
+> xBradial (m)
+> 40
+> 20
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> yB along-track (m)
+> Nominal
+> Double integrator ( n= 0)
+> CWH (orbital, LEO)
+> 50 050
+> xBradial (m)
+> Stochastic
+> 50 050
+> xBradial (m)
+> Robust
+> Planar CWH vs.\ double integrator: three BRS variants (target [0, 30, 0, 0], N= 20, dt = 2 s, amax = 0.10 m/s 2)
+
+Fig. 2: Planar CWH ( 𝑛 = 1.1 × 10 −3 rad/s, blue solid hull) vs. a same-order double integrator ( 𝑛 = 0, grey dashed hull) backward reachable set for the three BRS variants; target hold [0, 30 , 0, 0]⊤, 𝑁 = 20 , 𝑑𝑡 = 2 s, 𝑎 max = 0.10 m/s 2. Orbital dynamics contract the radial ( 𝑥 𝐵 ) reach to ∼81% of the double integrator’s (see text). 1. Far approach (𝑟 > 𝑟 sync ): LVLH-frame PD track-ing of the spiral reference with velocity limit-ing. The achievable velocity is capped at 𝑣 achv =
+
+min (𝑎 max 𝑡 /2, 𝑣 max ), preventing the controller from demanding velocities that exceed the thrust budget. 2. Close approach (𝑟 ≤ 𝑟 sync ): body-frame PD track-ing. The reference is transformed to body-frame co-ordinates, and the controller tracks the body-frame position and velocity errors. This regime naturally handles the co-rotation requirement. 3. Hold (𝑟 ℎ − 𝜖 ≤ 𝑟 ≤ 𝑟 ℎ + 𝜖 , 𝑣 < 𝑣 switch ): synchro-nized station-keeping at the hold point. A stiffer PD law with CWH gravity-gradient feedforward main-tains the chaser at the rotating hold position: 
+
+aff = −
+
+
+
+3𝑛 2𝑥 + 2𝑛 ¤𝑦 
+
+−2𝑛 ¤𝑥 
+
+−𝑛 2𝑧 
+
+
+
+. (6) 
+
+## 5.2 Optimization Problem: Cost and Con-straints 
+
+The nominal regime-tracking command unom of the previ-ous subsection is refined at each step 𝑘 by a lightweight 
+
+single-input receding-horizon safety filter . Rather than op-timise a full input sequence, the filter selects the single current-step acceleration u that stays closest to unom while keeping the constant-input CWH forecast inside the rotat-4ing LOS corridor over the next 𝑁 nodes: 
+
+min  
+
+> u∈R3
+
+∥u − unom ∥2 + 𝑤 𝑢 ∥u∥2 + 𝑤 Δ𝑢 ∥u − u𝑘 −1 ∥2
+
+subject to ˆx 𝑗 = Φ 𝑗 x𝑘 + 𝐵 𝑑, 𝑗 u, 𝑗 = 1, . . . , 𝑁, 𝐴 𝑐 𝑅 𝑧 (− 𝜃 𝑗 ) ˆr 𝑗 ≤ 𝑏 𝑐 − 𝜖 𝑚 , 𝑗 = 1, . . . , 𝑁, 
+
+|𝑢 𝑖 | ≤ 𝑎 max , 𝑖 = 1, 2, 3,
+
+(7) followed by a Euclidean projection u ←
+
+𝑎 max u/max (∥ u∥2, 𝑎 max ) onto the thrust disk. Here 
+
+ˆr 𝑗 is the position block of the constant-input forecast 
+
+ˆx 𝑗 = Φ 𝑗 x𝑘 + 𝐵 𝑑, 𝑗 u (the same command u is held across the forecast, so ˆr 𝑗 = Φ 𝑗 [1:3 , :] x𝑘 + 𝐵 𝑑, 𝑗 [1:3 , :] u), 
+
+Φ 𝑗 = Φ ( 𝑗 Δ𝑡 ) and 𝐵 𝑑, 𝑗 = 𝐵 𝑑 ( 𝑗 Δ𝑡 ) are the CWH state-transition and input matrices (2), 𝜃 𝑗 = 𝜔 𝑡 (𝑡 𝑘 + 𝑗 Δ𝑡 ) is the corridor rotation angle that makes the LOS constraint (4) time-varying, u𝑘 −1 is the previously applied command, and 𝜖 𝑚 is a small constraint-tightening margin. The thrust limit is imposed as the axis-aligned box |𝑢 𝑖 | ≤ 𝑎 max inside the (three-variable) quadratic program and then tightened to the exact Euclidean disk ∥u∥2 ≤ 𝑎 max by the post-solve projection, so the delivered command always respects the disk; the filter also carries single-step radial keep-out and per-axis speed-limit rows, omitted here for brevity. The cost penalises both the control magnitude and its increment, which is standard and well-posed: the mag-nitude term 𝑤 𝑢 ∥u∥2 proxies fuel ( Δ𝑉 ) expenditure and regularises the program, while the move-suppression term 
+
+𝑤 Δ𝑢 ∥u − u𝑘 −1 ∥2 smooths the command and suppresses chattering across the regime handovers. The two are com-plementary rather than redundant; setting 𝑤 Δ𝑢 = 0 recov-ers the pure effort-penalised filter and 𝑤 𝑢 = 0 the pure rate-penalised one. We use 𝑤 𝑢 = 0.1 and 𝑤 Δ𝑢 = 2.0 (rate-dominated), horizon 𝑁 = 6 (12 s at Δ𝑡 = 2 s), solved by se-quential quadratic programming. The filter is deliberately cheap: it inherits the regime logic from unom and uses the horizon only to keep the held command corridor-feasible, consistent with the low-cost onboard-guidance theme of this paper. A full sequence-optimising MPC over u0: 𝑁 −1
+
+with the same prediction model and corridor constraints is a natural extension. 
+
+## 5.3 CWH Gravity-Gradient Feedforward 
+
+In both the hold and tracking regimes, the controller com-pensates the CWH gravity-gradient acceleration. This is essential because the radial–along-track coupling ( 3𝑛 2𝑥 
+
+and 2𝑛 ¤𝑦 , −2𝑛 ¤𝑥 terms) produces secular drift in the along-track direction if left uncompensated. Without feedfor-ward, a chaser near the target drifts away due to the 
+
+6𝑛 (𝑠 − 𝑛𝜏 ) term in the state-transition matrix. 
+
+# 6 Safe-Start Region Analysis 
+
+The safe-start analysis determines, for each body-frame position (𝑥 𝐵 , 𝑦 𝐵 ) inside the LOS cone, whether a chaser starting at rest ( 𝑣 0 = 0) can maintain constraint feasibility. Two conservative criteria are applied. 
+
+## 6.1 Directional Per-Constraint Erosion 
+
+The rotation of the body frame at rate 𝜔 𝑡 creates an ap-parent velocity for an inertially-stationary chaser. For each constraint face 𝑖 in (4), the margin consumed during the settling transient before the thruster arrests the drift is: 
+
+𝛿 𝑖 = ( ¤ 𝑠 − 
+
+> 𝑖
+
+)2
+
+2 𝑎 max 
+
+, (8) where ¤𝑠 − 
+
+> 𝑖
+
+= min (0, ¤𝑠 𝑖 ) is the negative part of the constraint-slack rate. The point is declared safe if 𝑠 𝑖 − 𝛿 𝑖 > 0 for all constraints 𝑖 .
+
+## 6.2 Synchronization Range Bound 
+
+At range 𝑟 , the apparent rotational speed is 𝑣 rot = 𝜔 𝑡 𝑟 .The braking distance to cancel this velocity is 𝑑 brake =
+
+𝜔 2 
+
+> 𝑡
+
+𝑟 2/( 2𝑎 max ). Requiring 𝑑 brake < 𝑟 gives: 
+
+𝑟 < 𝑟 sync = 2 𝑎 max 
+
+𝜔 2
+
+> 𝑡
+
+. (9) 
+
+## 6.3 Coverage Maps 
+
+Table 1 reports the safe fraction of the LOS cone for each tumble-rate and thrust-authority combination, combining the erosion criterion (8) and the synchronization range bound (9). Table 1: Safe fraction of the body-frame LOS cone for var-ious tumble-rate and thrust-authority combinations. Crite-ria: directional per-constraint erosion 𝛿 𝑖 = 12 ¤𝑠 2 
+
+> 𝑖
+
+/𝑎 max and synchronization range bound 𝑟 < 2𝑎 max /𝜔 2 
+
+> 𝑡
+
+.
+
+𝜔 𝑡 (deg/s) 0.20 0.10 0.05 0.01 1 84.3% 76.9% 68.7% 8.2% 2 68.7% 47.6% 12.7% 0.5% 3 39.7% 10.0% 2.6% 0.1% 4 12.7% 3.2% 0.9% 0.0% 5 5.3% 1.4% 0.4% 0.0% Fig. 3 shows the combined body-frame safe-start maps for six tumble rates ( 𝜔 𝑡 = 0.5–5 deg/s). The safe region shrinks both due to per-constraint erosion (asymmetric nar-rowing) and the synchronization range bound (circular cut-off at 𝑟 sync ). 5Fig. 3: Combined safe-start region overview for six tumble rates ( 𝜔 𝑡 = 0.5, 1, 2, 3, 4, 5 deg/s). Each panel shows the LOS cone (blue) and forbidden exterior (red), with nested safe-start regions for four thrust-authority levels 𝑎 max ∈{0.20 , 0.10 , 0.05 , 0.01 } m/s 2 at 𝑣 0 = 0. The safe region fills most of the cone at low tumble rate and collapses toward the hold point as 𝜔 𝑡 grows ( ∝ 𝜔 −2 
+
+> 𝑡
+
+via 𝑟 sync ). 
+
+# 7 Reachability Methods Catalog 
+
+To validate the analytical criteria of §6, four standard reach-ability methods are applied to the same CWH + rotating-LOS problem: 
+
+Backward Reachable Set (BRS). The set of initial con-ditions from which the rotating LOS target is reachable in 𝑁 steps. Rather than enumerate the 22𝑁 vertices of the input box (which caps the horizon at 𝑁 ≤ 7), we test the 𝑣 0 = 0 slice directly by linear-program feasibil-ity: a cell is in the BRS iff some admissible input sequence 
+
+𝑢 0: 𝑁 −1 ∈ [− 𝑎 max , 𝑎 max ]2𝑁 drives the CWH-predicted po-sition into the rotating LOS cone at step 𝑁 . This is tractable at any horizon and is evaluated at the same horizon as HJ (𝑁 = 20 , 40 s); at that matched horizon BRS agrees with HJ to IoU ≈ 0.76 (the residual is the box input ∥𝑢 ∥∞ ≤ 𝑎 max 
+
+vs HJ’s ∥𝑢 ∥2 ≤ 𝑎 max ). 
+
+Forward Reachable Set (FRS). Support-function prop-agation on 𝑛 dirs = 48 template directions, with recursion 
+
+ℎ𝑅 𝑘 +1 (𝑑 ) = ℎ𝑅 𝑘 ( 𝐴 ⊤ 𝑑 ) + 𝑎 max ∥𝐵 ⊤ 𝑑 ∥1. (10) An initial condition is conservatively declared feasible iff at least one vertex of the target polygon lies inside the outer-polytope FRS at step 𝑁 , a necessary condition for true reachability, yielding an over-approximation of the safe set with known false-positive risk. 
+
+Hamilton–Jacobi (HJ). Level-set solution of the HJI PDE 𝜕𝑉 𝜕𝑡 + min  
+
+> 𝑢
+
+∇𝑉 ⊤ ( 𝐴𝑥 + 𝐵𝑢 ) = 0, (11) on the planar 4D slice (𝑥 𝐵 , ¤𝑥 𝐵 , 𝑦 𝐵 , ¤𝑦 𝐵 ) with grid 
+
+41 ×41 ×15 ×15 using the JAX-based hj_reachability 
+
+package [5]. Provides the ground-truth backward reach-able tube under grid resolution. 
+
+Monte Carlo (MC). Closed-loop rollout of the MPC controller of §5 from each grid initial condition, labelled safe iff no LOS violation occurs in 𝑇 sim . Empirical baseline closest to operational reality. Related tube-MPC work [7, 10, 11], including fuel-slosh–aware constraint tightening, addresses disturbance-rejection problems orthogonal to our time-varying-constraint setting; Lyapunov-funnel region-of-attraction estimation [12–14] addresses post-capture trajectory-tracking certification and is discussed in §8.3. 
+
+# 8 Benchmark Results 
+
+## 8.1 Synchronization vs Reachability 
+
+At the representative operating point 𝜔 𝑡 = 3 deg/s, 
+
+𝑎 max = 0.10 m/s 2 (𝑣 0 = 0, grid 31 ×31 ), the five safe-start engines reveal a central finding: the analytical region is a strict subset of the HJ reachable set, with IoU ≈ 0.07 (Ta-ble 2). The gap is not a method error: the analytical criteria measure synchronization (the chaser must both reach and co-rotate at the hold-point velocity 𝑣 corot = 𝜔 𝑡 𝑟 ), whereas the HJ BRT measures reachability (the chaser can reach the target position at terminal time with any velocity). The synchronization requirement is strictly stronger; the analyt-ical region is the operationally relevant subset for missions that require sustained co-rotation. All engine regions are restricted to the LOS corridor, since an initial state out-side the cone violates the corridor at 𝑡 = 0 and cannot be a safe start regardless of terminal reachability; within the corridor the reachability engines (BRS/FRS/HJ) fill most of the cone while the synchronization-aware analytical and closed-loop MPC regions are markedly smaller. Table 2 reports IoU vs HJ, area ratio, compute time, and speedup for each method at three operating points. The analytical engine completes in ∼ 10 ms vs HJ’s 6Table 2: Benchmark comparison across three operating points ( 𝑎 max = 0.10 m/s 2). Analytical reproduces 𝑟 sync /𝑟 HJ 
+
+shrinkage as 𝜔 𝑡 increases, reflecting the cost of insisting on synchronization. 
+
+(𝜔 𝑡 [deg/s ], 𝑎 max [m/s 2]) Method IoU vs HJ area / area HJ 𝑡 (s) speedup vs HJ (1, 0.10) Analytical 0.375 0.508 0.01 177.2 ×
+
+(1, 0.10) Backward-Reach 0.762 1.313 1.57 1.5 ×
+
+(1, 0.10) Forward-Reach 0.831 1.065 65.99 0.0 ×
+
+(1, 0.10) HJ 1.000 1.000 2.40 1.0 ×
+
+(1, 0.10) MC 0.372 0.518 751.69 0.0 ×
+
+(3, 0.10) Analytical 0.073 0.073 0.01 264.9 ×
+
+(3, 0.10) Backward-Reach 0.762 1.312 1.82 1.3 ×
+
+(3, 0.10) Forward-Reach 0.811 1.080 66.12 0.0 ×
+
+(3, 0.10) HJ 1.000 1.000 2.37 1.0 ×
+
+(3, 0.10) MC 0.045 0.049 849.10 0.0 ×
+
+(5, 0.10) Analytical 0.008 0.008 0.01 287.9 ×
+
+(5, 0.10) Backward-Reach 0.749 1.335 1.61 1.4 ×
+
+(5, 0.10) Forward-Reach 0.809 1.115 65.90 0.0 ×
+
+(5, 0.10) HJ 1.000 1.000 2.30 1.0 ×
+
+(5, 0.10) MC 0.004 0.004 629.38 0.0 ×∼ 2.4 s (a ∼ 250 × speedup), making it suitable for onboard go/no-go decisions where HJ is prohibitively expensive. 
+
+## 8.2 Closed-Loop Sweep: Certified vs Empir-ical Feasibility 
+
+Table 3 reports the outcome of a 500-case sweep over 
+
+𝑎 max ∈ { 0.02 , 0.05 , 0.10 } m/s 2, 𝜔 𝑡 ∈ { 1, 2, 3, 4, 5} deg/s, 
+
+𝑟 0 ∈ { 30 , 50 , 100 , 150 } m, with 9 randomized initial con-ditions per (𝑎 max , 𝜔 𝑡 , 𝑟 0) cell. Each case is labelled certi-fied (inside the analytical safe set) and feasible (closed-loop MPC achieves 𝑇 sim = 60 s with zero LOS vio-lations), yielding three feasibility regions: certified-safe (both true), empirical-only (feasible but not certified), and unsafe (closed-loop violated). The prevalence of zero cells is not missing data; it is the predicted synchronization-radius collapse. A cell can be non-empty only when the initial range lies inside the synchronization radius, 𝑟 0 < 𝑟 sync = 2𝑎 max /𝜔 2 
+
+> 𝑡
+
+; beyond it the chaser cannot cancel the co-rotation velocity within the available range, so both the analytical certificate and the closed-loop MPC correctly report infeasibility. For the swept points 𝑟 sync ranges from 657 m ( 𝑎 max = 0.10 ,
+
+𝜔 𝑡 = 1 deg/s) down to 5 m ( 𝑎 max = 0.02 , 𝜔 𝑡 = 5 deg/s); e.g. at 𝑎 max = 0.02 , 𝜔 𝑡 = 2 deg/s, 𝑟 sync ≈ 33 m, so only the 𝑟 0 = 30 m column is populated, and at 𝑎 max = 0.10 ,
+
+𝜔 𝑡 = 3 deg/s, 𝑟 sync ≈ 73 m, so only 𝑟 0 ∈ { 30 , 50 } mare populated, matching the table exactly. The non-empty cells therefore trace the feasible operating envelope, and the table is read row-wise as the envelope shrinking ∝ 𝜔 −2 
+
+> 𝑡
+
+.Overall counts (out of 500 cases): 122 certified-safe, 12 empirical-only, and 366 unsafe. Treating “certified” as a binary predictor of closed-loop feasibility gives the confusion matrix TP = 122 , FP = 30 , FN = 12 , TN = 336 ,hence precision 0.80 , recall 0.91 , accuracy 0.92 , 𝐹 1 =
+
+0.85 , and Matthews correlation 0.80 . The operationally relevant figure is the ∼ 6% false-positive rate ( 30 /500 ), concentrated at high tumble rate (e.g., 𝜔 𝑡 = 4 deg/s with 
+
+𝑟 0 = 30 m gives 7/9 certified but 0/9 feasible due to closed-loop transient violations during the co-rotation handover). The analytical criteria are therefore a useful, high-recall first-cut estimate, not a sufficient certificate. 
+
+Mechanism of the transient false positives. The certified-but-infeasible cases (e.g. 𝜔 𝑡 = 4 deg/s, 𝑟 0 = 30 m: 7/9 certified, 0/9 flown) fail through two coupled controller-level effects that the open-loop analytical bound does not model. First, the deployed controller is the single-input safety filter (7), which projects its command onto the thrust disk by scaling the entire vector after the solve. During the close-approach handover the chaser must brake radially 
+
+and build along-track speed to hold the rotating port, so the filter commands both components at once; when their vec-tor sum exceeds 𝑎 max , the Euclidean projection scales the whole command down to ∥u∥2 = 𝑎 max , leaving the radial component below the value the open-loop bound assumed. The erosion test (8) credits the full disk authority 𝑎 max in the binding direction, whereas the realised command must share that budget with the orthogonal along-track demand, so the slack predicted positive by (8) is exhausted before the maneuver completes. Holding a single command across the forecast horizon, rather than planning a corrective input sequence, compounds the deficit. Second, the discrete prediction enforces the LOS con-straint only at the horizon nodes 𝑡 𝑘 + 𝑗 Δ𝑡 , while the corridor boundary rotates continuously at 𝜔 𝑡 . Between consecutive 7Table 3: 500-case sweep results: per (𝑎 max , 𝜔 𝑡 ) row, counts of certified /feasible initial conditions across 9 randomized starts at each 𝑟 0 (m). Each cell totals 9 unless otherwise noted. 
+
+𝑟 0 (m): certified / feasible (out of 9) 
+
+𝑎 max (m/s 2) 𝜔 𝑡 (deg/s) 30 50 100 150 0.02 1 7 / 7 8 / 8 5 / 6 0 / 8 0.02 2 7 / 3 0 / 0 0 / 0 0 / 0 0.02 3 0 / 0 0 / 0 0 / 0 0 / 0 0.02 4 0 / 0 0 / 0 0 / 0 0 / 0 0.02 5 0 / 0 0 / 0 0 / 0 0 / 0 0.05 1 9 / 9 9 / 9 7 / 7 7 / 8 0.05 2 6 / 6 6 / 5 0 / 0 0 / 0 0.05 3 5 / 1 0 / 0 0 / 0 0 / 0 0.05 4 0 / 0 0 / 0 0 / 0 0 / 0 0.05 5 0 / 0 0 / 0 0 / 0 0 / 0 0.10 1 9 / 9 9 / 5 5 / 4 9 / 9 0.10 2 9 / 9 6 / 8 5 / 4 4 / 1 0.10 3 6 / 6 7 / 2 0 / 0 0 / 0 0.10 4 7 / 0 0 / 0 0 / 0 0 / 0 †
+
+0.10 5 – – – –                             
+
+> Confusion matrix over 500 cases (certify =positive, closed-loop feasible =actual positive): TP =122 , FP =30 , FN =12 , TN =336 ⇒
+> precision 0.80 , recall 0.91 , accuracy 0.92 ,𝐹 1=0.85 , Matthews correlation 0.80 , false-positive rate 30 /500 ∼6% .
+> †only 5 cases (not 9). The cell 𝜔 𝑡 =5deg/s, 𝑎 max =0.10 is omitted: at this rate both the certificate and the closed-loop MPC collapse to near-empty (IoU ≤0.008 ), so it carries no discriminating information.
+
+nodes the cone sweeps through 𝜔 𝑡 Δ𝑡 (at 𝜔 𝑡 = 4 deg/s, 
+
+Δ𝑡 = 2 s this is 8◦), so a state that is feasible at both bracketing nodes can exit the corridor in the open inter-val, an inter-sample violation invisible to the QP. The two effects compound at small range, where the apparent an-gular rate of the boundary is largest and the diagonal-authority deficit bites hardest, which is precisely where the 6% false positives concentrate. Both are properties of the realized discrete-time filter, not of the synchronization bound: a finer Δ𝑡 , a genuine sequence-optimising MPC, or a continuous-time constraint-tightening margin recovers the certified cases at the cost of online compute. 
+
+## 8.3 Hold-Mode Region of Attraction 
+
+For completeness, the unconstrained hold-mode LQR’s re-gion of attraction is the largest sublevel set {𝑥 : 𝑥 ⊤ 𝑃𝑥 ≤
+
+𝜌 ★} fitting inside the LOS cone, with 𝑃 the solution of the CWH discrete algebraic Riccati equation. This com-plements the safe-start analysis: once the chaser enters this set, the LQR keeps it there without further constraint management, providing a terminal certificate in the sense of [12–14]. A detailed treatment is deferred to the planned journal extension. 
+
+# 9 Discussion 
+
+## 9.1 Physical Honesty of the Simulation 
+
+A significant finding during development was that earlier implementations using double-integrator truth dynamics with reference blending and state projection produced ar-tificially successful results. In those versions, “phantom” delta-v from state teleportation accounted for up to 80% of the apparent fuel expenditure, and scenarios that should have been dynamically infeasible (e.g., 𝜔 𝑡 = 10 deg/s, 
+
+𝑎 max = 0.02 m/s 2, 𝑟 sync = 1.3 m, starting from 195 m) reported successful hold. The transition to CWH truth dynamics with no blending or projection eliminated these artefacts and revealed the true physical limits of the guid-ance architecture. 
+
+## 9.2 CWH Along-Track Coupling 
+
+The dominant challenge for long-range approach is the CWH along-track coupling. The state-transition matrix contains the secular term 6𝑛 (𝑠 − 𝑛𝜏 ) in the (2, 1) element, which produces along-track drift proportional to the radial offset. At 195 m initial range, even a radial offset of a few meters produces substantial along-track acceleration that the controller must overcome. This effect is absent in double-integrator models, explaining why they produce overly optimistic results. 89.3 Role of the Synchronization Radius 
+
+The synchronization radius 𝑟 sync = 2𝑎 max /𝜔 2 
+
+> 𝑡
+
+emerges as the key design parameter governing feasibility. The bench-mark of §8 confirms that the closed-form criteria capture the qualitative dependence on 𝜔 𝑡 and 𝑎 max (shrinking IoU vs HJ as 𝜔 𝑡 grows from 1 to 5 deg/s, mirroring the op-erational impossibility of co-rotation at high tumble rate). The precision 0.80 / recall 0.91 closed-loop agreement, to-gether with the 250 × speedup over HJ, supports the use of 
+
+𝑟 sync and the directional-erosion test as onboard go/no-go signals during mission design and replanning. 
+
+Inclusion of nominal, stochastic, and robust BRS vari-ants. The didactic double-integrator example in §3 estab-lishes the inclusion Xrobust 0 ⊆ X nom 0 , with the stochastic set an empirical cloud bracketing the nominal boundary; the robust variant is the operationally appropriate choice when bounded thruster calibration error or navigation bias must be tolerated, while the stochastic variant matches Gaus-sian sensor noise. For this paper’s headline benchmark we report the nominal BRS, which is the largest of the three and therefore the most permissive comparison against Hamilton–Jacobi. For the CWH + rotating-LOS problem this conservative-by-construction ordering specializes to the strict containment 
+
+Stube ⊆ S ana ⊆ S sync ⊆ S pos HJ , (12) where Sana is the analytical synchronization set, Stube its tube-tightened inner approximation (a robust BRS with disturbance set W = steady-state mRPI box), Ssync the exact reach-and-co-rotate set, and Spos HJ the position-only HJ backward reachable tube. The analytical criterion is thus a sound (inner) bound on synchronization, itself a strict subset of positional reachability. 
+
+# 10 Planned Extensions 
+
+A journal-length extension is planned that lifts the present results in four directions: 1. Y-A dynamics for elliptical reference orbits, with the analytical synchronization radius extended to the Perron–Frobenius admissibility bound 𝜌 ( ¯𝐴 (𝑒 )) < 1,
+
+𝑒 ★ ≈ 0.661 , per [10]. 2. Full 3D tumble with general attitude kinematics. 3. Tube-MPC formulation treating the rotating LOS corridor as a time-varying constraint and the truth-prediction mismatch as bounded disturbance. 4. Velocity-aware HJ target adding a velocity-matching sub-constraint to the LOS cone target, clos-ing the gap between the HJ ground truth and the ana-lytical synchronization criteria. 
+
+# 11 Conclusions 
+
+This paper established, for approach to a tumbling tar-get under a rotating LOS corridor, a structural decoupling between two safe-start notions: the closed-form synchro-nization set (per-constraint directional erosion (8) together with the synchronization range bound 𝑟 < 2𝑎 max /𝜔 2 
+
+> 𝑡
+
+(9)) is a sound inner certificate, strictly contained in the 
+
+positional reachable set computed by Hamilton–Jacobi, 
+
+Ssync ⊊ Sreach . The closed-form construction is ∼ 250 ×
+
+faster than HJ; across a 500-case closed-loop sweep it predicts MPC feasibility with precision 0.80 , recall 0.91 ,and accuracy 0.92 , the residual 6% false positives concen-trating at high tumble rate, where the single-input filter’s post-solve thrust projection and the horizon discretization induce transient corridor violations (§8). The analytical criteria therefore serve as an onboard go/no-go bound for active debris removal and on-orbit servicing, with HJ sup-plying the offline positional envelope. All results are re-producible from a single command. 
+
+# References 
+
+[1] G. W. Hill. Researches in the lunar theory. American Journal of Mathematics , 1(1):5–26, 1878. [2] W. H. Clohessy and R. S. Wiltshire. Terminal guid-ance system for satellite rendezvous. Journal of the Aerospace Sciences , 27(9):653–658, 1960. [3] F. Borrelli, A. Bemporad, and M. Morari. Predictive Control for Linear and Hybrid Systems . Cambridge University Press, 2017. [4] F. Borrelli, M. Morari, and C. N. Jones. Introduction to Model Predictive Control. Lecture notes, ETH Zürich / UC Berkeley, 2015. [5] S. Bansal, M. Chen, S. Herbert, and C. J. Tomlin. Hamilton-Jacobi reachability: A brief overview and recent advances. In Proceedings of the 56th IEEE Conference on Decision and Control (CDC) , pages 2242–2253, 2017. [6] H. Schaub and J. L. Junkins. Analytical Mechanics of Space Systems . AIAA Education Series, 4th edition, 2018. [7] D. Q. Mayne, M. M. Seron, and S. V. Raković. Robust model predictive control of constrained lin-ear systems with bounded disturbances. Automatica ,41(2):219–224, 2005. [8] O. B. Iskender, K. V. Ling, and V. Dubanchet. Con-straints tightening approach towards model predictive control based rendezvous and docking with uncoop-erative targets. In Proceedings of the 2018 European Control Conference (ECC) , pages 380–385, 2018. 9[9] O. B. Iskender. Model Predictive Control for Space-craft Rendezvous and Docking with Uncooperative Targets . PhD thesis, Nanyang Technological Univer-sity, Singapore, 2020. [10] O. B. Iskender and Y. Ling. Horizon-dependent tube MPC for elliptical-orbit rendezvous under mass un-certainty. In Proceedings of the 77th International Astronautical Congress (IAC 2026) , 2026. to appear. [11] O. B. Iskender and J. L. Redondo Gutiérrez. Sloshing aware tube MPC with partial tightening for spacecraft proximity operations. In Proceedings of the 77th International Astronautical Congress (IAC 2026) ,2026. to appear. [12] P. Reist and R. Tedrake. Simulation-based LQR-trees with input and state constraints. In Proceedings of the IEEE International Conference on Robotics and Automation (ICRA) , pages 5504–5510, 2010. [13] L. Maywald, S. Vyas, M. Ben-Larbi, and M. Janković. Region of attraction estimation for free-floating LQR controllers. In Proceedings of the German Aerospace Congress (GVW-II) , 2021. [14] E. Shala, S. Vyas, M. Ben-Larbi, M. Kumar, and E. Stoll. Region of attraction estimation for free-floating systems under time-varying LQR control. arXiv:2405.06726, 2024. 10

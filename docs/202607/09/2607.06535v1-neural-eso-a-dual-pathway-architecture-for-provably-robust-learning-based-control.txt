@@ -1,0 +1,665 @@
+Title: Neural-ESO: A Dual-Pathway Architecture for Provably Robust Learning-Based Control
+
+URL Source: https://arxiv.org/pdf/2607.06535v1
+
+Published Time: Wed, 08 Jul 2026 01:23:49 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+> IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JUNE, 2026 1
+
+# Neural-ESO: A Dual-Pathway Architecture for Provably Robust Learning-Based Control 
+
+Fan Zhang 1,2, Richie Suganda 1,2, Jinfeng Chen 1, Wenhua Liu 1,2, Hantao Fu 3, Bin Hu 1,2, Qin Lin 1,2
+
+Abstract —A learning-enabled disturbance-rejection frame-work based on a Neural Extended State Observer (Neural-ESO) is presented in this letter. Unlike existing learning-based control methods that largely rely on the learned model once deployed, Neural-ESO adopts a dual-pathway architecture: a predictive pathway uses a neural network to provide a feedforward distur-bance estimate that accelerates convergence, while a corrective pathway employs a conventional ESO to compensate prediction errors and prevent over-reliance on the neural component. Using Lyapunov theory and a small-gain analysis, we show that en-forcing a Lipschitz bound on the learning component guarantees uniform ultimate boundedness of the closed-loop error dynamics. The proposed framework is validated on a quadrotor landing task subject to strong ground-effect disturbances across nor-mal and out-of-distribution scenarios, demonstrating accuracy-robustness trade-off and greater operational reliability during training, deployment, and transfer compared with state-of-the-art baselines. Video:https://youtu.be/KVUX0SVO-dA. Code and example dataset: https://github.com/fzhang327/Neural-ESO. 
+
+Index Terms —Machine Learning for Robot Control, Ro-bust/Adaptive Control, Aerial Systems: Mechanics and Control 
+
+I. INTRODUCTION 
+
+# TIME-VARYING unknown disturbances are a fundamen-tal challenge for high-performance control of situated robots deployed in the real world. Take an unmanned aerial vehicle (UAV) as an example: such disturbances can arise from model uncertainty ( e.g. , parameter identification errors) and external effects ( e.g. , wind and payload variations). To address these issues, a key question is how to measure the discrepancy between the known (nominal) model and the true system dynamics. Learning-based control leverages deep neural networks (DNNs) to approximate either the full dynamics or modeling discrepancies [1]–[3]. A common strategy, referred to here as direct residual learning , learns the discrepancy by fitting the mismatch between model-predicted and measured states. 
+
+Manuscript received: January, 29, 2026; Revised May, 7, Year; Accepted June, 11, 2026. This paper was recommended for publication by Editor Jens Kober upon evaluation of the Associate Editor and Reviewers’ comments. This material is based upon work supported by the National Science Foundation under Grant No. 2525200. (Corresponding author: Qin Lin.) 
+
+> 1
+
+Fan Zhang, Richie Suganda, Jinfeng Chen, Wenhua Liu, Bin Hu, and Qin Lin are with the Department of Engineering Technology, University of Houston, USA. qlin21@central.uh.edu 
+
+> 2
+
+Fan Zhang, Richie Suganda, Wenhua Liu, Bin Hu, and Qin Lin are with the Department of Electrical and Computer Engineering, University of Houston, USA 
+
+> 3
+
+Hantao Fu is with the Department of Electrical Engineering, Rice Univer-sity, USA. Digital Object Identifier (DOI): see top of this page. 
+
+Fig. 1. Experimental validation under three scenarios. (a) Top left: Normal landing, where training and testing are performed in the same setting. (b) Top right: OOD with a slope placed near the landing zone. (c) Bottom: OOD high-speed near-ground lemniscate maneuvers under nonstationary turbulence. 
+
+For autonomous drone landing, where ground effect acts as an unknown disturbance that can prevent landing, Neural-Lander [1] learns and compensates this disturbance using deep learning. Despite their flexibility and minimal assumptions on disturbance structure, such approaches suffer from sev-eral limitations: (i) providing formal guarantees for learning-enabled components remains a significant challenge, (ii) their performance may degrade or even become unstable under out-of-distribution (OOD) conditions when test scenarios differ significantly from training, and (iii) stability is not ensured during training transients when the residual model has not yet converged. These issues hinder their deployment in safety-critical systems [4], [5]. The other line of research is rooted in control theory. For example, adaptive control provides formal guarantees for adaptation and stability. However, these approaches can be further improved if prior knowledge about the unknown dis-turbance is incorporated in a feedforward manner, for example through model-informed or learning-informed priors. In [6], arXiv:2607.06535v1 [cs.RO] 7 Jul 2026 2 IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JUNE, 2026 
+
+the authors showed that the traditional extended state observer (ESO) [7], which is widely used for disturbance estimation in disturbance-rejection control, can achieve faster convergence when the disturbance can be modeled and integrated into the observer. Several recent efforts have explored combining ESOs with machine learning models [8]–[11]. Existing ap-proaches often rely on relatively simple models, such as linear regression [10], [11] or radial basis function networks [8]. More importantly, they lack a principled analysis of the risks introduced by the learning component and the corresponding requirements needed to ensure safe integration. Furthermore, they do not address how to adapt when the learned model becomes unreliable under OOD conditions. To systematically integrate learning into observer-based control, we address three fundamental research questions (RQs). For RQ1 (What to learn?), we adopt a disturbance-centric paradigm that approximates ESO estimates rather than direct residuals, enabling faster and model-informed predic-tions. For RQ2 (How to ensure stability?), we demonstrate that enforcing a Lipschitz constraint on the neural network (NN) guarantees closed-loop stability, while our dual-pathway ESO actively compensates for residual prediction errors. For RQ3 
+
+(How to generalize under OOD conditions?), we achieve safe adaptation by leveraging the combined neural and ESO esti-mates as the total disturbance for subsequent model retraining. The main contributions of this letter are threefold: 1) We propose a disturbance-centric Neural-ESO frame-work with a dual-pathway architecture, enabling fast learning-based prediction while preserving robustness via online correction. 2) We establish a Lyapunov-based small-gain condition showing that a Lipschitz-bounded learning component is sufficient to guarantee Uniformly Ultimately Bounded (UUB) of the closed-loop error dynamics. 3) We demonstrate safe and effective OOD adaptation through total disturbance retraining, validated on chal-lenging UAV landing tasks, see Fig. 1. The rest of the letter is organized as follows: Section II introduces the preliminaries. Section III presents the proposed framework. Stability analysis is demonstrated in Section IV. Hardware experiments are reported in Section V. Concluding remarks are in Section VI. II. P RELIMINARIES 
+
+A. System Dynamics and Control Law 
+
+We consider a general robotic system with an Euler-Lagrange formulation: 
+
+M ¨q + C ˙q + G = u + d(q, ˙q, t ) (1) where q, ˙q, ¨q ∈ Rn denote the generalized position, velocity, and acceleration, respectively. M ∈ Rn×n, C ∈ Rn×n, and 
+
+G ∈ Rn denote the nominal inertia matrix, Coriolis and centrifugal matrix and gravity vector; d(q, ˙q, t ) represents the lumped time-varying disturbance including model uncertain-ties of M , C, and G and external disturbances, and u ∈ Rn
+
+is the control input. If d(q, ˙q, t ) is neglected or compensated in (1), the control law is designed as: 
+
+u = M u 0 + C ˙q + G, (2) where the nominal control u0 is designed as a reference feedforward and a Proportional-Derivative (PD) control: 
+
+u0 = ¨ q⋆ + kp(q⋆ − q) + kd( ˙ q⋆ − ˙q), (3) where ¨q⋆, ˙q⋆, q ⋆ ∈ Rn represent the desired acceleration, velocity, and position of a reference joint trajectory generated by an upstream planner. kp ∈ Rn×n and kd ∈ Rn×n are the proportional and derivative gain matrices, respectively. 
+
+B. Extended State Observer Design 
+
+We use f to represent the total disturbance M −1d(q, ˙q, t ).Then the system (1) can be rewritten into state space form: 
+
+(
+
+˙x1 = x2
+
+˙x2 = F + Bu + f, (4) where x1 = q; x2 = ˙ q; F = M −1(−C ˙q − G) ∈ Rn, B =
+
+M −1 ∈ Rn×n, and f = M −1d(q, ˙q, t ) ∈ Rn, respectively. By augmenting f as an extended state, the augmented system can be written as: 
+
+
+
+˙x1 = x2
+
+˙x2 = F + Bu + x3
+
+˙x3 = ˙f . 
+
+(5) Then, a third-order ESO to estimate the disturbance f can be designed as 
+
+
+
+˙ˆx1 = ˆ x2 + β1(x1 − ˆx1)˙ˆx2 = F + Bu + ˆ x3 + β2(x1 − ˆx1)˙ˆx3 = β3(x1 − ˆx1),
+
+(6) where ˆx1, ˆx2, and ˆx3 are the estimated q, ˙q, and f , respec-tively. The observer gains β1, β2, and β3 are chosen as diag-onal matrices such that the eigenvalues of the corresponding observer subsystems are assigned to −ωo, where ωo is the observer bandwidth in the ESO design [12]. III. T HE PROPOSED NEURAL -ESO Reference                               
+
+> Output Measurement
+> 𝑞
+> 𝑢
+> NN Feedforward 𝑓 𝑁 Residual Disturbance Δመ𝑓
+> Offline Training Online Dual -Path
+> Architecture
+> Deploy Transfer
+> ▪Teacher: ESO Only
+> ▪Student: Lipschitz NN
+> −
+> PD
+> Controller
+> Uncertain
+> System
+> Neural Network
+> ℎ(𝑞 ,ሶ𝑞 ,𝑢 ,𝜃 )ESO Correction
+> Dual -Pathway Disturbance Estimation
+> መ𝑓 =𝑓 𝑁 +Δመ𝑓
+> +
+> +
+> Improved Learning 123
+> ESO
+> (Teacher)
+> 𝑓 𝑁
+> መ𝑓 =𝑓 𝑁 +Δመ𝑓
+> NN Feedforward +
+> ESO Correction Adapt to OOD Scenarios
+> Total Disturbance
+> Retraining Using መ𝑓
+> Fig. 2. Proposed Neural-ESO framework with offline training (orange), online dual-pathway estimation (purple), and OOD transfer (blue). ZHANG et al. : NEURAL-ESO: A DUAL-PATHWAY ARCHITECTURE FOR PROVABLY ROBUST LEARNING-BASED CONTROL 3
+
+Fig. 2 shows the proposed framework. In the offline stage (orange), an ESO-only baseline is used to collect disturbance estimates for training a neural prior of the total disturbance. During online operation (purple), the neural prior provides a feedforward estimate in the predictive pathway, while a conventional ESO stays active to estimate and compensate the residual induced by prediction errors. Under OOD conditions, the Total Disturbance Retraining (TDR) block (blue) is acti-vated. The total disturbance in the new domain, reconstructed from the neural network prediction and the ESO compensation ( ˆf = fN +∆ ˆf ), is safely collected and used as a training signal to retrain the neural network for performance improvement. Revisiting the observer (6), when the NN prior fN is incorporated, the observer only needs to estimate the residual 
+
+∆f = f −fN . In other words, the total disturbance estimate is decomposed as ˆf = fN + ∆ ˆf . Accordingly, the Neural-ESO is formulated as: 
+
+
+
+˙ˆx1 = ˆ x2 + β1(x1 − ˆx1)˙ˆx2 = F + Bu + fN + ∆ ˆf + β2(x1 − ˆx1)˙∆ ˆf = β3(x1 − ˆx1).
+
+(7) where ∆ ˆf becomes the new augmented state. fN is generated by a neural network parameterized by θ, i.e. , fN = h(z; θ).The input vector z is defined as z(t) = [ x1(t)⊤, x 2(t)⊤, u (t −
+
+Ts)⊤]⊤, which consists of the generalized position, general-ized velocity, and a one-sample delayed control input. Note that x1(t) and x2(t) are directly measurable. In contrast to [1], [13], we avoid using acceleration measurements, as they are sensitive to sensor noise. The neural network h(z; θ) is not only required to accurately approximate the underlying mapping, but also to satisfy a Lipschitz bound. This requirement constitutes one of the key insights of this letter and, to the best of our knowledge, has not been explicitly addressed in the existing literature on learning-based observers. A detailed closed-loop stability analysis is provided in Section IV. 
+
+A. The Predictive Pathway (Feedforward NN) 1) Data Collection with ESO: As illustrated in the orange block in the overview, see Fig. 2, the offline training adopts a supervised learning setup, where a conventional ESO (6) serves as a teacher . Specifically, we run the system under trajectory tracking with a properly tuned ESO (6) to col-lect a dataset D = {(zk, y k)}Nk=1 , where at each sampling instant tk, the input to the neural network is recorded as 
+
+zk = x1(tk)⊤, x 2(tk)⊤, u (tk−1)⊤⊤, and the corresponding label is taken from the ESO disturbance estimate, yk = ˆ x3(tk),obtained from (6). 
+
+2) Constrained DNN Training with Spectral Normalization: 
+
+As will be shown in the stability analysis (Section IV), our proof relies on the disturbance derivative ˙∆f = ˙f − ˙fN being bounded. This requires ˙fN to be bounded, which is achieved by guaranteeing the network h(z; θ) is Lipschitz continuous. Therefore, we adopt the constrained optimization to mini-mize the prediction error, subject to a hard constraint on the network’s Lipschitz constant ∥h∥Lip ≤ LN [1]: minimize 
+
+> θ
+
+1
+
+N
+
+> N
+
+X
+
+> k=1
+
+∥yk − h(zk; θ)∥2
+
+subject to ∥h∥Lip ≤ LN ,
+
+(8) where LN is the target Lipschitz constant for the DNN. To enforce this constraint, we apply spectral normalization (SN) to every weight matrix in h(z; θ). SN is employed to strictly bound the network’s Lipschitz constant by constraining the spectral norm of each weight matrix during optimization. We use the Adam optimizer to solve the objective in (8) with SN applied. The final, optimized weights θ∗ yield a feedforward estimator fN = h(z; θ∗). This network is then deployed in our Neural-ESO (7). 
+
+B. Neural-ESO Based Control Law 
+
+We modify the nominal control u0 from (3) to actively cancel this total estimated disturbance: 
+
+u0 = ¨ q⋆ + kp(q⋆ − q) + kd( ˙ q⋆ − ˙q) − ˆf . (9) The final control law u remains as defined in (2), utilizing the updated u0 from (9). IV. N ONLINEAR STABILITY ANALYSIS 
+
+To prove the UUB [14] of the entire system, we em-ploy a composite Lyapunov analysis for the full error state 
+
+E = [e⊤
+
+> state
+
+, ˜e⊤
+
+> obs
+
+]⊤. This approach is necessitated by the coupling between the tracking and observation subsystems. The analysis proceeds by: (1) deriving the error dynamics for each subsystem; (2) formally bounding the interconnection gain, which is shown to be dependent on the Lipschitz property of the trained NN; and (3) satisfying the resulting small-gain condition to prove stability. 
+
+A. Tracking Error Dynamics 
+
+We first derive the closed-loop dynamics of the tracking error e = q⋆ − q. To analyze the closed-loop performance, we substitute the Neural-ESO control law (2) into the robot dynamics (1): 
+
+M ¨q + C ˙q + G = [ M (u0) + C ˙q + G] + d(q, ˙q, t )
+
+M ¨q = M (¨ q⋆ + kpe + kd ˙e − ˆf ) + d(q, ˙q, t )
+
+−M ¨e = M (kpe + kd ˙e − ˆf ) + d(q, ˙q, t ).
+
+(10) Since f = M −1d(q, ˙q, t ), we get the final error dynamics: 
+
+¨e + kd ˙e + kpe = ˆf − f
+
+= ( fN + ∆ ˆf ) − (fN + ∆ f )= ∆ ˆf − ∆f. 
+
+(11) We define the residual estimation error as ˜f ≜ ∆f − ∆ ˆf . The tracking error e is now driven only by ˜f . This second-order dynamic can be written in state-space form. Let the tracking 4 IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JUNE, 2026 
+
+error state be estate = [ e⊤, ˙e⊤]⊤ ∈ R2n. The error dynamics in (11) will be: 
+
+˙estate = Aeestate + Be ˜f , (12) where ˜f ∈ Rn is the residual estimation error vector (the input) and Ae, B e are block matrices: 
+
+Ae =
+
+ 0 I
+
+−kp −kd
+
+
+
+, Be =
+
+ 0
+
+−I
+
+
+
+, (13) where I, 0 ∈ Rn×n, kp and kd are diagonal positive-definite gain matrices. Since Ae is Hurwitz. This subsystem is Input-to-State Stable (ISS) with respect to the input ˜f [14]. 
+
+B. Observer Error Dynamics 
+
+Similarly, we can derive the observer error dynamics from (5) and (7). Let the observer error states be: 
+
+˜x1 = x1 − ˆx1, ˜x2 = x2 − ˆx2, ˜f = ∆ f − ∆ ˆf . (14) Note that ˜f is defined consistent with (11). Taking the time-derivative and substituting (5) (for x3 = ∆ f + fN ) and (7): 
+
+
+
+˙˜x1 = x2 − (ˆ x2 + β1 ˜x1) = ˜ x2 − β1 ˜x1
+
+˙˜x2 = ( F + Bu + f ) − (F + Bu + fN + ∆ ˆf + β2 ˜x1)= ( f − fN − ∆ ˆf ) − β2 ˜x1 = ˜f − β2 ˜x1
+
+˙˜f = ˙∆f − ˙∆ ˆf = ˙∆f − (β3 ˜x1)
+
+.
+
+(15) Let the total observer error state be ˜eobs = [˜ x⊤ 
+
+> 1
+
+, ˜x⊤ 
+
+> 2
+
+, ˜f ⊤]⊤ ∈
+
+R3n. The dynamics can be written in state space form: 
+
+˙˜eobs = Aobs ˜eobs + Bobs ˙∆f , (16) where ˙∆f ∈ Rn is the input, and Aobs , B obs are block matrices: 
+
+Aobs =
+
+
+
+−β1 I 0
+
+−β2 0 I
+
+−β3 0 0
+
+ , Bobs =
+
+
+
+00
+
+I
+
+ . (17) Since Aobs is Hurwitz by design through pole placement, this subsystem is also ISS. 
+
+Remark 1. Incorporating a prior (e.g., a neural network) has proven beneficial [6]. In an ideal case where fN is perfect and 
+
+˙∆f = 0 , the error systems (12) –(16) are autonomous and the Hurwitz property of Ae and Aobs ensures global asymptotic stability. In practice, ˙∆f̸ = 0 due to residual errors and time-varying disturbances, motivating the following UUB analysis. C. Coupling Quantification for Controller and Observer 
+
+The subsequent stability analysis hinges on quantifying the coupling between the tracking and observer subsystems. In particular, the observer error dynamics are driven by the residual derivative ˙∆f , while ˙∆f depends on the closed-loop signals through the network input dynamics. This creates an interconnection between the tracking error estate and the observer error ˜eobs via ˙∆f . Therefore, we establish an explicit bound on ∥ ˙∆f ∥ in terms of (estate , ˜eobs ), which yields the corresponding interconnection gains that will be used in the subsequent small-gain analysis. We first state the mild boundedness assumptions for the system and reference trajectories. 
+
+Assumption 1. The derivative of the true disturbance is bounded: ˙f ≤ L1.
+
+Assumption 2. The derivative of the control input is bounded: 
+
+∥ ˙u(t)∥ ≤ Lu.
+
+Remark 2. In our physical implementation, this bounded-control assumption is satisfied by saturating the increment of the control input between consecutive sampling steps. 
+
+Assumption 3. The desired reference trajectory and its derivatives ( q⋆, ˙q⋆, ¨q⋆) are bounded. 
+
+Lemma 1. Let the neural network fN (z) be LN -Lipschitz. Under Assumptions 1-3, the residual derivative ∥ ˙∆f ∥ is linearly bounded by: 
+
+∥ ˙∆f (t)∥ ≤ γe∥estate ∥ + γ˜e∥˜eobs ∥ + Cf , (18) 
+
+where γe, γ ˜e > 0 are interconnection gains proportional to 
+
+LN , and Cf > 0 is a constant. Proof. The residual derivative is defined as ˙∆f = ˙f − ˙fN .Using the triangle inequality and Assumption 1: 
+
+∥ ˙∆f ∥ ≤ ∥ ˙f ∥ + ∥ ˙fN ∥ ≤ L1 + ∥ ˙fN ∥, (19) Applying the chain rule and the LN -Lipschitz property of the SN-constrained network: 
+
+˙fN (z) ≤ LN ∥ ˙z(t)∥ . (20) The input derivative vector is ˙z(t) = [ ˙ x⊤ 
+
+> 1
+
+, ˙x⊤ 
+
+> 2
+
+, ˙u(t − Ts)⊤]⊤.We analyze its components to establish a bound dependent on the error states. First, ∥ ˙u∥ ≤ Lu by Assumption 2. Second, 
+
+˙x1 = ˙ q = ˙ q⋆ − ˙e. Third, for ˙x2 = ¨ q, we substitute the closed-loop error dynamics (11) into ¨q = ¨ q⋆ − ¨e:
+
+˙x2 = ¨ q⋆ − (−kd ˙e − kpe − ˜f ) = ¨ q⋆ + kd ˙e + kpe + ˜f . (21) (21) explicitly reveals the linear dependence of ˙z on the error states. Applying the triangle inequality and consistent matrix norms, we bound ∥ ˙z∥:
+
+∥ ˙z∥ ≤ (Lu + ∥ ˙q⋆∥ + ∥¨q⋆∥)
+
+| {z }
+
+> Cz
+
++λc∥estate ∥ + ∥˜eobs ∥, (22) where λc is obtained from control gain that satisfy ∥kpe∥ +
+
+∥kd ˙e∥ ≤ λc∥estate ∥.Substituting this bound back into the expression for ∥ ˙∆f ∥:
+
+∥ ˙∆f ∥ ≤ L1 + LN (Cz + λc∥estate ∥ + ∥˜eobs ∥). (23) The proof is concluded by defining γe = LN λc, γ˜e = LN ,and Cf = L1 + LN Cz . ■
+
+Remark 3. This lemma shows that the residual derivative ˙∆f
+
+is influenced by the tracking and observer errors through the network input dynamics, and it quantifies this influence via γe
+
+and γ˜e. Notably, both gains scale linearly with the network Lipschitz constant LN , which will be used in the subsequent small-gain analysis. ZHANG et al. : NEURAL-ESO: A DUAL-PATHWAY ARCHITECTURE FOR PROVABLY ROBUST LEARNING-BASED CONTROL 5
+
+D. Composite Stability Proof (UUB) 
+
+With the interconnection gain analysis in Lemma 1, we now prove the stability of the entire closed-loop system using a composite Lyapunov analysis. 
+
+Theorem 1. (Closed-Loop UUB Stability). Given Assumptions 1-3, and the controller (2) utilizing the LN -Lipschitz network 
+
+fN (z), the entire closed-loop error state E = [ e⊤
+
+> state
+
+, ˜e⊤
+
+> obs
+
+]⊤
+
+is UUB. Proof. We define a composite Lyapunov function candidate as the sum of two quadratic forms for the tracking and observation subsystems: 
+
+V (E) = Ve(estate ) + Vobs (˜ eobs ). (24) 
+
+1. Tracking Subsystem ( Ve): Let Ve = e⊤
+
+> state
+
+Peestate ,where Pe = P ⊤ 
+
+> e
+
+> 0 is the solution to the Lyapunov equation 
+
+A⊤ 
+
+> e
+
+Pe + PeAe = −Qe for a chosen Qe = Q⊤ 
+
+> e
+
+> 0. The time derivative of Ve along the trajectories of (12) is: 
+
+˙Ve = ( Aeestate + Be ˜f )⊤Peestate 
+
++ e⊤
+
+> state
+
+Pe(Aeestate + Be ˜f )= e⊤
+
+> state
+
+(A⊤ 
+
+> e
+
+Pe + PeAe)estate + 2 e⊤
+
+> state
+
+PeBe ˜f . 
+
+(25) By substituting the Lyapunov equation A⊤ 
+
+> e
+
+Pe + PeAe = −Qe
+
+into the first term and applying the Rayleigh-Ritz theorem (e⊤
+
+> state
+
+Qeestate ≥ λmin (Qe)∥estate ∥2), we can bound the dissipation. Applying the Cauchy-Schwarz inequality to the second term, we obtain the upper bound: 
+
+˙Ve ≤ − λmin (Qe)∥estate ∥2 + 2 ∥estate ∥∥ PeBe∥∥ ˜f ∥. (26) Since ∥ ˜f ∥ ≤ ∥ ˜eobs ∥, we apply Young’s inequality ( 2ab ≤
+
+δea2 + 1 
+
+> δe
+
+b2 for any δe > 0) to the cross-term: 
+
+2∥estate ∥(∥PeBe∥∥ ˜eobs ∥) ≤ δe∥estate ∥2 + 1
+
+δe
+
+∥PeBe∥2∥˜eobs ∥2
+
+(27) Substituting this back, we obtain the ISS-gain for Ve:
+
+˙Ve ≤ − (λmin (Qe) − δe)∥estate ∥2 + ce∥˜eobs ∥2, (28) where ce = ∥PeBe∥2/δ e.
+
+2. Observer Subsystem (Vobs ): Similarly, let Vobs =˜e⊤
+
+> obs
+
+Pobs ˜eobs with A⊤
+
+> obs
+
+Pobs + Pobs Aobs = −Qobs . Its time derivative along (16) is: 
+
+˙Vobs ≤ − λmin (Qobs )∥˜eobs ∥2 + 2 ∥˜eobs ∥∥ Pobs Bobs ∥∥ ˙∆f ∥.
+
+(29) Let λo = λmin (Qobs ) and define cpb ≜ ∥Pobs Bobs ∥. Substi-tuting the bound for ˙∆f (t) from Lemma 1 yields: 
+
+˙Vobs ≤ − λo∥˜eobs ∥2
+
++ 2 cpb ∥˜eobs ∥(γe∥estate ∥ + γ˜e∥˜eobs ∥ + Cf )= −(λo − 2cpb γ˜e)∥˜eobs ∥2
+
++ (2 cpb γe)∥˜eobs ∥∥ estate ∥ + (2 cpb Cf )∥˜eobs ∥.
+
+(30) We apply Young’s inequality to the two remaining cross-terms with constants δo, δ c > 0:
+
+(2 cpb γe)∥˜eobs ∥∥ estate ∥ ≤ δo∥˜eobs ∥2 + (cpb γe)2
+
+δo
+
+∥estate ∥2
+
+(2 cpb Cf )∥˜eobs ∥ ≤ δc∥˜eobs ∥2 + (cpb Cf )2
+
+δc
+
+.
+
+Substituting these into (30) and grouping terms yields: 
+
+˙Vobs ≤ − (λo − 2cpb γ˜e − δo − δc)∥˜eobs ∥2
+
++ co∥estate ∥2 + Co, (31) where co = ( cpb γe)2/δ o is the coupling gain from estate and 
+
+Co = ( cpb Cf )2/δ c is a bounded constant. 
+
+3. Composite System ( ˙V ): Combining the results from (28) and (31), the derivative of the composite Lyapunov function 
+
+V = Ve + Vobs is: 
+
+˙V ≤ (−(λe − δe) + co) ∥estate ∥2
+
++ ( −(λo − ϵo) + ce) ∥˜eobs ∥2 + Co, (32) where λe = λmin (Qe) and ϵo = (2 cpb γ˜e + δo + δc).Inequality (32) explicitly represents a Lyapunov-based small-gain condition for the interconnected system. The terms 
+
+ce and co characterize the fixed interconnection gains, while 
+
+λe and λo quantify the intrinsic dissipation provided by the control and observer error dynamics, respectively. The small-gain condition requires that the stabilizing dis-sipation of each subsystem dominates the energy injected through the interconnection, which leads to the inequalities 
+
+λe > δ e + co and λo > ϵ o + ce (33) These inequalities impose explicit lower bounds on the re-quired stabilization gains. Since Qe and Qobs depend on the design parameters (kp, k d, β k), the gains can be selected to satisfy the above bounds without requiring either high-gain control or high-gain observer. Define αe = λe−δe−co > 0 and 
+
+αo = λo − ϵo − ce > 0. Then, the derivative of the composite Lyapunov function satisfies 
+
+˙V ≤ − αe∥estate ∥2 − αo∥˜eobs ∥2 + Co ≤ − α∥E∥2 + Co, (34) where α = min( αe, α o) > 0. This implies that ˙V is negative whenever ∥E∥ > pCo/α , which proves that the entire closed-loop error state E is UUB. ■
+
+Remark 4. The small-gain inequalities λe > δ e + co and 
+
+λo > ϵ o + ce explicitly connect the neural network Lipschitz constant LN to the interconnection strength of the closed loop. By decreasing LN , the required stabilization gains for both the controller and the observer are reduced. Thus, LN acts as a tuning knob that trades learning expressiveness for robustness, enabling UUB stability with moderate gains. 
+
+Remark 5. Tuning guideline: We adopt a two-stage tuning strategy: first, select LN based on the desired balance between accuracy and robustness; then, tune the observer bandwidth 
+
+ωo and controller gains (kp, kd) to compensate for the bounded residual disturbance. This sequential design ensures that the ESO operates within its compensation capability, consistent with the small-gain stability condition. 
+
+V. EXPERIMENTS We use a quadrotor UAV as the experimental platform due to its sensitivity to aerodynamic disturbances ( e.g. , ground effect), making altitude control challenging. To ensure fair comparison, the same controller is used for the x–y axes, and performance is evaluated on the z (altitude) axis. A base 6 IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JUNE, 2026 
+
+neural network pre-trained on flat-terrain landing is used in all experiments. Experiment 1 evaluates in-distribution perfor-mance, Experiment 2 tests robustness under OOD conditions, and Experiment 3 studies adaptation via retraining with new domain data. 
+
+A. Experimental System Dynamics 
+
+The dynamics of the quadrotor are described by the standard Newton-Euler equations [15]: 
+
+˙P I = V I , mv ˙V I = mv gI + RIB F B + dI , (35a) 
+
+˙RIB = RIB ΩB
+
+> ×
+
+, Iv ˙ΩB = −ΩB
+
+> ×
+
+Iv ΩB + M B , (35b) where the translation dynamics are described in (35a) and the rotation dynamics in (35b). P I = [X, Y, Z ]⊤, V I =[Vx, V y , V z ]⊤, and gI = [0 , 0, −g]⊤ are the position, velocity, and gravity vectors in inertial frame. ΩB = [p, q, r ]⊤ is the angular velocity vector in body frame. RIB represents the rotation matrix from body to inertial frame; ΩB 
+
+> ×
+
+denotes the skew-symmetric matrix; mv and Iv represent the mass and inertial matrix. The terms F B and M B are the total control force and moment vectors from the actuators. dI is the lumped disturbance, including model uncertainty and external disturbance such as ground effect. Our controller design focuses on the translational dynamics (35a). The mapping is established by setting the generalized coordinates q = P I . This specialization yields the following equivalences: M (q) = mv I, C(q, ˙q) = 0 , G(q) = −mv gI , the control input u = RIB F B , and the disturbance d(q, ˙q, t ) = dI .
+
+B. Experimental Setup and Baselines 
+
+The experimental platform consists of a ModalAI Seeker drone equipped with a VOXL Flight Deck running the PX4 autopilot firmware. An OptiTrack motion capture system pro-vides ground-truth position and attitude estimates. The outer-loop control pipeline operates at a frequency of 50 Hz on a ground station computer (Intel i9 processor), communicating offboard control commands via MAVSDK-Python. The Neural-ESO outer-loop controller (Section III) first computes the desired acceleration ad, then forms the desired force vector Fd = mv (ad − gI ), which yields the required total thrust Td = ∥Fd∥, following the commonly used pipeline in [16]. A desired rotation matrix Rd is then constructed such that its z-axis aligns with Fd and its x − y axes are oriented according to a desired yaw angle ψd. The final desired roll ( ϕd) and pitch ( θd) angles are extracted from Rd. These attitude references, along with the desired yaw ψd and thrust 
+
+Td, are mapped directly to the PX4 offboard attitude setpoint MAVLink messages. 
+
+C. Data Collection and Training Details 
+
+We implement the network in PyTorch. Training data is collected under a conventional ESO (6) following the su-pervised setup in Section III-A. The input vector is zk =[qk, ˙qk, T k−1, ϕ k, θ k], including position, velocity, thrust, and attitude angles. To avoid noise amplification, we do not use acceleration measurements [1], [13]. Both inputs and labels are normalized using a z-score scaler, and the dataset is split into 80% training and 20% validation. The DNN has 4 fully connected layers with ReLU activations (5 → 20 → 25 →
+
+10 → 1), trained using Adam ( 10 −3) and MSE loss for 100 epochs. 
+
+D. Experiment 1: Normal Landing Subject to Ground Effect 
+
+As shown in Fig. 1(a), the first experiment evaluates normal landing under ground effect following [1], with training and testing conducted in the same environment. The results are shown in Fig. 3. Due to the protective frame, the minimum achievable altitude is approximately 0.1 m, which explains the reference level in all plots. 0 2 4 6 8 10                       
+
+> Time (s)
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Altitude (m)
+> Reference
+> PD
+> PD+ESO
+> PD + NN [1]
+> Proposed
+> 468
+> 0.10
+> 0.15
+> 0.20
+> Fig. 3. Normal landing performance comparison: both PD+ESO and proposed method achieve small steady-state errors, while the proposed method achieves a lower steady-state error and faster settling time. TABLE I STATISTICAL ANALYSIS OF STEADY -S TATE TRACKING ERROR FOR
+> NORMAL LANDING UNDER GROUND EFFECT (5 T RIALS )
+> Metric PD PD+NN [1] PD+ESO Proposed
+> Mean [cm] 10.95 2.49 1.84 0.37
+> Std Dev [cm] 0.57 0.15 1.89 0.12
+
+The statistical results of steady-state tracking error are summarized in Table I. The nominal PD controller exhibits a large mean error of 10 .95 cm. The PD+NN method [1] reduces this to 2.49 cm, but a noticeable residual error remains. In contrast, the proposed Neural-ESO achieves the highest precision, with the smallest mean error of 0.37 cm and the lowest standard deviation ( 0.12 cm). As shown in Fig. 3, Neural-ESO also demonstrates faster settling and smoother transient response than PD+ESO, indicating the effectiveness of incorporating learning in improving disturbance rejection. 
+
+E. Experiment 2: Landing in OOD Scenario 
+
+To evaluate the learned network’s generalization and the robustness of ours under OOD conditions, we introduce an inclined slope near the landing zone (shown in Fig. 1 (b)). We hypothesize that this geometric mismatch alters the ground-effect characteristics, and challenges the neural network trained in the normal environment of Experiment 1. ZHANG et al. : NEURAL-ESO: A DUAL-PATHWAY ARCHITECTURE FOR PROVABLY ROBUST LEARNING-BASED CONTROL 7
+
+As shown in Fig. 4, PD+NN [1] exhibits substantially larger oscillations and steady-state error than in Experiment 1, indi-cating degraded generalization. In contrast, ours still achieves a successful landing: although the neural prior becomes less accurate, the corrective pathway compensates for the resulting residual disturbance. 0 2 4 6 8 10                     
+
+> Time (s)
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Altitude (m)
+> Reference
+> PD + NN [1] (Slope)
+> PD+ESO (Slope)
+> Proposed (Slope)
+> 468
+> 0.100
+> 0.125
+> 0.150
+> Fig. 4. OOD testing with the influence of the slope. PD+NN exhibits much larger oscillations and steady-state error. TABLE II STATISTICAL ANALYSIS OF STEADY -S TATE TRACKING ERROR FOR LANDING IN OOD S CENARIO (5 TRIALS )
+> Metric PD+NN [1] PD+ESO Proposed
+> Mean [cm] 3.74 0.66 1.53 Std Dev [cm] 1.88 0.10 2.07
+
+Experiment 2 evaluates OOD robustness using the same model and parameters as in the in-distribution setting. Under distribution shift, the learned prior becomes inaccurate, so stable and safe operation is critical. As shown in Table II, PD+NN [1] degrades significantly with large oscillations, while PD+ESO performs best, as it is unaffected by model learning. The proposed method shows higher error ( 1.53 cm) but maintains stable tracking via the corrective pathway, demonstrating robustness to learning errors. The following sensitivity analysis illustrates the trade-off between in-distribution accuracy and OOD robustness gov-erned by the Lipschitz constant. Table II only reports results with LN = 1 .0, which balances high in-distribution accuracy and acceptable robustness. However, a smaller value (e.g., 
+
+LN = 0 .5) can further improve OOD performance, slightly surpassing PD+ESO, at the cost of reduced in-distribution accuracy. Experiment 3 will additionally show that retraining in the new domain improves performance beyond PD+ESO. 
+
+F. Sensitivity Analysis of the Lipschitz Constant 
+
+Table III shows that the Lipschitz constant LN governs the trade-off between model expressiveness and robustness. A small LN (e.g. , 0.2) leads to underfitting and poor in-distribution performance, while a large LN (e.g. , 2.0) causes instability due to excessive sensitivity to noise and extrapola-tion errors. Importantly, different choices of LN reflect differ-ent design priorities. For example, LN = 0 .5 achieves the best                                   
+
+> TABLE III ABLATION STUDY ON LIPSCHITZ CONSTANT LNACROSS 5 T RIALS
+> Metric LN=0.2LN=0.5LN=1.0LN=2.0
+> Nominal Setup
+> Mean [cm] 2.73 0.71 0.37 1.43 Std Dev [cm] 2.42 0.11 0.12 2.11
+> OOD (Exp. 2)
+> Mean [cm] 1.69 0.63 1.53 2.59 Std Dev [cm] 2.01 0.12 2.07 2.49
+
+robustness under OOD conditions (Table III), while LN = 1 .0
+
+provides the best in-distribution accuracy ( 0.37 ± 0.12 cm). In this work, we select LN = 1 .0 to prioritize high-precision in-distribution tracking while maintaining acceptable robustness under distribution shift. Across all configurations with LN < 2.0, the pro-posed method consistently outperforms PD+NN, demonstrat-ing the effectiveness of ESO-based compensation in mitigating learning-induced errors. 
+
+G. Experiment 3: OOD High-Speed Near-Ground Maneuvers 
+
+The final experiment pushes the Neural-ESO framework to its dynamic limits by executing high-speed maneuvers near the ground. In this scenario, the interaction between the high-velocity downwash and the ground surface transitions from structured ground effects to non-stationary turbulence. This scenario represents a much more severe OOD shift, posing a significant challenge to all compared approaches. A Lemniscate trajectory was executed in the x-y plane, with 
+
+Ax = 0 .8 m, Ay = 1 .0 m, and T = 6 .0 s. All the comparisons are shown in Fig. 5 and Fig. 6. Fig. 5 shows comparable tracking performance for the x-y axes, as the same controller is utilized for planar motion across all cases. 
+
+1) Limitations of Baseline Learning-based Control: Note that all base neural networks used before retraining are trained on the normal landing case. As shown in Fig. 5 and Fig. 6, the PD+NN (w/o TDR) exhibits substantial altitude deviations, with tracking error deteriorating to 5.47 ± 0.56 cm, worse than the PD controller ( 4.08 ± 1.03 cm). This highlights poor generalization under severe OOD conditions and indicates that an inaccurate learned prior can degrade performance. In particular, a model trained on low-speed landing data provides little benefit, and may even harm performance, in high-speed near-ground maneuvers. 
+
+2) Severe Domain Shift Challenge and Robust Compensa-tion: Under this extreme domain shift, Neural-ESO without TDR has an RMSE of 4.09 ± 0.21 cm, underperforming the PD+ESO baseline ( 1.91 ± 0.83 cm), which confirms the severity of the domain shift. Nevertheless, it still outperforms PD and PD+NN (w/o TDR), indicating that the ESO continues to compensate for residual disturbances even when the neural prior is inaccurate. To further highlight the necessity of this compensation, we compare against a recent neural-observer method [8], which adopts a single-pathway architecture that replaces the ESO with a neural network, but lacks online ESO-based compensa-tion and any mechanism for further adaptation. Under the same 8 IEEE ROBOTICS AND AUTOMATION LETTERS. PREPRINT VERSION. ACCEPTED JUNE, 2026 
+
+OOD condition, this method fails to maintain stability and cannot complete the flight trajectory, underscoring the safety advantage of our dual-pathway design. 
+
+3) Performance Boosting via Total Disturbance Retraining: 
+
+To mitigate performance degradation under severe domain shift, we perform offline TDR using newly collected flight data. Specifically, the TDR uses new-domain data collected from 5 OOD flight cycles, totaling 30 seconds of data. Although the total amount of data differs from the nominal case, the 80%/20% train/test split and the training pipeline remain unchanged. Note that the corrective pathway enables safe data collection. The total disturbance reconstructed by the corrective pathway ( ˆf = fN + ∆ ˆf ) is directly used as the training label to retrain the base network, enabling it to capture the new domain’s aerodynamic effects. The performance across 5 flights is summarized in Fig. 6. With TDR, the proposed framework achieves the lowest RMSE of 
+
+0.89 ± 0.52 cm. Compared to PD+ESO ( 1.91 ± 0.83 cm), this corresponds to a 53 .4% reduction in tracking error. 0 1 2 3 4 5 6
+
+> Time [s]
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> Z Position [m]
+> Reference
+> PD+ESO
+> Proposed
+> w/o TDR
+> Proposed
+> w/ TDR
+> Baseline PD
+> PD + NN [1]
+> w/o TDR
+> PD + NN [1]
+> w/ TDR
+
+Fig. 5. OOD testing under high-speed near-ground maneuvers across five flight cycles. Curves show mean trajectories with shaded ±1 standard devia-tion regions. For safety, the z-axis reference is set higher than in the previous scenarios. PD+ESO 
+
+> Proposed
+> w/o TDR
+> Proposed
+> w/ TDR
+> Baseline PD
+> PD + NN [1]
+> w/o TDR
+> PD + NN [1]
+> w/ TDR
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> RMSE [cm]
+> 1.91
+> ±0.83
+> 4.09
+> ±0.21
+> 0.89
+> ±0.52
+> 4.08
+> ±1.03
+> 5.47
+> ±0.56
+> 2.46
+> ±0.76
+
+Fig. 6. Z-axis tracking RMSE across five flight cycles. Boxes show the interquartile range (IQR), black lines the medians, and white circles the means. Annotations indicate mean ± standard deviation (cm) for each algorithm across all cycles. 
+
+VI. CONCLUSION This letter presents Neural-ESO, a dual-pathway archi-tecture for disturbance-rejection control that combines aLipschitz-bounded predictive neural prior with an ESO for online correction. We show a rigorous stability analysis and show that the Lipschitz property of the learned prior provides a sufficient condition to preserve closed-loop robustness in the presence of approximation errors and disturbances. Ex-periments on a quadrotor UAV under challenging ground-effect disturbances further validate the proposed framework, demonstrating accuracy-robustness trade-off and improved op-erational reliability across varied conditions, including OOD scenarios, compared with state-of-the-art baselines. REFERENCES [1] G. Shi, X. Shi, M. O’Connell, R. Yu, K. Azizzadenesheli, A. Anand-kumar, Y. Yue, and S.-J. Chung, “Neural lander: Stable drone landing control using learned dynamics,” in 2019 International Conference on Robotics and Automation , 2019, pp. 9784–9790. [2] M. O’Connell, G. Shi, X. Shi, K. Azizzadenesheli, A. Anandkumar, Y. Yue, and S.-J. Chung, “Neural-fly enables rapid learning for agile flight in strong winds,” Science Robotics , vol. 7, no. 66, p. eabm6597, 2022. [3] L. Bauersfeld, E. Kaufmann, P. Foehn, S. Sun, and D. Scaramuzza, “Neurobem: Hybrid aerodynamic quadrotor model,” Proceedings of Robotics: Science and Systems XVII , p. 42, 2021. [4] L. Brunke, M. Greeff, A. W. Hall, Z. Yuan, S. Zhou, J. Panerati, and A. P. Schoellig, “Safe learning in robotics: From learning-based control to safe reinforcement learning,” Annual Review of Control, Robotics, and Autonomous Systems , vol. 5, no. 1, pp. 411–444, 2022. [5] C. Dawson, S. Gao, and C. Fan, “Safe control with learned certificates: A survey of neural Lyapunov, barrier, and contraction methods for robotics and control,” IEEE Transactions on Robotics , vol. 39, no. 3, pp. 1749– 1767, 2023. [6] H. Zhang, S. Zhao, and Z. Gao, “An active disturbance rejection control solution for the two-mass-spring benchmark problem,” in 2016 American Control Conference . IEEE, 2016, pp. 1566–1571. [7] J. Han, “From PID to active disturbance rejection control,” IEEE Transactions on Industrial Electronics , vol. 56, no. 3, pp. 900–906, 2009. [8] L. Liu, Y. Liu, L. Zhou, B. Wang, Z. Cheng, and H. Fan, “Cascade ADRC with neural network-based ESO for hypersonic vehicle,” Journal of the Franklin Institute , vol. 360, no. 12, pp. 9115–9138, 2023. [9] T. Li, A. Badre, H. D. Taghirad, and M. Tavakoli, “Neural network learning of robot dynamic uncertainties and observer-based external disturbance estimation for impedance control,” in 2023 IEEE/ASME International Conference on Advanced Intelligent Mechatronics . IEEE, 2023, pp. 591–597. [10] F. Zhang, J. Chen, Y. Hu, Z. Gao, G. Lv, and Q. Lin, “Disturbance rejection-guarded learning for vibration suppression of two-inertia sys-tems,” in 2024 IEEE 20th International Conference on Automation Science and Engineering , 2024, pp. 3418–3424. [11] Z. Yu, J. Fu, F. Zhang, J. Chen, and D. Gan, “Parameter-learning active disturbance rejection controller for a novel variable stiffness gripper,” 
+
+Journal of Mechanisms and Robotics , pp. 1–11, 2026. [12] Z. Gao, “Scaling and bandwidth-parameterization based controller tun-ing,” in Proceedings of the 2003 American Control Conference, 2003. 
+
+IEEE, 2003, pp. 4989–4996. [13] G. He, Y. Choudhary, and G. Shi, “Self-supervised meta-learning for all-layer DNN-based adaptive control with stability guarantees,” in 2025 IEEE International Conference on Robotics and Automation . IEEE, 2025, pp. 6012–6018. [14] H. K. Khalil and J. W. Grizzle, Nonlinear Systems . Prentice hall Upper Saddle River, NJ, 2002, vol. 3. [15] J. Chen, F. Zhang, B. Hu, and Q. Lin, “Quadrotor fault-tolerant control at high speed: A model-based extended state observer for mismatched disturbance rejection approach,” IEEE Control Systems Letters , 2024. [16] T. Lee, M. Leok, and N. H. McClamroch, “Geometric tracking control of a quadrotor UAV on SE(3),” in 49th IEEE Conference on Decision and Control . IEEE, 2010, pp. 5420–5425.
