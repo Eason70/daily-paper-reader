@@ -1,0 +1,529 @@
+Title: APVI-SLAM: Real-Time Acoustic-Pressure-Visual-Inertial Localization and Photorealistic Mapping System in Complex Underwater Environment
+
+URL Source: https://arxiv.org/pdf/2607.06222v1
+
+Published Time: Wed, 08 Jul 2026 01:15:24 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# APVI-SLAM: Real-Time Acoustic-Pressure-Visual-Inertial Localization and Photorealistic Mapping System in Complex Underwater Environment 
+
+Hanwen Zhang 1, Yipeng Zhu 1, Xiaopeng Guo 1, Huajian Huang 2,†, Sai-Kit Yeung 3
+
+Abstract — Extreme subsea environments often cause severe feature de-gradation and estimator divergence in underwater visual-inertial SLAM. Although sensors like Doppler Velocity Logs (DVL) and pressure gauges provide auxiliary constraints, robust multi-sensor fusion during intermittent visual failure remains challenging. To address this, we present APVI-SLAM, a real-time multi-sensor fusion SLAM system that achieves both accurate underwater localization and photorealistic map-ping. Our approach introduces a reliability-aware localization framework that dynamically reweights sensor estimators and employs a sliding-window freezing strategy to recover from tracking failures, substantially enhancing system robustness. Furthermore, for high-fidelity scenes reconstruction, we propose an efficient quadtree-guided mapping module that facilitates incremental water-medium modeling and 3D Gaussian opti-mization. Recognizing the lack of benchmark for underwater mapping evaluation, we also contribute a coral reef surveying dataset with synchronized multi-modality data. Extensive exper-iments on public and our proposed benchmarks demonstrate that APVI-SLAM achieves state-of-the-art localization and reconstruction quality at real-time speeds. 
+
+I. INTRODUCTION Underwater Visual–Inertial Simultaneous Localization and Mapping (SLAM) plays an important role in underwater robotics. Recovering photorealistic models of underwater environments facilitates marine exploration and survey tasks. However, rapid light attenuation, suspended particles, and ocean disturbances severely degrade imaging quality and limit the effective sensing range [1], [2], [3], often leading to unstable pose estimation and compromised reconstruction quality in Visual–Inertial (VI) SLAM systems. While integrating complementary measurements into fac-tor graphs improves Visual-Inertial SLAM robustness [4], [5], [6] in complex underwater environments, tightly-coupled multi-sensor estimators remain vulnerable. Since underwa-ter visual feature loss is often persistent, visual degrada-tion can corrupt the overall system estimation, even with covariance-based noise modeling [7]. Moreover, complete visual dropouts force a brittle re-initialization of the VI component [8], demanding time-consuming scale and covari-ance re-estimation. Beyond localization, existing underwater  
+
+> †
+
+Corresponding Author 
+
+> 1
+
+Hanwen Zhang, Yipeng Zhu and Xiaopeng Guo are with the Division of Integrative Systems and Design, Hong Kong University of Science and Technology ( email: {hzhangfr, yzhudg, xguoay }@connect.ust.hk) 
+
+> 2
+
+Huajian Huang is with the School of Interdisciplinary Science, Beijing Institute of Technology ( email: huajian@bit.edu.cn) 
+
+> 3
+
+Sai-Kit Yeung is with the Division of Integrative Systems and Design, the Department of Computer Science and Engineering, and the Department of Ocean Science, Hong Kong University of Science and Technology ( email: saikit@ust.hk) Physical Platform WaterLinked A50    
+
+> DVL Sensor
+> Housing Bar30
+> Pressure  Sensor Housing
+> Industrial
+> Monocular
+> Camera
+> 6-Axis IMU
+> Computer
+> Resource
+> Input
+> Images
+> Turbid Low-texture Nonstruture
+> Render Images
+> APVI-SLAM
+> Trajectory Local 3D Gaussians
+
+Fig. 1. The proposed APVI-SLAM enables real-time multi-sensor fusion for robust localization and photorealistic mapping in complex underwater environments, featuring deployment on an underwater robot and strong applicability to practical marine tasks. 
+
+systems fail to reconstruct scenes with high photometric realism and structural consistency. Recently, 3D Gaussian Splatting (3DGS) [9] has emerged as an efficient and photorealistic scene representation. How-ever, existing incremental Gaussian mapping methods[10], [11], [12] suffer from severe domain shift in underwater environments due to complex water-medium optical effects. SeaSplat [13] and WaterSplat [14] address this issue by mod-eling the water medium [15], while operating in an offline manner. DUV-SLAM [16] further improves incremental un-derwater 3D Gaussians mapping using deep neural network-based geometry estimation, yet its high computational cost still limits real-time deployment. In this paper, we present APVI-SLAM , a real-time multi-sensor fusion SLAM for robust localization and photore-alistic mapping in complex underwater environments, as illustrated in Fig. 1. Specifically, we introduce a reliability-aware sensor fusion localization framework that dynamically adjusts the weights of sensor estimators to prevent visual degradation from compromising the overall state estimation. This reliability awareness is driven by a coarse-to-fine self-discrimination mechanism designed to determine weight al-location under harsh conditions. To mitigate the high cost of re-initialization during total visual degradation, we propose a sliding-window freezing strategy that enables rapid recovery of visual tracking. Furthermore, to address complex under-arXiv:2607.06222v1 [cs.RO] 7 Jul 2026 water light transport and changing visibility, we develop a quadtree-guided 3D Gaussians mapping scheme featuring efficient water-medium modeling and scene optimization. Fi-nally, we contribute a coral reef surveying dataset comprising synchronized multi-modality data with various degradation scenarios to bridge the gap of benchmark for underwater mapping evaluation. Experimental results demonstrate that APVI-SLAM achieves state-of-the-art performance in both localization accuracy and photorealistic mapping. Overall, our work presents several key contributions, sum-marized as follows:  
+
+> •
+
+We present APVI-SLAM, a novel multi-sensor fusion SLAM designed for real-time perception in complex underwater environment.  
+
+> •
+
+We propose a new reliability-aware sensor fusion local-ization method that effectively enhances pose estimation robustness under estimator divergence.  
+
+> •
+
+We introduce a quadtree-guided 3D Gaussians mapping scheme to efficiently refine spatial representation and recover photorealistic models even in turbid water con-ditions.  
+
+> •
+
+We construct the first coral reef surveying dataset with multi-modality data, benchmarking mapping per-formance in real-world underwater applications.  
+
+> •
+
+We implement the complete system in C++ and CUDA, achieving state-of-the-art performance on existing pub-lic and our newly proposed datasets. II. R ELATED WORKS 
+
+A. Underwater Multi-Sensor Fusion SLAM 
+
+Underwater Visual-Inertial SLAM faces significant chal-lenges due to limited visibility and frequent feature degrada-tion. To enhance localization robustness, many studies have adopted multi-sensor fusion frameworks that combine visual, inertial, acoustic, and pressure sensors. Early works relied on extended Kalman filtering for sensor fusion [17], [18], [19], while more recent methods employ factor-graph-based optimization [20], [21], [22]. Several Visual–Inertial systems [5], [23] integrate acoustic data into classic VINS [8] system to improve accuracy. UVA [4] tightly couples a DVL and stereo camera within a graph-based framework for accurate localization but suffers from frequent disturbances caused by intermittent visual degradation. AQUA-SLAM [7] fuses inertial sensor further to utilize high-frequency information. These methods are sensitive to unstable visual inputs and don’t support to reconstruct high-fidelity maps. In contrast, our method introduces a novel reliability-aware sensor fusion localization method to enhance tracking module robustness. 
+
+B. Underwater Dense Mapping 
+
+Previous underwater mapping frameworks [6], [7], [4] usually depend on expensive stereo camera setups and lack photorealistic mapping capability due to the point-cloud representation. Recently, 3D Gaussian Splatting [9] emerged as an efficient representation for high-fidelity scene reconstruction. While SeaSplat [13] and WaterSplatting[14] integrate 3DGS with water-medium models[15] to achieve high-quality underwater reconstruction but lack incremental mapping capability. DUV-SLAM [16] advances incremental mapping by employing an optical flow [24] front-end cou-pled with uncertainty-aware geometry. However, its inference speed limits real-time performance. Meanwhile, traditional feature-based front-ends [11] remain constrained by low-texture underwater environments, which yield sparse geom-etry prior and degrade optimization ability. To address these limitations, we propose a quadtree-guided 3D Gaussians mapping method to enable water medium modeling and incremental optimization, enabling real-time photorealistic mapping in complex underwater environments. III. M ETHODOLOGY OF APVI-SLAM The framework of APVI-SLAM is composed of two main components, including reliability-aware sensor fusion localization and quadtree-guided 3D Gaussians mapping, as illustrated in Fig. 2. The localization component takes RGB monocular images, IMU, DVL and pressure sensor measure-ments as input for pose estimations. We then reweight the DVL-Inertial-Pressure and Visual-Inertial odometry estima-tions based on reliability awareness. Given robust estimated poses, we recover high-quality underwater 3D Gaussians with efficient quadtree-guided densification. 
+
+A. Preliminary 
+
+The notations used in this paper are defined as follows: a scalar is represented by an italic lowercase letter a; a vector by a bold lowercase letter a; a matrix by a bold uppercase letter A; a coordinate frame by a typewriter font symbol A.
+
+a) State Estimation: First, we define the world coor-dinate system W as the first frame IMU coordinate system aligned with the gravity system. The body coordinate B is the IMU frame. We use the prior extrinsic calibration to handle measurements taken in different sensor frames (DVL 
+
+D, pressure P and camera C coordinate). The state of the system at time i can be described as              
+
+> xi.
+> = [ Ri,pi,vi,bgi,bai]∈SO (3) ×R12 .(1)
+
+where Ri ∈ SO (3) and pi as the state rotation and position from body frame to world frame. i.e. (RWB i , pWB i ) = Ti ∈
+
+SE (3) , while vi
+
+.
+
+= Bi v ∈ R3 represents the linear velocity in body frame. bgi and bai are the IMU gyroscope and accelerometer biases. 
+
+b) Scene Representation based on 3D Gaussian Prim-itives: 3D Gaussian Splatting [10] represents a 3D scene using a set of spatially distributed anisotropic Gaussian primitives. Each of them are associated with point cloud position from tracking part as mean o ∈ R12 , scaling s ∈ R3,density σ ∈ R1, spherical harmonic coefficients SH ∈ R16 
+
+and covariances Σ ∈ R3×3.
+
+B. Reliability-aware Sensor Fusion Localization 
+
+To achieve robust pose estimation based on comple-mentary DVL and pressure sensors, we propose a novel reliability-aware sensor fusion localization method designed to enhance estimation stability under intermittent visual degradation conditions. Specifically, we redistribute the Tracking     
+
+> FUSION and D
+> DIPO
+> VIO
+> DVL-IMU-Pressure State Estimatiom
+> DVL 残差构建压⼒计残差构建
+> 预处理
+> DVL-IMU-Pressure Odom Propagation
+> ⾃判别 模块
+> FUSION Odom
+> 融合状态估计
+> FUSION Odom
+> 滑窗冻结
+> IMU Rata
+> 关键帧冻结
+> 因⼦图优化
+> 滑窗终⽌冻结
+> IMU Input
+> Pressure Input
+> (Optional)
+> Pressure
+> Measurement
+> Depth
+> Visual-IMU Odometry(VIO Subsystem)
+> VIO Pose
+> with
+> Uncertainty
+> Self-discrimination
+> DIPO
+> SW Freeze: Yes/Not
+> VIO
+> Quadtree-guided
+> Densification
+> Prior
+> Factor
+> Factor graph optimization
+> Visual Factor with Covariance
+> Visual Landmark IMU Pre-integration
+> Sliding-window(SW) Freezing Strategy DVL-IMU-Pressure State Estimation DVL-IMU-Pressure Odometry (DIPO Subsystem) IMU Forward Propagation DVL-IMU-Pressure Measurement DIPO Pose
+> with
+> Uncertainty
+> Coarse-to-fine Self-discrimination
+> Keyframe and Sparse Pointcloud
+> Fusion State Estimation
+> Low High
+> RGB Input
+
+Data Input 
+
+> DVL Input
+> Acc X
+> Acc Z
+> Gyro X
+> Gyro Y
+> Gyro Z
+> 3-Axis
+> Linear Velocity
+> Acc Y
+
+Reliability-aware Sensor Fusion 
+
+Localization  Quadtree-guided 3D Gaussians Mapping  
+
+> Freeze
+> Judge
+> Subsystem State
+> Analysis
+> High Low
+> Keyframe Fine-grained
+> keyframe selection
+> 3D Gaussian
+> Initialization
+> Incremental Mapping
+> Condition Judgment
+> 3D
+> Gaussian
+> Maps
+> Multi-Scene 3D Gaussian Mapping Results
+> Render
+> Image
+> Densitify
+> Water-medium Modeling
+> Underwater Image
+> Foramtion
+> 3D Gaussian
+> Trainning
+> Quadtree Division
+> Belief Propagation
+> Upsampling
+> Keyframe
+> and Sparse
+> Pointcloud
+> Fusion
+> Pose
+> Reweight
+> Estimators
+> Fusion
+> Pose
+
+Fig. 2. Overview of the proposed APVI-SLAM framework. Multi-sensor data, including RGB images, IMU, DVL, and pressure measurements, are integrated through a reliability-aware localization module to enhance tracking robustness in challenging underwater environments. These estimates subsequently drive a quadtree-guided 3D Gaussians mapping scheme, facilitating photorealistic underwater mapping. 
+
+potentially degraded visual observations and the comple-mentary stable DVL, pressure sensor data, and adaptively reweight based two separate subsystems estimators. For visual estimator, RGB images from camera and inertial data from IMU is input into the Visual-IMU subsys-tem named VIO and optimizes the system states using a factor-graph-based [25] method. 
+
+a) Visual-IMU Odometry (VIO) Subsystem: Since un-derwater images often lack sufficient visual features, we employ traditional optical flow [26] tracking as the front end of the VIO instead of descriptor-based feature matching [27]. Due to water background, exposure settings and camera noise, many feature tracks from front-end are unstable which can pose challenges for optimization. Therefore, instead of using a constant pixel noise [8], we build a weighted informa-tion matrix Σ−1 
+
+> V
+
+=
+
+
+
+α · n−nmin  
+
+> nmax −nmin
+
++ β
+
+
+
+I for feature points. 
+
+n is the number of times a feature point has been successfully tracked, nmin and nmax are the minimum and maximum tracking thresholds, respectively. The parameters α and β are linear coefficients used to scale the influence of the tracking consistency, and I denotes the identity matrix. The back end of VIO performs nonlinear factor graph optimization over a sliding window to jointly estimate history, current states  
+
+> V IO
+
+xi and feature points {o}:
+
+J(x) = X ∥rI (x)∥2ΣI + X ∥rV (x)∥2ΣV + · · · . (2) 
+
+where rI constrains relative motion using preintegrated IMU measurements; rV penalizes the misalignment between 3D landmarks and their 2D projections; Σ−1 
+
+> I
+
+is the weighting in-formation matrix derived from the propagation of IMU noise. And then we output the current VIO frame state V IO xi, the feature point tracking counts and stability, as well as the Hessian matrix of the 6-DOF state V IO Hi from nonlinear optimization for reweighted visual-inertial estimator. To fuse complementary sensor measurement during visual unstable even degraded, we design the DIPO system to estimate the current state from DVL, IMU, and pressure sensors. 
+
+b) DVL-IMU-Pressure Odometry (DIPO) Subsystem: 
+
+The DIPO subsystem estimates the state at current time 
+
+xi from the last state xi−1 using an Error-State Kalman Filter [28] (ESKF). The filtering algorithm is motivated by the intuition that direct measurements of linear velocity and depth from DVL and pressure sensors. The motion equation based on IMU forward propagation needs to be constructed as follows: 
+
+xi = xi−1 ⊞ (∆ t f (xi−1, ui−1, wi−1)) , (3) 
+
+where ∆t is IMU sampling period, ⊞ define the generalized addition, and f () based on IMU angular velocity and linear acceleration [29].The adoption of the ESKF framework is motivated by the explicit spatial measurements obtained from the DVL and pressure sensors. Based on this observation model, the DVL measurement equation can be expressed as: 
+
+z = vi − vmi , RT (pi − pi−1) − ∆pmi−1,i . (4) 
+
+where vmi is the linear velocity changes observed by DVL are transferred to the body frame and ∆pmi−1,i is the translation residual is obtained based on vmi . The pressure observation residual is constructed by estimating the vertical (z-axis) displacement at the current time from the depth computed by the pressure sensor. Because of state-dependent and low-dimensional nature of the observations, ESKF is employed to estimate the system state at time i based on the afore-mentioned motion and observation equations. Meanwhile, the inverse of the covariance of the pose (translation and roatation) DIP O Hi = P−1 
+
+> DIP O
+
+∈ R6×6 obtained from the ESKF is extracted as a measure of estimation confidence and also reweights complementary DVL and pressure esti-mator. Based on the redistributed sensor observations from the above process, we then perform dynamic reweighting of sensor estimators to achieve robust pose estimation. To Algorithm 1: Coarse-to-fine Self-discrimination 
+
+Input: DIPO state DIP O xi and covariance DIP O Hi,VIO state V IO xi and Hessian V IO Hi,Number of feature points nf p and stable points nsf p .
+
+Output: Final system state xi.
+
+// Step 1: Coarse  
+
+> 1
+
+if nf p > 50 and nsf p > 0.2nf p then 
+
+// Step 2: Medium  
+
+> 2
+
+∆x ← ∥ DIP O xi − V IO xi∥ 
+
+> 3
+
+∆z ← | DIP O zi − V IO zi|, z i = xi[6]  
+
+> 4
+
+if ∆x < 30 cm and ∆z < 30 cm and ∆θ < 10 ◦ then 
+
+// Step 3: Fine  
+
+> 5
+
+Solve 6-DOF λ from V IO Hi based on Eq. 5  
+
+> 6
+
+if VIO is stable based on λ then  
+
+> 7
+
+return Accepted VIO State V IO xi
+
+// DIPO Stability Check  
+
+> 8
+
+if DIPO is Stable then  
+
+> 9
+
+return State with Freeze  
+
+> 10
+
+else  
+
+> 11
+
+return State with Drop 
+
+achieve this, we first evaluate the stability of each subsystem based on coarse-to-fine self-discrimination mechanism to determine the assigned weights and fusion strategy. 
+
+c) Coarse-to-fine Self-discrimination Mechanism: The function of this module includes evaluating the reliability of the VIO and DIPO subsystem, determining whether the current frame needs to be frozen (as required by the sliding-window freezing strategy), and output the odometry after fusion based on dynamic weights. One part of the module’s input comes from the state DIP O xi and covariance DIP O Hi
+
+of the DIPO subsystem. The other part comes from the state  
+
+> V IO
+
+xi and covariance V IO Hi of the current frame in the VIO system. The time offset between the two subsystems can be aligned by IMU propagation. The module first evaluates the stability of the VIO system using a coarse-to-fine strategy shown in Alg. 1. When the coarse judgment is negative, we directly determine VIO fail without performing a fine-grained judgment. Step 1 : it determines whether the number of front-end feature points nf p exceeds 50 and whether more than 20% of them are stably tracked nsf p > 0.2nf p . A feature point is considered stable if it is successfully tracked across 10 consecutive frames. Step 2 : it checks whether the euclidean distance offset between DIP O xi and V IO xi
+
+is less than 30cm, the deviation in the z-direction is less than 30cm and the Euler angle is less than 10 ◦. Step 3 :The stability of the VIO system is evaluated by analyzing the Hessian matrix V IO Hi of the factor graph solved using the Levenberg-Marquardt method[30]. 6-DOF eigenvalues is solved:          
+
+> V IO Hi=
+> H11 H12
+> H21 H22
+> 
+> , λ 1=eigen (H11 ), λ 2=eigen (H22 ),
+> (5)
+
+According to [31], the eigenvalues distribution of a randomly constructed real symmetric matrix with finite dimensions can be approximated with a semicircle distribution. By With Freeze    
+
+> Without Freeze
+> Start
+> Fail
+> 。。。
+> 2-3
+> VIO
+> Recover
+> 。。。
+> 1-2
+> If Stability
+> Sliding-window(SW) Freezing Strategy
+> 3
+> 2
+> 1
+> VIO Stability 1
+> 2
+> 3
+> Start
+> Degradation Unfreeze
+> SW
+> Freeze
+> Flag
+> Fig. 3. Sliding-window freezing strategy for efficient re-initialization.
+
+modeling the Hessian distribution on a simulation dataset, the thresholds λthre  
+
+> 1
+
+, λthre  
+
+> 2
+
+are analytically determined as the lower edges of the distribution’s support. Any eigenvalue falling below these boundaries indicates parsing degrada-tion and VIO failure. After self-discrimination, we perform reweighting of the VIO and DIPO estimators to obtain the fused state based on ESKF:              
+
+> xi=
+> (DIP O xi,if VIO fails ,
+> DIP O xi+K V IO xi−DIP O xi
+> ,otherwise .(6)
+
+where δxi is the error update variable, K is the Kalman gain. The inverse of V IO Hi and DIP O Hi are used as noise parameters for reweighting. As the DIPO system does not suffer from degeneracy, we assess its reliability based only on outlier rejection and the properties of its Hessian matrix  
+
+> DIP O
+
+Hi. When the VIO subsystem fails, the stable fusion output is marked with a ”freeze” flag, and the non-stable output is marked with a ”drop” flag. 
+
+d) Sliding-window Freezing Strategy: The purpose of this strategy is to efficient re-initialization of the VIO sub-system by utilizing the prior information from the stable DIPO subsystem. Stable fusion output xi with a freeze flag is maintained within the sliding window and used from factor graph optimization, whereas unstable results xi with a drop flag are utilized solely as odometry outputs and excluded from the factor graph optimization, as illustrated in Fig. 2. This means that the factor graph preserves trustworthy state variables when VIO degrades, allowing the VIO subsystem to rapidly resume state solving after visual features reappear. Specifically, when the VIO subsystem has failed shown in Fig. 3 1-2, xi with a freeze flag aim to keep this prior such as scale and state in the optimization process. During factor graph optimization, the keyframes marked with a ”freeze” flag, as well as the feature points first observed by these keyframes, are kept fixed. As the visual degradation gradu-ally diminishes shown in Fig. 3 2-3, the factor graph quickly converges without the need for repeated initialization. Once the VIO subsystem recovers normal operation, the ”freeze” state of the historical keyframes is released. 
+
+C. Quadtree-guided 3D Gaussians Mapping 
+
+Intuitively, to avoid generating invalid photometric maps from degraded visual information during VIO failures, the mapping module selectively integrates localization data based on the system state and feature reliability. Only when the localization module is in a stable tracking state, the current keyframe TCW i pose and sparse pointclouds with high confidence explained in Sec. III-B.0.a {o}s are fed into the Gaussian mapping system. 
+
+a) 3D Gaussians Rendering based on Water-Medium Modeling: Each Gaussian primitive with mean o and covari-ance Σ is transformed to current keyframe as oC = RCW o +
+
+pCW , ΣC = RCW ΣR ⊤
+
+> CW
+
+. Projection to 2D using intrinsics 
+
+K yields μ = π(oC) and Σ′ = JΣ CJ⊤ with Jacobian J.Pixel radiance C(u) is computed via α-blending. The final observed color I(u) applies the water-medium model[32] with attenuation βD , backscatter βB , and background color 
+
+B∞:           
+
+> I′
+> (u) = C(u)·e−βDz(u)+B∞·
+> 
+> 1−e−βBz(u)
+> ,(7)
+
+where depth z(u) is obtained from the corresponding Gaus-sian. Water-medium parameters are jointly optimized online, and the learning rate is doubled when the VIO subsystem is detected to have failed, in order to accelerate convergence. Moreover, the sparsity of feature points often results in weak-texture or turbid regions. To bridge this gap, we introduce a lightweight quadtree-guided densification scheme. 
+
+b) Lightweight Quadtree-guided Densification: Pixels that share the same quadtree block in the intensity image also belong to the same block in the depth map[33]. Therefore, by dividing the image into a three-level quadtree( 16 × 16 ,
+
+8 × 8, 6 × 6) based on intensity, pixels within each level exhibit similar texture and depth characteristics. We then sample depth based on photometric cost V (u, d ) for pixel 
+
+u:            
+
+> V(u, d ) = 1
+> N−1
+> N−2X
+> i=0
+> IN−1(u)−Ik
+>  π(u, d, Tk,N −1),(8)
+
+where I(·) is the intensity of a specific pixel in image I, a sequence of 10 keyframes from the sliding windows in the VIO subsystem (I0, . . . , IN −1). π(·) warps the coordinate 
+
+u from image IN −1 to Ii given the depth d. we choose 128 depth hypothesis (i.e., {d0, . . . , d 63 }) that are equally spaced from 0.10–25 m. Based on photometric cost V (u, d ),the depth of quadtree-selected pixels is estimated based on belief propagation Buk (d) from its 4-neighbor N (uk):        
+
+> Buk(d) = I(uk, d ) + X
+> s∈N (uk)
+>  ms→uk(d),(9)
+
+where ms→uk is the message passing from pixel s to uk,the depth d∗ that minimizes the belief vector is selected as the estimation of the pixel. To fill in the missing regions and obtain a consistent depth, we perform depth upsampling[34]. During the Gaussian primitive densification process, we first track the sparse point cloud {o}s and locate their correspond-ing quadtree levels in the current frame. For these positions, additional densification is unnecessary. For other regions, we project the top-left representative pixel uq of each quadtree block into the world coordinate system TWC i · π−1(uq , d ∗) to generate the densified point set {o}d. Both {o}d and {o}s
+
+constitute all 3D Gaussians.                                                                                           
+
+> TABLE I QUANTITATIVE COMPARISON OF ATE ( M)ON THE TANK DATASET .Method Sensors Structure HalfTank Whole Avg. Easy Medium Hard Easy Medium Hard Medium Hard ORB3 M0.12 --3.74 -----ORB3 M+I --3.25 ------ORB3 S+I 0.28 3.30 2.93 2.21 0.70 1.15 0.68 2.37 1.70 VINS-F. M+I 0.56 --94.5 -----VINS-F. S+I 0.22 --29.8 --13.1 --UVA S+D 0.18 0.49 0.43 1.12 0.26 0.37 0.27 0.30 0.43 AQUA S+I+D 0.07 0.18 0.50 0.28 0.29 0.36 0.52 0.22 0.30
+> Ours M+I+D+P 0.11 0.17 0.24 0.28 0.17 0.33 0.26 0.23 0.22
+> Bold indicate the best performance. M: Mono, S: Stereo, I: IMU, D: DVL, P: Pressure. ORB3 and VINS-F. stand for ORB-SLAM3 and VINS-Fusion. Ground Truth Ours Photo-SLAM MonoGS
+> Fig. 4. Qualitative results on the Tank dataset. Our method achieves high-fidelity scene reconstruction with sharp details, while others exhibit significant blurring.
+
+IV. E XPERIMENTS 
+
+A. Experiment Setup a) Datasets: While the Tank dataset [35] provides multi-sensor data with marker-based ground truth under adverse conditions, it lacks the complexity required for mapping evaluation. To bridge this gap, we developed a high-fidelity simulation benchmark and a real-world coral reef surveying dataset. The simulation dataset, built via the UUV Simulator [36], includes 6 sequences across Ship, Seabed, and Dam environments with each scenario featuring both clear and degraded visibility. For field validation, we curated a coral reef surveying dataset using a customized BlueROV equipped with a forward industrial camera, 6-axis IMU, Bar50 pressure sensor and WaterlinkA50 DVL. This dataset captures low-texture, turbid, and non-structural underwa-ter environments, comprising 8 sequences with an average length of 2k frames. 
+
+b) Metrics: We use PSNR, SSIM, and LPIPS [37] to evaluate the photorealistic mapping quality. We also report computing resources by showing the tracking FPS, rendering FPS, and GPU memory usage. To evaluate the camera pose, we use the average absolute and relative trajectory error (ATE/RPE RMSE). Due to the significant noise levels in the raw data, our evaluation on the real-world dataset is restricted to qualitative comparisons, as quantitative metrics may not reliably reflect reconstruction quality. 
+
+c) Baselines: We evaluate our method against state-of-the-art classical SLAM systems, including VINS-Fusion [8] and ORB-SLAM3 [38]. Comparisons are also conducted with underwater multi-sensor fusion frameworks such as UVA [4] and AQUA-SLAM [7], which utilize factor-graph optimization but lack high-fidelity mapping capabilities. Since UVA is not open-sourced and AQUA-SLAM lacks TABLE II QUANTITATIVE COMPARISON RESULTS ON BOTH EASY AND HARD SEQUENCES OF SIMULATION DATASET . O UR METHOD SHOWS SOTA 
+
+> PERFORMANCE
+
+. “ ×” DENOTES NO VIEW RENDERING SUPPORT .Easy Seq. Sensors Localization Mapping Resources Mono IMU DVL Press. ATE ↓ RPE ↓ PSNR ↑ SSIM ↑ LPIPS ↓ Op. Time ↓ T-FPS ↑ R-FPS ↑ GPU ↓                                                                                                                                                                                       
+
+> ORB-SLAM3 ✓✓11.820 7.893 ×××3.043 51.447 ××
+> VINS-Fusion ✓✓25.208 4.657 ×××2.303 100.00 ××
+> Go-SLAM ✓✓26.378 53.453 18.999 0.681 0.537 2.297 65.430 10.160 4 GB
+> Photo-SLAM ✓7.146 5.370 28.990 0.803 0.324 3.170 35.979 582.463 5 GB MonoGS ✓486.311 249.677 27.010 0.788 0.349 27.554 2.880 2.254 4 GB
+> VINGS ✓✓498.284 398.275 17.656 0.558 0.540 10.940 26.333 332.165 5 GB
+> Ours ✓✓✓✓5.699 3.810 31.233 0.863 0.260 2.303 100.00 874.09 4 GB
+> Hard Seq. Sensors Localization Mapping Resources Mono IMU DVL Press. ATE ↓RPE ↓PSNR ↑SSIM ↑LPIPS ↓Op. Time ↓T-FPS ↑R-FPS ↑GPU ↓
+> ORB-SLAM3 ✓✓36.093 30.877 ×××5.363 52.610 ××
+> VINS-FUSION ✓✓185.820 68.977 ×××4.213 100.000 ××
+> Go-SLAM ✓✓413.222 154.992 21.633 0.583 0.615 5.053 67.510 9.887 4 GB
+> Photo-SLAM ✓404.759 14.477 30.483 0.817 0.429 5.513 35.880 934.799 5 GB MonoGS ✓501.531 218.740 27.350 0.717 0.444 22.017 4.180 3.447 5 GB VINGS ✓✓633.000 356.792 21.443 0.738 0.507 12.713 30.551 370.715 7 GB
+> Ours ✓✓✓✓5.937 3.857 32.390 0.843 0.328 4.213 100.000 1035.497 6 GB Ship-Easy Seabed- Easy Dam- Easy
+> VINGS-Mono MonoGS Photo-SLAM Ours Ground Truth
+> Seabed-Hard  MonoGS
+> Ours
+> Trajectory Error Ground Truth
+
+Fig. 5. Left: Qualitative results on the easy sequences of simulation dataset. Our method demonstrates superior texture clarity and finer geometric details compared to existing baselines. Right: Qualitative results and trajectory visualization on the Seabed-Hard of simulation dataset. Photo-SLAM failed due to visual degradation. Our method provides richer texture details under low-visibility conditions. 
+
+a monocular configuration, we compare them on the Tank dataset using the original data from their original papers. Furthermore, we consider recent neural and Gaussian-based SLAM methods, including Go-SLAM [39], Photo-SLAM [11], and MonoGS [10]. To ensure a comprehensive eval-uation, we include VINGS [12], which incorporates IMU factors for photorealistic reconstruction. 
+
+d) Implementation: Our system is implemented in C++ and CUDA, leveraging LibTorch for both optimization mod-ules and neural components to facilitate efficient GPU ac-celeration and flexible tensor computation. All experiments are conducted on a workstation equipped with an Intel i7-14700K CPU and an NVIDIA RTX 4070 GPU. Except for UVA and AQUA-SLAM, whose results are taken from their original publications, all other baselines are evaluated using their official implementations. 
+
+B. Evaluation of Tank Public Dataset 
+
+On the Tank dataset, our method achieves SOTA lo-calization performance, as shown in table I. Compared to the most relevant underwater SLAM, AQUA-SLAM, our approach reducing position error by 26.7% on aver-age, while significantly outperformng it as environmental complexity increases and visual degradation intensifies, no-tably in Structure Hard (0.24m vs. 0.50m) and WholeTank Medium (0.26m vs. 0.52m). Qualitatively, Fig. 4 shows our method reconstructs high-fidelity scenes, whereas MonoGS and Photo-SLAM suffer from severe blurring and artifacts. These results validate the effectiveness of our method in mitigating underwater visual degradation while maintaining high-precision tracking and mapping. 
+
+C. Evaluation of Our New Simulation Dataset 
+
+As demonstrated in table II, our method consistently achieves superior performance across localization accuracy, mapping quality, and computational efficiency. In easy se-quences with high visibility, MonoGS and VINGS still exhibit higher drift. In hard sequences, all baseline methods except ours fail to maintain accurate localization due to severe visibility reduction and feature degradation. In term of mapping, baselines struggle to produce com-plete reconstructions, leaving missing regions with no valid renderings. In contrast, our method delivers photorealistic, detailed textures even under extreme degradation, as illus-trated in Fig. 5. This resilience is primarily attributed to the robustness of the localization module and an efficient Ground Truth  Ours   
+
+> Sequence 1
+> MonoGS
+> Sequence 2 Sequence 3 Sequence 4
+
+Fig. 6. Qualitative results on the coral reef surveying dataset. Our method achieves high-fidelity mapping quality across different sequences. TABLE III ABLATION STUDY ON SENSOR SETTINGS FOR THE TANK DATASET .Settings Sensors Structure HalfTank Whole Avg. Easy Medium Hard Easy Medium Hard Medium Hard 1 M+I 0.12 - - 3.76 - - - - -2 I+D 0.24 0.28 0.28 0.84 0.36 0.35 0.38 0.32 0.38 3 I+D+P 0.15 0.23 0.26 0.62 0.27 0.36 0.32 0.25 0.31           
+
+> Default M+I+D+P 0.11 0.17 0.24 0.28 0.17 0.33 0.26 0.23 0.22
+> M: Mono, I: IMU, D: DVL, P: Pressure.
+
+recovery mechanism that facilitates rapid re-initialization following periods of environmental degradation. 
+
+D. Mapping Evaluation of Real Coral Surveying Dataset 
+
+In field scenarios, constrained illumination and limited underwater visibility introduce substantial sensor noise and severe visual degradation. Such adverse conditions hinder Photo-SLAM’s ability to track ORB features, resulting in tracking failure and incomplete reconstructions. VINGS fails to initialize stable trajectories under these circumstances. De-spite MonoGS manages to produce a complete map, its lim-ited localization accuracy leads to blurred texture rendering (24.14 PSNR). Conversely, our method exhibits remarkable robustness to real-world challenges, delivering photorealistic reconstructions (29.05 PSNR) with fine-grained and spatially consistent details, shown in Fig. 6. 
+
+E. Ablation Experiment 
+
+Table III evaluates the incremental contribution of each sensor modality. While the visual-inertial (VI) estimator fails under degraded conditions (Medium and Hard), the DVL-inertial configuration maintains robust meter-level accuracy, underscoring the necessity of acoustic-inertial sensing in turbid water. The integration of pressure measurements fur-ther refines the DVL-inertial estimate (0.31m vs. 0.38m) by providing critical vertical constraints. Ultimately, our full configuration consistently yields the superior localiza-tion (0.22m) compared to any sensor subset. These re-sults demonstrate that the reliability-aware fusion effectively leverages cross-modal complementarities, achieving robust performance across varying environmental complexities. We evaluates the sliding-window freezing strategy through Success Rate and Re-initialization (Re-init.) Time in Tab. 
+
+TABLE IV ABLATION STUDY ABOUT THE SLIDING -WINDOW FREEZING STRATEGY ON THE TANK DATASET .Metrics Method Structure HalfTank WholeTank Avg. Medium Hard Easy Medium Hard Medium Hard Success Rate Ours w/o sw freezing 60% 0% 100% 10% 0% 60% 20% 21%                                 
+
+> Ours 100% 100% 100% 100% 100% 100% 100% 100%
+> Re-init. Time Reference 37.24s 76s 32.23s 7.13s 127s 11.14s 8.03s 37.24s Ours w/o sw freezing 46.37s x35.95s 9.29s x12.21s xx
+> Ours 10.24s 10.98s 32.52s 6.95s 50.31s 11.25s 8.43s 10.24s
+> “×” denotes the system fails to reinitialized.
+
+TABLE V ABLATION STUDY ON QUADTREE -GUIDED DENSIFICATION AND WATER -MEDIUM MODELING (W-M) ON SIMULATION DATASET .Settings Easy Sequence Hard Sequence # Densification W-M PSNR ↑ SSIM ↑ R-FPS ↑ PSNR ↑ SSIM ↑ R-FPS ↑                                                
+
+> 1Grad. ×29.93 0.852 971.2 29.35 0.819 1100.4
+> 2Random+Grad. ×30.50 0.857 921.6 30.28 0.825 1067.2 3Quad.+Grad. ×30.96 0.859 958.7 31.94 0.829 1095.3 4Grad. ✓30.18 0.854 943.3 31.75 0.824 1079.3 5 SeaSplat Grad. ✓29.95 0.858 959.2 31.67 0.822 1059.8
+> Default Quad.+Grad. ✓31.23 0.863 874.1 32.39 0.843 1035.5
+> Grad.: The original 3DGS gradient-based densification method. Quad.: Quadtree-guided densification method.
+
+IV. Our method achieves a 100% success rate across all se-quences; in contrast, omitting this strategy leads to initializa-tion failures in ”Hard” environments due to the lack of stable visual anchors. Regarding efficiency, our approach minimizes Re-init. Time by maintaining a valid state during visual gaps, outperforming the baseline that allows the VIO state to drift. These results confirm that the sliding-window freezing strategy effectively bridges periods of severe degradation, enabling rapid VIO recovery while the DIPO subsystem ensures continuous, high-frequency pose outputs. We also evaluate our lightweight quadtree-guided densi-fication and water-medium modeling schemes in Tab. V. Due to the sparsity of feature points, a simple random densification step also becomes necessary, as illustrated in Tab. V (1)and(2). From Tab. V (2)to(3), the lightweight quadtree-guided densification strategy reconstructs the scene more efficiently, reducing the rendering time from 971.24 to 958.74. By observing Tab. V (3)and(4), the impact of water-medium modeling is particularly pronounced in challenging sequences, where it mitigates distance-dependent color shifts to yield a significant PSNR gain from 0.25 to 2.37. In Tab. V (5), our method outperforms the offline SeaSplat[13] with state-of-the-art water modeling, which uses the same poses and iterations as our method to ensure fairness, due to our efficient mapping strategy. These results confirm that the proposed scheme significantly elevates reconstruction fidelity while maintaining a near-constant computational overhead. V. CONCLUSIONS In this paper, we propose a novel real-time multi-sensor fusion SLAM system called APVI-SLAM for robust under-water localization and photorealistic mapping. We propose a reliability-aware sensor fusion localization framework and sliding-window freezing strategy to enhance tracking module robustness and mitigate high cost re-initialization process. Furthermore, we introduce a quadtree-guided 3D Gaussians mapping scheme to reconstruct photorealistic underwater scenes. Finally, we collect a coral reef monitoring dataset to address the lack of mapping focus in existing datasets. Extensive experiments have demonstrated that APVI-SLAM significantly outperforms existing SLAMs while maintaining real-time speed in complex underwater environments. Future work will address remaining challenges, including dynamics object, water-medium removal, and the enhancement of 3D Gaussian geometric structures. REFERENCES [1] H. Li, G. Wang, X. Li, and Y. Lian, “A review of underwater slam technologies,” in 2023 5th International conference on robotics, intelligent control and artificial intelligence (RICAI) . IEEE, 2023, pp. 215–225. [2] X. Wang, X. Fan, P. Shi, J. Ni, and Z. Zhou, “An overview of key slam technologies for underwater scenes,” Remote Sensing , vol. 15, no. 10, p. 2496, 2023. [3] M. Heshmat, L. Saad Saoud, M. Abujabal, A. Sultan, M. Elmezain, L. Seneviratne, and I. Hussain, “Underwater slam meets deep learning: challenges, multi-sensor integration, and future directions,” Sensors ,vol. 25, no. 11, p. 3258, 2025. [4] S. Xu, T. Luczynski, J. S. Willners, Z. Hong, K. Zhang, Y. R. Petillot, and S. Wang, “Underwater visual acoustic slam with extrinsic calibration,” in 2021 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, 2021, pp. 7647–7652. [5] S. Rahman, A. Quattrini Li, and I. Rekleitis, “Svin2: A multi-sensor fusion-based underwater slam system,” The International Journal of Robotics Research , vol. 41, no. 11-12, pp. 1022–1042, 2022. [6] J. Song, O. Bagoren, R. Andigani, A. Sethuraman, and K. A. Skinner, “Turtlmap: Real-time localization and dense mapping of low-texture underwater environments with a low-cost unmanned underwater vehi-cle,” in 2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, 2024, pp. 1191–1198. [7] S. Xu, K. Zhang, and S. Wang, “Aqua-slam: Tightly-coupled un-derwater acoustic-visual-inertial slam with sensor calibration,” IEEE Transactions on Robotics , 2025. [8] T. Qin, P. Li, and S. Shen, “Vins-mono: A robust and versatile monoc-ular visual-inertial state estimator,” IEEE transactions on robotics ,vol. 34, no. 4, pp. 1004–1020, 2018. [9] B. Kerbl, G. Kopanas, T. Leimk¨ uhler, G. Drettakis, et al. , “3d gaussian splatting for real-time radiance field rendering.” ACM Trans. Graph. ,vol. 42, no. 4, pp. 139–1, 2023. [10] H. Matsuki, R. Murai, P. H. Kelly, and A. J. Davison, “Gaussian splatting slam,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2024, pp. 18 039–18 048. [11] H. Huang, L. Li, H. Cheng, and S.-K. Yeung, “Photo-slam: Real-time simultaneous localization and photorealistic mapping for monocular stereo and rgb-d cameras,” in Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition , 2024, pp. 21 584– 21 593. [12] K. Wu, Z. Zhang, M. Tie, Z. Ai, Z. Gan, and W. Ding, “Vings-mono: Visual-inertial gaussian splatting monocular slam in large scenes,” 
+
+IEEE Transactions on Robotics , 2025. [13] D. Yang, J. J. Leonard, and Y. Girdhar, “Seasplat: Representing un-derwater scenes with 3d gaussian splatting and a physically grounded image formation model,” in 2025 IEEE International Conference on Robotics and Automation (ICRA) . IEEE, 2025, pp. 7632–7638. [14] H. Li, W. Song, T. Xu, A. Elsig, and J. Kulhanek, “Watersplatting: Fast underwater 3d scene reconstruction using gaussian splatting,” in 
+
+2025 International Conference on 3D Vision (3DV) . IEEE, 2025, pp. 969–978. [15] D. Levy, A. Peleg, N. Pearl, D. Rosenbaum, D. Akkaynak, S. Korman, and T. Treibitz, “Seathru-nerf: Neural radiance fields in scattering media,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2023, pp. 56–65. [16] R. Liu, S. Fan, W. Wang, and Y. Yang, “Underwater visual slam with depth uncertainty and medium modeling,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2025, pp. 970–980. [17] R. Eustice, O. Pizarro, and H. Singh, “Visually augmented navigation in an unstructured environment using a delayed state history,” in 
+
+IEEE International Conference on Robotics and Automation, 2004. Proceedings. ICRA’04. 2004 , vol. 1. IEEE, 2004, pp. 25–32. [18] D. Wang, S. Sun, H. Huang, and J. Wang, “Improved mhe-based tightly coupled sins/usbl method for underwater navigation,” IEEE Sensors Journal , 2025. [19] L. Kang, K. He, J. Zhao, X. Wang, and P. Tan, “A hybrid-kernel-based adaptive robust kalman filter for ins/dvl integrated underwater navigation,” Ocean Engineering , vol. 350, p. 124269, 2026. [20] H. M. Ali, H. J. P. Williams, L. Arulmozhiselvan, F. T. Ayasrah, A. Smerat, S. Venkatesh, H. R. Suresh, and S. Sengan, “Advancing underwater robotic localization accuracy through multi-sensor data fusion and evolutionary optimization techniques,” 2025. [21] M. Guo, B. Wang, L. Wei, M. Zhang, C. Zhang, and H. Lu, “Robust ins/gnss/dvl integrated navigation for mass based on gradient-adaptive factor graph optimization,” Electronics , vol. 15, no. 3, p. 634, 2026. [22] X. Chen, Y. Feng, B. Nie, W. Lu, and X. Wang, “Sonid: underwater sonar slam integrated with neural inertial-dvl odometry,” in Fifth International Conference on Artificial Intelligence, Automation, and Algorithms (AI2A 2025) , vol. 14073. SPIE, 2026, pp. 28–36. [23] J. Song, W. Li, and X. Zhu, “Acoustic-vins: Tightly coupled acoustic-visual-inertial navigation system for autonomous underwater vehicles,” 
+
+IEEE Robotics and Automation Letters , vol. 9, no. 2, pp. 1620–1627, 2023. [24] Z. Teed and J. Deng, “Droid-slam: Deep visual slam for monocular, stereo, and rgb-d cameras,” Advances in neural information processing systems , vol. 34, pp. 16 558–16 569, 2021. [25] F. Dellaert and M. Kaess, “Factor graphs for robot perception,” 
+
+Foundations and Trends® in Robotics , vol. 6, no. 1-2, pp. 1–139, 2017. [26] S. S. Beauchemin and J. L. Barron, “The computation of optical flow,” 
+
+ACM computing surveys (CSUR) , vol. 27, no. 3, pp. 433–466, 1995. [27] E. Rublee, V. Rabaud, K. Konolige, and G. Bradski, “Orb: An efficient alternative to sift or surf,” in 2011 International conference on computer vision . Ieee, 2011, pp. 2564–2571. [28] J. Sola, “Quaternion kinematics for the error-state kalman filter,” arXiv preprint arXiv:1711.02508 , 2017. [29] W. Xu and F. Zhang, “Fast-lio: A fast, robust lidar-inertial odometry package by tightly-coupled iterated kalman filter,” IEEE Robotics and Automation Letters , vol. 6, no. 2, pp. 3317–3324, 2021. [30] D. W. Marquardt, “An algorithm for least-squares estimation of non-linear parameters,” Journal of the society for Industrial and Applied Mathematics , vol. 11, no. 2, pp. 431–441, 1963. [31] F. Benaych-Georges and A. Knowles, “Lectures on the local semicircle law for wigner matrices,” arXiv preprint arXiv:1601.04055 , 2016. [32] D. Akkaynak and T. Treibitz, “A revised underwater image formation model,” in Proceedings of the IEEE conference on computer vision and pattern recognition , 2018, pp. 6723–6732. [33] K. Wang, W. Ding, and S. Shen, “Quadtree-accelerated real-time monocular dense mapping,” in 2018 IEEE/RSJ International Confer-ence on Intelligent Robots and Systems (IROS) . IEEE, 2018, pp. 1–9. [34] J. Engel, J. Sturm, and D. Cremers, “Semi-dense visual odometry for a monocular camera,” in Proceedings of the IEEE international conference on computer vision , 2013, pp. 1449–1456. [35] S. Xu, J. Scharff Willners, J. Roe, S. Katagiri, T. Luczynski, Y. Petillot, and S. Wang, “Tank dataset: An underwater multi-sensor dataset for slam evaluation,” The International Journal of Robotics Research , p. 02783649251364904, 2025. [36] M. M. M. Manh˜ aes, S. A. Scherer, M. Voss, L. R. Douat, and T. Rauschenbach, “Uuv simulator: A gazebo-based package for un-derwater intervention and multi-robot simulation,” in Oceans 2016 Mts/Ieee Monterey . Ieee, 2016, pp. 1–8. [37] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep features as a perceptual metric,” in 
+
+Proceedings of the IEEE conference on computer vision and pattern recognition , 2018, pp. 586–595. [38] C. Campos, R. Elvira, J. J. G. Rodr´ ıguez, J. M. Montiel, and J. D. Tard´ os, “Orb-slam3: An accurate open-source library for visual, visual–inertial, and multimap slam,” IEEE transactions on robotics ,vol. 37, no. 6, pp. 1874–1890, 2021. [39] Y. Zhang, F. Tosi, S. Mattoccia, and M. Poggi, “Go-slam: Global optimization for consistent 3d instant reconstruction,” in Proceedings of the IEEE/CVF international conference on computer vision , 2023, pp. 3727–3737.
