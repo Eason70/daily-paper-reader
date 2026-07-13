@@ -6,43 +6,50 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-12
-- 运行时间：2026-07-12 21:22:34 UTC
+- 最新运行日期：2026-07-13
+- 运行时间：2026-07-13 21:44:44 UTC
 - 运行状态：成功
-- 本次总论文数：7
-- 精读区：1
-- 速读区：6
+- 本次总论文数：10
+- 精读区：2
+- 速读区：8
 
 ### 今日简报（AI）
-今日聚焦四足机器人行为基础研究，精读《Behavior Foundations for Quadruped Robots: ABot-C0 Technical Report》（8.0分），并速读了触觉适配、3D空间动作模型及声学人机交互三篇论文。  
-最值得关注的是四足机器人行为基础框架，以及利用触觉残差适配实现视觉策略迁移的通用强化学习方法。  
-建议普通读者优先阅读精读论文以理解机器人行为设计原则，随后可结合触觉适配论文探索实物机器人迁移学习。
-- 详情：[/202607/12/README](/202607/12/README)
+今日精选10篇论文，重点精读2篇强化学习与安全性结合的研究。最值得关注SafeExplorer的干预策略和CORAL-AUV在水下机器人中的应用。建议普通读者重点关注强化学习中的安全性与实际部署结合的方法。
+- 详情：[/202607/13/README](/202607/13/README)
 
 ### 精读区论文标签
-1. [Behavior Foundations for Quadruped Robots: ABot-C0 Technical Report](/202607/12/2607.07370v2-behavior-foundations-for-quadruped-robots-abot-c0-technical-report)  
+1. [SafeExplorer: An Unbiased Policy Gradient for Reinforcement Learning with Recovery Interventions](/202607/13/2607.08925v1-safeexplorer-an-unbiased-policy-gradient-for-reinforcement-learning-with-recovery-interventions)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：使用恢复干预的安全强化学习的无偏策略梯度
+2. [CORAL-AUV: CFD Oriented Reinforcement Learning for Autonomous Underwater Vehicles](/202607/13/2607.09557v1-coral-auv-cfd-oriented-reinforcement-learning-for-autonomous-underwater-vehicles)  
    标签：评分：8.0/10、query:ocean-robot
-   evidence：四足机器人通用运动控制系统
+   evidence：利用RL进行AUV控制，结合CFD实现高保真阻力建模
 
 ### 速读区论文标签
-1. [OmniTacTune: Policy-Agnostic Real-World RL for Tactile Residual Adaptation of Visual Policies](/202607/12/2607.03723v1-omnitactune-policy-agnostic-real-world-rl-for-tactile-residual-adaptation-of-visual-policies)  
+1. [APIVOT: Adaptive Planning with Interleaved Vision-Language Thoughts](/202607/13/2607.08024v1-apivot-adaptive-planning-with-interleaved-vision-language-thoughts)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：真实世界强化学习流水线用于机器人控制适应
-2. [WSA$_1$: a 3D-Centric World-Spatial-Action Model for Generalizable Robot Control](/202607/12/2607.03941v1-wsa1-a-3d-centric-world-spatial-action-model-for-generalizable-robot-control)  
+   evidence：基于视觉语言模型的长时域机器人规划，交织视觉与语言思考
+2. [Learning-enabled Parameter Synthesis for Nonlinear Systems from Signal Temporal Logic](/202607/13/2607.08899v1-learning-enabled-parameter-synthesis-for-nonlinear-systems-from-signal-temporal-logic)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：为非线性系统合成参数以达到STL规范，与安全控制相关
+3. [Empirical Pedestrian Safety Assessment in a Mobile Robot Using a Predictive Social Force Model](/202607/13/2607.09192v1-empirical-pedestrian-safety-assessment-in-a-mobile-robot-using-a-predictive-social-force-model)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：以3D为中心的机器人基础模型用于具身智能
-3. [Embodied Human-Robot Interaction via Acoustics: A MARL Approach with AcoustoBots for Spatial Data Physicalization](/202607/12/2607.06563v1-embodied-human-robot-interaction-via-acoustics-a-marl-approach-with-acoustobots-for-spatial-data-physicalization)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：使用多智能体强化学习的具身人机交互
-4. [Multi-Agent Robotic Control with Onboard Vision-Language Models](/202607/12/2607.07403v1-multi-agent-robotic-control-with-onboard-vision-language-models)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：使用板载视觉语言模型的多智能体机器人控制，包括安全巡检
-5. [Geometry-Informed Maritime Anomaly Detection Using Probabilistic Roadmaps](/202607/12/2607.08100v1-geometry-informed-maritime-anomaly-detection-using-probabilistic-roadmaps)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：使用AIS数据和概率路标图进行海上异常检测
-6. [RL-Ballast: Ship Ballast Water Path Planning and Clog Prediction via Reinforcement Learning](/202607/12/2607.04906v1-rl-ballast-ship-ballast-water-path-planning-and-clog-prediction-via-reinforcement-learning)  
+   evidence：使用社会力模型进行移动机器人的安全评估
+4. [InternVLA-A1.5: Unifying Understanding, Latent Foresight, and Action for Compositional Generalization](/202607/13/2607.04988v1-internvla-a15-unifying-understanding-latent-foresight-and-action-for-compositional-generalization)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：强化学习用于船舶压载水控制
+   evidence：基于视觉语言模型的机器人操作策略
+5. [MP-MPPI: A Motion Primitive Guided Sampling-Based Optimizer for Model Predictive Control](/202607/13/2607.06123v1-mp-mppi-a-motion-primitive-guided-sampling-based-optimizer-for-model-predictive-control)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：在四旋翼避障导航中测试，增强安全控制探索
+6. [Behavior Foundations for Quadruped Robots: ABot-C0 Technical Report](/202607/13/2607.07370v1-behavior-foundations-for-quadruped-robots-abot-c0-technical-report)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：四足机器人具身智能
+7. [SkillPlug: Unsupervised Skill Mining for Few-Shot Adaptation in Robotic Manipulation](/202607/13/2607.08354v1-skillplug-unsupervised-skill-mining-for-few-shot-adaptation-in-robotic-manipulation)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：面向机器人操作的少样本适应无监督技能挖掘
+8. [SplatCtrl: Perception-Action Coupling via Gaussian Scene Representations and Reactive Robot Control](/202607/13/2607.08948v1-splatctrl-perception-action-coupling-via-gaussian-scene-representations-and-reactive-robot-control)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：使用符号距离函数的无碰撞反应式控制
 
 
 <div class="dpr-home-promo-card">
