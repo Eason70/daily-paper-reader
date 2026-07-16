@@ -1,0 +1,474 @@
+Title: Safe Overtaking for Autonomous Racing Using Hierarchical Optimization and Learning-Based Control
+
+URL Source: https://arxiv.org/pdf/2607.13348v1
+
+Published Time: Thu, 16 Jul 2026 00:31:32 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+> This paper has been accepted for publication at the 2026 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS 2026)
+
+# Safe Overtaking for Autonomous Racing Using Hierarchical Optimization and Learning-Based Control 
+
+Hassan Jardali, Kai Yin, Lantao Liu 
+
+Abstract — Autonomous racing overtaking requires balancing competitive performance with safety under nonlinear vehicle dynamics and real-time constraints. Model Predictive Control (MPC) combined with Control Barrier Functions (CBFs) provides a principled mechanism for certifying forward invariance of a safe set. However, commonly used fixed-decay discrete-time CBF formulations can become overly conservative in interactive racing scenarios, limiting overtaking performance and requiring manual tuning across track conditions. This paper proposes a hierarchical overtaking framework that explicitly separates maneuver-level decision making from safety-certified trajectory control, reducing conservatism while preserving safety. A high-level Mixed-Integer Quadratic Program (MIQP) resolves the combinatorial passing-side selection problem by selecting a feasible overtaking topology, while a nonlinear Frenet-frame MPC enforces vehicle dynamics and safety through embedded discrete-time CBF constraints. This decomposition isolates the combinatorial complexity of maneuver selection from the continuous trajectory optimization. To further mitigate the sensitivity of fixed-decay barrier constraints, a reinforcement learning policy adapts the discrete-time CBF decay parameter online, enabling context-dependent modulation of safety margins without directly controlling vehicle inputs. Simulation and scaled-hardware experiments show that no single fixed decay parameter achieves uniformly strong performance across tracks, whereas the adaptive strategy attains the highest aggregate success rate and consistently strong safety–performance trade-offs without per-track tuning, improving robustness to environment variation while maintaining safety constraint satisfaction in nominal operation. 
+
+I. INTRODUCTION 
+
+# AUTONOMOUS racing has emerged as a premier testbed for pushing the boundaries of robotic planning and control algorithms at the limits of vehicle handling [ 1], [ 2]. Unlike standard autonomous driving, which prioritizes passenger comfort and strict adherence to traffic rules, racing demands that agents operate at the edge of the friction circle to minimize lap times. Overtaking represents a particularly demanding maneuver, requiring a careful balance between two often conflicting objectives: competitiveness and safety. A successful overtake necessitates operating near the vehicle’s dynamic limits while guaranteeing collision avoidance at all times. Excessively conservative strategies for safety preservation often sacrifice track position, whereas insufficiently cautious behavior can lead to failures. From a control-theoretic perspective, safety can be for-malized as the forward invariance of a certified safe set. Control Barrier Functions (CBFs) [ 3] provide a principled 
+
+> Hassan Jardali and Lantao Liu are with Luddy School of Informatics, Computing, and Engineering, Indiana University (emails: hjardali@iu.edu, lantao@iu.edu). Kai Yin is with the Machine Learning Science, Expedia Group, Austin, TX 78758 USA (email: yinkai1000@gmail.com).
+
+Fig. 1: Snapshots of the proposed framework. Left: simulation on the Laguna Seca track. Right: scaled-vehicle hardware demonstration with a virtual (ghost) opponent. The ego vehicle is shown in blue and opponent vehicles in red. The target raceline is depicted in red. The high-level MIQP planner output is illustrated as a dotted light-blue trajectory, and the solid blue curve represents the MPC–CBF predicted trajectory. 
+
+mechanism for enforcing this invariance within optimization-based controllers by imposing state-dependent constraints that guarantee safety over time. When integrated into Model Pre-dictive Control (MPC), CBF constraints enable safety filtering while respecting vehicle dynamics and actuator limits already encoded within the MPC formulation. In practice, many implementations adopt fixed-decay discrete-time CBFs [ 4], where safety is enforced through a one-step contraction condition governed by a constant decay parameter. Intuitively, this decay parameter dictates how aggressively the vehicle is permitted to approach the boundary of the safe set, acting as a tunable buffer for collision avoidance. While computationally convenient, this formulation enforces safety locally at each time step rather than explicitly reasoning over maneuver-level decisions across a planning horizon . Consequently, fixed-decay discrete-time CBF constraints may introduce overly conservative behavior in competitive overtaking scenarios, where dynamically recoverable states can be prematurely excluded due to rigid decay parameter selection and the lack of explicit long-horizon maneuver awareness .To address these limitations, we propose a hierarchical framework that balances three core requirements of multi-vehicle racing: safety , dynamic feasibility , and compet-itive performance . A Mixed-Integer Quadratic Program (MIQP) [ 5] handles high-level discrete overtaking topology selection to achieve competitive performance, while dynamic feasibility is managed by a nonlinear MPC in the Frenet frame, allowing operation near tire friction limits. Safety is enforced through discrete-time CBF constraints embedded within the MPC, certifying forward invariance of a velocity-aware collision-avoidance set under nominal conditions. Finally, to further maintain competitive performance, a Reinforcement Learning (RL) policy adapts the CBF decay parameter online. arXiv:2607.13348v1 [cs.RO] 15 Jul 2026 This adaptation enables context-dependent modulation of safety margins, mitigating conservatism during real-time racing maneuvers. The main contributions of this work include:  
+
+> •
+
+A unified hierarchical architecture combines high-level mixed-integer quadratic programming (MIQP) for discrete overtaking topology selection with low-level MPC–CBF control. The MIQP resolves homotopy decisions (e.g., passing side) to handle non-convexity, while the MPC–CBF layer maintains dynamic feasibility and provides formal safety certification through discrete-time CBF constraints.  
+
+> •
+
+An RL-based adaptation mechanism for the discrete-time CBF decay parameter, introducing context-dependent safety modulation that reduces conservatism while preserving the structure of the safety constraints.  
+
+> •
+
+Simulation results show that adaptive decay achieves the highest aggregate success rate across multiple tracks, improving robustness without manual tuning. Scaled-hardware experiments confirm real-time deployability of the hierarchical framework. The implementation is re-leased as open source to support reproducibility at: github.com/hassanjardali/SOfAR. II. R ELATED WORK 
+
+A. Overtaking and Trajectory Planning Frameworks 
+
+Overtaking in autonomous racing has been addressed through hierarchical, optimization-based, and graph-search planning frameworks. Optimization-based approaches, includ-ing nonlinear MPC formulations, embed opponent models directly within the prediction dynamics to derive overtaking strategies implicitly from the optimal control solution [ 6]. While conceptually unified, such formulations can impose substantial computational demands in multi-agent scenarios. Many methods adopt hierarchical decompositions to im-prove real-time tractability. High-level planners, such as dynamic programming [ 7], [ 8] or spatio-temporal visibility graphs [ 9 ], select feasible passing corridors or maneuver envelopes, which are then enforced as constraints within a lower-level MPC or time-optimal controller. Similarly, multilayer graph-based planners generate discrete trajectory candidates that enable behavioral selection in dynamic racing environments [ 10 ]. Sampling-based and Frenet-frame trajec-tory generation methods [ 11 ], [ 12 ] further support reactive collision avoidance. Despite these diversity of planning strategies, overtaking fundamentally involves discrete maneuver decisions such as selecting the relative passing side or corridor that partition the feasible motion space into distinct topological classes. While many frameworks encode these choices implicitly through corridor selection or trajectory sampling, the underlying combinatorial structure remains an essential component of the problem[7]. 
+
+B. Hierarchical Planning and Mixed-Integer Formulations 
+
+Explicitly modeling this combinatorial structure motivates Mixed-Integer Programming (MIP) formulation [ 13 ], [ 14 ], where discrete maneuver decisions are represented using binary variables. In particular, Mixed-Integer Quardratic Programming (MIQP) enables the integration of discrete decision-making with continuous trajectory optimization within a unified optimal control framework [ 15 ]. However, the computational complexity of mixed-integer formulations grows rapidly with increasing prediction horizons, limiting their direct application in real-time settings [16]. To mitigate this challenge, many approaches adopt hierar-chical planning architectures that decompose the problem into discrete and continuous layers [ 17 ]. In these frameworks, a high-level planner, often implemented as an MIQP, selects a feasible homotopy class or maneuver by resolving discrete interaction decisions among vehicles [ 18 ]. By isolating combi-natorial reasoning from low-level trajectory optimization, the overall computational burden is significantly reduced while preserving structured decision-making capabilities [ 19 ]. A downstream continuous controller subsequently refines and tracks the selected maneuver, ensuring dynamic feasibility, constraint satisfaction, and real-time responsiveness in multi-agent environments. Next we will review a widely established safety-certified control mechanism. 
+
+C. Adaptive Safety Certification and Control Barrier Func-tions 
+
+Control Barrier Functions (CBFs) have emerged as a principled mechanism for enforcing forward invariance of safety sets within optimization-based controllers, including MPC formulations [ 4]. In autonomous racing, CBF constraints have been integrated with trajectory optimization to guarantee collision avoidance while preserving time-optimal behavior [ 20 ]. More recently, learning-based approaches have been explored to mitigate the conservatism introduced by fixed safety margins and manually tuned controller parameters. Reinforcement learning (RL) has been used as a high-level selector to adapt planning cost functions in agile driving scenarios [ 21 ], enabling context-dependent modulation of aggressive and conservative behaviors. In the context of safety-critical control, RL has also been employed to tune objective weights or CBF-related parameters within MPC-CBF architectures, typically through parameterized controllers and bilevel optimization schemes [ 22 ]. These methods aim to balance performance and safety while retaining the forward-invariance structure of CBF constraints. Concurrent efforts investigate learning CBF representations or non-greedy safety filters to improve performance while maintaining formal guarantees [23]. Despite these advances, most existing approaches either adapt cost functions while keeping safety constraints fixed, or tune multiple controller parameters simultaneously, making it difficult to isolate the impact of safety-margin modulation. In contrast, structured adaptation of a single, interpretable discrete-time CBF decay parameter offers a direct mechanism for modulating conservatism while preserving the underlying safety constraint formulation. III. P ROBLEM FORMULATION AND PRELIMINARIES 
+
+We begin by introducing the notation that will be used throughout this paper. Let R denote the set of real numbers and R+ the set of non-negative real numbers. We consider a discrete-time framework where time instances are indexed by k ∈ N, corresponding to continuous time t = kT s with a sampling period Ts > 0. The state of the ego vehicle is denoted by xk ∈ X ⊆ Rn, and the control input by uk ∈ U ⊆ 
+
+Rm, where X and U represent the admissible state and control input spaces, respectively. For a continuously differentiable scalar function h : X → R, the set S is defined as the zero superlevel set: S = {x ∈ X | h(x) ≥ 0}. Throughout this work, ∥ · ∥ denotes the standard Euclidean L2 norm. 
+
+A. Discrete-Time Vehicle Dynamics Model 
+
+We model the ego vehicle as a discrete-time control-affine nonlinear system 
+
+xk+1 = f (xk) + g(xk)uk, (1) where the functions f : X → Rn and g : X → Rn×m
+
+represent the drift dynamics and input matrix, respectively, and are assumed to be smooth. This control-affine structure explicitly separates the uncontrolled system evolution from the control-dependent component and enables the following construction of control barrier function (CBF) constraints that are affine in the control input. The vehicle motion is represented in the Frenet frame relative to the track centerline, which decouples longitudinal progress from lateral deviation and is well suited for racing scenarios on structured tracks. In the Frenet frame, the state vector is defined as xk =[sk, η k, e k, v k, δ k]⊤, where sk denotes longitudinal progress along the reference path, ηk the lateral deviation from the centerline, ek the heading error relative to the path tangent, vk
+
+the longitudinal velocity, and δk the steering angle. The control input is given by uk = [ ak, ˙δk]⊤, where ak is longitudinal acceleration and ˙δk is steering rate. The discrete-time dynamics are obtained by numerically integrating a continuous-time kinematic bicycle model over the sampling interval Ts using a fourth-order Runge–Kutta scheme. The continuous-time bicycle model equations are standard and provided in the Appendix. This modeling choice captures the dominant vehicle kinematics while remaining computationally tractable for optimization-based control. In practice, the vehicle dynamics may be fully nonlinear. The control-affine representation via bicycle model can be obtained via local linearization of the discretized dynamics within each MPC update, which maintains sufficient modeling precision for real-time optimization. 
+
+B. Safe Set Definition 
+
+In the context of autonomous overtaking, safety-critical collision avoidance is formulated through a certified safe set defined as the intersection of superlevel sets associated with each opponent vehicle: 
+
+S =
+
+> No
+
+\
+
+> j=1
+
+Sj , where Sj = {x ∈ X | hj (x) ≥ 0}, (2) with continuously differentiable functions hj : X → R. For notational simplicity, the discrete-time index is omitted. 
+
+Velocity-aware collision avoidance constraints: For each opponent vehicle j, an elliptical safety function is defined as 
+
+hj (x) = 
+
+ s − sj
+
+aj (v)
+
+2
+
++
+
+ η − ηj
+
+b
+
+2
+
+− 1, (3) where (sj , η j ) denotes the predicted opponent position in the Frenet frame. The parameters aj (v) and b define the longitudinal and lateral semi-axes of an elliptical safety boundary centered at the opponent vehicle. The lateral semi-axis b specifies a fixed lateral safety margin, while the longitudinal semi-axis aj (v) scales with relative velocity according to aj (v) = a0 + v2 
+
+> rel
+> 2amin
+
+, where vrel = max(0 , v −vj ).The parameter amin represents the maximum available braking deceleration and captures the longitudinal stopping capability of the ego vehicle under the adopted vehicle dynamics model. This velocity-aware formulation enlarges the longitudinal safety margin at higher closing speeds according to a braking-distance model. Track boundary constraints are enforced separately as state constraints within the MPC formulation. Specifically, 
+
+ηmin ,k ≤ ηk ≤ ηmax ,k , (4) where ηmax ,k and ηmin ,k denote the outer and inner track boundaries at prediction step k along the control horizon. 
+
+C. Discrete-Time Control Barrier Functions 
+
+Forward invariance is a fundamental concept for certifying safety. A set S is said to be forward invariant under the control policy uk = π(xk) if x0 ∈ S implies xk ∈ S for all k ≥ 0. For discrete-time systems, forward invariance of 
+
+S = {x|h(x) ≥ 0} can be imposed by the one-step condition 
+
+h(xk+1 ) ≥ (1 − γ)h(xk), (5) where γ ∈ (0 , 1] is a decay parameter that regulates the allowable decrease of the safety function. Smaller values of 
+
+γ restrict the rate at which h(xk) may decrease, resulting in more conservative behavior and larger safety margins. Larger values of γ relax this restriction, permitting more aggressive trajectories at the cost of reduced safety margins. 
+
+Definition 1 (Discrete-Time Control Barrier Function) . Afunction h : X → R is a discrete-time Control Barrier Function (DCBF) if there exists γ ∈ (0 , 1] such that for all xk ∈ S , there exists a control input uk ∈ U satisfying 
+
+h(f (xk) + g(xk)uk) ≥ (1 − γ)h(xk). (6) When embedded within an MPC framework, this condition is imposed at each prediction step to certify forward invariance of the collision-avoidance set when the barrier constraints are satisfied. In standard DCBF–MPC implementations, γ
+
+is selected as a fixed design parameter, introducing a trade-off between safety conservatism and overtaking performance. In racing scenarios, this fixed-decay selection can be overly restrictive, motivating adaptive modulation of γ.IV. H IERARCHICAL PLANNING AND CONTROL 
+
+FRAMEWORK 
+
+This section presents a hierarchical planning and control framework for real-time execution as shown in Fig. 2. The architecture separates discrete maneuver selection from continuous trajectory optimization. A high-level planner resolves combinatorial overtaking decisions, while a low-level MPC–CBF controller generates safe control inputs. At each control step, ego and opponent states are estimated, transformed into the Frenet frame, and propagated using a constant-velocity model. An RL policy adapts the CBF decay parameter online, enabling context-dependent safety modulation without altering the barrier formulation. Ego and Opponents  
+
+> States Estimation
+> MIQP Planner
+> RL (PASTA)
+> MPC-CBF Car
+> Feedback
+
+Fig. 2: Overview of hierarchical planning and control architecture. 
+
+A. High-Level Overtaking Decision via MIQP 
+
+Overtaking inherently involves discrete maneuver decisions, such as choosing whether to pass an opponent on the left or on the right. These mutually exclusive choices induce distinct feasible motion patterns that cannot be represented by a single convex set of trajectories [ 7]. When incorporated into a nonlinear MPC formulation, collision-avoidance constraints must account for multiple alternative maneuver possibilities, resulting in a non-convex feasible region composed of several disconnected subsets. The decision maker must therefore reason over competing trajectory candidates, giving rise to a fundamentally combinatorial decision structure that can lead to local minima, oscillatory behavior, or infeasibility under real-time constraints. To explicitly address this combinatorial structure, we employ an MIQP to determine the overtaking decision prior to continuous trajectory optimization. The high-level planner solves an MIQP in the Frenet frame to generate a lateral reference trajectory over a coarse horizon. The optimization selects the overtaking maneuver (e.g., pass left or right) and produces a smooth lateral deviation profile relative to the nominal racing line, while longitudinal progress is treated as given. This separation enables the system to plan discrete maneuvers at a slower update rate while executing continuous control commands in real time. Let nq denote the planning horizon length, k ∈ [nq ] ≜
+
+{1, · · · nq } be the planning step, and i ∈ [I] ≜ {1, . . . , I }
+
+index the opponent vehicles. The high-level overtaking planner is formulated as the following MIQP: 
+
+min  
+
+> {dk},{bi}
+> nq
+
+X
+
+> k=0
+
+
+
+∥dk − ηref ,k ∥2
+
++ ∥dk+1 − dk∥2 + ∥dk − dprev  
+
+> k
+
+∥2
+
+(7a) s.t. ηmin ,k ≤ dk ≤ ηmax ,k , ∀k ∈ [nq ], (7b) 
+
+dk ≤ ni 
+
+> obs
+
+− wsafe + M b i + ξk,i , ∀k, i, (7c) 
+
+dk ≥ ni 
+
+> obs
+
++ wsafe − M (1 − bi) − ξk,i , ∀k, i, (7d) 
+
+bi ∈ { 0, 1}, ∀i ∈ [I], (7e) where the decision variable dk represents the planned lateral deviation relative to the nominal racing line ηref ,k , while 
+
+dprev  
+
+> k
+
+denotes the solution obtained at the previous control cycle and serves as a temporal regularization term promoting inter-iteration consistency. Constraints (7b) impose track boundary limits. Collision avoidance with opponent vehicle 
+
+i is encoded via the Big-M constraints (7c) – (7d) , where 
+
+ni 
+
+> obs
+
+denotes the predicted lateral position of opponent i
+
+in the Frenet frame, and M is a sufficiently large constant used to linearize mutually exclusive maneuver constraints under different binary decisions bi ∈ { 0, 1}. The parameter 
+
+wsafe specifies a prescribed lateral safety margin, and ξk,i 
+
+is a slack variable introduced to preserve feasibility in the presence of modeling uncertainty. The binary decision variable 
+
+bi determines the overtaking side, with bi = 1 enforcing one side passing and bi = 0 corresponding to passing on opposite side of the opponent. Binary consistency is enforced across the planning horizon to prevent oscillatory switching between maneuver decisions. The mixed-integer constraints in (7) encode safe overtaking or obstacle avoidance as a geometric partition of the feasible lateral motion space. The feasible set may be written as a union of convex regions S 
+
+> i
+
+Ω( {bi}), where Ω( ·) refers to feasible region depending on the entire set of binary decision variable {bi}. Each assignment {bi} defines a convex quadratic program and a distinct homotopy class of trajectories {di}.Geometrically, the MIQP performs combinatorial selection among trajectory manifolds while maintaining the smoothness objective. If bi ∈ { 0, 1} is relaxed to continuous variable 
+
+bi ∈ [0 , 1] , then the feasible set becomes the convex hull of these regions conv (Ω( {bi})) , where some of the solutions do not correspond to physically realizable maneuvers. Such relaxation may provide a lower bound on the optimal MIQP objective function. The MIQP is viewed as a planner and therefore executed at a lower frequency than the controller, and its solution provides a dynamically consistent lateral reference trajectory for the downstream controller. 
+
+B. Low-Level Control via MPC–DCBF 
+
+The low-level controller tracks the MIQP-generated refer-ence using a nonlinear MPC formulated in the Frenet frame. The discrete-time vehicle dynamics introduced in Section III are enforced together with actuator and state bounds. Let 
+
+{d∗
+
+> k
+
+}nq 
+
+> k=0
+
+denote the optimal lateral offset sequence along with {b∗ 
+
+> i
+
+}Ii=0 determining the passing side from the MIQP. This solution defines the selected overtaking homotopy class and serves as the lateral component of the reference trajectory for the downstream controller. The reference state for the MPC is constructed as 
+
+xref ,k = sref  
+
+> k
+
+, d ∗
+
+> k
+
+, e ref  
+
+> k
+
+, v ref  
+
+> k
+
+, δ ref 
+
+> k
+
+⊤ , (8) where sref  
+
+> k
+
+, eref  
+
+> k
+
+, vref  
+
+> k
+
+, and δref  
+
+> k
+
+are obtained from the nominal racing line or propagated reference trajectory. For MPC, we consider the following finite-horizon optimization problem 
+
+min  
+
+> {uk}
+> nc
+
+X
+
+> k=0
+
+ ∥xk − xref ,k ∥2 
+
+> Q
+
++ ∥uk∥2
+
+> R
+
+ , (9a) 
+
+s.t. xk+1 = f (xk, u k), (9b) 
+
+uk ∈ U , x k ∈ X , (9c) Fig. 3: Effect of the decay parameter γ on the MPC-CBF trajectory evolution over the same temporal window (MIQP disabled). 
+
+where nc is the length of finite horizon, Q and R are standard weighting matrices [ 24 ]. In addition, we consider the following different choices of constraints in Eqn (9). 
+
+a) Direct DCBF Constraints: The discrete-time control barrier condition defined in Section III is imposed at each prediction stage of the MPC horizon. For each opponent vehicle i, the constraint (1 − γ) hi(xk) − hi(xk+1 ) ≤ 0 is enforced using the predicted obstacle state and the one-step vehicle dynamics. In addition to obstacle avoidance enforced via DCBF constraints, track boundary and lateral acceleration limits are imposed as standard state constraints within the same nonlinear program. 
+
+b) Soft DCBF Constraints: Since safety constraints may become temporarily incompatible with input and state bounds within a finite prediction horizon, strict enforcement can lead to infeasibility of the nonlinear program. Therefore, all nonlinear constraints, including DCBF constraints, are implemented as soft constraints. For barrier condition, it means the following 
+
+(1 − γ) hi(xk) − hi(xk+1 ) ≤ εk,i , (10) where εk,i ≥ 0 are slack variables. When all slack variables satisfy εk,i = 0 along the executed trajectory, forward invariance of the collision-avoidance set follows directly from the original condition. Activation of slack variables corresponds to temporary relaxation of strict invariance to preserve recursive feasibility. The relaxation for all constraints are chosen in a way that prioritizes collision avoidance over comfort-related constraints and activates slack only when the nonlinear program would otherwise become infeasible. 
+
+C. Adaptive Safety Modulation via Reinforcement Learning 
+
+The discrete-time CBF decay parameter γ ∈ (0 , 1] regulates the contraction rate of the safety function and directly governs the trade-off between conservative and aggressive behavior. Smaller values of γ enforce stricter safety contraction, yielding larger safety margins, whereas larger values permit more aggressive maneuvers at reduced conservatism, as illustrated in Fig. 3. In competitive racing scenarios, the appropriate safety margin depends on traffic density, relative motion, and local track geometry, rendering fixed decay selection suboptimal. To enable context-dependent safety modulation, we employ a multi-objective reinforcement learning (MORL) framework to adapt the DCBF parameter γ online. Given the environment observation o, which captures the states of both ego and opponent vehicles, the objective is to learn a policy π(o) that selects an action a. In our formulation, the action corresponds to the value of the DCBF parameter γ, allowing the safety margin to adjust according to the interaction context. We adopt the Adaptive Smooth Tchebycheff Attention 
+
+(ASTCH) framework [ 25 ] to learn the policy by balancing conflicting objectives. ASTCH integrates Smooth Tchebycheff scalarization into an on-policy policy-gradient approach based on Proximal Policy Optimization (PPO). This method, referred to as Policy-optimization via Adaptive Smooth Tchebycheff Attention (PASTA) [ 25 ], enables stable learning over non-convex multi-objective trade-offs: 
+
+max  
+
+> θ,ϕ
+
+Eo,a ∼πθk
+
+LCLIP  
+
+> t
+
+(θ) − c1LVF  
+
+> t
+
+(ϕ) + c2S[πθ ]( ot)
+
+(11) where θ and ϕ represent the parameters of the policy and value networks, respectively, k is the index of the optimization iteration, and t denotes the time step within the sampled environment interaction. E(·) denotes the expectation taken over the observations visited and actions sampled by the old policy πθk . LCLIP  
+
+> t
+
+(θ) is the multi-objective clipped surro-gate advantage utilizing the adaptive smoothness controller, 
+
+S[πθ ]( ot) is the entropy bonus of the policy evaluated at observation ot , and c1 and c2 are coefficients weighting the value error and entropy bonus, respectively. More details are provided in [25]. 
+
+Algorithm 1 Hierarchical Overtaking Control                          
+
+> 1: Input: Ego state x, opponent states
+> 2: Transform ego and opponent states to Frenet frame
+> 3: Predict opponent motion over horizon
+> 4: if MIQP update triggered then
+> 5: Solve MIQP Eqn (7) to obtain lateral reference {d∗
+> k}
+> 6: end if
+> 7: Observe okand compute γk←πθ(ok)
+> 8: Solve MPC–CBF Eqn (9) using {d∗
+> k}and γk
+
+The policy is trained offline in simulation and deployed on-line in a receding-horizon manner. It outputs the barrier decay parameter at each control step γ = πθ (o). The observation ok
+
+includes the ego vehicle state, relative opponent configuration, track geometry, and the instantaneous safety margin. The reward is designed to encourage progress while penaliz-ing safety violations, expressed as rk = −wsafe Icol/OOB +
+
+wot Iovertake , where I denotes the indicator function, and 
+
+wsafe > 0 and wot > 0 are scalar coefficients weighting the penalty for collisions or out-of-bounds events and the reward for a successful overtake, respectively. The ASTCH-based formulation [ 25 ] is chosen because the interactive overtaking problem inherently presents a non-convex trade-off space. The discrete, opposing nature of the reward components—where maximizing the probability of a successful overtake strictly conflicts with minimizing the risk of collisions or boundary violations—creates optimization challenges that standard linear scalarization methods may struggle to capture effectively. For comparison, we also evaluated a standard PPO implementation under identical training conditions; however, it exhibited lower success rates and less stable adaptation behavior than the ASTCH-based formulation. The overall hierarchical overtaking control loop is summa-rized in Algorithm 1. At each control loop, the ego vehicle re-ceives state estimates of itself and nearby opponents. Opponent states are transformed into the Frenet frame and propagated over a finite horizon using a constant-velocity prediction model. The high-level mixed-integer quadratic program selects the overtaking homotopy and produces a coarse lateral reference trajectory. The RL policy then evaluates the observation and determines the CBF decay parameter. The reference trajectory and adapted decay parameter are then passed to the nonlinear MPC augmented with DCBF, which solves the resulting optimal control problem. V. EXPERIMENTS AND RESULTS This section details the experimental setup and the simula-tion environment used to validate our proposed framework, followed by a comparative analysis of the results. 
+
+A. Simulation and Training Environment 
+
+A custom Python-based simulation environment was de-veloped to validate the proposed methodology. The simulator employs a nonlinear kinematic bicycle model parameterized to represent the physical characteristics and actuation limits of the Dallara AV-21 autonomous race car. Training and evaluation were conducted across diverse track geometries captured from real-world raceways, including high-speed ovals such as Kentucky Speedway (KS) and Indianapolis Motor Speedway (IMS) and road courses such as Laguna Seca (LS) and Monza. For the adaptive (PASTA) algorithm [ 25 ], the actor and branched critic networks are parameterized as multi-layer perceptrons with two hidden layers of 256 units each. The inputs to these networks consist of the 12-dimensional continuous state ok concatenated with the objective preference weights w. The continuous action space is bounded to output the decay parameter γ ∈ [0 .05 , 1.0] .
+
+B. Evaluation Metrics 
+
+To quantitatively assess the efficacy of the proposed frame-work in balancing safety and competitiveness, the following primary evaluation metrics are defined:  
+
+> •
+
+Success Rate (%): Percentage of episodes that reach the 200 s horizon without collision or track-boundary violation. Episodes terminated early due to safety violations are counted as failures.  
+
+> •
+
+Cumulative Simulation Time (s): Total elapsed time in seconds across all episodes until termination. Early termination due to safety violations reduces the accumulated time, making this a robustness measure.  
+
+> •
+
+Laps Completed: Total number of laps completed by the ego vehicle across all episodes, reflecting sustained forward progress and average racing speed.  
+
+> •
+
+Overtakes: Total number of overtaking events across all episodes. An overtake is detected when the longitudinal distance to an opponent exceeds a predefined threshold, after which the opponent is repositioned ahead. 
+
+C. Detailed overtaking performance 
+
+Figure 4 illustrates a representative maneuver at Turn 2 on LS, where the ego vehicle overtakes three opponents aligned on the raceline. The first vehicle is passed on the right; subsequently, the MIQP layer re-solves the discrete decisions and commits to a left-side corridor to overtake the remaining two vehicles. The transition is triggered by MIQP re-optimization, resulting in consistent lateral commitment and smooth closed-loop tracking. The adaptive decay behavior is analyzed in Fig. 5. The histogram in Fig. 5a reveals a pronounced concentration of γ values around 0.7–0.8, indicating that the controller predominantly operates in a moderately conservative decay regime during nominal driving. Lower γ values occur primarily during close vehicle interactions. Importantly, the distribution shows no persistent saturation at extreme limits, suggesting that the policy does not collapse to boundary values but instead modulates decay within an interior operating range. The distance– γ relationship (Fig. 5b) shows that as inter-vehicle distance decreases, γ tends to decrease and exhibits increased variance. While not strictly monotonic, this trend indicates state-dependent adaptation: as inter-vehicle distance decreases, the policy selects smaller values of γ, thereby enforcing a more restrictive barrier evolution when safety margins shrink. Conversely, for larger separations, γ increases, reflecting less restrictive decay requirements in interaction-free driving conditions. Together, these observations confirm that overtaking be-havior arises from coordinated interaction between discrete homotopy selection (via MIQP), continuous MPC tracking, and smooth, state-dependent decay modulation, rather than from aggressive or discontinuous control actions. 
+
+D. Comparative Evaluation 
+
+We compare fixed-decay DCBF controllers with multi-ple γ ∈ { 0.05 , 0.15 , 0.30 , 0.50 , 0.70 , 0.95 } against the pro-posed adaptive decay strategy. All methods are evaluated under identical closed-loop conditions across four tracks (IMS, KS, LS, Monza) and five opponent pace ratios ρ ∈{0.1, 0.3, 0.5, 0.65 , 0.8}. Except for the decay parameter se-lection (fixed or adaptive) and the randomized initial ego state used to generate independent trials, all controller parameters and simulation settings are held constant. Each (track, ρ) pair is executed for five episodes, yielding 25 episodes per track and configuration. Episodes terminate either at the time horizon or upon safety violation (collision or track-boundary violation). Performance is assessed using success rate, cumulative simulation time, completed laps, and overtakes, as defined above. All metrics are aggregated per track to evaluate robustness and competi-tiveness under varying interaction intensities. Table I summarizes performance across four tracks. The adaptive policy was trained exclusively on LS, while IMS, KS, and Monza are unseen during training. 
+
+a) Track-Dependent Sensitivity of Fixed γ
+
+The optimal fixed decay parameter varies significantly across environments. On IMS, γ = 0 .70 achieves the strongest fixed performance (68% success), whereas LS favors γ = 0 .15 
+
+(68%). On Monza, γ = 0 .50 yields the highest success rate (84%), while KS performs best at γ = 0 .50 (56%). No single fixed γ simultaneously achieves near-optimal success rates across all tracks. Both small ( γ = 0 .05 ) and overly large (γ = 0 .95 ) decay values consistently degrade robustness, confirming strong sensitivity to decay selection. 
+
+b) Generalization Across Tracks 
+
+Despite being trained only on LS, the adaptive controller achieves the highest overall success rate across all tracks (a) (b) (c) (d) (e) (f) 
+
+Fig. 4: Sequential snapshots (a–f) of the overtaking maneuver at Turn 2 on the LS track. Additional simulation videos are available at 
+
+github.com/hassanjardali/SOfAR .
+
+(a) γ distribution. (b) Distance vs. γ.
+
+Fig. 5: Analysis of the policy behavior regarding gamma selection and safety distances. 
+
+TABLE I: Performance comparison across tracks. For each metric, 
+
+bold denotes the best value and underline denotes the second-best value within each track.                                                                                                                                                  
+
+> Track Strategy Success Rate [%] ↑Sim Time [s] ↑Laps ↑Overtakes ↑
+> IMS Adaptive 72.0 4269.1 50.13 796
+> γ= 0 .05 28.0 2877.3 34.18 482
+> γ= 0 .15 44.0 3497.8 41.63 628
+> γ= 0 .30 56.0 3697.0 43.85 619
+> γ= 0 .50 44.0 3359.1 39.79 570
+> γ= 0 .70 68.0 4111.5 47.86 720
+> γ= 0 .95 16.0 1934.3 18.78 411 KS Adaptive 48.0 3572.6 78.06 488
+> γ= 0 .05 12.0 2144.9 46.32 203
+> γ= 0 .15 40.0 3479.4 75.50 413
+> γ= 0 .30 44.0 3678.4 80.53 536
+> γ= 0 .50 56.0 3625.7 78.81 518
+> γ= 0 .70 24.0 2996.1 64.64 436
+> γ= 0 .95 16.0 1938.3 38.88 370 LS Adaptive 76.0 4381.5 31.54 213
+> γ= 0 .05 0.0 1040.3 6.00 20
+> γ= 0 .15 68.0 4206.0 28.21 171
+> γ= 0 .30 64.0 4639.2 31.68 185
+> γ= 0 .50 48.0 3657.4 27.14 162
+> γ= 0 .70 56.0 4061.2 28.22 163
+> γ= 0 .95 12.0 1580.2 12.00 135 Monza Adaptive 72.0 4300.6 25.66 136
+> γ= 0 .05 0.0 965.8 4.88 8
+> γ= 0 .15 60.0 4173.2 26.24 125
+> γ= 0 .30 68.0 4101.9 24.65 122
+> γ= 0 .50 84.0 4482.4 26.80 150
+> γ= 0 .70 80.0 4472.8 25.11 151
+> γ= 0 .95 0.0 692.0 2.43 16
+
+(67% aggregate). It attains 72% on IMS and 76% on LS, outperforming all fixed-γ configurations on those tracks. While not always matching the single best tuned fixed value on Monza and KS, it maintains competitive success rates (72% and 48%, respectively) together with substantial racing activity. From a cross-track perspective, fixed γ values exhibit environment-specific dominance: parameters that perform well on one track may degrade significantly on others. The adaptive controller, by contrast, consistently achieves strong performance without per-track tuning and avoids the catastrophic failures observed for extreme decay selections. 
+
+c) Overall Assessment 
+
+Across all tracks, no single fixed γ achieves uniformly strong performance, confirming pronounced environment-specific sensitivity. The adaptive strategy eliminates manual decay selection and attains the highest aggregate success rate (67 out of 100 episodes) while maintaining competitive lap counts and overtaking activity. These results indicate improved robustness to track variation through context-dependent safety modulation. TABLE II: Performance comparison on the LS track with and without MIQP integration.                              
+
+> Setting Strategy Succ. [%] ↑Time [s] ↑Laps ↑Overt. ↑
+> w/o MIQP Adaptive 20.0 1127.6 8.55 41
+> γ= 0 .510.0 1225.9 9.81 37 w/ MIQP Adaptive 50.0 1449.8 12.78 94
+> γ= 0 .560.0 1633.7 14.59 123
+
+E. Effect of MIQP-Based Homotopy Resolution 
+
+Table II evaluates the impact of removing the MIQP overtaking layer on the LS track. In both settings, the MPC and DCBF formulations are identical. Eliminating the MIQP layer leads to substantial degradation in both safety and racing performance for both strategies. Success rates drop markedly (Adaptive: 50% →20%, γ = 0 .5:60% →10%), accompanied by reduced simulation time and overtaking activity. This consistent performance loss across both static and adaptive decay strategies implies that the failure mode is structural rather than parameter-dependent. Without explicit homotopy selection, the downstream continuous MPC is forced to resolve discrete side-selection decisions within a non-convex collision-avoidance region. It frequently traps the solver in local minima, causing oscillatory lateral commitments and eventual safety violations. By enforcing a stable, low-frequency overtaking decision sequence, the MIQP layer successfully improves the closed-loop robustness of the continuous tracking controller. These results confirm that the proposed hierarchical framework is a critical prerequisite for reliable multi-agent autonomous racing. 
+
+F. Computational Performance 
+
+Experiments were conducted on an Intel i7-12700H CPU with 16 GB RAM. As shown in Table III, the MPC requires 
+
+1.60 ± 0.34 ,ms per iteration, the MIQP module incurs 5.49 ±
+
+1.73 ,ms, and the RL policy inference requires 0.82 ± 0.12 ,ms. The overall latency remains below a 20 ms control cycle (50 Hz), confirming real-time feasibility. MIQP operates at a lower frequency and does not affect the MPC loop. TABLE III: Computational Latency ( mean ± std in ms). 
+
+MPC MIQP RL 
+
+1.60 ± 0.34 5.49 ± 1.73 0.82 ± 0.12 G. Hardware Demonstration 
+
+To demonstrate real-world deployability beyond simulation, we conducted hardware experiments (see Fig. 1) on an F1TENTH platform [ 26 ] using a fixed decay parameter γ.A virtual opponent was used to reproduce interactive over-taking scenarios, enabling evaluation of the full hierarchical framework—including MIQP planning and MPC–CBF con-trol—under real sensing, actuation, and onboard computation constraints. Due to limited indoor track space and to ensure repeatable testing, experiments were performed with a single physical vehicle. A video of the hardware experiments is available at: github.com/hassanjardali/SOfAR .VI. C ONCLUSION 
+
+This paper presented a hierarchical framework for safe overtaking in multi-vehicle autonomous racing, integrating MIQP-based homotopy resolution, Frenet-frame nonlinear MPC with discrete-time CBF constraints, and an RL policy that adapts the decay parameter γ online. Empirical results across four tracks confirm that no single fixed decay performs reliably across environments, whereas adaptive modulation of 
+
+γ achieves the highest aggregate success rate (67%) without per-track tuning and generalizes beyond its LS training track to unseen configurations. Ablation studies underscore the importance of hierarchical decomposition: removing the MIQP layer substantially degrades performance by forcing the MPC to resolve non-convex side-selection decisions. Computational profiling confirms real-time feasibility at 50 Hz, and scaled hardware experiments demonstrate deployability under real sensing and actuation constraints. Several limitations remain. Safety guarantees rely on inactive slack variables in the soft DCBF formulation, and dense interactions may temporarily reduce safety margins. The constant-velocity opponent model and weaker general-ization to high-speed oval tracks highlight opportunities for broader training and richer interaction modeling. Finally, the MIQP–MPC decoupling does not ensure global optimality and remains sensitive to baseline parameter selection. Future work will address these aspects toward full-scale autonomous racing deployment. APPENDIX 
+
+The bicycle model we applied has the following form 
+
+˙s = v cos( e + β)1 − κ(s) n , ˙n = v sin( e + β),
+
+˙e = vL cos β tan δ − κ(s) ˙ s, ˙v = a, ˙δ = ω, 
+
+(12) where κ(s) denotes the curvature of the reference path at longitudinal position s, and L represents the vehicle wheelbase, with side-slip angle β = arctan   lr 
+
+> L
+
+tan δ.ACKNOWLEDGMENT 
+
+This manuscript was refined with the assistance of ChatGPT, which was used to improve clarity, grammar, and overall presentation. REFERENCES [1] “Indy autonomous challenge,” www.indyautonomouschallenge.com/. [2] “A2rl autonomous car race,” https://a2rl.io/autonomous-car-race. [3] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada, “Control barrier functions: Theory and applications,” in 
+
+Proc. European Control Conf. (ECC) , 2019, pp. 3420–3431. [4] J. Zeng, B. Zhang, and K. Sreenath, “Safety-critical model predictive control with discrete-time control barrier function,” in Proc. ACC , 2021, pp. 3882–3889. [5] L. A. Wolsey, “Mixed integer programming,” Wiley Encyclopedia of Computer Science and Engineering , pp. 1–10, 2007. [6] A. Buyval, A. Gabdulin, R. Mustafin, and I. Shimchik, “Deriving overtaking strategy from nonlinear model predictive control for a race car,” in Proc. IEEE/RSJ IROS , 2017, pp. 2623–2628. [7] A. Liniger, A. Domahidi, and M. Morari, “Optimization-based au-tonomous racing of 1:43 scale rc cars,” Optim. Control Appl. Meth. ,vol. 36, no. 5, pp. 628–647, 2015. [8] A. Toschi, F. Prignoli, and M. Bertogna, “Modular decision-making and drivable areas for multi-agent autonomous racing,” in Proc. IEEE/RSJ IROS , 2025, pp. 12 435–12 441. [9] G. Jank, M. Rowold, and B. Lohmann, “Hierarchical time-optimal planning for multi-vehicle racing,” in Proc. ITSC , 2023, pp. 2064–2069. [10] T. Stahl, A. Wischnewski, J. Betz, and M. Lienkamp, “Multilayer graph-based trajectory planning for race vehicles in dynamic scenarios,” in 
+
+Proc. IEEE ITSC , 2019, pp. 3149–3154. [11] M. Werling, J. Ziegler, S. Kammel, and S. Thrun, “Optimal trajectory generation for dynamic street scenarios in a frenet frame,” in Proc. IEEE ICRA , 2010, pp. 987–993. [12] A. Raji, A. Liniger, A. Giove, A. Toschi, N. Musiu, D. Morra, M. Verucchi, D. Caporale, and M. Bertogna, “Motion planning and control for multi vehicle autonomous racing at high speeds,” in Proc. IEEE ITSC , 2022, pp. 2775–2782. [13] R. A. Dollar and A. Vahidi, “Multilane automated driving with optimal control and mixed-integer programming,” IEEE Transactions on Control Systems Technology , vol. 29, no. 6, pp. 2561–2574, 2021. [14] C. Miller, C. Pek, and M. Althoff, “Efficient mixed-integer programming for longitudinal and lateral motion planning of autonomous vehicles,” in 2018 IEEE Intelligent Vehicles Symposium (IV) . IEEE, 2018, pp. 1954–1961. [15] D. Ioan, I. Prodan, S. Olaru, F. Stoican, and S.-I. Niculescu, “Mixed-integer programming in motion planning,” Annual Reviews in Control ,vol. 51, pp. 65–87, 2021. [16] A. D. Pia, S. S. Dey, and M. Molinaro, “Mixed-integer quadratic programming is in np,” Mathematical Programming , vol. 162, no. 1, pp. 225–240, 2017. [17] A. L. Gratzer, M. M. Broger, A. Schirrer, and S. Jakubek, “Two-layer mpc architecture for efficient mixed-integer-informed obstacle avoidance in real-time,” IEEE Trans. Intell. Transp. Syst. , vol. 25, no. 10, pp. 13 767–13 784, 2024. [18] J. Park, S. Karumanchi, and K. Iagnemma, “Homotopy-based divide-and-conquer strategy for optimal trajectory planning via mixed-integer programming,” IEEE Trans. Robot. , vol. 31, pp. 1101–1115, 2015. [19] R. Quirynen, S. Safaoui, and S. Di Cairano, “Real-time mixed-integer quadratic programming for vehicle decision-making and motion planning,” IEEE Transactions on Control Systems Technology , vol. 33, no. 1, pp. 77–91, 2024. [20] S. He, J. Zeng, and K. Sreenath, “Autonomous racing with multiple vehicles using a parallelized optimization with safety guarantee using control barrier functions,” in Proc. IEEE ICRA , 2022, pp. 3444–3451. [21] A. Langmann, Y. Tokarev, M. Piccinini, K. Moller, and J. Betz, “Reinforcement learning-based dynamic adaptation for sampling-based motion planning in agile autonomous driving,” arXiv:2510.10567 , 2025. [22] E. Sabouni, H. S. Ahmad, V. Giammarino, C. G. Cassandras, I. C. Paschalidis, and W. Li, “Reinforcement learning-based receding horizon control using adaptive control barrier functions for safety-critical systems,” in Proc. IEEE CDC , 2024, pp. 401–406. [23] M. Wijayatunga, N. Wallace, S. Sukkarieh, and R. Armellin, “Learning safety-guaranteed, non-greedy control barrier functions using reinforce-ment learning,” arXiv preprint arXiv:2602.00366 , 2026. [24] D. Q. Mayne, “Model predictive control: Recent developments and future promise,” Automatica , vol. 50, no. 12, pp. 2967–2986, 2014. [25] A. Murillo-Gonzalez, M. Ali, and L. Liu, “Adaptive smooth tchebycheff attention for multi-objective policy optimization,” arXiv preprint arXiv:2605.12771. To appear in the Proceedings of Robotics: Science and Systems (RSS) , 2026. [26] M. O’Kelly, H. Zheng, D. Karthik, and R. Mangharam, “F1tenth: An open-source evaluation environment for continuous control and reinforcement learning,” Proceedings of Machine Learning Research ,vol. 123, 2020.
