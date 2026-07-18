@@ -7,78 +7,73 @@
 
 ## 每次日报
 - 最新运行日期：2026-07-09 ~ 2026-07-18
-- 运行时间：2026-07-18 06:32:05 UTC
+- 运行时间：2026-07-18 08:01:43 UTC
 - 运行状态：成功
-- 本次总论文数：19
+- 本次总论文数：18
 - 精读区：7
-- 速读区：12
+- 速读区：11
 
 ### 今日简报（AI）
-1) 本期聚焦机器人安全控制，精读两篇满分论文均涉及约束与风险机制。  
-2) 最值得研究加速度CBF-QP约束的实际部署效果，以及随机有限集上的风险感知信念控制屏障。  
-3) 建议优先精读这两篇满分论文，并关注VLM驱动体安全基准测试的实践案例。
+今日聚焦多智能体博弈与零和游戏优化，精读两篇高分论文，速读三篇相关进展。最值得关注的是离线纳什求解器结合在线树搜索在多智能体图博弈中的应用，以及零和游戏中隐式中点梯度下降法的快速收敛性。下一步可深入了解这些算法在复杂博弈或实际系统（如市场稳定、量子设备调优）中的迁移潜力。
 - 详情：[/20260709-20260718/README](/20260709-20260718/README)
 
 ### 精读区论文标签
-1. [Safe Execution of RL Policies Via Acceleration-Based CBF-QP Constraint Enforcement for Real-World Robotic Deployments](/20260709-20260718/2607.14488v1-safe-execution-of-rl-policies-via-acceleration-based-cbf-qp-constraint-enforcement-for-real-world-robotic-deployments)  
-   标签：评分：10.0/10、query:safe-rl-cbf
-   evidence：基于加速度的CBF-QP安全滤波器用于强化学习策略
-2. [Risk-Aware Belief Control Barrier Functions over Random Finite Sets](/20260709-20260718/2607.15016v1-risk-aware-belief-control-barrier-functions-over-random-finite-sets)  
-   标签：评分：10.0/10、query:safe-rl-cbf
-   evidence：风险感知信念控制屏障函数用于机器人安全
-3. [Exploratory, Communicative, and Deployable: Vision-Driven Embodied Agents for Open-World Mobile Manipulation](/20260709-20260718/2607.13653v1-exploratory-communicative-and-deployable-vision-driven-embodied-agents-for-open-world-mobile-manipulation)  
-   标签：评分：9.0/10、query:ocean-robot
-   evidence：具身智能体，移动操作，强化学习
-4. [Conditional Invertible Neural Networks for Data-Driven UAV Control: A 2-D Proof of Concept](/20260709-20260718/2607.13703v1-conditional-invertible-neural-networks-for-data-driven-uav-control-a-2-d-proof-of-concept)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：条件可逆神经网络用于无人机控制
-5. [Task-Oriented Sensing and Covert Transmissions for Collaborative Multi-AUV Systems](/20260709-20260718/2607.13880v1-task-oriented-sensing-and-covert-transmissions-for-collaborative-multi-auv-systems)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：多AUV协同控制与隐蔽通信
-6. [RxBrain: Embodied Cognition Foundation Model with Joint Language-Visual Reasoning and Imagination](/20260709-20260718/2607.14187v1-rxbrain-embodied-cognition-foundation-model-with-joint-language-visual-reasoning-and-imagination)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：具身认知基础模型，结合语言-视觉推理与想象
-7. [Learning Agile Navigation in Crowded Environments for Quadruped Robots](/20260709-20260718/2607.15036v1-learning-agile-navigation-in-crowded-environments-for-quadruped-robots)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：结合速度障碍法和学习的敏捷安全导航
+1. [Offline Nash Solvers Meet Online Tree Search in Multi-Agent Games on Graphs](/20260709-20260718/2607.08892v1-offline-nash-solvers-meet-online-tree-search-in-multi-agent-games-on-graphs)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：多智能体追逃博弈纳什均衡混合离线在线方法
+2. [Implicit Midpoint Gradient Descent: Fast and Learning rate free convergence for Zero-Sum Games](/20260709-20260718/2607.09950v1-implicit-midpoint-gradient-descent-fast-and-learning-rate-free-convergence-for-zero-sum-games)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：零和博弈与对抗优化
+3. [Beyond Bayesian Nash: Learning Minimax-Regret Equilibria for Adversarial Team Games under Asymmetric Information](/20260709-20260718/2607.09993v1-beyond-bayesian-nash-learning-minimax-regret-equilibria-for-adversarial-team-games-under-asymmetric-information)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：对抗团队博弈，最小最大遗憾均衡，非对称信息
+4. [Capture, Shield, or Neutralize: Engagement-Aware Pursuit-Evasion](/20260709-20260718/2607.10986v1-capture-shield-or-neutralize-engagement-aware-pursuit-evasion)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：使用零和滚动时域MPC和CBF安全滤波器的追逃博弈
+5. [Multi-Agent LLMs Fail to Explore Each Other](/20260709-20260718/2607.11250v1-multi-agent-llms-fail-to-explore-each-other)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：多智能体LLM探索，部分可观察随机博弈建模
+6. [Reproducing the k-copwin Algorithm: Theory vs. Implementation](/20260709-20260718/2607.13271v1-reproducing-the-k-copwin-algorithm-theory-vs-implementation)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：重现警察与强盗追逃博弈的k-copwin算法
+7. [PAC Learning in Turn-Based Stochastic Games with Reachability Objectives: A Decentralized Private Approach via Expected Conditional Distance](/20260709-20260718/2607.14877v1-pac-learning-in-turn-based-stochastic-games-with-reachability-objectives-a-decentralized-private-approach-via-expected-conditional-distance)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：回合制随机博弈，对抗性玩家与可达性目标
 
 ### 速读区论文标签
-1. [SafeRelBench: A Spatial-Relation-Aware Benchmark for Process-Level Safety in VLM-Driven Embodied Agents](/20260709-20260718/2607.14543v1-saferelbench-a-spatial-relation-aware-benchmark-for-process-level-safety-in-vlm-driven-embodied-agents)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：面向VLM驱动具身智能体的安全基准
-2. [Learning-based Homothetic Tube MPC with Non-Asymptotic Guarantees](/20260709-20260718/2607.12343v1-learning-based-homothetic-tube-mpc-with-non-asymptotic-guarantees)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：基于学习的MPC具有鲁棒约束满足和稳定性保证
-3. [Knowledge- and Gradient-Guided Reinforcement Learning for Parametrized Action Markov Decision Processes](/20260709-20260718/2607.12924v1-knowledge--and-gradient-guided-reinforcement-learning-for-parametrized-action-markov-decision-processes)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：知识与梯度引导的强化学习用于参数化动作MDP
-4. [Learning Safe Agent Behaviour from Human Preferences and Justifications via World Models](/20260709-20260718/2607.13172v1-learning-safe-agent-behaviour-from-human-preferences-and-justifications-via-world-models)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：利用人类偏好和世界模型进行安全智能体训练
-5. [Distributionally Robust and Safe Imitation Learning](/20260709-20260718/2607.13436v1-distributionally-robust-and-safe-imitation-learning)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：具有安全约束的分布鲁棒和安全模仿学习
-6. [Flow-aware Optimal Navigation in Unsteady Flows through Reinforcement Learning](/20260709-20260718/2607.13553v1-flow-aware-optimal-navigation-in-unsteady-flows-through-reinforcement-learning)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：使用强化学习在非稳态流场中导航，与水下航行器相关
-7. [Design and Control of the "QuadBoat": A Quadruped Surface Vehicle for Drowning Rescue](/20260709-20260718/2607.13633v1-design-and-control-of-the-quadboat-a-quadruped-surface-vehicle-for-drowning-rescue)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：无人艇设计与控制
-8. [Learning Robust Execution in Robotic Manipulation with Agentic Reinforcement Learning](/20260709-20260718/2607.13818v1-learning-robust-execution-in-robotic-manipulation-with-agentic-reinforcement-learning)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：基于智能体强化学习的鲁棒机器人操作
-9. [Motion Planning with Model-Based Diffusion via Constraint Optimization and Adaptive Scheduling](/20260709-20260718/2607.14455v1-motion-planning-with-model-based-diffusion-via-constraint-optimization-and-adaptive-scheduling)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：基于模型的扩散运动规划，满足安全约束
-10. [Shortcut Trajectory Planning for Efficient Offline Reinforcement Learning](/20260709-20260718/2607.09336v1-shortcut-trajectory-planning-for-efficient-offline-reinforcement-learning)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：基于捷径模型的离线强化学习轨迹规划器
-11. [Exact Solutions to a Class of Constrained Optimal Control Problems via Lossless Convexification for Digital Control](/20260709-20260718/2607.12109v1-exact-solutions-to-a-class-of-constrained-optimal-control-problems-via-lossless-convexification-for-digital-control)  
-   标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：通过凸化处理约束最优控制实现安全控制
-12. [Knowledge- and Gradient-Guided Reinforcement Learning for Parametrized Action Markov Decision Processes](/20260709-20260718/2607.12924v2-knowledge--and-gradient-guided-reinforcement-learning-for-parametrized-action-markov-decision-processes)  
-   标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：知识引导的强化学习，融入安全约束
+1. [Provably Optimal Learning Algorithms for Assistance Games](/20260709-20260718/2607.08012v1-provably-optimal-learning-algorithms-for-assistance-games)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：合作辅助博弈与最优学习
+2. [Formal Mechanisms for Market Stability in Self-Interested Agent Societies: A Marketplace Simulation Study](/20260709-20260718/2607.08652v1-formal-mechanisms-for-market-stability-in-self-interested-agent-societies-a-marketplace-simulation-study)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：基于LLM智能体的多智能体市场仿真，研究对抗攻击下的稳定性机制
+3. [Action-Factored Multi-Agent Reinforcement Learning for Scalable Quantum Device Tuning](/20260709-20260718/2607.09422v1-action-factored-multi-agent-reinforcement-learning-for-scalable-quantum-device-tuning)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：合作多智能体强化学习与动作因子分解
+4. [World Models as Adversaries: Multi-Agent Self-Play Fine-Tuning for Robust Motion Planning](/20260709-20260718/2607.10630v1-world-models-as-adversaries-multi-agent-self-play-fine-tuning-for-robust-motion-planning)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：多智能体对抗自博弈用于鲁棒运动规划
+5. [A Distributionally Robust Multi-agent Reinforcement Learning Framework for Intelligent Intersection Control](/20260709-20260718/2607.09899v1-a-distributionally-robust-multi-agent-reinforcement-learning-framework-for-intelligent-intersection-control)  
+   标签：评分：7.0/10、query:multi-agent
+   evidence：通过上下文赌博机最坏情况估计器生成对抗性需求混合
+6. [Runtime Safety Filtering for Learned Small UAS Separation Policies under GNSS Degradation](/20260709-20260718/2607.10014v1-runtime-safety-filtering-for-learned-small-uas-separation-policies-under-gnss-degradation)  
+   标签：评分：7.0/10、query:multi-agent
+   evidence：对抗性GNSS退化下的多智能体分离安全
+7. [Auditing Belief-Conditioned LLM Agents in Hidden-Information Social Deduction Games](/20260709-20260718/2607.10814v1-auditing-belief-conditioned-llm-agents-in-hidden-information-social-deduction-games)  
+   标签：评分：7.0/10、query:multi-agent
+   evidence：隐藏信息多智能体游戏（狼人杀）中的信念状态审计
+8. [LOGOS: A Living Logic for AI Agent Teams That Evolve With Humans](/20260709-20260718/2607.10878v1-logos-a-living-logic-for-ai-agent-teams-that-evolve-with-humans)  
+   标签：评分：7.0/10、query:multi-agent
+   evidence：多智能体团队治理与自演化层
+9. [ARCANA: A Reflective Multi-Agent Program Synthesis Framework for ARC-AGI-2 Reasoning](/20260709-20260718/2607.09059v1-arcana-a-reflective-multi-agent-program-synthesis-framework-for-arc-agi-2-reasoning)  
+   标签：评分：6.0/10、query:multi-agent
+   evidence：协作式多智能体程序合成框架
+10. [Dec-MARVEL: Decentralized Multi-Agent Exploration without Communication under Budget Constraints](/20260709-20260718/2607.09060v2-dec-marvel-decentralized-multi-agent-exploration-without-communication-under-budget-constraints)  
+   标签：评分：6.0/10、query:multi-agent
+   evidence：无通信的分散式多无人机探索，利用间接观测进行协调
+11. [Plug-and-Play Reweighting for Resilient Collaborative Decision-Making in Connected Autonomous Driving](/20260709-20260718/2607.10037v1-plug-and-play-reweighting-for-resilient-collaborative-decision-making-in-connected-autonomous-driving)  
+   标签：评分：6.0/10、query:multi-agent
+   evidence：弹性协作决策，多机器人系统，对抗鲁棒性
 
 
 <div class="dpr-home-promo-card">
