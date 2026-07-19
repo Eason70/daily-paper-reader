@@ -1,0 +1,1183 @@
+Title: Real-Time Rulebook-Aware Nonlinear MPC for Autonomous Driving with Priority-Biased Tiered Slacks
+
+URL Source: https://arxiv.org/pdf/2607.10975v1
+
+Published Time: Tue, 14 Jul 2026 02:08:35 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# Real-Time Rulebook-Aware Nonlinear MPC for Autonomous Driving with Priority-Biased Tiered Slacks ⋆
+
+Hadi Hajieghrary a, Benedikt Walter a, Chaitanya Shinde a, Paul Schmitt b, Miguel Hurtado a  
+
+> aTORC Robotics LLC, an independent subsidiary of Daimler Truck AG, USA
+> bReynolds &Moore and MassRobotics, USA
+
+Abstract 
+
+Autonomous-vehicle motion planners must resolve conflicts among safety, regulation, comfort, and e ffi ciency in real time while exposing those decisions for audit. We present W-SQP, a weighted tiered-slack nonlinear model predictive controller (NMPC) that compiles nine driving-rule families into a four-tier shared-slack nonlinear program solved online with CasADi and IPOPT; the name denotes the weighted quadratic slack penalty, not a sequential-quadratic-programming solver. Strongly separated tier penalties bias residual violations toward lower-priority rules while leaving actuation bounds hard. The controller replans from its executed state at 10 Hz and records per-rule residuals on every cycle. A 90 ms solver-time limit returns an anytime iterate that is projected through the vehicle dynamics before execution; median and maximum observed wall-clock solve times were 28 and 104 ms. We evaluate W-SQP in closed loop on 150 Waymo Open Motion Dataset scenarios in Waymax against reactive and proposal-and-select baselines, and introduce a log-independent protocol that separates safety and regulatory compliance from resemblance to the recorded human trajectory. Under this protocol, W-SQP shows no systematic group-level deficit relative to expert replay on the log-independent safety and regulatory rules, with several localized regressions in the hardest, highest-divergence scenarios. The results characterize W-SQP as an auditable, priority-biased, anytime-capable NMPC prototype rather than a hard-real-time or formally safe controller. 
+
+Keywords: Model predictive control, Autonomous driving, Motion planning, Rulebooks, Real-time optimization, Constraint handling 
+
+1. Introduction 
+
+We are interested in motion planners for autonomous driving that do more than avoid collisions and reach a goal: planners that resolve a priority-ordered rulebook—safety before regulatory compliance, comfort, and e ffi ciency—at the vehicle’s control rate. Such conflicts are routine: a vehicle may briefly cross a lane boundary to pass a stopped obstacle, and braking early for comfort can disrupt following tra ffi c. Planners must also be auditable: after an objective conflict, an engineer should be able to identify which rule was relaxed and by how much (Censi et al., 2019; Collin et al., 2020). These requirements are di ffi cult to combine. Lexicographic schemes make priorities explicit, and cascaded strict-priority quadratic programs reach kilohertz rates in whole-body control (Kanoun et al., 2011; Escande et al., 2014); however, when applied to nonconvex driving NMPC,       
+
+> ⋆This paper represents research activities conducted within TORC Robotics LLC. It does not describe any production system, does not constitute the safety case for any Daimler Truck AG product or development program, and has not been reviewed by Daimler Truck AG for regulatory compliance or product liability purposes. The research was conducted using public benchmark data and does not reflect the proprietary safety architecture of any deployed or in-development TORC Robotics or Daimler Truck product.
+> Email addresses: Hadi.Hajieghrary@Torc.ai (Hadi Hajieghrary),
+> Benedikt.Walter@Torc.ai (Benedikt Walter),
+> Chaitanya.Shinde@Torc.ai (Chaitanya Shinde),
+> pauls@massrobotics.org (Paul Schmitt), Miguel.Hurtado@Torc.ai
+> (Miguel Hurtado)
+
+a sequential formulation requires multiple nonlinear-program solves and tier-freezing at every cycle, increasing latency and disrupting warm starts. Learned planners scale well but expose limited per-rule structure for audit (Dauner et al., 2023; Cheng et al., 2023, 2024), whereas conventional penalty stacks do not directly reveal how conflicts were resolved. 
+
+W-SQP.. Our primary contribution is W-SQP , a weighted soft-constrained quadratic-penalty NMPC, also referred to as tiered-slack NMPC. W-SQP compiles nine rule families into a four-tier shared-slack nonlinear program built in CasADi and solved with IPOPT (Andersson et al., 2019; Wächter and Biegler, 2006). Strongly separated penalties bias residual violations toward com-fort and e ffi ciency and away from safety and regulatory rules, while physical actuation bounds remain hard. This scalar penalty provides a priority bias, not lexicographic priority preservation (Sec. 3). W-SQP replans from its executed state at 10 Hz; under a 90 ms solver-time limit, IPOPT returns its best iterate, which is projected through the dynamics before execution. Each cycle also records normalized per-rule residuals for audit. 
+
+Evaluating a non-imitative controller.. Because W-SQP plans from its executed state, it may select a valid path that di ff ers from the recorded human trajectory. Closed-loop benchmarks evaluate executed states against reactive agents (Caesar et al., 2021; Gulino et al., 2023), but some catalogues also include path-tracking or route-adherence rules defined relative to the  
+
+> Preprint submitted to Control Engineering Practice July 14, 2026 arXiv:2607.10975v1 [cs.RO] 13 Jul 2026
+
+human log. Such rules measure imitation as well as driving quality, and aggregating them with physical and regulatory rules conflates “drives like the recorded human” with “drives well”— a form of proxy failure related to Goodhart’s law (Manheim and Garrabrant, 2018). As a supporting contribution, Section 5 classifies metrics by their referenced state and decomposes the aggregate deficit into log-independent compliance and an imita-tion premium. Taken together, two gaps emerge: a planning formulation that makes the resolution of competing priorities explicit and auditable while remaining computationally viable at the control rate, and an evaluation methodology that measures driving qual-ity without rewarding resemblance to a single recorded trajectory. In this work, we address both. 
+
+Closed-loop study.. We evaluate W-SQP on 150 WOMD sce-narios in Waymax (Gulino et al., 2023; Ettinger et al., 2021) against reactive and proposal-and-select baselines. Across the sixteen log-independent safety and regulatory rules, W-SQP has a mean di ff erence of −0.04 pp relative to expert replay, with no systematic group-level deficit. The two log-coupled rules account for a much larger mean di ff erence of −10 .1 pp ; Cohen’s 
+
+d = −0.62 describes the contrast between these groups. This aggregate result does not imply per-rule parity: non-traversable-surface, speed-limit, and drivable-surface compliance decrease by 2 .9, 2 .3, and 2 .1 pp , respectively, primarily in high-divergence scenarios (Table 3). The contributions are: 
+
+• W-SQP control architecture. A rulebook-aware NMPC that maps nine rule families to four shared-slack tiers, retains hard actuation bounds, and logs normalized per-rule residuals every cycle (Sec. 3). 
+
+• Real-time and anytime characterization. An analysis of NLP size, sparsity, and solver-time limits: 28 ms median and 104 ms maximum observed wall-clock time, with dynamics projection of the anytime iterate (Sec. 4). 
+
+• Log-independent evaluation protocol. A referenced-state taxonomy and imitation-premium decomposition separating driving quality from resemblance to a logged trajectory (Sec. 5). 
+
+• Closed-loop WOMD evaluation. A 150-scenario com-parison with reactive and proposal-and-select baselines, with robustness controls and separate reporting of local-ized safety regressions (Sections 6 and 7). The remainder of the paper is organized as follows. Section 2 situates W-SQP within rule-aware planning, closed-loop bench-marking, and metric construction. Section 3 presents the con-troller, Section 4 its real-time characterization, and Section 5 the log-independent evaluation protocol. Sections 6 and 7 present the closed-loop study, Section 8 discusses practical implications and limitations, and Section 9 concludes. 
+
+2. Related Work 
+
+Our work sits at the intersection of rule-aware planning and control, closed-loop benchmarking, and compliance-metric con-struction. We first review the benchmarking literature that mo-tivates the fair-evaluation protocol, then situate W-SQP within rule-aware planning. 
+
+2.1. Closed-loop benchmarking and its metrics 
+
+Closed-loop evaluation is now standard because open-loop log matching cannot capture feedback or interaction (Caesar et al., 2021; Dauner et al., 2023). nuPlan provides a large-scale planner benchmark with simulation interfaces (Caesar et al., 2021), and Waymax supports e ffi cient JAX-based closed-loop rollouts on WOMD scenarios (Gulino et al., 2023; Et-tinger et al., 2021). These ecosystems standardize planner roll-out, but a bespoke scoring catalog may still combine collision, progress, comfort, and trajectory-matching terms without distin-guishing driving quality from resemblance to the logged human. PDM (Dauner et al., 2023) demonstrates the limitations of open-loop scores; our complementary concern is that log-alignment terms reintroduce an imitation bias even within closed-loop eval-uation. 
+
+2.2. Agent realism vs. metric construction 
+
+The closest recent work studies how the reactive agents in the simulator a ff ect benchmark outcomes. Hagedorn et al. (2025) replace IDM with a learned reactive policy across many nu-Plan planners and find that IDM-based simulation overestimates planning performance, with planner-dependent score declines and ranking shifts; Peng et al. (2025) introduce nuPlan-R with di ff usion-based reactive agents and observe that learning-based planners look comparatively better under realism. Both vary the 
+
+agent-realism axis and report aggregate-level e ff ects. We vary a di ff erent axis— metric construction —and isolate the e ff ect per rule: a specific, identifiable subset of rules (log-alignment prox-ies) is structurally biased against non-imitative planners, the bias is present even under plain IDM agents, and it can be removed without changing the simulator. Our finding thus partially ex-plains the score shifts they report rather than competing with them: as agents become more reactive the human log becomes less followable, and any log-coupled sub-metric penalizes that divergence regardless of driving quality. 
+
+2.3. Goodhart, the imitation gap, and training–evaluation mis-match 
+
+Treating a proxy as a target is the classic setting of Good-hart’s law (Manheim and Garrabrant, 2018): once an imitation surrogate is optimized or scored as if it were the objective, it stops measuring the objective. Log-alignment rules are exactly such surrogates—an expert-replay baseline maximizes them by definition—so aggregating them with physical-compliance rules conflates “drives like the logged human” with “drives well.” This issue is related to, but distinct from, the imitation gap ,which can denote an expert–learner discrepancy caused by dif-ferent observability (Weihs et al., 2021) or, in driving, a discrep-ancy between planned motion and its realization by a tracker 2and vehicle dynamics (Cheng et al., 2023); neither definition concerns scoring a valid alternative trajectory against a single logged demonstration. IGDrivSim (Grislain et al., 2025) reports log divergence separately from overlap and o ff -road metrics but studies behavior-cloning policies rather than isolating reference dependence per rule. CLOVER (Ang et al., 2026) identifies a related training–evaluation mismatch and uses it to improve trajectory generation; we instead analyze the metric construc-tion itself. Causal confusion in imitation learning (de Haan et al., 2019) is also distinct: it concerns what a policy learns, whereas our analysis concerns how a policy is evaluated. Our contribution is the referenced-state taxonomy, per-rule empirical decomposition, and scoring recommendation, not the general observation that imitation and rule compliance can diverge. 
+
+2.4. Rule-aware planning and the design of W-SQP 
+
+Rulebooks (Censi et al., 2019) assign each rule a violation scalar and a priority order, with extensions to assurance (Collin et al., 2020) and optimal control (Xiao et al., 2021). Prior-ity intent is encoded in MPC via lexicographic and hierarchi-cal schemes, ε-constraint methods, or penalty separation (Lai et al., 2023; Abernethy et al., 2024; Tercan et al., 2024; Mavro-tas, 2009; Schwenzer et al., 2021); formal methods provide temporal-logic semantics, monitors, and repair (Maierhofer et al., 2020, 2022; Yamaguchi et al., 2024; Lin et al., 2025; Halder et al., 2023); control-barrier-function filters (Ames et al., 2017, 2019; Liu et al., 2023; Allamaa et al., 2024) and Responsibility-Sensitive Safety (RSS) (Shalev-Shwartz et al., 2017; Hasuo, 2022) enforce safety feasibility; and learned planners (Dauner et al., 2023; Cheng et al., 2023) scale well but expose little per-rule structure. Closer to W-SQP, real-time-constrained MPC has been developed specifically for on-road autonomous driving, including collocation-based schemes that embed control-barrier safety constraints while keeping the solve within a closed-loop budget (Allamaa et al., 2024; Liu et al., 2023). W-SQP shares its real-time, driving-specific emphasis but di ff ers in its target: rather than certifying a single safety filter, it compiles a priority-ordered, multi-family rulebook into a single tiered-slack program and exposes a per-rule audit of the resulting trade-o ff s. Against this background, W-SQP uses established weighted-slack NMPC primitives rather than claiming a new planning-theory primitive or a lexicographic priority; its contribution is the integration of these primitives under real-time and auditability constraints. Section 5 then evaluates the resulting controller without treating log alignment as a safety or regulatory requirement. 
+
+3. The W-SQP Controller 
+
+We present W-SQP 1, a rulebook-aware receding-horizon controller that maps a heterogeneous driving rulebook to one online nonlinear program. It plans from the current executed     
+
+> 1W-SQP abbreviates weighted soft-constrained quadratic-penalty NMPC, also called tiered-slack NMPC. The nonlinear program is solved with IPOPT (Wächter and Biegler, 2006); W-SQP does not use a sequential-quadratic-programming solver.
+
+state, biases soft-constraint relaxation by rule priority, and logs normalized per-rule residuals at each cycle; the constraints are smooth except for one clamped proximity gate (Sec. 3.4). The four tiers are optimized jointly rather than solved and frozen sequentially, so a su ffi ciently large lower-priority benefit can be traded o ff against a higher-priority violation: the formulation provides a penalty bias, not lexicographic priority preservation. 
+
+3.1. Model and decision variables 
+
+The ego vehicle follows a kinematic-bicycle model with state 
+
+xk = [pxk , pyk, ψ k, vk]⊤ ∈ R4 (position, yaw, and speed in the ego-local frame) and input uk = [ak, δ k]⊤ (longitudinal acceleration and steering). Fourth-order Runge–Kutta integration discretizes the continuous dynamics ˙x = fc(x, u) at ∆t = 0.1 s, giving xk+1 =
+
+f (xk, uk) with CasADi-di ff erentiable expressions (Andersson et al., 2019). At each replanning step, the NMPC optimizes over 
+
+N = 30 steps (3 .0 s) with decision variables X = {x0, . . . , xN },
+
+U = {u0, . . . , uN−1}, and S. The initial state x0 is fixed to the current executed ego state rather than a logged pose. 
+
+3.2. Objective 
+
+The cost has three parts, J = Jbase + Jdyn + Jslack . The base term tracks a low-weight reference and penalizes e ff ort and input rate, 
+
+Jbase =
+
+> N−1
+
+X
+
+> k=0
+
+∥xk − xref  
+
+> k
+
+∥2 
+
+> Q
+
++ ∥uk∥2 
+
+> R
+
++ ∥∆uk∥2
+
+> S
+
+ + αT ∥xN − xref  
+
+> N
+
+∥2
+
+> Q
+
+, (1) with ∆uk = uk − uk−1; the k=0 terms (the input-rate and jerk penalties, and the jerk constraint below) use u−1, the first op-timized control of the previous cycle’s solve carried in as a parameter under warm start (reset to zero on a solver fallback). The dynamics-shaping term discourages aggressive transients, 
+
+Jdyn =
+
+> N−1
+
+X
+
+> k=0
+
+Wj
+
+  ak −ak−1
+
+> ∆t
+
+2 + Wa a2lat ,k
+
+ +
+
+> N−1
+
+X
+
+> k=1
+
+W˙a
+
+  alat ,k −alat ,k−1
+
+> ∆t
+
+2, (2) with alat ,k = vk(ψk+1 −ψk)/∆t. The reference xref is the expert log, used only as a low-weight stabilizing signal (Table 2); it does not pin the ego to the log, and route adherence enters separately as one soft constraint below. This low weight is what makes W-SQP non-imitative: a representative 2 m log deviation costs about as much as a comfort-tier slack, so log alignment sits below the safety and regulatory tiers. “Non-imitative” means exactly this subordination, not the absence of any log reference. The slack term encodes priority through squared, weight-separated penalties, 
+
+Jslack =
+
+> 4
+
+X
+
+> j=1
+
+ρ jN−1X
+
+> k=0
+
+ s( j)
+
+> k
+
+2, ρ1≫ρ2≫ρ3≫ρ4, (3) ordering the four tiers safety ≻ regulatory ≻ comfort ≻ effi ciency. This scalarization is a feasibility-preserving relaxation that keeps residual violations low and biased toward low-priority families. We penalize the slacks quadratically ( ℓ2) rather than with the 
+
+exact ℓ1 penalty of the soft-constrained-MPC literature (Kerrigan 3Driving rulebook                             
+
+> 9 constraint families
+> Family-to-tier map
+> π(i): four tiers
+> Four-tier shared-slack NLP
+> min Jbase +Jdyn +Jslack
+> xk+1=f(xk,uk)
+> gi≤s(π(i)) (tiered soft constraints) hard bounds on a, δ, v
+> IPOPT / MUMPS
+> warm start median 28 ms
+> 90 ms CPU-time limit
+> Dynamics projection
+> apply f(x0,u0)
+> model-consistent next pose
+> Waymax / vehicle
+> Per-cycle audit record
+> threshold-normalized residual for every rule
+> executed state xcurrent at 10 Hz
+> Figure 1: W-SQP closed-loop architecture. Each cycle, the rulebook and current scene are compiled into di ff erentiable surrogates assigned to four penalty tiers (safety ≻regulatory ≻comfort ≻effi ciency). IPOPT /MUMPS solves the multiple-shooting kinematic-bicycle NLP under a 90 ms CPU-time limit; the first control is propagated through the vehicle model before execution, normalized per-rule residuals are logged for audit, and the controller re-initializes from its executed state
+> xcurrent .
+
+and Maciejowski, 2000; Scokaert and Rawlings, 1999). The trade-o ff is deliberate. The ℓ1 form has a theoretical advantage: above a finite weight threshold, it satisfies each tier’s constraints 
+
+exactly whenever they are feasible, and yields the least violation otherwise. The ℓ2 form gives this up—because ∇(ρs2) → 0as s → 0, small violations become asymptotically free, and even Tier-1 surrogates settle just below 100% (Table 4). What 
+
+ℓ2 buys in return is numerical: it is strictly convex and C2 in the slacks, it removes the dual degeneracy that ℓ1 shows at its exact-penalty threshold, and it produces a better-conditioned barrier Hessian. Across the 28 ,131 warm-started solves at 10 Hz this made IPOPT markedly more robust, which is why we chose it. An ℓ1 variant—which would additionally let us check the lexicographic-equivalence conditions per solve from IPOPT’s returned multipliers—is a natural refinement for future work. 
+
+3.3. Tiered soft constraints and the NLP 
+
+Fig. 2 shows the mapping from rulebook to program: each priority family maps to one of four tiers, and all constraints in a tier share a single nonnegative slack per step whose penalty weight ρ j is separated by orders of magnitude. Each rule surro-gate is an inequality gi(xk, uk) ≤ 0, relaxed by a single shared slack per tier per step via a fixed family-to-tier map π(i) ∈{1, 2, 3, 4}:
+
+gi(xk, uk) ≤ s(π(i))  
+
+> k
+
+, s( j) 
+
+> k
+
+≥ 0. (4) W-SQP solves, at each step, min  
+
+> X,U,S
+
+Jbase + Jdyn + Jslack (5a) s.t. xk+1 = f (xk, uk), x0 = xcurrent , (5b) 
+
+gi(xk, uk) ≤ s(π(i))  
+
+> k
+
+, s( j) 
+
+> k
+
+≥ 0, ∀i, j, k, (5c) 
+
+amin ≤ ak ≤ amax , |δk| ≤ δmax , 0 ≤ vk ≤ vmax , (5d) where the last line contains hard physical bounds on acceler-ation, steering, and speed. Collision avoidance and the road boundary are, by contrast, Tier-1 soft constraints: they carry the largest penalty ρ1 but may in principle be relaxed—the sub-100% safety-rule compliance in Table 4 reflects exactly this. The single-slack-per-tier design yields only 4 N = 120 slacks (vs. one per constraint), which is what makes 10 Hz replanning tractable; it couples within-tier constraints, so the slack tracks the most binding active constraint in its tier. We solve (5) with IPOPT (Wächter and Biegler, 2006) (MUMPS), warm-started by the time-shifted previous solution. 
+
+3.4. Constraint surrogates 
+
+Let pk = [pxk , pyk]⊤ and p(m) 
+
+> k
+
+the position of tracked object 
+
+m ∈ { 1, . . . , M}. The families and their evaluator-rule coverage are in Table 1. 
+
+Collision (Tier 1) and road boundary (Tier 1): gcol = d2safe − ∥ pk − p(m) 
+
+> k
+
+∥22 ≤ s(1)  
+
+> k
+
+, (6) 
+
+gedge = n⊤ 
+
+> k
+
+(pk − bk) − (wego + medge ) ≤ s(1)  
+
+> k
+
+, (7) with bk the nearest road-edge point and nk its outward normal. 
+
+Speed limit, tra ffi c light, route (Tier 2): gspd = vk − vmax ,k ≤ s(2)  
+
+> k
+
+, (8) 
+
+gtl = wR(d( j) 
+
+> k
+
+) ( vk − vstop ) ≤ s(2)  
+
+> k
+
+, (9) 
+
+groute = ∥pk − pref  
+
+> k
+
+∥2 − droute ≤ s(2)  
+
+> k
+
+. (10) The tra ffi c-light gate uses a clamped proximity weight wR(d) =
+
+max  0, 1 − d/R for stop distance d( j) 
+
+> k
+
+and approach radius R;clamping at 0 makes the gate inactive beyond R. The clamp is necessary: without it, d > R gives wR < 0, so the term 4Constraint families priority high ↓ low Shared-slack tiers 
+
+> collision
+> road edge
+> speed limit
+> tra ffi c light
+> route
+> deceleration
+> jerk
+> lateral acceleration
+> headway
+
+Tier 1: Safety 
+
+> collision, road edge
+
+Tier 2: Regulatory 
+
+> speed, light, route
+
+Tier 3: Comfort 
+
+> decel., jerk, lat. accel.
+
+Tier 4: Efficiency 
+
+> headway
+
+Quadratic penalty weights                      
+
+> T1
+> ρ1=10 8
+> T2
+> ρ2=10 5
+> T3
+> ρ3=10 2
+> T4
+> ρ4=1
+> decreasing priority bias
+> One shared slack per tier per step: 4N=120 slacks for N=30.
+> Hard bounds: (a, δ, v) are never relaxed. The weights bias vi-olations toward lower tiers; they do not impose a lexicographic ordering.
+> Figure 2: From priority-ordered rulebook to tiered shared slacks. The nine rule families collapse onto four penalty tiers; each tier shares one nonnegative slack per step, penalized by a weight ρjseparated by orders of magnitude. The ladder
+> biases —but does not lexicographically force—residual violations toward the low-priority tiers.
+
+wR(vk − vstop ) decreases with speed and would reward acceler-ation toward the light. This max (0 , ·) is the one non-smooth surrogate; we pass its C0 kink to IPOPT as-is, since it sits o ff 
+
+the active set whenever the gate is inactive. None of the solver failures behind the 0 .58% open-loop-fallback rate (Sec. 4) lo-calizes at the kink, and tra ffi c-light compliance ( 7r1) is at parity (+0.3 pp). 
+
+Comfort, jerk, lateral acceleration (Tier 3): gdec = −ak − acomf ≤ s(3)  
+
+> k
+
+, (11) 
+
+g± 
+
+> jerk
+
+= ± ak −ak−1 
+
+> ∆t
+
+− jmax ≤ s(3)  
+
+> k
+
+, (12) 
+
+glat =   v2 
+
+> k
+> L
+
+tan δk
+
+2 − a2lat ,max ≤ s(3)  
+
+> k
+
+. (13) 
+
+Headway (Tier 4): with a per-agent validity flag νm ∈ { 0, 1}
+
+(unity for a tracked agent, zero otherwise) and the center-to-center distance to agent m’s constant-velocity prediction p(m) 
+
+> k
+
+,
+
+ghw = νm
+
+ Thw vk − ∥ pk − p(m) 
+
+> k
+
+∥ ≤ s(4)  
+
+> k
+
+. (14) The flag νm only deactivates absent agents. The surrogate is deliberately simple: it uses the center-to-center distance rather than an along-track projection, so at v=15 m /s it activates on          
+
+> Table 1: Constraint families in the W-SQP NLP and the evaluator rules they cover. Horizon N=30, M=3 tracked agents, Ktl =2 tra ffi c-light stop points.
+
+Constraint family Tier Count Evaluator rules Collision avoidance 1 N·M=90 10 r0, 9r0
+
+Road boundary 1 N+1=31 9r1, 7r0
+
+Speed limit 2 N+1=31 3r0
+
+Tra ffi c-light stop 2 N·Ktl =60 7r1
+
+Route adherence 2 N+1=31 2r2
+
+Comfort deceleration 3 N=30 0r2
+
+Jerk ( ±) 3 2N=60 1r9
+
+Lat. accel 3 2N=60 1r11 
+
+Headway 4 N·M=90 3r3
+
+any tracked agent within Thw v=22 .5 m in any direction—a weak repulsive potential that the lowest (Tier-4) weight keeps benign. We treat this crude proxy, like the constant-velocity prediction it depends on, as an experimental variable rather than tuning it away (Sec. 6). 
+
+3.5. Surrogate vs. evaluator 
+
+W-SQP enforces the di ff erentiable surrogates above, not the evaluator’s 25 rules directly, and the geometries di ff er (center-to-center vs. corner-to-corner collision distance; a norm-based route surrogate vs. the evaluator’s position-and-heading thresholds). The evaluator remains authoritative. We examine the surrogate– evaluator mismatch directly in Sec. 7 so that the log-coupling result cannot be an artifact of the controller’s internal geometry. 
+
+Rules without a dedicated surrogate.. Twelve of the evaluator’s 25 rules—including stop-sign compliance ( 8r0), crosswalk yield (8r1), yield-to-priority ( 1r0), lane intrusion ( 3r6), and the two advisory-only rules—have no dedicated term in the NLP (5) .Where W-SQP scores well on them anyway (Table 4), the reason is one of two. Some are rarely applicable in the scenario set— a stop sign or an occupied crosswalk within range—so their compliance is computed over very few steps and says little about capability. Others are satisfied incidentally : yield-to-priority and lane intrusion, for instance, fall out of the Tier-1 /Tier-2 collision, road-boundary, and route surrogates. Either way this is an empirical observation about the evaluated scenarios, not a design property, and we list it among the limitations of Sec. 3.6. 
+
+3.6. Controller characterization and limitations 
+
+The per-cycle slack log makes the controller’s relaxation de-cisions inspectable after the fact. On a single scenario the safety and regulatory tiers stay inactive throughout while relaxation is confined to comfort and e ffi ciency, and this holds across the fleet as well (Fig. 9, Sec. 7)—the priority bias read o ff the log rather than asserted. 
+
+Acknowledged limitations. A single slack per tier tracks only the most binding constraint in that tier, so we audit each surrogate’s normalized residual rather than reading the active rule o ff the shared slack. Across the fleet, the route surrogate is relaxed on about 17% of steps, against 2 .5% for collision, 4 .9% 5for road edge, and 1 .6% for speed (Fig. 9). Constraints within a tier also carry di ff erent units—Tier 1 mixes a squared-distance collision residual (m 2) with a signed road-edge distance (m)—so raw slack magnitudes are neither comparable nor deliberately balanced; nondimensionalizing each surrogate by its threshold, ˜gi = gi/τ i, would fix this. The remaining limitations are the lack of a lexicographic guarantee, constant-velocity agent prediction, surrogate–evaluator mismatch (including the twelve rules with no surrogate above), and a single-disk collision model that under-covers long vehicles. 
+
+4. Real-Time Implementation and Computational Analysis 
+
+Real-time operation is a design requirement for W-SQP. This section reports the controller’s computational cost, the empiri-cal solve-time tail, behavior under a solver-time limit, and the dynamics projection used prior to execution. 
+
+4.1. Compute target and problem size 
+
+All timing figures are measured on a single-workstation target—an Intel Core i9-12950HX (16 cores, up to 5 .0 GHz, 64 GB RAM)—running IPOPT single-threaded with the MUMPS linear solver, so the numbers reflect one solver instance rather than a parallel farm. Re-profiling on an embedded automotive target is future work (Sec. 9); the aim here is to characterize the algorithm’s intrinsic cost and tail behavior, not to certify a specific ECU. The tractability of that cost rests on structure. At the fixed settings of Table 2 ( N=30, up to M tracked agents) the tran-scribed NLP has 304 decision variables and 818 constraints, and its constraint Jacobian ∂g/∂ w carries only 2381 nonzeros—a density of 0 .96% (Fig. 3). The banded, near-block-diagonal pat-tern is the multiple-shooting signature: each stage couples only to its neighbor through the dynamics defect, and the tiered soft constraints add sparse rows rather than dense coupling. IPOPT with MUMPS exploits exactly this sparsity, which is why a nominally 304-variable nonconvex program can be solved in tens of milliseconds. The 10 8–10 0 span of the tier penalties is left to IPOPT’s default gradient-based NLP scaling with an adaptive barrier strategy; the heavy uncapped solve-time tail con-centrates in the same hard, high-divergence scenes—those with the worst-conditioned barrier Hessians—in which the anytime cap binds. 
+
+4.2. Typical solve time 
+
+Across the 28 ,131 closed-loop solves of our n=150 eval-uation (Sec. 7), warm-started W-SQP solves in a median of 28 .4 ms—comfortably within a 100 ms budget—with a mean of 77 .6 ms inflated by a heavy tail (p95 230 ms, p99 1 .08 s, max 5.74 s). The controller therefore typically meets 10 Hz, but not worst-case; a gentle open-loop braking fallback covers the 0 .58% of solves (163 /28 ,131) that exceed tolerance or fail, so tail la-tency degrades gracefully rather than stalling the rollout. The fallback also cannot drive the log-coupled result of Sec. 5: at 0.58% of solve steps, even if every fallback step maximally vio-lated a log-coupled rule, it could shift that rule’s compliance by at most ≈0.6 pp—negligible against the −10 .1 pp deficit. 0 200        
+
+> Decision variables w(nw= 304)
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> 600
+> 700
+> 800
+> Constraints  g (ng = 818)
+> nnz = 2381
+> density = 0.96%
+> W-SQP NLP constraint Jacobian ∂g/∂w
+> Figure 3: Sparsity pattern of the W-SQP NLP constraint Jacobian ∂g/∂ wat the settings of Table 2 (304 variables, 818 constraints, 2381 nonzeros, 0 .96% density). The banded multiple-shooting structure is what IPOPT /MUMPS exploits to solve the nonconvex program at the loop rate.
+
+4.3. Observed latency under a solver-time limit 
+
+We re-run all 150 scenarios with IPOPT’s max_cpu_time 
+
+set to 90 ms. When the limit is reached, IPOPT returns its best iterate and the controller records a budget hit. This option is not a strict wall-clock deadline: IPOPT checks it at iteration bound-aries, allowing the current iteration to finish, and it measures CPU rather than wall-clock time. On our single-threaded config-uration, the two measures track closely. The limit reduces the observed tail to a 28 .5 ms median, 39 .6 ms mean, 96 ms p99, and 104 ms maximum, compared with a 5 .74 s maximum without the limit; 11 .9% of solves reach the limit (Fig. 4). The log-coupling decomposition is nearly unchanged under the solver-time limit ( ∆clog = −10 .8 pp , ∆cinv = + 0.4 pp ), so the fair-evaluation result of Sec. 5 is not an artifact of unbounded solve time. We therefore describe W-SQP as anytime-capable :it usually meets the 10 Hz loop period and returns a best iterate when the solver-time limit is reached. A hard-real-time claim would require a platform-level deadline mechanism and worst-case execution-time analysis. The best iterate retains the hard bounds. The interior-point iterate stays strictly within the hard box bounds on acceleration, steering, and speed (the barrier enforces them, to IPOPT’s de-fault 10 −8 bound-relaxation tolerance), and the executed pose’s 
+
+lateral acceleration and jerk are additionally hard-clamped in post-processing (to 2 .8 m /s2 and 2 .5 m /s3, via a bound on the ex-ecuted heading increment); “never relaxes hard physical bounds” refers to these actuation and box limits, which hold on every step, cap-hit or not. Longitudinal jerk, by contrast, is governed only by the soft Tier-3 slack, which is why the evaluator’s longitudinal-610 1 10 2 10 3 
+
+> Solve time (ms, log scale)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Empirical CDF
+> 90 ms cap
+> 100 ms (10 Hz)
+> median
+> 28.4 ms
+> capped worst
+> 104 ms
+> cap-hit 11.9%
+> Intel Core i9-12950HX
+> Uncapped
+> Capped (90 ms) Figure 4: Empirical CDF of per-solve wall-clock time over the n=150 evaluation (single-threaded IPOPT /MUMPS, log-scale abscissa). A 90 ms CPU-time limit reduces the maximum from 5 .74 s to 104 ms while leaving the median near 28 ms; 11 .9% of solves return a best iterate. IPOPT checks the limit at iteration boundaries, so this is an empirical tail reduction rather than a strict wall-clock guarantee.
+
+jerk rule ( 1r9) shows a small residual deficit ( −3.7 pp , Table 4) while the lateral comfort rules stay at parity. What a non-converged iterate does not guarantee is exact satisfaction of the dynamics equality xk+1 = f (xk, uk). Measur-ing the executed-step defect ∥x1 − f (x0, u0)∥ over every cap-hit solve in a dedicated 50-scenario instrumented run (9 ,374 solves, 1,102 cap-hits at 11 .8%): 34% of cap-hit iterates are already exactly feasible and the median defect is below 1 mm, but the tail is heavy—p95 0 .20 m, p99 0 .74 m, worst 15 .5 m—because where the cap binds almost every step, the raw best iterate can be grossly model-inconsistent. We therefore project the anytime iterate onto the dynamics before execution: the executed pose is f (x0, u0), the applied control rolled through the vehicle model, so every executed pose is dynamically feasible by construction and “never relaxes hard physical bounds” holds for both the box bounds and the dynam-ics (Fig. 5). Projection is a no-op for converged solves and alters only the ≈11% cap-hit steps. Under it the capped decomposition is essentially unchanged— ∆clog = −9.9 pp , ∆cinv = + 0.4 pp ,versus −10 .8/+0.4 raw and −10 .1/−0.04 uncapped—so the fair-evaluation result is not an artifact of the anytime executor; if anything, projection slightly shrinks the log-coupled deficit by removing the raw iterate’s rare teleport excursions. 
+
+4.4. Sensitivity to the solver-time limit 
+
+To assess sensitivity to available compute, we sweep the CPU-time limit over {30 , 50 , 70 , 90 , 120 } ms and include an un-limited condition on a 40-scenario subset (Fig. 6). The log-independent safety /regulatory di ff erence remains near parity throughout the sweep: it is −0.14 pp at 30 ms, where 55% of solves reach the limit. The log-coupled di ff erence changes from 
+
+−11 .6 pp at 90 ms to −18 .5 pp at 30 ms. The budget-hit rate rises smoothly from 12% at 120 ms to 55% at 30 ms. These 0 10 −4 10 −2 1 10       
+
+> executed-step dynamics defect ‖x1−f(x0,u0)‖[m]
+> (symlog; linear region below 10 −5m)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> empirical CDF (cap-hit steps)
+> p95
+> 0.195 m
+> p99
+> 0.735 m
+> worst
+> 15.5 m
+> 34% already
+> exactly feasible
+> median
+> < 1 mm
+
+Anytime iterate can be infeasible; 
+
+projection restores feasibility          
+
+> anytime iterate (raw)
+> after projection ( = 0, all steps)
+> Figure 5: Executed-step dynamics defect ∥x1−f(x0,u0)∥over the 1 ,102 cap-hit steps of the instrumented run (symlog abscissa; linear region below 10 −5m so exact zeros are shown). The raw anytime iterate (red) is exactly feasible on 34% of cap-hit steps and <1 mm at the median but has a heavy tail; rolling the applied control through the vehicle model collapses the executed defect to exactly 0 on every step (green point mass).
+
+data indicate graceful degradation on this subset, but they do not replace profiling on an embedded automotive target. 
+
+5. A Fair, Log-Independent Evaluation Protocol 
+
+W-SQP may follow a valid trajectory that di ff ers from expert replay. To separate driving quality from resemblance to that re-play, we classify closed-loop metrics by the state they reference and decompose aggregate compliance into log-independent and log-coupled terms. Section 7 uses this protocol to report both terms rather than merging them into one score. 
+
+5.1. Closed-loop rollouts 
+
+A scenario ω ∈ D fixes an initial state, a static environment 
+
+eω (map and tra ffi c-control state), and a recorded (logged) ego trajectory ξ⋆ω = (s⋆ 
+
+> 0
+
+, . . . , s⋆ 
+
+> T
+
+) with planar positions p⋆ 
+
+> k
+
+. An ego policy is a causal map π : Sk 7 → ak. Rolling out π in closed loop with a reactive non-ego policy πNPC (Waymo Research, 2023) at 10 Hz produces the executed state sequence 
+
+Γ(π, ω ) =  ξπω, ζ πω, eω
+
+, (15) where ξπω is the executed ego trajectory (positions pπ 
+
+> k
+
+) and ζπω
+
+the executed non-ego trajectories. Because the agents are reac-tive, ζπω depends on π: a planner that deviates from ξ⋆ω elicits di ff erent agent responses. Expert replay is the policy π⋆ that reproduces the log, ξπ⋆ 
+
+> ω
+
+= ξ⋆ω. All metrics below are functionals of Γ(π, ω ) alone (evaluation on executed states only), preventing leakage (Caesar et al., 2021; Dauner et al., 2023). 730 50 70 90 120 ∞  
+
+> hard solve budget (ms)
+> −17.5
+> −15.0
+> −12.5
+> −10.0
+> −7.5
+> −5.0
+> −2.5
+> 0.0
+> Δc vs. expert (pp)
+> nominal
+> 90 ms
+> Decomposition is invariant under latency starvation
+> log-independent Δc
+> log-coupled Δc
+> cap-hit rate (%)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> cap-hit rate (%) Figure 6: Solver-time-limit sweep on a 40-scenario subset. As the limit decreases from unlimited to 30 ms, the log-independent safety /regulatory di ff erence re-mains near parity (blue, left axis), the log-coupled di ff erence becomes more negative (orange), and the budget-hit rate increases smoothly (grey, right axis).
+
+5.2. Compliance metrics as functionals 
+
+Each rule r defines a violation predicate ϕr and an appli-cability indicator αr, both evaluated per step, and a per-rule compliance 
+
+cr(π, ω ) = 100 · 1 − 1
+
+> T
+
+PT −1 
+
+> k=0
+
+αr(Sπ 
+
+> k
+
+) ϕr(Sπ 
+
+> k
+
+) ∈ [0 , 100] . (16) The indicator αr zeroes steps at which the rule does not apply, so the sum counts only applicable violations—but the normal-ization is over all T steps. Compliance cr therefore blends how often a rule applies with its conditional violation rate, and a rarely applicable rule scores high almost automatically. Under our paired, same-scenario evaluation both policies face nearly identical applicability, so cr is a sound relative measure even though it is not an absolute safety rate—which is why some rules flag even expert replay at high rates (Sec. 8.4). All our claims are paired di ff erences, for which this normalization is appropriate. The catalogue has |R| = 25 rules over 9 populated priority levels; an aggregate is the weighted mean C(π, ω ) = Pr wr cr, as used in leaderboards. The evaluator’s geometry is independent of any planner surrogate (corner-to-corner bounding-box distances, signed distance to road-edge polylines), with a fixed strictness multiplier κ = 1.25 applied identically to both policies. Here “independent” means independent of the planner’s di ff erentiable surrogates; the evaluator is part of the same rulebook framework, not a third-party benchmark. 
+
+5.3. A taxonomy by referenced state 
+
+The decisive question for fairness is what part of the world a predicate reads . We split the rollout arguments of ϕr into the executed driving Dπω ≜ (ξπω, ζ πω, eω)—everything physically realized—and the recorded log ξ⋆ω.
+
+Definition 1 (Log-coupled metric) . A metric cr is log-coupled if its predicate references the recorded log: there exist two rollouts with identical executed driving Dπω but di ff erent logs ξ⋆ω , ˜ξ⋆ω
+
+that yield cr , ˜cr. Equivalently ϕr = ϕr(Dπω; ξ⋆ω) with nontrivial dependence on ξ⋆ω. We write r ∈ R log .A canonical log-coupled rule is the deviation predicate 
+
+ϕr(Sπ 
+
+> k
+
+) = Ihd(pπ 
+
+> k
+
+, p⋆ 
+
+> k
+
+) > τ r
+
+i , (17) where τr is a threshold and d is a pose distance. Path tracking (0r0) and route adherence ( 2r2) have this form. In our evaluator, their position thresholds are 2 .4 and 4 .0 m, respectively, and route adherence also uses a 0 .4 rad heading threshold. These values include the strictness factor κ = 1.25. Route adherence is log-coupled here because our evaluator defines it relative to the logged pose; route adherence defined against a lane graph or assigned corridor would instead be map-defined and log-independent. 
+
+Definition 2 (Log-independent metric) . cr is log-independent if 
+
+ϕr = ϕr(Dπω) depends on the rollout only through the executed driving and never references ξ⋆ω. We write r ∈ R ind .Equivalently, a log-independent metric assigns the same score to two rollouts that di ff er only in which compliant path the planner chose; log-coupled metrics are exactly those that do not. Log-independent rules subdivide by which part of Dπω they read: map-defined (static map /tra ffi c control, e.g. drivable sur-face, tra ffi c-light, stop sign), interaction-defined (other agents 
+
+ζπω, e.g. collision, headway, clearance), and controller-defined 
+
+(ego smoothness only, e.g. jerk, comfort). For analysis we group the safety /regulatory log-independent rules into the set Rinv (16 rules), report controller-defined rules ( Rctrl , 7 rules) separately as an intermediate group, and isolate Rlog (2 rules). We refer to Rinv as log-independent as shorthand for log-independent safety /regulatory : the group’s compliance is invariant to whether the ego imitates the log, not insensitive to interaction—collision, headway, and clearance plainly depend on the other agents. The partition is fixed a priori from each rule’s definition, independent of any result. 
+
+5.4. The log-coupling confound 
+
+The following two facts are elementary but underpin the fair comparison of Sec. 7: they show a log-coupled metric measures imitation, not driving quality. 
+
+Proposition 1 (Expert-replay dominance) . For every log-coupled deviation rule r ∈ R log and every scenario ω,cr(π⋆, ω ) = 100 ≥ cr(π, ω ) for all policies π, (18) 
+
+and the inequality is independent of the physical driving quality of π.Proof. Expert replay gives pπ⋆ 
+
+> k
+
+= p⋆ 
+
+> k
+
+and therefore zero devia-tion at every step. Thus ϕr = 0 and, by (16) , cr(π⋆, ω ) = 100. Since compliance cannot exceed 100, (18) follows independently of the executed driving quality. 8Corollary 1 (Aggregate imitation premium) . Let C(π, ω ) =
+
+Pr wrcr(π, ω ). The aggregate gap of any policy π relative to expert replay decomposes exactly as C(π⋆, ω ) − C(π, ω ) =
+
+X
+
+> r∈R log
+
+wr
+
+ 100 − cr(π, ω )| {z }  
+
+> ∆imit (π,ω )≥0
+
++
+
+X
+
+> r∈R ind
+
+wr
+
+ cr(π⋆, ω ) − cr(π, ω )| {z }
+
+> δind (π,ω )
+
+.
+
+(19) 
+
+The first term, the imitation premium ∆imit ≥ 0, is paid purely for diverging from the log; the second, δind , is the genuine driving-quality di ff erence and may take either sign. Two consequences follow. A non-imitative planner that matches the expert on the log-independent rules ( δind = 0) is reported worse by exactly 
+
+∆imit . And a planner that drives better (δind < 0) is still ranked below the expert whenever ∆imit > −δind : the premium can mask superior driving. Proof. Partition R = Rlog ∪ R ind , split the sum, and apply Prop. 1 (cr(π⋆, ω ) = 100 for r ∈ R log ) to the first group. The decomposi-tion holds termwise; no sign assumption on δind is used. 
+
+Proposition 2 (Non-identifiability of driving quality) . There ex-ist two policies π1, π 2 with identical log-independent compliance, cr(π1, ω ) = cr(π2, ω ) for all r ∈ R ind —equally good drivers un-der every quality metric—that a log-coupled metric separates: cr(π1, ω ) , cr(π2, ω ) for some r ∈ R log . Consequently, any ag-gregate with wr > 0 on a log-coupled rule is not a function of driving quality alone. Proof. One scenario su ffi ces. Take a straight, two-lane, drivable segment with no other agent in range of any interaction rule, and a logged trajectory ξ⋆ω centered in lane 1. Let π1 reproduce ξ⋆ω,and let π2 run the identical longitudinal motion—same speed, heading, acceleration, jerk—on a rigidly translated path centered in lane 2, with the o ff set chosen to exceed some log-coupled threshold τr. The two motions di ff er only by a constant lateral shift, so every controller-defined rule (comfort, jerk, lateral acceleration) reads the same on both; no agent is in range, so every interaction-defined rule is vacuously satisfied by both; and both stay on the drivable surface under the same limit, so every map-defined rule agrees. Thus cr(π1, ω ) = cr(π2, ω ) for all r ∈ R ind . But the log-coupled predicate fires for π2 and not π1, so the two di ff er there. Any aggregate with wr > 0 on that rule therefore separates two policies of identical driving quality. The case studies of Sec. 7.5 realize the same separation approximately on real roads; the empty-road construction makes it exact. These results motivate a fairness desideratum for quality metrics. 
+
+Definition 3. Imitation invariance. A metric is imitation-invariant if its value is unchanged when the reference log ξ⋆ω is replaced by any other dynamically feasible, rule-satisfying trajectory while the executed driving Dπω is held fixed. Log-independent metrics are imitation-invariant by Def. 2; log-coupled metrics violate it. In Goodhart terms (Manheim and Garrabrant, 2018), a log-coupled rule optimizes resemblance to one recorded human rather than the underlying objective. The protocol therefore prescribes how W-SQP is scored in Sec. 7: report compliance over Rinv separately from the imitation score over Rlog , so driving quality is not conflated with deliberate divergence from the log. Whether the two are in fact separable in practice— ∆imit large while the log-independent deficit is null— is the empirical question the experiments settle. 
+
+5.5. Statistical methodology 
+
+With n = 150 paired scenarios under identical configurations, the deterministic simulator makes the ego policy the only con-figured di ff erence within each pair. Compliance di ff erences are non-normal because many values concentrate near 100%, so the Wilcoxon signed-rank test is primary and the paired t-test is sec-ondary. Across the 25 per-rule hypotheses, Benjamini–Hochberg correction controls the false-discovery rate at α = 0.05 (Ben-jamini and Hochberg, 1995). For the contrast between Rlog and 
+
+Rinv , we report Cohen’s d, bootstrap 95% confidence intervals for group means, and the a priori sample size for 80% power. 
+
+6. Experimental Setup Evaluation environment and scope. The validation is simulation-based. Its relevance to urban autonomous driving comes from four properties: (i) every scenario uses road ge-ometry, actor trajectories, footprints, and speeds from WOMD logs (Ettinger et al., 2021); (ii) the ego follows a kinematic-bicycle model with bounded acceleration, steering, lateral accel-eration, and jerk (Table 2); (iii) non-ego agents respond through the IDM behavior model (Waymo Research, 2023) rather than replaying fixed logs; and (iv) the same controller implementation is timed during 10 Hz closed-loop evaluation. Important deploy-ment e ff ects remain absent: the simulator provides ground-truth state and omits sensing and estimation errors, actuation latency, and low-level tracking error. The results, therefore, characterize closed-loop simulation performance and workstation runtime, not on-road transfer or embedded deployment; hardware-in-the-loop and vehicle tests remain necessary (Sec. 9). Every reported number is traceable to a fixed scenario, a deterministic simulator, and evaluator output on executed states. The pipeline separates three components: (i) a Waymax (Gulino et al., 2023) wrapper instantiating WOMD (Ettinger et al., 2021) scenarios at 10 Hz; (ii) an ego policy (expert replay, W-SQP of Sec. 3, or a baseline controller); and (iii) the 25-rule evaluator of Sec. 5, consuming only executed states. At each step the loop queries ak = π(Sk), advances to Sk+1 with reactive IDM non-ego agents (Waymo Research, 2023), and evaluates all monitors. For W-SQP the NLP is rebuilt once in CasADi (Andersson et al., 2019) and re-solved every step via IPOPT (Wächter and Biegler, 2006); solver settings and cost weights are in Table 2, fixed across all scenarios. 
+
+Scenario set. We use n = 150 WOMD scenarios drawn from shards 0–39 by a complexity-ranked scanner. The ranking 9combines SDC path length and heading change, agent count and diversity (with additional weight for vulnerable road users), and tra ffi c-control presence. Each scenario lasts approximately 18 .7 s at 10 Hz. This selection favors interaction-rich scenes; Section 7 repeats the decomposition on a uniformly random sample. Each scenario runs paired expert-replay and W-SQP rollouts under the same NPC configuration; determinism makes the ego policy the only configured di ff erence between a pair. The dataset yields 28 ,131 NLP solves (approximately 187 per scenario); 0 .58% use the open-loop braking fallback after a solver failure. 
+
+Exogenous interaction density. The density falsification control (Sec. 7) needs a di ffi culty measure that is a property of the scene , not the planner. At each step we count the other logged agents within radius R of the logged ego position and average over the rollout. Computed from the logs, it is identical for both policies—unlike planner-derived proxies such as solve time, which are endogenous and would make any density–compliance correlation circular. We report R ∈ { 20 , 30 , 50 } m. 
+
+Log-informed prediction ablation. On a 30-scenario sub-set we replace W-SQP’s constant-velocity agent prediction with each agent’s constant velocity taken from its logged displace-ment over the horizon. This uses future log information, so it is not available online; nor is it a perfect oracle, since logged agents do not react to the altered ego rollout. It tests sensitivity to this one velocity estimate. 
+
+Baseline controllers. To evaluate W-SQP as a controller, not only as an evaluation instrument, we compare it against two architecturally distinct non-imitative planners on the same 150 scenarios and evaluator: a lightweight reactive controller (pure-pursuit + IDM) and a stronger sampling-based planner (PDM-Closed–style). Neither scores nor tracks the logged trajectory, so the comparison isolates control performance from the shared property of not matching the log. 
+
+Baseline controller: pure-pursuit + IDM. Lateral control is pure pursuit toward a lookahead point on the route geometry (lookahead 6 .0 + 0.6 v m); longitudinal control is the Intelligent Driver Model with respect to the nearest in-path lead agent (free-flow speed set to the 75th percentile of the scene’s logged ego speed, Thw =1.5 s, s0=5 m). It uses no optimization, tracks no logged states, and follows the route at its own IDM-chosen speed. 
+
+Baseline controller: PDM-Closed–style. The stronger baseline is a PDM-Closed–style planner (Dauner et al., 2023), a reimplementation in the spirit of the design that won the nuPlan closed-loop challenge (not a fully leaderboard-faithful port; see the route-corridor caveat below). It follows the proposal-and-select recipe: it generates 15 candidate policies (three lateral off sets × five IDM target-speed profiles) along a route corri-dor, forward-simulates each over the 3 s horizon with constant-velocity agents, scores them with a nuPlan-CLS–style rule score (collision and o ff -road gates × weighted route-progress, comfort, and speed-limit terms, with no log-deviation term), and executes the first control of the best. It is non-imitative—the score never references the logged trajectory—yet competent by construction on the rule set. We use the logged path geometry as the route corridor (a valid road; a full roadgraph route is a documented                                                                        
+
+> Table 2: Core W-SQP (NMPC) and IPOPT solver settings, fixed across all 150 scenarios. The tier penalties ( ρ1, . . . , ρ 4) weight squared slacks whose physical units di ff er by constraint family, so their magnitudes are not directly comparable across tiers (Sec. 3.6); Q,R,Sand the shaping weights are the usual dimensionless NMPC cost weights. Parameter Value Timestep ∆t/Horizon N0.1 s /30 (3 .0 s) Replan interval every step (0 .1 s) Wheelbase L/max steer δmax 4.5 m /0.5 rad Accel bounds [ amin ,amax ][−5.0,3.0] m /s2
+> Speed bound vmax 30 .0 m /sCollision bu ff er dsafe 3.0 m Road margin /route dev. droute 0.5/2.0 m Comfort dec. /lat. acc. /jerk 3.0/3.0 m /s2, 5 .0 m /s3
+> Headway time Thw 1.5 s TL radius /speed thr. 30 .0 m /0.5 m /s(ρ1, ρ 2, ρ 3, ρ 4)(10 8,10 5,10 2,1) IPOPT tol /acceptable tol 10 −4/10 −3
+> IPOPT linear solver /warm start MUMPS /enabled
+> Q,R,Sdiag(1 ,5, . 5, . 5), diag( .1, . 5), diag( .5,1)
+> αT/Wjerk 10 .0/0.1
+> Walat /W˙alat 0.5/0.05
+
+extension) and cap the pace to what the corridor a ff ords, so di-vergence is emergent from the planner’s own speed /gap /off set choices, not imposed. 
+
+Threshold-sensitivity. To check that the log-coupled deficit is not an artifact of the deviation thresholds, we log the evalua-tor’s per-step raw deviation for the log-coupled rules and recom-pute their compliance across a sweep of thresholds τ offl ine, for both planners (Sec. 7 reports the range). 
+
+Divergence sweep. To characterize the deficit across a con-tinuum of planners between non-imitative W-SQP and expert replay, we add a single scalar β ∈ [0 , 1] that blends W-SQP’s ex-ecuted next pose toward the logged pose at t+1: β=0 is W-SQP, 
+
+β→1 approaches expert replay. The blend is applied in closed loop —the blended pose is executed and the reactive IDM agents respond to it each step, so the log-independent scores along the sweep are well defined. Because the pull toward the log is re-applied every 0 .1 s, its e ff ect compounds over the rollout: even a small per-step weight drives the executed trajectory close to the log, which is why by β=0.25 the mean divergence has al-ready collapsed to ≈0 (Fig. 12). Sweeping β thus parameterizes ego–log divergence directly. 
+
+Determinism and re-anchoring. All data are transformed to an ego-local frame for conditioning and inverted after solving. The low-weight reference xref is time-indexed from the log; only if ego drift exceeds 10 m does it re-anchor to the closest future log point within a 6 s window, preventing the tracking term from racing ahead while still allowing recovery. Per-step speed limits use WOMD lane-type proxies (rule 3r0). These choices keep the controller competent without making it imitative. 
+
+7. Results 
+
+We now evaluate W-SQP in closed loop. All results use paired evaluation at 10 Hz across n=150 WOMD scenarios, with 10 compliance computed from executed states. We proceed in five steps. We first place W-SQP as a controller against two non-imitative baselines and a no-tiering ablation (Sec. 7.1). We then show that its apparent aggregate deficit is almost entirely log-coupled (Sec. 7.2), which makes the naive aggregate unfair and lets a log-independent score flip W-SQP’s verdict from loss to parity (Sec. 7.3). Finally, we rule out the leading alternative explanations (Sec. 7.4) and illustrate the mechanism on two case studies (Sec. 7.5). 
+
+7.1. Control performance against baselines 
+
+Before analyzing the compliance score , we place W-SQP as a controller against the two non-imitative baselines of Sec. 6 (reactive PP +IDM and sampling-based PDM-Closed–style) and a no-tiering ablation, on the same 150 scenarios and the same evaluator. We read control quality o ff the log-independent rules— the safety, regulatory, and interaction rules that score driving quality without reference to the human log. On this group W-SQP attains 93 .6% compliance, matching expert replay (93 .7%; no systematic group-level deficit, Sec. 7.2) and leading both non-imitative baselines—PP +IDM 91 .8% and PDM-Closed 91 .5%— by roughly 2 pp . Among controllers that do not track the log, W-SQP is the one whose safety and regulatory behavior comes closest to the human’s. On the log-coupled (imitation) axis every non-imitative con-troller necessarily falls below the expert’s 100%, but the spread is enormous—W-SQP 89 .9%, PDM-Closed 67 .9%, PP +IDM 33 .0%—and it orders the controllers by how much they hap-pen to resemble the recorded human, not by how safely they drive. W-SQP’s comparatively high log-coupled score is itself in part an artifact of its soft route corridor (Eq. 10, droute =2 m at Tier-2 weight) and low-weight tracking reference, which supply the route intent that WOMD provides no other way to specify; a corridor-free planner of equal driving quality would diverge more and score lower. The −10 .1 pp log-coupled deficit is there-fore a conservative lower bound on the imitation penalty. This contrast—a tight log-independent ranking beside a 57 pp -wide log-coupled spread—is the confound in miniature. Fig. 7 places every planner in the plane of the two axes. Driving quality (horizontal) separates the planners by only ≈2 pp ; imita-tion (vertical) spreads them by ≈57 pp ; and the expert sits on the 
+
+y=100 dominance boundary of Prop. 1. A fair score reads the horizontal axis alone, so its iso-lines are vertical. The naive ag-gregate ’s iso-lines are instead tilted by the 16 :2 group sizes, so it ranks a two-dimensional reality by projecting it obliquely—and imitation leaks into the ordering. 
+
+The tiering carries the safety compliance. The paper’s central design claim is that the priority-biased tiering , not soft-constraint relaxation on its own, is what protects the high-priority rules. Three experiments support it. First, we remove the tiering entirely, setting all four slack weights equal to their geometric mean ( ¯ρ=10 4) and leaving the controller otherwise unchanged. The log-independent deficit grows from −0.04 pp to −0.91 pp —an order of magnitude larger—the log-coupled deficit nearly doubles from −10 .1 pp to −19 .8 pp , and overall compliance falls from 93 .4% to 91 .7%. The flat program solves at the same rate, so this is the priority structure at work, not solver behavior. 90.5 91.0 91.5 92.0 92.5 93.0 93.5 94.0 94.5                     
+
+> log-independent (safety/regulatory) compliance (%) →driving quality
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> 90
+> 100
+> log-coupled (imitation) compliance (%)
+> expert dominance ( y= 100, Prop.~1)
+> β-sweep (imitation blend, n= 40)
+> driving quality: ∼2 pp
+> imitation:  ∼ 57 pp
+> Expert
+> (replay)
+> W-SQP
+> no-tier
+> ablation
+> PDM-Closed
+> PP+IDM fair score iso-lines (vertical)
+> naive-aggregate iso-lines (tilted)
+> Figure 7: The planner-space compliance plane. x:log-independent (safety /regulatory) compliance =driving quality; y: log-coupled (imitation) compliance. Fair-score iso-lines are vertical (dotted); naive-aggregate iso-lines are tilted (dashed); y=100 is the expert-dominance boundary (Prop. 1). The
+> β-sweep (grey, n=40 subset) climbs from W-SQP toward the expert corner as the executed pose is blended toward the log.
+
+The flat weight, however, changes two things at once: it removes the ordering between tiers and also lowers the overall 
+
+sti ff ness of the top tiers. The remaining two experiments sepa-rate these. We first sweep the priority ratio r between adjacent tiers while holding the geometric-mean penalty fixed at 10 4, so total sti ff ness is constant, and only the ordering varies ( r=1 is the flat ablation, r=10 3 the paper’s separation). As ordering strengthens on a 40-scenario subset, the safety /regulatory deficit improves monotonically from −1.08 pp toward −0.68 pp and the log-coupled deficit from −17 .5 toward −13 .4 pp , while median solve time stays ≈30 ms throughout (Fig. 8). We then check the opposite extreme: raising all four weights uniformly to 10 8—maximally sti ff but unordered—degrades the safety /regulatory group further on the full set ( −1.03 pp , versus −0.91 at flat 10 4
+
+and −0.04 tiered), with zero solver failures. Sti ff er constraints without ordering are worse, not better; ordering is doing the work. The priority bias is also visible as an auditable, fleet-level 
+
+property (Fig. 9): logging each surrogate’s residual normalized by its own threshold, the safety /regulatory surrogates are relaxed on only a small fraction of steps (collision 2 .5%, road-edge 4 .9%, speed 1 .6%) while the low-priority route surrogate absorbs most of the relaxation ( ≈17%)—exactly the ordering the tiering is designed to induce, measured across the fleet. 
+
+7.2. The compliance gap is log-coupled 
+
+Fig. 10 shows the mean paired di ff erence ∆c = c(πmpc ) −
+
+c(π⋆) by taxonomy group. The result is stark. The two log-coupled rules drop by ∆clog = −10 .1 pp , whereas the sixteen log-independent safety /regulatory rules show no systematic group-level deficit ( ∆cinv = −0.04 pp ); the controller-defined group lies between ( −0.75 pp ). We state the second finding as a bound rather than as parity: the bootstrap 95% CI, [ −1.07 , +0.52] pp ,places any systematic safety /regulatory deficit below 1 .1 pp —an order of magnitude under the log-coupled deficit, whose CI is [−14 .0, −6.6] pp. The two intervals do not overlap. 11 −1.0                    
+
+> −0.5
+> 0.0
+> log-indep.
+> Δc (pp)
+> tiered: −0.63
+> fl at (no ordering)
+> Ordering swept at constant stiffness (median solve ≈29--34 ms throughout)
+> 10 010 110 210 3
+> priority ratio rbetween adjacent tiers (fixed geo-mean ρ= 10 4)
+> −16
+> −14
+> −12
+> log-coupled
+> Δc (pp)
+> tiered: −12.86 Figure 8: Tier-separation mechanism: sweeping the priority ratio rbetween adjacent tiers at fixed geometric-mean sti ff ness ( ρ=10 4), 40-scenario subset. As ordering strengthens ( r=1 flat →r=10 3), both the log-independent (top) and log-coupled (bottom) deficits improve toward the tiered baseline (dotted) while median solve time stays ≈30 ms; the improvement is from ordering, not sti ff ness.
+
+We rest the inference on those non-overlapping CIs rather than on a single e ff ect-size number. Cohen’s d = −0.62 between the two groups is reported as descriptive only, because the groups have very di ff erent intrinsic variance ( Rlog averages two rules, 
+
+Rinv sixteen). For context, an e ff ect of this size needs n≈23 scenarios for 80% power, or n≈42 under a more conservative two-sample assumption; at n=150 the study is amply powered. Across scenarios the log-coupled deficit is heavy-tailed—its mean dragged down by a minority of high-divergence scenes— while the log-independent di ff erence stays tight around zero (Fig. 10). This is Corollary 1 made concrete. Because W-SQP matches expert replay on the log-independent rules ( δind ≈ 0), the en-tire aggregate gap collapses to the imitation premium—here 
+
+b∆imit = 10 .1 pp . W-SQP is not a worse driver; it is a di ff erent 
+
+driver, penalized only for not being the recorded human (Prop. 1, Prop. 2). The per-rule view (Table 4) confirms the deficit is not di ff use. The two largest negative deltas are path tracking ( 0r0, −10 .7 pp )and route adherence ( 2r2, −9.5 pp )—both at 100% for expert replay by construction. The log-independent rules move in both directions by small amounts (headway +2.6, clearance +1.9, against speed limit −2.3, drivable surface −2.1) and cancel at the group level, which is why the claim is a group-level one, not per-rule parity. The small genuine regressions are not spread across the dataset either. The three largest significant safety /regulatory deficits—non-traversable surface, drivable surface, and speed limit (Table 3)—concentrate in the same high-divergence sce-narios as the log-coupled penalty. They correlate with ego–log divergence at r=−0.90, averaging −4.8 pp in the high-divergence half of scenarios but exactly 0 .0 pp in the low-divergence half. These are recovery transients in the hardest scenes, not a broad safety regression: in half the scenarios the safety /regulatory         
+
+> Table 3: Two kinds of deficit, separated. (A) the log-coupled imitation penalty :rules defined as deviation from the human log, which expert replay satisfies at 100% by construction. (B) absolute regressions on genuine log-independent safety /regulatory rules (BH-significant, negative), o ff set by improvements else-where so the group nets to −0.04 pp ; these concentrate in the highest-divergence scenes (Sec. 7.2). ∆: paired mean (W-SQP −expert), pp.
+
+Rule Group ∆ (pp) 
+
+(A) Log-coupled imitation penalty 
+
+Path tracking ( 0r0) log-coupled −10 .7Route adherence ( 2r2) log-coupled −9.5
+
+(B) Absolute safety /regulatory regressions 
+
+Non-traversable surface ( 9r1) log-indep. −2.9Speed limit ( 3r0) log-indep. −2.3Drivable surface ( 7r0) log-indep. −2.1Bike-lane encroachment ( 10 r5) log-indep. −1.0
+
+deficit simply vanishes. Benjamini–Hochberg correction flags 10 of 25 rules, the two log-coupled rules carrying the smallest 
+
+q-values. 
+
+7.3. The aggregate is unfair; the log-independent score repairs it 
+
+The decomposition has a direct consequence for ranking. Fig. 11 plots, per scenario, the naive aggregate ∆c (all 25 rules) against the log-independent ∆c. Almost every point lies below the parity line: the aggregate scores W-SQP harsher than the fair score, and the o ff set is the log-coupled contribution. Convert-ing to verdicts with a ±0.5 pp dead-band, the naive aggregate records W-SQP as losing 44 /150 scenarios and winning 32 (mean −1.04 pp ); under the log-independent score the verdict is balanced—30 losses, 34 wins (mean −0.04 pp )—with 14 scenar-ios flipped out of “loss.” A benchmark using the aggregate would report a net-negative, misleading ranking for a planner whose safety and regulatory compliance is, at the dataset level, statis-tically indistinguishable from the human’s (Table 3 details the localized exceptions). Reporting the log-independent score, with the log-coupled score separately as an imitation metric, removes the bias with no change to the simulator or agents—though, as Sec. 8 discusses, it presupposes an agreed rule classification and calibrated thresholds. 
+
+The confound is not an artifact of equal weighting. One might object that an unweighted mean over 25 heterogeneous rules is a straw aggregator, since rulebooks are priority-ordered and the log-coupled rules sit at the lowest levels (0 and 2). Re-weighting the aggregate by priority ( wr ∝ (ℓr+1) p, ℓr the rule’s level) shrinks but does not remove the gap: the mean W-SQP −expert gap moves from −1.04 pp (equal weights) to 
+
+−0.52 pp (p=1) and −0.41 pp (p=2), and the two lowest-priority log-coupled rules still account for 78% of the equal-weight gap. By Corollary 1 the imitation premium is positive for any weight-ing with wr > 0 on a log-coupled rule; only excluding those rules removes it cleanly. 12 0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 
+
+time (s) 
+
+> collision
+> (T1)
+> road edge
+> (T1)
+> speed limit
+> (T2)
+> route
+> (T2)
+
+(a) Normalized residual raster (s5_r53) 
+
+> collision
+> (T1)
+> road edge
+> (T1)
+> speed limit
+> (T2)
+> route
+> (T2)
+
+0
+
+5
+
+10 
+
+15 
+
+20 
+
+25 
+
+> relaxation frequency (%)
+> 2.5%
+> 4.9%
+> 1.6%
+> 17.4%
+
+(b) Fleet relaxation frequency ( n = 41) 
+
+10 −3
+
+10 −2
+
+10 −1
+
+10 0
+
+> residual / threshold
+
+Figure 9: Auditability as a measured property. (a) Threshold-normalized per-surrogate residual raster for one scenario—every cell is a residual divided by its own threshold, so the single colorbar is meaningful across rows: the safety surrogates stay inactive while the low-priority route surrogate carries the late-scene relaxation. 
+
+(b) Per-surrogate relaxation frequency across the audited fleet, with per-scenario spread. log-coupled 
+
+(2 rules) 
+
+log-independent 
+
+(16 rules) 
+
+controller-de fi ned 
+
+(7 rules) 
+
+−14 
+
+−12 
+
+−10 
+
+−8
+
+−6
+
+−4
+
+−2
+
+0
+
+> mean  Δ compliance (SQP  − expert), pp
+
+-10.12 
+
+-0.04 -0.75 
+
+Group decomposition ( n=150) 
+
+Figure 10: Mean paired compliance di ff erence (W-SQP − expert) by taxonomy group, bootstrap 95% CIs ( n=150). The gap is confined to the two log-coupled rules; the log-independent group shows no systematic deficit and has a tight per-scenario distribution around zero, whereas the log-coupled group is heavy-tailed. Individual rules move both ways (Table 3). 
+
+7.4. Falsification controls 
+
+The deficit is a predictable function of divergence. The magnitudes above are for two specific planners; what would a 
+
+less-divergent planner—the kind that tops a leaderboard—incur? To answer, we build a continuum between non-imitative W-SQP (β=0) and expert replay ( β→1) by blending W-SQP’s executed pose toward the logged pose with weight β, and trace the deficit against mean ego–log divergence (Fig. 12). The blend is a synthetic interpolation used only to parameterize divergence— the blended poses are not driven through the bicycle model—so the curve characterizes divergence versus deficit, not a family of realizable plans. The relationship is monotone and saturating: the deficit falls smoothly toward zero as divergence shrinks, vanishing only in the imitative limit, while log-independent −20 −15 −10 −5 0 5
+
+log-independent Δc (pp) 
+
+−20 
+
+−15 
+
+−10 
+
+−5
+
+0
+
+5
+
+> naive aggregate  Δc (pp)
+> naive aggregate
+> harsher than fair score
+> H6
+> H7
+
+Aggregate vs. fair-score Δc (n=150) 
+
+scenario 
+
+parity ( y = x)
+
+Figure 11: Per-scenario naive aggregate ∆c vs. the log-independent (fair) ∆c;points below parity are scenarios the aggregate penalizes beyond the fair score. Under a ±0.5 pp dead-band the naive score records W-SQP at 44 losses / 32 wins, the fair score at 30 / 34—flipping 14 scenarios out of “loss.” Case-study scenarios circled. 
+
+compliance stays at parity throughout ( −0.6 to +0.1 pp). Two things follow. A planner that stays closer to the log incurs a smaller deficit, but by Prop. 1 never a zero one. And the mapping is not universal across planners: PDM-Closed sits 
+
+above this curve, with a larger deficit ( −32 pp ) at the same mean divergence (2 .2 m). The reason is that the deficit depends on the distribution of divergence, not its mean—bursty excursions cross the threshold more often than smoothly spread deviations of equal average. Divergence predicts the deficit within a planner family but does not reduce it to one number across families. 
+
+It is not interaction density. If the deficit reflected di ffi culty 13 Table 4: Per-rule compliance (%) over 150 paired WOMD scenarios. Grp : taxonomy group (Sec. 5.3); Exp /SQP : mean compliance for expert replay / W-SQP; ∆:paired mean (SQP −Exp), pp; q: Benjamini–Hochberg FDR-adjusted Wilcoxon q-value ( m=25; bold if q≤0.05). A ‘–’ marks a rule never violated by either policy (zero variance, no test); such rules still enter the m=25 family, which only makes the correction more conservative. 
+
+Lvl Rule Name Grp Exp SQP ∆ q
+
+10 10 r0 VRU collision avoidance log-indep. 98.90 99.10 +0.20 0.867 10 10 r4 Cyclist passing distance log-indep. 99.26 98.91 −0.35 0.304 10 10 r5 Bike lane encroachment log-indep. 99.04 98.08 −0.96 0.008 
+
+9 9r0 Vehicle collision avoidance log-indep. 98.01 98.53 +0.52 0.208 9 9r1 Non-traversable surface log-indep. 99.98 97.12 −2.85 0.002 
+
+8 8r0 Stop sign compliance log-indep. 99.07 98.79 −0.28 0.222 8 8r1 Crosswalk yield log-indep. 93.48 93.89 +0.41 0.362 7 7r0 Drivable surface log-indep. 100.00 97.94 −2.06 0.008 
+
+7 7r1 Tra ffi c light compliance log-indep. 97.82 98.11 +0.29 0.660 7 7r9 Gore area avoidance log-indep. 96.73 98.33 +1.60 0.362 6 6r4 Elephant racing log-indep. 100.00 100.00 +0.00 –3 3r0 Speed limit log-indep. 99.50 97.25 −2.25 0.008 
+
+3 3r3 Following headway log-indep. 85.93 88.53 +2.59 0.005 
+
+3 3r4 Lateral clearance log-indep. 54.99 56.85 +1.85 0.304 3 3r6 Lane intrusion log-indep. 81.04 80.74 −0.30 0.867 2 2r0 Time window compliance controller 64.97 66.27 +1.30 0.005 
+
+2 2r2 Route adherence log-coupled 100.00 90.50 −9.50 <0.001 
+
+1 1r0 Yield to priority log-indep. 95.07 96.07 +1.00 0.055 1 1r11 Lateral acceleration controller 99.96 99.98 +0.02 0.867 1 1r3 Turn signal advisory controller 100.00 100.00 +0.00 –1 1r4 Lane selection controller 100.00 100.00 +0.00 –1 1r9 Jerk limit controller 96.31 92.57 −3.74 0.002 
+
+0 0r0 Path tracking log-coupled 100.00 89.27 −10 .73 <0.001 
+
+0 0r2 Longitudinal comfort controller 99.85 97.02 −2.83 <0.001 
+
+0 0r3 Lateral comfort controller 99.95 99.95 +0.00 1.000 
+
+in crowds, it should grow with interaction density. It does the opposite. Regressing the log-coupled ∆c on the exogenous scene density of Sec. 6 gives a positive slope ( +0.45 pp /agent at R=30 m, p=0.020), while the log-independent slope is flat (Fig. 13). A mediation analysis explains the sign: divergence drives the deficit ( r= − 0.68), but dense tra ffi c produces less 
+
+divergence ( r= − 0.22), because it funnels the ego onto the only feasible path—close to the human’s—whereas sparse scenes leave room for a valid alternative. The only proxy that yields the “expected” negative slope is the planner’s own solve time, an endogenous di ffi culty signal and precisely the circular measure an exogenous density is designed to avoid. Since the divergence-to-deficit link is partly tautological, we rest the main claim on the decomposition; this control establishes only the negative. 
+
+It is not the velocity predictor. W-SQP predicts other agents at their current constant velocity. Replacing this with a log-informed horizon-average velocity on a 30-scenario subset barely moves the log-coupled di ff erence ( −10 .3 pp → − 11 .5 pp) and leaves the log-independent group unchanged. The check is limited to 30 scenarios and to one alternative estimate, so it supports robustness to the velocity model without ruling out prediction e ff ects in general. 
+
+It is not specific to W-SQP. We repeat the whole decom-position on the two non-imitative baselines; the question now is not their control quality (Sec. 7.1) but whether the confound 
+
+itself reproduces. It does, on both (Table 5): the log-coupled deficit is large (PP +IDM −67 .0 pp ; PDM-Closed −32 .1 pp ) and far exceeds the log-independent one in each case. For the base-lines, we claim only this reproducibility, not safety parity—their log-independent means are negative ( −1.9 and −2.2 pp ), so they do drive somewhat less safely than the human on average, and PDM-Closed’s route corridor pushes it o ff -road in 26% of scenar-ios (a full roadgraph route would fix this). Only W-SQP reaches group-level log-independent parity. But the log-coupled deficit reproduces across three planners that share nothing except being non-imitative, which is the point: the deficit is a property of the metric, not of any one controller. 
+
+It is not a threshold artifact. The log-coupled rules fire when deviation from the logged pose exceeds a threshold τ
+
+(nominally 2 .4 m). Recomputing path-tracking compliance as τ
+
+sweeps over [1 , 6] m leaves the deficit large and negative every-where: [ −26 , −8] pp for W-SQP and [ −83 , −53] pp for PP +IDM, with expert replay at 100% for every τ by construction. No reasonable threshold removes the premium. 
+
+It is not scenario selection. We rank the main scenarios by complexity, which might correlate with divergence. Re-running the decomposition on a uniformly random sample of 50 WOMD scenarios preserves the e ff ect and, if anything, sharpens 14 0.0 0.5 1.0 1.5 2.0            
+
+> mean ego--log divergence (m)
+> −30
+> −25
+> −20
+> −15
+> −10
+> −5
+> 0
+> Δc vs. expert (pp)
+> β= 0
+> β= 0.01
+> β= 0.03
+> β= 0.06
+> β= 0.12 β= 0.25
+> PDM-Closed
+> (−32 pp @ same mean div.)
+> W-SQP endpoint
+> (β= 0, −12.9 pp)
+> Deficit vs. divergence ( n= 40 subset; βcompounds at 10 Hz)
+> log-coupled
+> log-independent
+
+Figure 12: Log-coupled and log-independent ∆c vs. mean ego–log divergence (n=40 subset), sweeping the imitation-blend weight from β=0 (W-SQP, diver-gence 2 .2 m) to β=0.25 (divergence ≈0). The log-coupled deficit is a monotone, saturating function of divergence while log-independent compliance stays at parity; the PDM-Closed marker ( ×) sits above the curve. Table 5: Generality across planners: group compliance di ff erence vs. expert replay ( n=150, pp). The log-coupled ≫ log-independent pattern reproduces on a reactive controller and a recognized PDM-Closed–style planner. The log-independent row shows mean (median) : the negative means on the baselines are pulled by a minority of high-divergence scenarios, while the medians sit near zero—the robustness message. 
+
+Group W-SQP PP +IDM PDM-C log-coupled (2), mean −10 .1 −67 .0 −32 .1log-indep. (16), mean −0.04 −1.9 −2.2
+
+(median) −0.04 −0.15 −0.17 controller (7), mean −0.75 +2.5 −1.9
+
+it: ∆clog = −16 .7 pp against ∆cinv = −1.0 pp (median 0 .0 pp ). Selecting by complexity therefore understates the deficit rather than manufacturing it, consistent with the finding that sparser scenes admit more divergence. 
+
+7.5. Case studies 
+
+Two representative scenarios make the mechanism concrete (Table 6): a stop-controlled junction (H6, Figs. 14–15) and dense vehicle tra ffi c (H7, 290 vehicles). In both, the trajectory overlay shows W-SQP taking a valid, di ff erent path from the logged human—a di ff erent lane or a di ff erent gap — and the per-rule panel shows the log-coupled rules lit up for W-SQP while its safety and regulatory rules stay close to the expert’s. The per-scenario numbers tell the same story: a large log-coupled deficit beside near-parity log-independent compliance (H6 ∆inv =−0.9, H7 +0.4 pp, both inside the dataset-level CI). These are exactly the instances of Prop. 1—a valid alternative path scored down purely for not being the recorded human’s. Fig. 17 tracks the same scenario over time. W-SQP’s path-tracking deviation climbs to 7 .7 m and stays above the 2 .4 m threshold for much of the rollout, so the log-coupled rule fires continuously. Yet over the same interval its physical margins— collision closeness, speed over the limit, headway—track expert 20 40 
+
+exogenous density R = 30 m 
+
+−75 
+
+−50 
+
+−25 
+
+0   
+
+> log-coupled  Δc (pp)
+> slope = +0.45, R2= 0.04
+> 0250
+> −100
+> −50
+> 0
+> solve-time
+> −0.33
+
+25 50 75 
+
+exogenous density R = 50 m   
+
+> slope = +0.42, R2= 0.08
+
+De fi cit does not grow with density 
+
+Figure 13: Log-coupled ∆c vs. exogenous interaction density at R=30 and 50 m: positive /flat slopes (the deficit does not grow with crowding). Inset: the circular solve-time proxy gives the opposite, misleading slope. Table 6: Case-study scenarios (complex, rule-rich scenes). Veh : # vehicles; Brd :# rules applicable >10% of steps; ∆log , ∆inv : per-scenario group compliance di ff erences (pp; ∆inv > 0 means W-SQP is safer than the human); div : mean ego–log divergence (m). 
+
+Scenario Veh Brd ∆log ∆inv div H6 Stop-controlled 58 25 −36 .0 −0.9 4.6H7 Dense vehicle tra ffi c 290 24 −15 .0 +0.4 9.8
+
+replay and stay safe. The controller is penalized for tens of seconds while nothing physical is wrong. 
+
+7.6. Summary 
+
+A competent non-imitative planner is penalized almost en-tirely on rules that measure deviation from the human log, while its safety and regulatory compliance is statistically indistinguish-able from expert replay. The e ff ect is large; it is neither interac-tion density (which reverses the sign) nor prediction quality (in our ablation). Two claims should be kept apart. The structural 
+
+premium—expert replay scores the log-coupled rules at 100% by construction, so any non-imitative planner pays a positive premium under any catalog that weights such a rule—holds in general. The magnitude (−10 .1 pp ) is specific to this controller and scenario set. An aggregate that includes the log-coupled rules ranks the planner a net loser; the log-independent score ranks it at parity. 
+
+8. Discussion 
+
+8.1. Deployment and practical relevance 
+
+As autonomous systems move toward deployment, planner decisions must be intelligible not only to the developers who tune them but to the safety engineers and investigators who must justify them. Being able to establish, after the fact, which rule was relaxed and by how much is thus an engineering re-quirement, not a reporting convenience. W-SQP o ff ers three properties toward it. It is computationally tractable on the eval-uated workstation—median solve time about 28 ms, maximum 15 expert rollout probe rollout Executed trajectory vs. logged human               
+
+> logged human
+> W-SQP (executed) Figure 14: H6 — Stop-controlled. Expert vs. W-SQP rollouts at maximum divergence (left, centre) and the executed-vs-logged trajectory overlay (right). W-SQP takes a valid alternative line with near-parity safety ( ∆inv =−0.9 pp) and a −36 .0 pp log-coupled deficit; the per-rule breakdown is in Fig. 15.
+> Figure 15: H6 — Rule-activity timeline (expert |W-SQP; light =applicable, solid =violated). The log-coupled rules (path tracking, route adherence) are elevated for W-SQP while the safety and regulatory rules stay close to expert replay: the −36 .0pp log-coupled deficit of Fig. 14 is confined to the imitation rules.
+
+104 ms under the 90 ms limit, with dynamics projection guaran-teeing a model-consistent next pose even for a non-converged iterate. It records threshold-normalized residuals for every surro-gate, making high-priority relaxations visible for review (Fig. 9). And its tier weights are explicit tuning knobs for the priority bias. None of this amounts to a safety guarantee: the weights do not impose lexicographic priority, the soft surrogates do not certify safety, and deployment still needs embedded profiling and validation with sensing, estimation, and actuation in the loop. 
+
+8.2. A log-independent compliance score 
+
+Our results point to a simple, low-cost remedy. Because the confounded rules form an explicit a priori subset, a benchmark can report two numbers instead of one: a log-independent com-pliance score over the safety, regulatory, map-, and interaction-defined rules, and, separately, an imitation score over the log-coupled rules. The first measures what closed-loop evaluation is meant to measure—did the planner drive safely and legally?— while the second is reported for transparency rather than folded into the ranking. This needs no change to the simulator or agents; it is a relabeling and re-aggregation of metrics benchmarks al-ready compute. It does presuppose agreement on which rules are quality metrics and which are imitation metrics. We there-fore recommend that leaderboards mixing the two kinds keep log-coupled metrics out of the aggregate quality score, and re-calibrate the retained thresholds before treating them as absolute compliance measures. The log-independent score must still reward task comple-tion, or a planner could look safe merely by making no progress. A map-route progress term supplies this, defined against the assigned route corridor rather than the log—in the manner of nu-Plan’s progress-along-route ratio and Waymax’s route-following metric (Caesar et al., 2021; Gulino et al., 2023). Referenced to route geometry and not to ξ⋆ω, it is log-independent by Def. 2. Computed as executed arc-length along the route over route length, it gives expert replay, W-SQP, and PP +IDM comparable scores (0 .93, 0 .91, 0 .89) while a do-nothing planner scores near zero. This term is a recommendation only: it is computed here post-hoc and is not part of the validated log-independent score of Sec. 7, whose verdict flip rests on the safety and regulatory rules alone. Applied to existing benchmarks, the taxonomy is a simple audit (Table 7), and mature ones already pass it: nuPlan’s closed-loop score contains only interaction-, map-, and controller-defined terms, with pointwise matching confined to the separate 
+
+open-loop score, and Waymax reports log-divergence standalone rather than in any aggregate (Caesar et al., 2021; Gulino et al., 16 early (t=2.8s) max divergence (t=15.2s) late (t=16.8s) Executed trajectory vs. logged human           
+
+> logged human
+> W-SQP (executed) Figure 16: H7 — Dense vehicle tra ffi c ( 290 vehicles). Bird’s-eye keyframes (early /max-divergence /late) and the executed-vs-logged overlay. W-SQP accepts a di ff erent gap and is marginally safer (∆inv =+ 0.4 pp) while its log-coupled compliance drops −15 .0 pp; the per-rule mechanism over time is in Fig. 17.
+
+2023; Dauner et al., 2023). The confound is not a flaw of these benchmarks but a risk for any catalogue that folds a log-coupled term into one ranking—as our own 25-rule aggregate does. To make the fix turnkey we release a reference implementation that, given per-rule compliance and a per-rule taxonomy label, reports the aggregate, the fair score, and the imitation premium, with the verdict under each. 
+
+8.3. Relation to agent-realism findings 
+
+This reframes part of the score deterioration that learned reactive agents induce on existing benchmarks (Hagedorn et al., 2025; Peng et al., 2025). As agents become more reactive, the recorded human log becomes a less attainable target, so any log-coupled sub-metric reports growing “violations” that re-flect divergence from an un-followable log rather than degraded driving. Our per-rule decomposition makes this component sep-arable from genuine compliance change and is complementary to that line of work: realism changes the rollout, metric con-struction changes what the rollout is scored against, and both must be controlled for fair comparison. We do not claim this 
+
+> Table 7: The taxonomy as a benchmark audit. Mature closed-loop scores keep log-coupled terms out of the ranking aggregate; the confound is a risk only for catalogues that do not.
+
+Score in agg.? note nuPlan CLS no ADE /FDE confined to OLS nuPlan OLS (separate) pointwise log-matching only Waymax metrics no log-divergence reported standalone Our catalogue yes path-tracking + route folded in 
+
+accounts for the whole of the reported shifts, which are planner-and scenario-dependent; only that our decomposition isolates one component attributable to metric construction rather than to driving quality. 17 0            
+
+> 5
+> path-tracking
+> deviation (m)
+> τ
+> LOG-COUPLED ( fi res)
+> H7: path-tracking fi res while physical margins stay safe
+> expert W-SQP
+> 0.0
+> 0.2
+> 0.4
+> collision
+> closeness  physical (safe)
+> 0.5
+> 1.0
+> speed over
+> limit (m/s)
+> τ
+> physical (safe)
+> 0510 15
+> time (s)
+> 0
+> 1
+> headway
+> shortfall
+> physical (safe) Figure 17: Prop. 1 in time (H7, W-SQP solid vs. expert dashed; all quantities “higher =worse”). Top: the log-coupled path-tracking deviation exceeds its threshold τ=2.4 m (red) for much of the rollout. Below: the physical margins (collision closeness, speed-over-limit, headway shortfall) track expert replay and stay safe throughout.
+
+8.4. Limitations 
+
+The central threat to validity is external. We establish the decomposition for three non-imitative planners, but the evidence still rests on a single evaluator, a single (IDM) reactive-agent model, and one dataset; the magnitude of the log-coupled gap will vary with each. Our PDM-Closed also uses the log path geometry as its route corridor and occasionally leaves the driv-able area on complex geometry (26% of scenarios, inflating its log-independent mean but not its near-parity median). Afull roadgraph route, a second evaluator catalogue, and learned reactive agents are the main future work. A second asymmetry the taxonomy does not address is one of policy reactivity rather than metric reference. Expert replay cannot respond to the agents, only they to it. So some of W-SQP’s small positive deltas on interaction rules (headway +2.6, clearance +1.9 pp ) may reflect replay’s passivity rather than better driving—the reactivity counterpart of the log-coupling confound, this time in W-SQP’s favor. Since our headline is parity, not superiority, this does not threaten the result; but a fully symmetric comparison would need a reactive reference rather than a replayed one. The evaluator calibration itself warrants a caveat. Some log-independent rules flag even the logged human at high rates (lateral clearance at ∼55%, following headway at ∼86% for expert replay), largely because compliance (16) normalizes over all steps rather than applicable ones. The log-independent score is therefore best read as a relative , controller-vs-expert measure; individual thresholds would need recalibration before absolute use. Our claim is a paired decomposition, so this does not a ff ect the headline. Finally, the scenarios are complexity-selected and W-SQP relaxes rules softly, so compliance is not a formal safety guarantee; the evaluator remains authoritative. 
+
+9. Conclusion 
+
+We have presented W-SQP, an auditable, rulebook-aware NMPC for autonomous driving. The controller maps nine rule families to four shared-slack tiers in one CasADi /IPOPT non-linear program. Separated quadratic penalties bias violations toward lower-priority rules while actuation bounds remain hard; they do not provide lexicographic priority or formal safety guar-antees. Threshold-normalized per-rule residuals provide an audit record for each control cycle. W-SQP replans from its executed state at 10 Hz. A 90 ms CPU-time limit returns IPOPT’s best iterate, and dynamics pro-jection produces a model-consistent executed pose; median and maximum observed wall-clock solve times on the evaluation workstation were 28 and 104 ms. These results establish anytime-capable operation on the tested platform, not hard-real-time execution. Closed-loop evaluation covered 150 WOMD scenar-ios in Waymax and included reactive and proposal-and-select baselines. The evaluation also separated log-independent safety and regulatory rules from two rules defined relative to expert replay. W-SQP’s mean di ff erence on the sixteen log-independent rules was −0.04 pp , with no systematic group-level deficit, whereas the log-coupled di ff erence was −10 .1 pp . Several individual safety rules nevertheless regressed in high-divergence scenarios (Table 3); the group-level result should not be read as per-rule or per-scenario parity. For future work, we are interested in nondimensionalizing the optimization surrogates, improving the collision geometry and route construction, evaluating with additional agent and metric models, and profiling the controller on embedded auto-motive hardware. Hardware-in-the-loop and vehicle experiments must also incorporate perception, estimation, communication, and actuation latency, and combining the tiered-slack controller with certified feasibility or reachability mechanisms remains necessary for a formal safety claim. 
+
+Appendix A. Rule Catalogue and Threshold Definitions 
+
+This appendix lists the implemented evaluator rulebook. For each rule we give its identifier, priority level, short name, viola-tion condition, and threshold τr; a rule is violated at step k when it is applicable and its Boolean predicate ϕr(Sk) is true. A global strictness multiplier κ = 1.25 tightens selected thresholds, either raising a required margin or lowering an allowed tolerance by κ.
+
+Navigation-alignment proxy rules.. Rules 0r0 and 2r2 measure similarity to the logged trajectory rather than a legal or safety requirement: path tracking (0r0) uses ∥pego − plog ∥ against 3 .0/κ ,18 Table A.1: Complete rule catalogue with predicate and threshold definitions for all 25 evaluator rules. “Proxy” marks the log-coupled rules (Def. 1) that reference the logged expert trajectory. This table makes the per-rule results (Table 4) reproducible from the paper.                                                                                                                                                                              
+
+> Lvl ID Name Violation condition Threshold 10 rule_10r0 VRU collision avoidance Min corner-to-corner distance to any pedestrian /cyclist < τ 0.5κm10 rule_10r4 Cyclist passing distance Eff ective lateral clearance to cyclist < τ (1 .5+0.05 v)κm10 rule_10r5 Bike lane encroachment Min distance from ego corners to bike-lane points < τ 0.3κm9rule_9r0 Vehicle collision avoidance Min corner-to-corner distance to any vehicle < τ 0.5κm9rule_9r1 Non-traversable surface Road-edge intrusion >0 (any intrusion) 08rule_8r0 Stop sign compliance d<5 m to stop sign AND speed >0.5 m /s0.5 m /s8rule_8r1 Crosswalk yield Near crosswalk AND ped-in-crosswalk AND speed >2.0 m /s2.0 m /s7rule_7r0 Drivable surface Dist. to nearest lane point > τ 5.0 m 7rule_7r1 Tra ffi c light compliance d<15 m to red TL AND speed >1.0 m /s1.0 m /s7rule_7r9 Gore area avoidance Dense road-edge points near ego AND dmin <1.5 m 1.5 m 6rule_6r4 Elephant racing Side-by-side vehicle at similar speed AND ego speed >
+> 15 m /s15 m /s3rule_3r0 Speed limit Overspeed >1/κ m/s above proxy limit 1/κ m/s3rule_3r3 Following headway THW <2κs OR TTC <3κs(2 κ, 3κ) s 3rule_3r4 Lateral clearance Min lateral clearance to objects < τ 1.0κm3rule_3r6 Lane intrusion Lateral TTC < τ 2.0κs2rule_2r0 Time window compliance Avg speed over last 2 s <0.5 m /s after t>5 s 0.5 m /s2rule_2r2 Route adherence (proxy) Position dev >5/κ m OR yaw dev >0.5/κ rad (5 /κ, 0.5/κ )1rule_1r0 Yield to priority Cross-tra ffi c conflict heuristic (proximity +speed) —1rule_1r3 Turn signal advisory Advisory-only (yaw-rate proxy; never violated) —1rule_1r4 Lane selection Advisory placeholder (never violated) —1rule_1r9 Jerk limit Peak longitudinal jerk > τ 5.0 m /s3
+> 1rule_1r11 Lateral acceleration |v·˙ψ|> τ 3.0 m /s2
+> 0rule_0r0 Path tracking (proxy) L2 position error to log >3/κ m3/κ m0rule_0r2 Longitudinal comfort Deceleration >3/κ m/s2(harsh braking) 3/κ m/s2
+> 0rule_0r3 Lateral comfort Lateral jerk > τ 3.0 m /s3
+
+and route adherence (2r2) uses position (5 .0/κ ) and yaw (0 .5/κ )deviation. Retained for diagnostics, they nevertheless favor expert replay and must be read accordingly in any aggregate. 
+
+CRediT authorship contribution statement Hadi Hajieghrary: Conceptualization, Methodology, Soft-ware, Formal analysis, Investigation, Data curation, Validation, Visualization, Writing – original draft, Writing – review & edit-ing. Benedikt Walter: Software, Investigation, Validation, Writing – review & editing. Chaitanya Shinde: Software, Investigation, Validation, Writing – review & editing. Paul Schmitt: Conceptualization, Methodology, Writing – review & editing. Miguel Hurtado: Resources, Supervision, Project administration, Writing – review & editing. 
+
+Declaration of competing interest 
+
+The authors declare that they have no known competing financial interests or personal relationships that could have ap-peared to influence the work reported in this paper. 
+
+Declaration of generative AI in the writing process 
+
+During the preparation of this work the authors used a large language model to assist with drafting, editing, and figure gener-ation. The authors reviewed and edited all content and take full responsibility for the content of the publication. 
+
+Data availability 
+
+This study is built on the Waymo Open Motion Dataset (Et-tinger et al., 2021), which is publicly available under its dataset license. The W-SQP controller, the tiered-slack NLP formula-tion, the closed-loop simulation harness, the 25-rule evaluator, and the fair (log-independent) scoring reference implementation will be released in a public repository upon publication; scenario indices and configuration files needed to reproduce the reported runs are included. 
+
+References 
+
+Abernethy, J., et al., 2024. Lexicographic optimization: Algorithms and stability, in: Proceedings of Machine Learning Research. Allamaa, J.P., Patrinos, P., Ohtsuka, T., Son, T.D., 2024. Real-time mpc with control barrier functions for autonomous driving using safety enhanced collo-cation, in: IFAC-PapersOnLine. Ames, A.D., Coogan, S., Egerstedt, M., Notomista, G., Sreenath, K., Tabuada, P., 2019. Control barrier functions: Theory and applications, in: European Control Conference (ECC). Ames, A.D., Xu, X., Grizzle, J.W., Tabuada, P., 2017. Control barrier function based quadratic programs for safety critical systems. IEEE Transactions on Automatic Control 62, 3861–3876. Andersson, J.A.E., Gillis, J., Horn, G., Rawlings, J.B., Diehl, M., 2019. CasADi: A software framework for nonlinear optimization and optimal control. Math-ematical Programming Computation 11, 1–36. Ang, S., Yang, Y., Chen, C., Wang, Y., 2026. CLOVER: Closed-loop value estimation and ranking for end-to-end autonomous driving planning. arXiv:2605.15120. Benjamini, Y., Hochberg, Y., 1995. Controlling the false discovery rate: A practical and powerful approach to multiple testing. Journal of the Royal Statistical Society: Series B 57, 289–300. Caesar, H., Kabzan, J., Tan, K.S., Fong, W.K., Wol ff , E., Lang, A., Fletcher, L., Beijbom, O., Omari, S., 2021. nuplan: A closed-loop ml-based planning benchmark for autonomous vehicles. 
+
+19 Censi, A., Slutsky, K., Wongpiromsarn, T., Yershov, D., Pendleton, S., Fu, J., Frazzoli, E., 2019. Liability, ethics, and culture-aware behavior specifica-tion using rulebooks, in: 2019 International Conference on Robotics and Automation (ICRA), pp. 8536–8542. Cheng, J., Chen, Y., Chen, Q., 2024. Pluto: Pushing the limit of imitation learning-based planning for autonomous driving. arXiv:2404.14327. Cheng, J., Chen, Y., Mei, X., Yang, B., Li, B., Liu, M., 2023. Rethinking imitation-based planner for autonomous driving. arXiv:2309.10443. Collin, A., Bilka, A., Pendleton, S., Tebbens, R.D., 2020. Safety of the in-tended driving behavior using rulebooks, in: 2020 IEEE Intelligent Vehicles Symposium (IV), pp. 136–143. Dauner, D., Hallgarten, M., Geiger, A., Chitta, K., 2023. Parting with miscon-ceptions about learning-based vehicle motion planning, in: Conference on Robot Learning, PMLR. pp. 1268–1281. Escande, A., Mansard, N., Wieber, P.B., 2014. Hierarchical quadratic program-ming: Fast online humanoid-robot motion generation. The International Journal of Robotics Research 33, 1006–1028. Ettinger, S., Cheng, S., Caine, B., Liu, C., Zhao, H., Pradhan, S., Chai, Y., Sapp, B., Qi, C., Zhou, Y., Yang, Z., Chouard, A., Sun, P., Ngiam, J., Vasudevan, V., McCauley, A., Shlens, J., Anguelov, D., 2021. Large scale interactive motion forecasting for autonomous driving: The waymo open motion dataset, in: IEEE /CVF International Conference on Computer Vision (ICCV). Grislain, C., Vuorio, R., Lu, C., Whiteson, S., 2025. IGDrivSim: A benchmark for the imitation gap in autonomous driving, in: IEEE /RSJ International Conference on Intelligent Robots and Systems (IROS). ArXiv:2411.04653. Gulino, C., Fu, J., Luo, W., Tucker, G., Bronstein, E., Lu, Y., Harb, J., Pan, X., Wang, Y., Chen, X., Co-Reyes, J.D., Agarwal, R., Roelofs, R., Lu, Y., Montali, N., Mougin, P., Yang, Z., White, B., Faust, A., McAllister, R., Anguelov, D., Sapp, B., 2023. Waymax: An accelerated, data-driven simulator for large-scale autonomous driving research, in: Advances in Neural Information Processing Systems (NeurIPS) Datasets and Benchmarks Track. de Haan, P., Jayaraman, D., Levine, S., 2019. Causal confusion in imitation learning, in: Advances in Neural Information Processing Systems (NeurIPS). Hagedorn, S., Donkov, L., Distelzweig, A., Condurache, A.P., 2025. When planners meet reality: How learned, reactive tra ffi c agents shift nuplan bench-marks. arXiv preprint arXiv:2510.14677 . Halder, P., Christ, F., Altho ff , M., 2023. Lexicographic mixed-integer motion planning with stl constraints, in: 2023 IEEE 26th International Conference on Intelligent Transportation Systems (ITSC). Hasuo, I., 2022. Responsibility-sensitive safety: an introduction with an eye to logical foundations and formalization. arXiv preprint arXiv:2206.03418 . Kanoun, O., Lamiraux, F., Wieber, P.B., 2011. Kinematic control of redundant manipulators: Generalizing the task-priority framework to inequality task. IEEE Transactions on Robotics 27, 785–792. Kerrigan, E.C., Maciejowski, J.M., 2000. Soft constraints and exact penalty func-tions in model predictive control, in: Proc. UKACC International Conference on Control (Control 2000), Cambridge, UK. Lai, L., Fiaschi, L., Cococcioni, M., Deb, K., 2023. Pure and mixed lexicographic-paretian many-objective optimization: state of the art. Natural Computing 22, 227–242. doi: 10.1007/s11047-022-09911-4 .Lin, Y., Xing, Z., Han, X., Altho ff , M., 2025. Tra ffi c-rule-compliant trajectory repair via satisfiability modulo theories and reachability analysis. IEEE Transactions on Robotics . Liu, S., Zeng, J., Sreenath, K., Belta, C.A., 2023. Iterative convex optimization for model predictive control with discrete-time high-order control barrier functions, in: American Control Conference (ACC). Maierhofer, S., Moosbrugger, P., Altho ff , M., 2022. Formalization of intersection tra ffi c rules in temporal logic, in: 2022 IEEE Intelligent Vehicles Symposium (IV). Maierhofer, S., Rettinger, A.K., Mayer, E.C., Altho ff , M., 2020. Formalization of interstate tra ffi c rules in temporal logic, in: 2020 IEEE Intelligent Vehicles Symposium (IV). Manheim, D., Garrabrant, S., 2018. Categorizing variants of goodhart’s law. arXiv preprint arXiv:1803.04585 . Mavrotas, G., 2009. E ff ective implementation of the ϵ-constraint method in multi-objective mathematical programming problems. Applied Mathematics and Computation 213, 455–465. Peng, M., Yao, R., Guo, X., Ma, J., 2025. nuplan-r: A closed-loop planning benchmark for autonomous driving via reactive multi-agent simulation. arXiv preprint arXiv:2511.10403 . Schwenzer, M., Ay, M., Bergs, T., Abel, D., 2021. Review on model predictive control: an engineering perspective. The International Journal of Advanced Manufacturing Technology 117, 1327–1349. Scokaert, P.O.M., Rawlings, J.B., 1999. Feasibility issues in linear model predictive control. AIChE Journal 45, 1649–1659. Shalev-Shwartz, S., Shammah, S., Shashua, A., 2017. On a formal model of safe and scalable self-driving cars. arXiv preprint arXiv:1708.06374 . Tercan, A., et al., 2024. Thresholded lexicographic ordered multiobjective optimization. arXiv preprint arXiv:2408.13493 . Wächter, A., Biegler, L.T., 2006. On the implementation of an interior-point filter line-search algorithm for large-scale nonlinear programming. Mathematical Programming 106, 25–57. Waymo Research, 2023. Waymax agents: IDM route-following policy. https: //github.com/waymo-research/waymax . Waymax documentation, ac-cessed 2026-02-13. Weihs, L., Jain, U., Liu, I.J., Salvador, J., Lazebnik, S., Kembhavi, A., Schwing, A., 2021. Bridging the imitation gap by adaptive insubordina-tion, in: Advances in Neural Information Processing Systems (NeurIPS). ArXiv:2007.12173. Xiao, W., Mehdipour, N., Collin, A., Bin-Nun, A.Y., Frazzoli, E., Tebbens, R.D., Belta, C., 2021. Rule-based optimal control for autonomous driving, in: Proceedings of the ACM /IEEE 12th International Conference on Cyber-Physical Systems, pp. 143–154. Yamaguchi, T., Nickovic, D., et al., 2024. Rtamt: Runtime robustness monitors with application to signal temporal logic. International Journal on Software Tools for Technology Transfer . 
+
+20

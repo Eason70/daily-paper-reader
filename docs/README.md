@@ -6,74 +6,85 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-09 ~ 2026-07-18
-- 运行时间：2026-07-18 08:01:43 UTC
+- 最新运行日期：2026-07-19
+- 运行时间：2026-07-19 21:35:59 UTC
 - 运行状态：成功
-- 本次总论文数：18
-- 精读区：7
-- 速读区：11
+- 本次总论文数：21
+- 精读区：8
+- 速读区：13
 
 ### 今日简报（AI）
-今日聚焦多智能体博弈与零和游戏优化，精读两篇高分论文，速读三篇相关进展。最值得关注的是离线纳什求解器结合在线树搜索在多智能体图博弈中的应用，以及零和游戏中隐式中点梯度下降法的快速收敛性。下一步可深入了解这些算法在复杂博弈或实际系统（如市场稳定、量子设备调优）中的迁移潜力。
-- 详情：[/20260709-20260718/README](/20260709-20260718/README)
+今日聚焦开放世界移动操作与RL安全部署，多机器人协同控制取得进展。  
+最值得看的是视觉驱动具身智能体在开放世界中的移动操作，以及基于加速度CBF-QP约束的RL策略安全执行。  
+建议深入阅读这两篇高评分文章，把握具身智能与安全控制交叉的前沿趋势。
+- 详情：[/202607/19/README](/202607/19/README)
 
 ### 精读区论文标签
-1. [Offline Nash Solvers Meet Online Tree Search in Multi-Agent Games on Graphs](/20260709-20260718/2607.08892v1-offline-nash-solvers-meet-online-tree-search-in-multi-agent-games-on-graphs)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：多智能体追逃博弈纳什均衡混合离线在线方法
-2. [Implicit Midpoint Gradient Descent: Fast and Learning rate free convergence for Zero-Sum Games](/20260709-20260718/2607.09950v1-implicit-midpoint-gradient-descent-fast-and-learning-rate-free-convergence-for-zero-sum-games)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：零和博弈与对抗优化
-3. [Beyond Bayesian Nash: Learning Minimax-Regret Equilibria for Adversarial Team Games under Asymmetric Information](/20260709-20260718/2607.09993v1-beyond-bayesian-nash-learning-minimax-regret-equilibria-for-adversarial-team-games-under-asymmetric-information)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：对抗团队博弈，最小最大遗憾均衡，非对称信息
-4. [Capture, Shield, or Neutralize: Engagement-Aware Pursuit-Evasion](/20260709-20260718/2607.10986v1-capture-shield-or-neutralize-engagement-aware-pursuit-evasion)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：使用零和滚动时域MPC和CBF安全滤波器的追逃博弈
-5. [Multi-Agent LLMs Fail to Explore Each Other](/20260709-20260718/2607.11250v1-multi-agent-llms-fail-to-explore-each-other)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：多智能体LLM探索，部分可观察随机博弈建模
-6. [Reproducing the k-copwin Algorithm: Theory vs. Implementation](/20260709-20260718/2607.13271v1-reproducing-the-k-copwin-algorithm-theory-vs-implementation)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：重现警察与强盗追逃博弈的k-copwin算法
-7. [PAC Learning in Turn-Based Stochastic Games with Reachability Objectives: A Decentralized Private Approach via Expected Conditional Distance](/20260709-20260718/2607.14877v1-pac-learning-in-turn-based-stochastic-games-with-reachability-objectives-a-decentralized-private-approach-via-expected-conditional-distance)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：回合制随机博弈，对抗性玩家与可达性目标
+1. [Exploratory, Communicative, and Deployable: Vision-Driven Embodied Agents for Open-World Mobile Manipulation](/202607/19/2607.13653v1-exploratory-communicative-and-deployable-vision-driven-embodied-agents-for-open-world-mobile-manipulation)  
+   标签：评分：9.0/10、query:ocean-robot
+   evidence：视觉驱动具身智能体的开放世界移动操作
+2. [Safe Execution of RL Policies Via Acceleration-Based CBF-QP Constraint Enforcement for Real-World Robotic Deployments](/202607/19/2607.14488v1-safe-execution-of-rl-policies-via-acceleration-based-cbf-qp-constraint-enforcement-for-real-world-robotic-deployments)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：基于CBF-QP安全滤波器的安全强化学习
+3. [Risk-Aware Belief Control Barrier Functions over Random Finite Sets](/202607/19/2607.15016v1-risk-aware-belief-control-barrier-functions-over-random-finite-sets)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：控制障碍函数安全控制风险感知
+4. [ABot-AgentOS: A General Robotic Agent OS with Lifelong Multi-modal Memory](/202607/19/2607.10350v2-abot-agentos-a-general-robotic-agent-os-with-lifelong-multi-modal-memory)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：具身智能机器人代理操作系统
+5. [Route, Communicate, and Reason: Gated Routing and Adaptive Depth for Efficient Multi-Agent Reasoning](/202607/19/2607.10836v1-route-communicate-and-reason-gated-routing-and-adaptive-depth-for-efficient-multi-agent-reasoning)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：带学习门控的分层多智能体系统与多智能体强化学习
+6. [Real-Time Rulebook-Aware Nonlinear MPC for Autonomous Driving with Priority-Biased Tiered Slacks](/202607/19/2607.10975v1-real-time-rulebook-aware-nonlinear-mpc-for-autonomous-driving-with-priority-biased-tiered-slacks)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：自动驾驶实时安全运动规划NMPC
+7. [A Hybrid Sampling-Based Trajectory Planner with Game-Theoretic Guidance for Autonomous Racing](/202607/19/2607.13354v1-a-hybrid-sampling-based-trajectory-planner-with-game-theoretic-guidance-for-autonomous-racing)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：自主赛车的博弈论轨迹规划
+8. [Task-Oriented Sensing and Covert Transmissions for Collaborative Multi-AUV Systems](/202607/19/2607.13880v1-task-oriented-sensing-and-covert-transmissions-for-collaborative-multi-auv-systems)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：多AUV协同控制感知通信
 
 ### 速读区论文标签
-1. [Provably Optimal Learning Algorithms for Assistance Games](/20260709-20260718/2607.08012v1-provably-optimal-learning-algorithms-for-assistance-games)  
+1. [Conditional Invertible Neural Networks for Data-Driven UAV Control: A 2-D Proof of Concept](/202607/19/2607.13703v1-conditional-invertible-neural-networks-for-data-driven-uav-control-a-2-d-proof-of-concept)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：神经网络用于无人机控制
+2. [Curvature-Constrained and Constant-Speed Distributed Simultaneous Arrival Control for Multi-Robot Systems](/202607/19/2607.14781v1-curvature-constrained-and-constant-speed-distributed-simultaneous-arrival-control-for-multi-robot-systems)  
    标签：评分：8.0/10、query:multi-agent
-   evidence：合作辅助博弈与最优学习
-2. [Formal Mechanisms for Market Stability in Self-Interested Agent Societies: A Marketplace Simulation Study](/20260709-20260718/2607.08652v1-formal-mechanisms-for-market-stability-in-self-interested-agent-societies-a-marketplace-simulation-study)  
-   标签：评分：8.0/10、query:multi-agent
-   evidence：基于LLM智能体的多智能体市场仿真，研究对抗攻击下的稳定性机制
-3. [Action-Factored Multi-Agent Reinforcement Learning for Scalable Quantum Device Tuning](/20260709-20260718/2607.09422v1-action-factored-multi-agent-reinforcement-learning-for-scalable-quantum-device-tuning)  
-   标签：评分：8.0/10、query:multi-agent
-   evidence：合作多智能体强化学习与动作因子分解
-4. [World Models as Adversaries: Multi-Agent Self-Play Fine-Tuning for Robust Motion Planning](/20260709-20260718/2607.10630v1-world-models-as-adversaries-multi-agent-self-play-fine-tuning-for-robust-motion-planning)  
-   标签：评分：8.0/10、query:multi-agent
-   evidence：多智能体对抗自博弈用于鲁棒运动规划
-5. [A Distributionally Robust Multi-agent Reinforcement Learning Framework for Intelligent Intersection Control](/20260709-20260718/2607.09899v1-a-distributionally-robust-multi-agent-reinforcement-learning-framework-for-intelligent-intersection-control)  
+   evidence：分布式同时到达，多机器人系统，协同控制
+3. [From Non-Rigid to Rigid: Safe Acquisition of Rigid Communication Graphs under Limited Sensing](/202607/19/2607.10170v1-from-non-rigid-to-rigid-safe-acquisition-of-rigid-communication-graphs-under-limited-sensing)  
    标签：评分：7.0/10、query:multi-agent
-   evidence：通过上下文赌博机最坏情况估计器生成对抗性需求混合
-6. [Runtime Safety Filtering for Learned Small UAS Separation Policies under GNSS Degradation](/20260709-20260718/2607.10014v1-runtime-safety-filtering-for-learned-small-uas-separation-policies-under-gnss-degradation)  
+   evidence：多机器人编队刚性通信图
+4. [ActiveFly-Bench: Aligning Embodied Question Answering with Vision-Language-Action for Aerial Embodied Perception](/202607/19/2607.10180v1-activefly-bench-aligning-embodied-question-answering-with-vision-language-action-for-aerial-embodied-perception)  
+   标签：评分：7.0/10、query:ocean-robot
+   evidence：空中具身感知，对齐推理与控制
+5. [EFLUX: Elastic Multi-Robot Formation Navigation and Adaptation with Agentic LLMs](/202607/19/2607.12050v1-eflux-elastic-multi-robot-formation-navigation-and-adaptation-with-agentic-llms)  
    标签：评分：7.0/10、query:multi-agent
-   evidence：对抗性GNSS退化下的多智能体分离安全
-7. [Auditing Belief-Conditioned LLM Agents in Hidden-Information Social Deduction Games](/20260709-20260718/2607.10814v1-auditing-belief-conditioned-llm-agents-in-hidden-information-social-deduction-games)  
+   evidence：使用LLM自适应的多机器人编队导航
+6. [Unveiling Complex Collective Behaviors from Simple Rewards](/202607/19/2607.12861v1-unveiling-complex-collective-behaviors-from-simple-rewards)  
    标签：评分：7.0/10、query:multi-agent
-   evidence：隐藏信息多智能体游戏（狼人杀）中的信念状态审计
-8. [LOGOS: A Living Logic for AI Agent Teams That Evolve With Humans](/20260709-20260718/2607.10878v1-logos-a-living-logic-for-ai-agent-teams-that-evolve-with-humans)  
-   标签：评分：7.0/10、query:multi-agent
-   evidence：多智能体团队治理与自演化层
-9. [ARCANA: A Reflective Multi-Agent Program Synthesis Framework for ARC-AGI-2 Reasoning](/20260709-20260718/2607.09059v1-arcana-a-reflective-multi-agent-program-synthesis-framework-for-arc-agi-2-reasoning)  
-   标签：评分：6.0/10、query:multi-agent
-   evidence：协作式多智能体程序合成框架
-10. [Dec-MARVEL: Decentralized Multi-Agent Exploration without Communication under Budget Constraints](/20260709-20260718/2607.09060v2-dec-marvel-decentralized-multi-agent-exploration-without-communication-under-budget-constraints)  
-   标签：评分：6.0/10、query:multi-agent
-   evidence：无通信的分散式多无人机探索，利用间接观测进行协调
-11. [Plug-and-Play Reweighting for Resilient Collaborative Decision-Making in Connected Autonomous Driving](/20260709-20260718/2607.10037v1-plug-and-play-reweighting-for-resilient-collaborative-decision-making-in-connected-autonomous-driving)  
-   标签：评分：6.0/10、query:multi-agent
-   evidence：弹性协作决策，多机器人系统，对抗鲁棒性
+   evidence：多智能体强化学习，机器人集群，涌现集体行为
+7. [Learning Safe Agent Behaviour from Human Preferences and Justifications via World Models](/202607/19/2607.13172v1-learning-safe-agent-behaviour-from-human-preferences-and-justifications-via-world-models)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：使用世界模型和人类偏好的安全强化学习
+8. [Distributionally Robust and Safe Imitation Learning](/202607/19/2607.13436v1-distributionally-robust-and-safe-imitation-learning)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：分布鲁棒的安全模仿学习
+9. [Design and Control of the "QuadBoat": A Quadruped Surface Vehicle for Drowning Rescue](/202607/19/2607.13633v1-design-and-control-of-the-quadboat-a-quadruped-surface-vehicle-for-drowning-rescue)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：无人水面艇控制MPC-PID
+10. [ABot-AgentOS: A General Robotic Agent OS with Lifelong Multi-modal Memory](/202607/19/2607.10350v1-abot-agentos-a-general-robotic-agent-os-with-lifelong-multi-modal-memory)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：通用机器人智能体操作系统，终身多模态记忆，具身智能
+11. [Distributed Agent System: Fault-Tolerant Collaboration Among Embodied Agents](/202607/19/2607.10811v1-distributed-agent-system-fault-tolerant-collaboration-among-embodied-agents)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：具身智能体间的容错协作
+12. [A Glimpse into Long-term Physical Coexistence with Intelligent Robots](/202607/19/2607.11377v1-a-glimpse-into-long-term-physical-coexistence-with-intelligent-robots)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：与智能机器人的长期物理共存，多机器人代理
+13. [Exact Solutions to a Class of Constrained Optimal Control Problems via Lossless Convexification for Digital Control](/202607/19/2607.12109v1-exact-solutions-to-a-class-of-constrained-optimal-control-problems-via-lossless-convexification-for-digital-control)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：约束最优控制，无损凸化，约束满足
 
 
 <div class="dpr-home-promo-card">
