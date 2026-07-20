@@ -1,0 +1,756 @@
+Title: A Synthetic Reliability-Aware PINN Benchmark for Offshore Wind Turbine Support-Structure Monitoring with Bayesian Inverse Identification
+
+URL Source: https://arxiv.org/pdf/2606.24176v1
+
+Published Time: Wed, 24 Jun 2026 00:36:34 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# A Synthetic Reliability-Aware PINN Benchmark for Offshore Wind Turbine Support-Structure Monitoring with Bayesian Inverse Identification 
+
+Puneet Kant a,1, ∗, Monika Tanwar b
+
+> aSchool of Artificial Intelligence and Data Science, Indian Institute of Technology Jodhpur
+> bSchool of Management and Entrepreneurship, Indian Institute of Technology Jodhpur
+
+Abstract 
+
+Reliable structural health monitoring (SHM) of offshore wind turbine (OWT) support structures requires fast state estimation from sparse measurements. Repeated high-fidelity finite-element or aeroelastic analyses are difficult to use directly in online monitoring loops, while purely data-driven surrogates can require large training sets. This paper presents DigiTurbine , a synthetic reliability-aware Physics-Informed Neural Network (PINN) benchmark for OWT monopile support-structure monitoring. The workflow embeds a simplified Euler–Bernoulli beam equation with Winkler soil foundation in the training objective, couples it with Bayesian-prior-informed inverse identification, and adds First-Order Reliability Method (FORM) screening. All validation uses synthetic configurations with analytical or finite-difference ground truth motivated by the NREL 5 MW reference turbine context. Three contributions are evaluated. (1) Forward PINN: A 4,353-parameter network with EMA-adaptive loss weighting achieves mean RMSE 0.135 ± 0.109 mm (10/10 pass) with all-configuration mean inference of 0.381 ms (GPU) / 0.605 ms (CPU), 26 × / 17 × below the 10 ms real-time target. (2) Inverse PINN and gradient direction problem: Standard simultaneous optimisation of network weights and unknown parameters ( E, ksoil ) fails on the tested 4th-order PDE inverse cases because of conflicting gradient directions (mean error 63.9 %, 0/4 pass), and five loss-weighting or scheduling mitigations also fail in the large-offset synthetic tests. A weak log-normal Bayesian prior centred on the correct design/as-built specification substantially mitigates this failure on the tested cases: 8/8 pass, mean 
+
+E error ≤ 0.02 %, including simultaneous E+ksoil identification under 10 % measurement noise. (3) Near-real-time reliability: The FORM layer solves representative structural limit-state cases in 0.7–2.7 ms, with the OWT cantilever root-moment capacity case requiring about 1.0 ms ( >40 × faster than Monte Carlo), machine-precision agreement for linear limit states, and ≤ 6 % error for moderately nonlinear cases. In the benchmarked synthetic workflow, the online pipeline completes in <7 ms, giving theoretical processing headroom for SCADA-style monitoring. 
+
+Keywords: Physics-Informed Neural Networks, Synthetic Benchmark, Digital Twin, Offshore Wind Turbine, Structural Health Monitoring, Bayesian Inverse Identification, Gradient Direction Problem, First-Order Reliability Method, Euler–Bernoulli Beam 
+
+1. Introduction 
+
+Global wind installations reached a record 165 GW in 2025, taking total installed wind capacity to 1,299 GW, while offshore wind reached 92.5 GW by the end of 2025 after 9.3 GW of new offshore capacity was grid-connected [ 1, 2]. Continued renewable expansion is expected toward 2030 [ 3 ]. Fixed-bottom support struc-tures, especially monopiles, remain central to deployed    
+
+> ∗Corresponding author.
+> Email addresses: m25ai1078@iitj.ac.in (Puneet Kant),
+> monikatanwar@iitj.ac.in (Monika Tanwar)
+> 1Manuscript prepared June 2026.
+
+offshore wind and must endure 10 8– 10 9 fatigue cycles over a 25-year service life, making fatigue a dominant structural design concern [ 4, 5, 6]. Operations and main-tenance (O&M) costs represent 25–30 % of lifecycle expenditure, and published condition-based monitoring studies report potential O&M savings of 11–18 % [ 7 ]. Yet structural sensing remains sparse, often limited to small sets of accelerometer and strain measurements [5, 8 , 7 ], making real-time full-field structural state infer-ence from sparse, noisy data a fundamental challenge. Physics-Informed Neural Networks (PINNs) [ 9] en-code governing PDEs as soft loss constraints, enabling sparse-data surrogates in solid mechanics and wind-
+
+> arXiv:2606.24176v1 [cs.CL] 23 Jun 2026
+
+energy applications [ 10 , 11 ]. The present study tests the 50–100 measurement regime, far fewer than would typically be expected for purely data-driven surrogates. Extended to inverse problems, PINNs treat unknown material properties as additional optimisation variables; however, a gradient direction problem , not systemati-cally characterised in the reviewed literature, prevents convergence in the tested cases when parameters are ini-tialised far from their true values. Digital Twins (DTs) at Level 2–3 maturity [ 12 , 13 ] couple physics-based sur-rogates with reliability analysis for continuous structural prognostics. First-Order Reliability Method (FORM) [ 8]estimates the reliability index β (t) through constrained optimisation and is typically far cheaper than Monte Carlo for low-dimensional limit states; paired with PINN-updated structural estimates, it enables near-real-time reliability screening not found in the reviewed OWT DT literature. 
+
+1.1. Research Gaps 
+
+A focused review of recent PINN, digital-twin, relia-bility, and OWT structural monitoring studies identifies four open gaps; representative studies are shown in Ta-ble 1. 
+
+G1. Computational gap. High-fidelity FEA can require minutes to hours per evaluation; pure ML requires thousands of training samples. No OWT SHM framework in the reviewed literature was found to achieve sub-10 ms physics-consistent inference from sparse data. 
+
+G2. Inverse problem gap. Published inverse PINNs do not study convergence failure under large-offset initialisations. The gradient direction problem was not found to be identified, formally analysed, or substantially mitigated in the reviewed literature. 
+
+G3. Integration gap. Within the reviewed literature, no prior work was found to integrate PINN for-ward prediction, inverse parameter identification, and probabilistic reliability in a single synthetic-data-validated OWT pipeline. 
+
+G4. Reliability speed gap. Monte Carlo can be too slow for repeated online reliability updates, particularly when coupled to high-fidelity structural models; FORM integrated with a physics-consistent PINN state-estimation workflow was not found for OWT structures in the reviewed literature. 
+
+1.2. Contributions 
+
+This paper makes the following specific contributions, evaluated using synthetic benchmark experiments. 1. Forward PINN for OWT monopile: PDE-constrained surrogate for a simplified Euler– Bernoulli/Winkler monopile benchmark (a Morison forcing helper is implemented in 
+
+morison_force() , but Morison-driven PINN training is deferred to future field-calibration work), evaluated across 10 synthetic uniform-load configurations. Mean RMSE 0.135 ± 0.109 mm, all-configuration mean inference 0.381 ms (GPU) / 0.605 ms (CPU) (both well below the 10 ms target); 10/10 test cases pass from only 50–100 sparse measurements. 2. Gradient direction problem: identification, anal-ysis, and Bayesian mitigation. Formal gradi-ent analysis and experimental characterisation of the circular-dependency failure in standard inverse PINNs for high-order PDEs. Five mitigation strate-gies all fail without priors. Weak Bayesian priors centred on the correct design/as-built specifications achieve 8/8 success, mean E error ≤ 0.02 %, includ-ing simultaneous E + ksoil identification under 10 % noise. 3. FORM reliability layer within the PINN work-flow: representative FORM solves in 0.7–2.7 ms, with the OWT cantilever root-moment capacity case at about 1.0 ms ( > 40 × faster than Monte Carlo); machine-precision accuracy for linear limit states; 
+
+≤6 % error for moderately nonlinear cases. Digi-Turbine end-to-end pipeline: <7 ms, corresponding to >143 Hz theoretical processing headroom. 
+
+2. Literature Review 
+
+2.1. Digital Twins and PINNs for OWT 
+
+Digital twin applications to OWT have grown rapidly, covering fleet-level SCADA analytics [ 14 ], component-level SHM [ 7], Bayesian reliability updating from moni-toring data [ 5], probabilistic risk-based inspection plan-ning [ 15 ], and mooring-line monitoring [ 16 ]. Wang et al. [6 ] conducted a comprehensive review of OWT support-structure reliability within a DT context, concluding that no ML- or PINN-based framework existed for integrated reliability monitoring. Chiachío et al. [ 17 ] and Ritto & Rochinha [ 13 ] developed DT frameworks with Bayesian updating and physics-based ML classifiers respectively, but without PINN-based millisecond inference. Chen 2et al. [ 18 ] reviewed floating-OWT DTs using hybrid neu-ral surrogates; Lai et al. [ 19 ] demonstrated fatigue moni-toring in aircraft wings via measurement–computation fusion; both lack real-time reliability metrics. PINNs [ 9, 20 ] have been applied to solid-mechanics material identification [ 10 ], wind-farm wake dynamics [ 21 ], wind-turbine bearing fatigue [ 22 ], wind-turbine power prediction with uncertainty quantification [ 23 ], and monopile scour detection from natural-frequency shifts [ 11 ]. These works collectively establish PINNs as viable for wind-energy applications, but the reviewed works do not address convergence failure of inverse PINNs or integrate structural reliability analysis. 
+
+2.2. Inverse PINNs and Structural Reliability 
+
+Standard inverse PINNs co-optimise network weights and unknown physical parameters via a PDE-constrained loss [ 9]. Applications to bearing diagnostics [ 24 ] and elasticity identification [ 10 ] report success but generally do not systematically stress-test large-offset initialisa-tions. Offshore SHM can involve substantial parameter uncertainty from material degradation, scour, and soil– structure changes; convergence under such conditions remains underexplored. Published works report success-ful cases without examining failure mechanisms, and no systematic study of convergence under varied initialisa-tions or noise levels was found. In particular, the gradient direction problem (large-error failure from circular de-pendencies between unknown parameters and high-order network derivatives) has not previously been identified, characterised, or substantially mitigated in the reviewed literature. Structural reliability for OWT has been addressed via FORM, SORM, and Monte Carlo [ 8, 25 ], but proba-bilistic analysis remains computationally intractable for continuous monitoring at FEA speeds. FORM integrated with a physics-consistent PINN state-estimation work-flow for real-time β (t) was not found in the reviewed literature for OWT support structures. 
+
+2.3. Gap Matrix and Positioning 
+
+Table 1 presents a positioning matrix across the re-viewed literature. The bottom row summarises the limited-scope combination implemented in this synthetic benchmark. 
+
+3. Theoretical Framework 
+
+3.1. Structural Mechanics of the OWT Monopile 3.1.1. Euler–Bernoulli Beam with Winkler Foundation 
+
+The transverse vibration of a monopile section is gov-erned by the Euler–Bernoulli partial differential equation in the presence of viscous damping, distributed loading, and Winkler soil reaction: 
+
+EI ∂ 4u
+
+∂ x4 + ksoil (x) u + c ∂ u
+
+∂t
+
++ ρA ∂ 2u
+
+∂t2 = q(x,t),
+
+(1) where x ∈ [0, L] is the axial coordinate, t is time, u(x,t)
+
+is the transverse displacement (m), EI is the bending stiff-ness (Pa m 4), ρA is the linear mass (kg m −1), c is the dis-tributed damping coefficient (N s m −2), ksoil is the equiv-alent Winkler foundation stiffness per unit beam length used in the one-dimensional beam equation (N m −2), and 
+
+q(x,t) is the distributed transverse load (N m −1). For the NREL 5 MW reference turbine [ 26 ] the rele-vant nominal properties are: pile outer diameter D =
+
+6.0 m, wall thickness tw = 0.06 m, Young’s modulus 
+
+E = 210 GPa, density ρ = 7,850 kg m −3, cross-sectional area A = 1.13 m2, second moment of area I = 4.94 m4,and pile embedment depth 30 m. These properties are cited for physical context of the NREL 5 MW reference turbine; the validation experiments in Section 5 use a rep-resentative simplified beam model ( I = 8.333 × 10 −3 m4,
+
+A = 0.05 m2, EI = 1.75 GN m 2) that produces well-resolved millimetre-scale deflections, enabling exact ground-truth comparison with the analytical solution (Eq. 3). Representative geotechnical subgrade moduli range from 5 MN m −3 (loose sand) to 60 MN m −3 (dense sand or stiff clay) according to DNV-ST-0126 [ 4, 8 ]. When used in Eq. (1) , these values are converted to an equivalent per-length beam stiffness by multiplying by an effective pile width or diameter. 
+
+Boundary conditions for a clamped-base (pile–soil interface), free-top cantilever: 
+
+u(0,t) = 0, ux(0,t) = 0,
+
+EI u xx (L,t) = 0, EI u xxx (L,t) = 0. (2) Figure 1 illustrates the simplified monopile model used in this study, showing the clamped base, soil reac-tion, distributed loading, and sparse displacement mea-surement locations. The analytical static solution for a uniformly dis-tributed load q on a clamped-free beam without soil interaction (used for validation): 
+
+u(x) = qx 2
+
+24 EI 
+
+ 6L2 − 4Lx + x2. (3) This expression provides exact ground truth for the no-soil static beam cases; finite-difference Winkler-beam references are used for the soil-interaction inverse cases. 3Table 1: Literature positioning matrix across the five target capability dimensions. Symbols denote coverage within each work’s stated validation scope; descriptive entries specify the narrower implementation scope when a simple checkmark would be ambiguous. ✓ = substantive coverage;  
+
+> ∼= partial coverage; – = not addressed.
+
+Reference Venue / Year DT PINN Reliability OWT Struct. Inverse 
+
+Leon-Medina et al. [7] Intell. Syst. Appl. 2025 ✓ ML only Component ✓ –Ambarita et al. [14] Energy Inform. 2024 ✓ – – ✓ –Chen et al. [18] Energies 2024 ∼ Hybrid Qualitative Floating –Augustyn et al. [5] Energies 2021 ✓ – Bayesian ✓ –Bull et al. [15] Struct. Health Monit. 2025 ✓ – Risk-based ✓ –Walker et al. [16] J. Ocean Eng. 2022 ✓ – Component Mooring –Qin et al. [24] Knowl.-Based Syst. 2024 ✓ Inverse Diagnostics – ✓
+
+Zhang & Zhao [21] En. Conv. Mgmt. 2023 ✓ Farm – ✓ –Chen et al. [11] Ocean Eng. 2025 – Forward – Monopile ∼
+
+Das et al. [25] Comput. Struct. 2025 – Bayesian General – –Chiachio et al. [17] Autom. Constr. 2022 ✓ – ∼ – –Ritto & Rochinha [13] Mech. Syst. Signal 2021 ✓ ML class. – ✓ –Lai et al. [19] J. Manuf. Syst. 2023 ✓ – Fatigue – –Wang et al. [6] Ocean Eng. 2021 ∼ – Review ✓ –Yucesan & Viana [22] Appl. Soft Comput. 2023 ✓ ✓ Bearing Component –
+
+This work Synthetic benchmark Synth. DT Fwd.+inv. PINN FORM 1D monopile Bayes prior  
+
+> Note: For this work, the bottom row denotes implemented components in the present synthetic benchmark, not field deployment: reliability uses algebraic FORM screening, OWT structural modelling uses a one-dimensional monopile beam, and inverse identification uses a correctly centred weak prior; see Table 9.
+
+q(x,t)u(xi) u(x j) u(xk)
+
+L
+
+ksoil 
+
+clamped base free tip 
+
+> Figure 1: Simplified monopile beam model and measurement layout used in this paper.
+
+3.1.2. Morison Hydrodynamic Loading 
+
+Wave loading on the sub-surface monopile section can be represented by the Morison equation [27]: 
+
+qwave (x,t) = 12 ρwCDD|vw|vw + ρwCM πD2 
+
+> 4
+
+˙vw, (4) where ρw = 1,025 kg m −3, CD ∈ [0.6, 1.2], and 
+
+CM ∈ [1.2, 2.0]. The current implementation (morison_force() ) is a simplified Morison forc-ing helper used for software validation; Airy/JONSWAP wave-kinematics coupling and full aero-elastic Morison-driven training are deferred to future field-calibration work. 
+
+3.2. PINN Formulation 3.2.1. Composite Loss Function 
+
+A PINN approximates u(x,t) with a multilayer per-ceptron ˆu(x,t; θ ) parameterised by trainable weights θ .The training objective is the weighted composite loss: 
+
+L (θ ) = λdata Ldata (θ )+ λPDE LPDE (θ )+ λBC LBC (θ ),
+
+(5) where the three loss components are defined as fol-lows. 
+
+Data loss (fit to sparse sensor observations): 
+
+Ldata (θ ) = 1
+
+NdNd
+
+# ∑
+
+> i=1
+
+ ˆu(xi,ti; θ ) − uobs 
+
+> i
+
+2. (6) 
+
+PDE residual loss (enforce Euler–Bernoulli equation at Nf collocation points uniformly distributed throughout the domain): 
+
+LPDE (θ ) = 1
+
+NfNf
+
+# ∑
+
+> j=1
+
+h
+
+EI ˆuxxxx , j + ksoil ˆu j
+
++ c ˙ˆu j + ρA ¨ˆu j − q j
+
+i2
+
+,
+
+(7) where subscript j denotes evaluation at (x j,t j; θ ). The implementation evaluates the same residual in nor-malised coordinates and rescales the residual terms for stable optimisation. 
+
+Boundary condition loss (enforce Eq. 2 at domain 4boundaries): 
+
+LBC (θ ) =  ˆu(0; θ )2 +  ˆux(0; θ )2
+
++  ˆuxx (L; θ )2 +  ˆuxxx (L; θ )2.
+
+(8) The zero-valued moment and shear conditions in Eq. (2) are therefore enforced through the corresponding deriva-tive residuals. All neural-network partial derivatives in Eqs. (7) –(8) are computed by PyTorch automatic differentiation [ 28 ], avoiding finite-difference derivative approximations at the collocation points. The PDE residual LPDE evalu-ated at 200 collocation points provides dense structural information that functions as a physics-based data aug-mentation. 
+
+3.2.2. Exponential Moving Average Adaptive Loss Weighting 
+
+Fixed loss weights caused one component to dominate in 3/10 configurations. This study uses EMA-adaptive weighting with running averages ¯L (t)
+
+i = ( 1 − α) ¯L (t−1)
+
+i + α L (t)
+
+i , (9) and dynamic weights λ (t)
+
+i = ¯L (t)
+
+avg /  ¯L (t)
+
+i + ε, with 
+
+α=0.02 , ε=10 −6, which balances component scales by down-weighting persistently large-magnitude losses and up-weighting smaller-magnitude components. 
+
+3.3. First-Order Reliability Method 
+
+Given a limit-state function g(X) ≤ 0 defining failure and n standard-normal variables Ui = ( Xi − μi)/σi, with 
+
+X = T −1(u) denoting the transformation from standard normal space to physical variables, FORM defines the reliability index 
+
+β = min 
+
+u: g(T −1(u))= 0
+
+∥u∥2 (10) and approximates failure probability as Pf ≈ Φ(−β ) [8]. The Most Probable Point is located via SLSQP in 5–15 function evaluations. In the benchmarked implementa-tion, SLSQP evaluates user-defined algebraic limit-state functions and estimates the required local sensitivities numerically by finite differences. Coupling the opti-miser directly to a trained PINN displacement evaluator is compatible with the same interface but is not sepa-rately benchmarked in this paper.                        
+
+> Historical / Commissioning Sensor Data
+> Inverse PINN Training
+> joint (θ,log ˆ E,log ˆ k)
+> EMA-adaptive; seconds–minutes
+> Checkpoint Saved
+> θ∗,ˆE,ˆk
+> Contribution 1: PINNBeam
+> Eknown a priori; 4,353 params 0.23 ms GPU (C1 baseline)
+> Runtime Sensor / SCADA-Style Data
+> update stream
+> Load Frozen Checkpoint
+> no gradient steps
+> InversePINNBeam. forward(x)
+> single forward pass, ∼0.75 ms
+> u(x),ˆφ
+> displacement field + identified parameters
+> FORM Solver (SLSQP)
+> min 12∥u∥2s.t. g=0;∼1.0 ms
+> β(t)→Reliability Alert
+> <7 ms end-to-end
+> loads
+> Offline Phase (once) Online Phase (per monitoring update)
+
+Figure 2: Synthetic reliability-aware PINN workflow architecture. Left (Offline Phase, once): the Inverse PINN is trained on historical or com-missioning sensor data to jointly identify the displacement surrogate 
+
+θ ∗ and physical parameters ˆE, ˆk via EMA-adaptive co-optimisation (seconds to a few minutes in the present experiments); the checkpoint is saved. The Forward PINN ( PINNBeam , Contribution 1) is validated independently as a 0.23 ms C1-baseline benchmark when E is known a priori; it is not part of the online inference architecture. Right (Online Phase, per monitoring update): the frozen checkpoint is loaded and queried via a single forward pass of InversePINNBeam (∼0.75 ms), yielding u(x) and identified parameters simultaneously; FORM then computes the reliability index β (t) (∼1.0 ms for the OWT cantilever case); no gradient steps occur. Total end-to-end latency: <7 ms, corre-sponding to >143 Hz theoretical processing headroom. 
+
+4. Methodology 
+
+4.1. System Architecture Overview 
+
+Fig. 2 illustrates the two-phase DigiTurbine monitor-ing workflow. The system operates in two phases. Offline : the In-verse PINN is trained on historical or commissioning sensor data (seconds to a few minutes in the present experiments); all model weights θ ∗ and identified pa-rameters ˆφ are saved to a checkpoint. Online : at every monitoring update the frozen checkpoint is loaded and a single forward pass ( ∼0.75 ms) yields both the full dis-placement field u(x) and the stored parameter estimates. FORM then evaluates the selected structural limit state using these updated state estimates; the reported OWT cantilever case requires about 1.0 ms. No retraining oc-curs during online operation; periodic offline retraining (e.g. after a storm event or on a monthly schedule) re-freshes ˆφ using new sensor history. When E is known in advance, the lightweight Forward PINN ( PINNBeam ,4,353 parameters) provides full-field reconstruction at 0.23 ms for the C1 baseline and serves as the standalone Contribution 1 benchmark. 5The software implementation uses a modular backend comprising PINNBeam , InversePINNBeam ,
+
+FORMSolver , and a Streamlit real-time monitoring dash-board. 
+
+4.2. Forward PINN Design and Training 4.2.1. Network Architecture 
+
+The network is a 2-hidden-layer MLP with 64 neurons per layer: ˆu = Nθ : R ∋ x 7 −→ ˆu ∈ R.
+
+The tanh activation is used because it provides C ∞
+
+smoothness, and in particular C 4 continuity in the x
+
+direction needed for accurate computation of ∂ 4 ˆu/∂ x4
+
+via automatic differentiation. ReLU-type activations are unsuitable for this fourth-order PINN because their higher derivatives are zero or ill-defined over much of the domain. Hidden layers use PyTorch default ini-tialisation (Kaiming uniform); the output layer uses small-norm initialisation ( std = 10 −3, zero bias) for stable initial predictions near zero. The parameter count is 1×64 + 64 ×64 + 64 ×1 = 4,224 weights plus 64 + 64 + 1 = 129 biases, for 4,353 trainable parameters (approximately 34 KB serialised). 
+
+4.2.2. Training Protocol 
+
+Training uses the Adam optimiser [ 29 ] with learning rate η = 1×10 −3 for N = 500 epochs, full-batch over all collocation points. Loss weights are computed adap-tively from epoch 1 by the EMA scheme (Section 3.2.2); no fixed initial weights are set. Preliminary experiments with fixed weights ( λPDE = λBC = 100 , λdata = 10 ) led to poor convergence in 3 of 10 configurations, motivating the fully adaptive approach. Collocation setup: 200 collocation points uniformly distributed over x ∈ [0, L] for LPDE ; boundary conditions enforced pointwise at x = 0 and x = L for LBC ; Nd ∈
+
+[50 , 100 ] labelled measurement points for Ldata . All inputs are normalised to [0, 1]; outputs are normalised by the analytical peak displacement. The primary validation experiments (C1–C10, I1–I4) use noiseless synthetic data; noise robustness is assessed separately in I5–I8 at 
+
+σn ∈ { 1, 3, 5, 10 } %. 
+
+4.3. Inverse PINN: Gradient Direction Problem and EMA-Adaptive Joint Co-Evolution 4.3.1. The Gradient Direction Problem 
+
+In the standard simultaneous inverse PINN, net-work weights θ and unknown physical parameters φ ∈{E, ksoil } are treated as a single vector of learnable vari-ables, co-optimised via: 
+
+( ˆθ , ˆφ ) = arg min    
+
+> θ,φ
+
+Ldata (θ )+ λ f LPDE (θ , φ ) + λb LBC (θ )+ λprior Lprior (φ ).
+
+(11) Here Lprior is the Gaussian log-parameter penalty used in the Bayesian-prior-informed runs; setting λprior = 0recovers the no-prior ablations. The gradient of the static PDE loss ( q − EI ˆuxxxx = 0 )with respect to E is: 
+
+∂ LPDE 
+
+∂ E = 2
+
+Nf ∑
+
+> j
+
+ EI ˆuxxxx , j − q j
+
+ · I ˆuxxxx , j, (12) where ˆuxxxx , j = ∂ 4 ˆu/∂ x4   
+
+> xj;θ
+
+depends entirely on the current network weights θ . When θ is randomly ini-tialised, ˆuxxxx is far from the physically correct value, causing the gradient in Eq. (12) to provide systemati-cally misleading update directions for E. Simultane-ously, Ldata drives θ to fit observed displacements, but displacement-only data do not uniquely constrain the fourth derivative needed for stiffness identification. This circular dependency is: 
+
+∇E LPDE requires physically consistent ˆ u(4) 
+
+> θ
+
+,
+
+∇θ LPDE shapes ˆ u(4) 
+
+> θ
+
+around the current E.
+
+Gradient-direction analysis (signed cosine similarity between ∇ΩLdata and ∇ΩLPDE , where Ω = {θ , φ } is the full parameter vector) confirmed persistent oppo-sition: mean cosine similarity −0.21 ± 0.07 across 11 runs (multiple seeds and noise levels), with ∼80 % of training steps producing opposing gradient directions. Notably, ∂ Ldata /∂ E = 0 because E does not appear in the forward prediction ˆu = fθ (x); the conflict manifests entirely through the shared network weights θ . A formal analysis is provided in Appendix Appendix A. 
+
+4.3.2. EMA-Adaptive Joint Co-Evolution Algorithm 
+
+Algorithm 1 presents the EMA-adaptive joint co-evolution procedure, designed to mitigate the circular dependency by training network weights θ and physical parameters φ jointly from epoch 1 , removing the need for any freeze or unfreeze step. 
+
+Joint training rationale. By training θ and φ si-multaneously, the network and unknown parameters re-main mutually consistent throughout optimisation. EMA-based adaptive loss weighting is designed to keep com-ponent magnitudes comparable without fixed manual 6Algorithm 1 EMA-Adaptive Joint Co-Evolution for Inverse PINN Parameter Identification. 
+
+Require: Data D = {(xi, uobs  
+
+> i
+
+)}; initial guess φ0; optional log-prior moments (μφ , σφ ) and λprior ; α=0.02 ; γ=10 ;
+
+N=5,000. 
+
+Ensure: Identified ˆ φ . 
+
+> 1:
+
+θ ← Kaiming; φ ← log (φ0); ¯Li ← 0 
+
+> 2:
+
+for e = 1 to N do  
+
+> 3:
+
+Compute Ldata (θ ), LPDE (θ , φ ), LBC (θ ), and Lprior (φ ) 
+
+> 4:
+
+¯Li ← (1 − α) ¯Li + αLi; λi ← ¯Lavg /( ¯Li + ε) 
+
+> 5:
+
+L ← ∑i∈{ data ,PDE ,BC }λiLi + λprior Lprior  
+
+> 6:
+
+θ ← θ − ηθ ∇θ L ; φ ← φ − γη θ ∇φ L 
+
+> 7:
+
+end for  
+
+> 8:
+
+return ˆφ ← exp (φ )
+
+tuning. In early epochs, the large data residual drives the network toward the observed displacement field while the balancing prevents that term from swamping the PDE, boundary, and prior terms. In later epochs, as the data loss falls, the PDE and prior terms provide the main parameter-identification signal for φ .
+
+Fundamental limitation for 4th-order PDEs. Exper-imental investigation (Section 5.2) reveals that without 
+
+Bayesian priors, the gradient direction problem prevents convergence for the Euler–Bernoulli beam equation with displacement-only data. However, the addition of a weak Bayesian prior, centred at the correct design/as-built value of E in the reported synthetic cases and given a wide uncertainty range ( σ = 1.0 in log-space, covering approximately ×2.7 in either direction), substantially mitigates the circular dependency by anchoring the pa-rameter search near the physically plausible regime. This allows the EMA-adaptive mechanism to drive conver-gence when the prior is accurately centred, achieving 
+
+<0.04 % identification error across all synthetic test con-figurations in Section 5.2. 
+
+Why classical freeze-thaw also fails. Freeze-thaw staging (fix φ = φ0, pretrain θ , then optimise φ ) con-verges only when Stage 0 has oracle access to E∗; with an inaccurate non-oracle initial guess φ0, the network ac-quires derivatives consistent with φ0 and Stage 1 remains trapped. 
+
+Parameter learning-rate multiplier. Setting ηφ =
+
+γη θ with γ = 10 makes physical parameters update faster than network weights; this was important for conver-gence within the 5,000-epoch budget. 
+
+4.4. FORM Reliability Layer 
+
+The implemented reliability layer uses FORM to eval-uate benchmark structural limit-state functions using the current structural state supplied by the monitoring work-flow. A generic displacement-style limit state is: 
+
+g(X) = uallow − umodel (xcr ,t; X), (13) where X are normally distributed resistance, load, and geometry variables with means from design spec-ifications and CoV of 5–15 %, and uallow is the code-prescribed allowable displacement [4]. For the reported validation and timing runs, umodel or the equivalent load effect is evaluated by analytical/algebraic benchmark functions; direct PINN-in-the-loop FORM is an imple-mentation extension rather than a benchmarked result in this paper. The limit-state gradient ∇Xg is computed nu-merically by SLSQP’s built-in finite-difference scheme. The SLSQP optimisation (Eq. 10) converges in 5– 15 function evaluations for the present problem class, yielding β (t) in ∼1.0 ms for the OWT cantilever root-moment capacity case in the reported CPU timing run. The end-to-end system operates in two phases. Of-fline training (once, on commissioning or historical data, takes seconds to a few minutes): the Inverse PINN is trained to simultaneously learn the displacement surro-gate θ ∗ and identify the physical parameters ˆφ = { ˆE, ˆk};the resulting checkpoint {θ ∗, log ˆ E, log ˆ k} is saved. On-line inference (every monitoring update, frozen model): a single forward pass through the frozen Inverse PINN yields the full displacement field u(x) and the stored pa-rameter estimates simultaneously. FORM then evaluates the selected algebraic/structural limit state using the up-dated PINN-derived state estimate. The complete online pipeline is: Sensor data Frozen Inverse PINN , ∼0.75ms           
+
+> −−−−−−−−−−−−−−−−−→u(x),ˆφFORM limit state ,∼1.0ms
+> −−−−−−−−−−−−−−−→β(t)
+> |{z }
+> online inference only; no gradient steps; <7 ms total
+> .
+
+Note: The Forward PINN (Contribution 1) provides the 0.23 ms C1-baseline inference benchmark and is used when E is known in advance; in the online infer-ence loop the Inverse PINN subsumes this role, since 7InversePINNBeam inherits from PINNBeam and pro-duces u(x) in the same forward pass that exposes ˆ φ .
+
+4.5. Validation Data Strategy and Hardware 
+
+All results use simulation-based synthetic data against known ground truth. Sources include: (1) analyt-ical solutions (Eq. 3); (2) finite-difference Winkler-beam references ; and (3) parametric sweeps over L =
+
+10 – 15 m, E = 100 – 250 GPa, q = 1,000 – 5,000 N/m. Preprocessing uses min-max normalisation; Gaussian noise of 1–10 % is injected only in the specified noise-robustness experiments, and models are evalu-ated against dense reference grids. Hardware: In-tel i7-12700H, NVIDIA RTX A2000 (8 GB), PyTorch 2.5.1. Timing: 20 warm-up + 500 timed passes per device with torch.cuda.synchronize() . All-configuration mean GPU inference is 0.381 ms (range 0.230–0.500 ms); mean CPU inference is 0.605 ms (0.391–0.767 ms); both devices satisfy the 10 ms real-time ceiling with >16 × margin. OpenFAST execution, field SCADA ingestion, and aero-elastic Morison-driven validation are deferred to future field-calibration. 
+
+5. Results 
+
+5.1. Forward PINN Validation 5.1.1. Experimental Configurations and Performance 
+
+Ten synthetic benchmark configurations spanning net-work architecture, observation density, beam length, load magnitude, and material stiffness are detailed in Table 2. 
+
+Accuracy. All ten configurations achieve R 2 > 0.90 ,with mean RMSE 0.135 ± 0.109 mm. Six of ten con-figurations achieve sub-100 μm RMSE. Configuration C7 (longer beam, L = 15 m) shows the largest error (0.349 mm) because longer spans produce larger absolute displacements. The ‘challenging case’ C10 (long beam, high load, wider network) achieves the best R 2 = 0.999 ,showing strong accuracy on the most demanding syn-thetic configuration tested. 
+
+Inference speed. Mean GPU inference is 0.381 ms and mean CPU inference is 0.605 ms over the ten con-figurations (500-rep joint benchmark; GPU 1.65 × faster than CPU; fastest config 0.230 ms on GPU). GPU is 26 ×, and CPU is 17 ×, below the 10 ms real-time target. Compared with high-fidelity offline FEA or OpenFAST-style analysis, this is an online PINN/state-estimation query rather than an equivalent full-model solve; the speed comparison is therefore indicative rather than a measured FEA replacement ratio. 
+
+Data efficiency. Accurate predictions from Nd = 50 training points (C1–C5, C7–C9) support the physics-regularisation hypothesis: PDE residuals at 200 collo-cation points provide dense structural information that effectively compensates for scarce measurements. The baseline configuration achieves RMSE = 0.068 mm and R2 = 0.908 from just 50 data points. C10, using 75 data points, achieves R 2 = 0.999 . Figure 3 shows the baseline prediction against the analytical reference. 
+
+Architecture sensitivity. Among the tested archi-tectures, the 2-hidden-layer [64,64] baseline gives the best accuracy–speed trade-off: accuracy comparable to [32,32], lower training cost than the 4-layer network, and no clear gain from [128,128]. Figure 4 summarises RMSE and inference latency across the ten configura-tions.    
+
+> Figure 3: Representative PINN displacement field prediction (C1 base-line, 0 % noise). Left: PINN prediction vs. analytical solution across the full beam span. Right: pointwise absolute error; maximum devia-tion 0.178 mm at the clamped end ( x=0), reflecting the soft boundary-condition enforcement used in the baseline PINN.
+
+5.2. Inverse PINN: Gradient Direction Problem and EMA-Adaptive Joint Co-Evolution 5.2.1. Baseline Failure 
+
+Table 3 documents failure of standard simultane-ous inverse PINN training in the tested large-offset Young’s modulus identification cases ( Etrue = 210 GPa, 
+
+E0 = 100 GPa in all cases). Table 4 summarises the inverse benchmark categories examined in this study, showing the main goals and the distinguishing setup for each class of experiment. 
+
+E moved away from the true value throughout all baseline training runs, confirming the gradient direction problem. Gradient-direction analysis of the full param-eter vector Ω = {θ , φ } across all training steps yielded mean cosine similarity −0.21 ± 0.07 (11 runs, multiple seeds), with ∼80 % of steps producing opposing gradi-ent directions, confirming persistent gradient conflict. Figure 5 illustrates the baseline parameter divergence. 8Table 2: Forward PINN validation: 10 test configurations spanning network architecture, collocation density, data quantity, beam geometry, load magnitude, and material stiffness. RMSE and R 2 quantify prediction accuracy against analytical solutions. GPU and CPU inference columns give means of 500 back-to-back passes timed in a single process (RTX A2000 with cuda.synchronize() ; i7-12700H with perf_counter() ; 20 warm-up passes discarded).                                                                                                                          
+
+> ID Configuration Arch. NfNdRMSE (mm) R2Train (s) GPU Inf. (ms) CPU Inf. (ms) Ratio
+> C1 Baseline (standard) [64,64] 200 50 0.068 0.908 11.3 0.230 0.391 1.70 C2 Smaller network [32,32] 200 50 0.063 0.921 11.0 0.255 0.410 1.61 C3 Deeper network (4 layers) [64] ×4200 50 0.058 0.933 22.5 0.355 0.683 1.93 C4 Wider network [128,128] 200 50 0.061 0.925 11.4 0.252 0.438 1.74 C5 Dense collocation [64,64] 500 50 0.064 0.917 8.7 0.254 0.587 2.31 C6 More training data [64,64] 200 100 0.065 0.915 9.1 0.500 0.692 1.38 C7 Longer beam ( L=15 m) [64,64] 200 50 0.349 0.905 9.2 0.493 0.767 1.55 C8 Higher load ( q=5,000 N/m) [64,64] 200 50 0.302 0.927 9.2 0.496 0.721 1.45 C9 Lower stiffness ( E=100 GPa) [64,64] 200 50 0.138 0.913 9.0 0.499 0.608 1.22 C10 Challenging (long +high load) [128,128] 300 75 0.183 0.999 9.4 0.470 0.750 1.60
+> Mean 0.135 ±0.109 0.926 11 .10.381 0.605 1.65 Pass (R 2>0.90 )10/10
+
+Figure 4: Forward PINN performance. Left: RMSE for all ten configurations (all <0.35 mm; 10/10 pass R 2 > 0.90 ). Right: GPU vs. CPU inference latency for all ten configurations (RTX A2000 8 GB vs. i7-12700H; 500-rep joint benchmark; mean GPU 0.381 ms, mean CPU 0.605 ms; GPU >26 × and CPU >16 × faster than 10 ms real-time target). Table 3: Standard (baseline) simultaneous inverse PINN: failure in the tested large-offset cases. Etrue = 210 GPa; E0 = 100 GPa. Parameters moved away from truth in all four experiments. 
+
+Exp. Noise Efinal (GPa) Error (%) Pass ( < 5 % )
+
+B1 0 % 70.1 66.6 ×
+
+B2 0 % ∗ 78.1 62.8 ×
+
+B3 0 % † 76.5 63.6 ×
+
+B4 10 % 78.8 62.5 ×
+
+Mean 75 .9 ± 4.0 63 .9 ± 1.9 0/4 (0 %) 
+
+> ∗
+
+B2: simultaneous E+k identification. 
+
+> †
+
+B3: multi-parameter ( E, k, damage). 
+
+9Table 4: Inverse PINN benchmark categories used in this study.              
+
+> Category Goal Key setup
+> Baseline failure identify Eand/or kwith standard joint PINN no prior, large initial offset Multi-parameter test simultaneous E+k
+> identification coupled parameters, 0% noise Noise robustness assess stability under noisy observations 1–10% measurement noise Bayesian mitigation recover parameters with weak prior information log-normal prior on log E
+> Figure 5: Baseline inverse PINN: parameter identification error across the four tested baseline experiments. Each tested configuration exhibits large parameter error ( >50 %), with Ediverging away from the true value.
+
+5.2.2. EMA-Adaptive Joint Co-Evolution with Bayesian Priors: Mitigation 
+
+Table 5 first presents the results of five mitigation strategies applied without Bayesian priors (pure loss-weighting and scheduling modifications), all of which fail in this tested large-offset setup. Table 6 then presents the full EMA-adaptive joint co-evolution with a weak Bayesian prior, which substantially mitigates the gradi-ent direction problem and achieves 8/8 success across all eight tested configurations. Figure 6 compares the mitigation strategies visually. 
+
+Why pure loss-weighting fails. Strategy S2 (data-driven warmup: 20 % epochs data-only pretraining, then joint) achieves partial improvement by learning the dis-placement shape from measurement data before enabling parameter updates, correctly moving E toward the true value ( 100 → 143 GPa). However, convergence stalls at 31.7 % error because the network’s 4th derivative ˆu(4) is still governed entirely by the PDE constraint at the current (incorrect) E. Strategy S4 (freeze-thaw with E0 instead of oracle E∗) collapses: the PDE loss 
+
+LPDE = ( EI ˆuxxxx − q)2 is minimised at E = 0 when ˆuxxxx 
+
+has the wrong magnitude. 
+
+Mitigation: Bayesian-prior-informed joint co-evolution. Adding a weak Bayesian prior on log E (prior mean at the correct design/as-built specification in these synthetic cases, σ = 1.0 in log-space, corresponding to a 
+
+×2.7 uncertainty range) provides a regularisation signal that anchors the parameter near the physically plausible regime. This breaks the circular dependency: instead of the PDE alone determining ˆu(4), the prior prevents 
+
+E from drifting to spurious values, allowing the EMA-adaptive mechanism to find the correct E.Table 6 presents the complete validation results. 
+
+Key findings. (1) Single-parameter identification :
+
+E recovered to within 0.04 % across all noise levels (0–10 %), starting from a 50 % initial error. (2) Multi-parameter identification : simultaneous E and ksoil 
+
+identification succeeds with 0.025 % and 0.0002 % er-ror respectively, even under 10 % measurement noise. (3) Noise robustness under a correctly centred prior : per-formance remains stable across noise levels, with only modest RMSE increase up to 10 %; the EMA-adaptive weighting keeps the data, PDE, boundary, and prior terms on comparable scales as noise changes. Figure 7 visualises this robustness. (4) Training time : mean 150 s (2.5 min) for 5,000 epochs; inference <0.8 ms after train-ing. 
+
+Role and limitation of the Bayesian prior. The prior is centered at the design/as-built specification value of 
+
+E (210 GPa for structural steel in the reported synthetic cases), which is known from engineering documentation and represents legitimate domain knowledge when the as-built stiffness is close to the undamaged design value. In practice, this prior would be set from material certificates, commissioning tests, or calibrated baseline inspection data. The wide log-space standard deviation ( σ = 1.0,covering ∼78 –570 GPa) prevents physically implausible parameter drift during early training, but the present validation does not prove robustness when the prior mean is substantially misspecified by degradation. 
+
+5.3. FORM Reliability Assessment 5.3.1. Validation Test Suite 
+
+An eight-case representative suite spanning analytical verification, MPP optimisation, FORM integration, edge cases, and Monte Carlo cross-validation was assembled. Table 7 reports the selected cases. 
+
+Linear limit states (F1, F2, F8): Machine-precision accuracy ( < 10 −12 ). Moderately nonlinear (F4–F6): 
+
+10 Table 5: Mitigation strategies without Bayesian priors: all tested variants fail. Etrue = 210 GPa; E0 = 100 GPa; 5,000 epochs. The gradient direction problem persists for 4th-order PDEs when only loss-weighting or scheduling modifications are applied. 
+
+Strategy ˆE (GPa) Error (%) Direction Pass ( < 5 % )
+
+S1: Joint co-evolution (no prior) 97.3 53.6 Away ×
+
+S2: Data-driven warmup + joint 143.4 31.7 Toward ×
+
+S3: Alt. minimisation (10 outer) 97.0 53.8 Stuck ×
+
+S4: Freeze-thaw ( E0 pretrain) < 1.0 99.9 Collapse ×
+
+S5: γ = 100, 10k epochs 25.4 87.9 Diverge ×
+
+Baseline (simultaneous) 75.9 63.9 Away ×
+
+Table 6: EMA-Adaptive Joint Co-Evolution with Bayesian prior: 8/8 tested configurations pass. Etrue = 210 GPa; E0 = 105 GPa (50 % initial error); 5,000 epochs. Prior: log E ∼ N (log Edesign , σ 2 = 1.0), a weak engineering prior centered at the as-built design specification; prior weight 10 −2.Experiments I3 and I4 (simultaneous E + k) used adapted settings for multi-parameter difficulty: E0 = 168 GPa (20 % error), 7,000 epochs, σE = 0.3 ,
+
+Nd = 100. 
+
+ID Configuration Noise E Error (%) k Error (%) RMSE (mm) Pass 
+
+I1 E identification only 0 % 0.019 – 0.333 ✓
+
+I2 k identification ( E known) 0 % 0.0 0.019 0.032 ✓
+
+I3 E + k simultaneous 0 % 0.008 0.001 0.045 ✓
+
+I4 E + k with noise 10 % 0.025 0.0002 0.064 ✓
+
+I5 E identification, 1 % noise 1 % 0.025 – 0.328 ✓
+
+I6 E identification, 3 % noise 3 % 0.017 – 0.338 ✓
+
+I7 E identification, 5 % noise 5 % 0.005 – 0.346 ✓
+
+I8 E identification, 10 % noise 10 % 0.037 – 0.387 ✓
+
+Mean 0.017 0.007 0.234 8/8 
+
+Table 7: FORM reliability validation: selected cases. βanal = analytical exact; βMC = Monte Carlo ( 10 5 samples); error relative to analytical or MC. Case F3 illustrates a degenerate quadratic pathology where FORM returns the trivial zero-distance solution rather than a meaningful reliability index. 
+
+Test Limit State Dim βanal βFORM βMC Error Speedup 
+
+F1 Linear: X1 + X2 − 10 2D 4.472 4.472 – 1.8×10 −15 24 ×
+
+F2 Beam capacity (linear) 2D 3.430 3.430 3.38 8.9×10 −16 26 ×
+
+F3 Quadratic pathological case 2D 3.000 0.000 – trivial MPP –F4 Beam bending (nonlin.) 4D – 3.824 3.65 4.7 % 25 ×
+
+F5 Triaxial stress 4D – 4.010 4.26 6.0 % 37 ×
+
+F6 OWT cantilever root moment 3D – 9.900 10.00 1.0 % >40 ×
+
+F7 Series system 3D – 4.966 10.00 (MC saturated) 48 ×
+
+F8 High reliability 2D 8.321 8.321 – < 10 −12 –
+
+Summary: OWT cantilever case (F6): FORM about 1.0 ms; MC about 43 ms ( 10 5 samples); OWT-case speedup >40 ×;convergence achieved for all well-conditioned test cases in this suite. 
+
+11 Figure 6: Gradient direction problem: comparison of mitigation strate-gies. Five approaches without Bayesian priors fail in the tested large-offset setup ( >5 % error). The EMA-adaptive joint co-evolution with a weak Bayesian prior substantially mitigates the problem (mean E error 0.017 %).   
+
+> Figure 7: Noise robustness of the Bayesian-prior-informed inverse PINN. Eidentification error remains below 0.04 % for the tested noise levels up to 10 %.
+
+FORM errors 1.0–6.0 %, consistent with first-order approximation bounds [ 8]. Case F3 is a degenerate quadratic pathology that illustrates a limitation of the gradient-based FORM solver: it returns the trivial β = 0solution rather than a physically meaningful reliability index; F7’s MC reference saturates at β = 10 (numer-ical limit). OWT cantilever-case computation: about 1.0 ms (FORM, F6) versus about 43 ms (Monte Carlo, 10 5 samples); OWT-case speedup >40 × over Monte Carlo. Figure 8 summarises FORM validation accuracy and convergence across the representative test cases. 
+
+5.4. End-to-End Pipeline Performance 
+
+Table 8 summarises pipeline latency on the reported benchmark hardware. 
+
+6. Discussion 
+
+6.1. Forward PINN: Physics as a Data Multiplier 
+
+The 10/10 success rate across synthetic test configu-rations supports the central premise of PINNs: govern-ing equations provide additional structural constraints when labelled data are sparse. Compared to wind-turbine component-monitoring studies surveyed in the literature, where data-driven models commonly use hun-dreds of samples [ 7], the present benchmark reaches sub-millimetre RMSE and R2 > 0.90 using 50–100 ob-servations. Cross-study accuracy comparisons remain indicative because metrics such as MAPE are not well conditioned for clamped-beam displacement fields with near-zero reference values. The 0.381 ms mean GPU in-ference time ( 26 × below the 10 ms ceiling) suggests that edge deployment is computationally plausible, consis-tent with the edge-computing architecture of [ 14 ], while embedded-hardware validation is left for future work. 
+
+6.2. The Gradient Direction Problem: Implications and Generality 
+
+The problem is not expected to be specific to the Euler–Bernoulli PDE. By the gradient-analysis deriva-tion in Appendix Appendix A, inverse PINNs where an unknown parameter φ multiplies a high-order derivative can exhibit this failure when φ is initialised far from truth. The 52 % initial offset (100 vs. 210 GPa) is a deliberate large-offset stress test rather than a measured degradation scenario: corrosion, fatigue, scour, and soil degradation can reduce effective structural stiffness or make it uncer-tain over service life [ 5, 8], so inverse solvers should be tested across wide initialisation ranges. The root cause is structural: displacement data constrains u(x) but not 
+
+u(4)(x), trapping E near its incorrect initial value. 12 Figure 8: FORM reliability validation. Left: FORM vs. Monte Carlo reliability index β for test cases with finite MC reference; machine-precision agreement for linear limit states, ≤6 % error for moderately nonlinear cases. Right: overall success rates; 100 % FORM convergence for well-conditioned cases in this suite. Table 8: End-to-end synthetic digital-twin workflow latency. Timings are measured on the reported GPU/CPU hardware for the synthetic benchmark workflow. FORM timing uses the reported algebraic benchmark limit states; direct PINN-in-the-loop FORM is not separately benchmarked. FEA/OpenFAST is shown only as an indicative offline reference, not as a measured output of this study. 
+
+Pipeline Stage Time (ms) Comment 
+
+Preprocessing & normalisation < 0.1Forward PINN inference 0.381 (GPU) / 0.605 (CPU) 4,353 params; all-configuration mean Inverse PINN forward pass (frozen) ∼ 0.75 No gradient steps (frozen checkpoint) FORM β (t) computation 1.0 Algebraic OWT limit state; SLSQP, 5–15 evaluations Decision/alert packaging < 3.5 Conservative allowance; posterior MCMC not bench-marked 
+
+Total latency < 7 >143 Hz theoretical processing headroom FEA/OpenFAST reference – Offline high-fidelity analysis; not measured here 
+
+Comparison – Surrogate query vs. full-model solve is indicative only 
+
+13 A weak Gaussian prior on log E, centred at the log of the baseline design/as-built value (available from ma-terial certificates or commissioning tests), breaks this circular dependency when the baseline prior is accurate. With σ = 1.0 in log-space ( ∼78–570 GPa in the present setting), the implied log-normal prior on E provides a consistent gradient signal while still allowing parameter movement around the baseline design value. Simulta-neous E + ksoil identification succeeds (experiments I3, I4, Table 6), suggesting that priors on each nominal pa-rameter can provide useful regularisation for the coupled multi-parameter case. These results support the follow-ing design principle: supplement inverse PINNs with domain-knowledge priors to anchor parameter search in physically plausible regimes. 6.3. FORM Accuracy and SORM Recommendation 
+
+FORM’s machine-precision accuracy for linear limit states and ≤6 % error for moderately nonlinear bench-mark cases covers representative capacity, bending, and stress checks relevant to OWT support-structure screen-ing. Fatigue and scour-displacement limit states are com-patible with the same FORM interface but are not sepa-rately validated here. The 1.0 ms OWT cantilever-case evaluation in these benchmark conditions gives substan-tial theoretical processing headroom for SCADA-style monitoring, before field I/O and deployment overheads are included. For strongly curved or buckling-dominated limit-state surfaces, SORM with principal-curvature cor-rection should be considered as a future extension. 
+
+6.4. Operational Motivation 
+
+Using published literature assumptions, a representa-tive 30-turbine offshore wind farm (8 MW each) could see approximately C520,000 in annual savings per farm if comparable condition-based maintenance savings were achieved [ 7]. This figure is used only to motivate the operational value of faster structural state estimation. 
+
+The present synthetic benchmarks do not support any economic-performance, savings-rate, or payback esti-mate. 6.5. Scope of Claims 
+
+The contribution should be read as an integration-and-diagnosis benchmark rather than a field-ready offshore digital twin. The results show that a compact PINN state estimator, a calibrated-prior inverse identification loop, and FORM screening can be combined in a one-dimensional synthetic beam workflow with millisecond-range query time. They do not establish aeroelastic  
+
+> Table 9: Assumptions and validation scope for interpreting the bench-mark results.
+> Scope item Interpretation and required next step
+> Synthetic validation data Results are validated against analytical or finite-difference ground truth, not field SCADA or inspection data. Field transfer remains to be demonstrated. One-dimensional support model The benchmark uses a static Euler–Bernoulli/Winkler representation of the monopile. Deployment-grade claims require 3D dynamic aeroelastic and hydrodynamic validation. Correctly centred prior Bayesian inverse identification is demonstrated when the weak log-normal prior is centred on the correct design/as-built stiffness. Degraded or misspecified priors require adaptive or hierarchical calibration. Algebraic FORM limit states Reliability timing and accuracy are shown for analytical benchmark limit states and representative OWT cantilever checks. Direct PINN-in-the-loop FORM, fatigue, scour, and buckling limit states are future work. Operational validation path OpenFAST and field validation, realistic sensor drift/noise studies, and embedded-hardware tests are required before claiming an operational offshore digital twin.
+
+fidelity, field-transfer accuracy, or robust degradation identification under substantially misspecified priors. Table 9 makes the main assumptions and validation boundaries explicit for interpreting the reported results. 
+
+6.6. Limitations and Future Work 
+
+Simulation validation only. Field validation with real SCADA data is required. Sensor drift, electromagnetic interference, non-Gaussian noise, scour, and biofouling must be characterised through instrumented offshore campaigns. Strain-gauge curvature fusion is a priority extension. 
+
+Model simplifications. Static 1D Euler–Bernoulli model; full 3D dynamic aero-elastic integration via OpenFAST (ServoDyn + AeroDyn) is required for deployment-grade modelling [ 30 ]. A preliminary time-dependent extension (PINNBeamDynamic ) achieved 
+
+R2 = 0.9531 on free-vibration data; full dynamic PINN 14 validation is deferred to future work. Morison forcing helpers are implemented, but Morison-driven PINN train-ing and end-to-end field validation are deferred. 
+
+Inverse problem extensions. Prior misspecifica-tion is the most critical open question. Preliminary misspecified-prior sweeps in the implementation show that when the true stiffness is 10–40 % below the 210 GPa design prior, the current prior-informed train-ing can remain biased toward the design value rather than recover the degraded state. Deployment therefore requires adaptive or hierarchical priors calibrated from commissioning data, inspections, or multi-modal mea-surements; SORM integration is also needed for buckling limit states. 
+
+Online adaptation. Transfer learning (freeze physics layers, fine-tune data layers on ∼100 new observa-tions, ≈11–24 s) enables fleet-level amortisation; a full retraining-trigger framework is deferred to future work. 
+
+7. Conclusions 
+
+This paper presented DigiTurbine as a synthetic reliability-aware PINN benchmark for offshore wind tur-bine monopile support-structure monitoring. The study is best interpreted as an integration-and-diagnosis bench-mark rather than a field-validated offshore digital twin. The following conclusions are drawn. 
+
+(1) Forward PINN state estimation. Across 10 synthetic sparse-data configurations, the forward PINN achieved mean RMSE 0.135 ± 0.109 mm with all-configuration mean inference of 0.381 ms on GPU and 0.605 ms on CPU ( 26 × / 17 × below the 10 ms target). These results show that physics regularisation can pro-vide accurate millisecond-range displacement-field re-construction in the simplified beam benchmark using 50–100 observations. 
+
+(2) Inverse PINN failure mode and mitigation. Stan-dard simultaneous inverse PINN training failed for the Euler–Bernoulli beam inverse cases (0/4 pass, mean error 63.9 %), and gradient analysis linked this failure to con-flicting data/PDE update directions. Weak Bayesian pri-ors centred on the correct design/as-built values substan-tially mitigated the failure in the reported synthetic tests: 8/8 configurations passed, mean E error was ≤ 0.02 %, and simultaneous E+ksoil identification remained suc-cessful under 10 % measurement noise. 
+
+(3) FORM reliability screening. The FORM layer completed representative limit-state solves in 0.7–2.7 ms, including about 1.0 ms for the OWT cantilever root-moment capacity case ( > 40 × faster than the reported Monte Carlo reference). Linear limit states showed machine-precision agreement, while moderately non-linear cases remained within ≤6 % error. The resulting synthetic online benchmark completed in <7 ms, provid-ing theoretical processing headroom for SCADA-style monitoring. Future work should prioritise field or high-fidelity aeroelastic validation, adaptive priors for degraded or misspecified structures, multi-modal strain/acceleration fusion, SORM for nonlinear limit states, and fleet-level transfer learning. 
+
+Appendix A. Gradient-Analysis Derivation for Stan-dard Inverse PINN Failure Analytical statement. In the standard simultaneous inverse PINN (Eq. 11), when θ is randomly initialised and φ = E is initialised distant from E∗, the gradient 
+
+∇E L can be weak or misdirected during training. 
+
+Derivation. For the static case EI u (4) = q, the PDE loss gradient with respect to E is: 
+
+∂ LPDE 
+
+∂ E = 2INf ∑
+
+> j
+
+ EI ˆu(4) 
+
+> θ
+
+(x j) − q j
+
+| {z }
+
+> residual
+
+· ˆu(4) 
+
+> θ
+
+(x j)
+
+| {z }
+
+> direction signal
+
+.
+
+(A.1) At random initialisation, ˆu(4) 
+
+> θ
+
+(x j) is near zero (small positive or negative); for a positive distributed load, 
+
+EI ˆu(4) 
+
+> θ
+
+− q ≈ − q < 0 . The product in Eq. (A.1) is there-fore dominated by noise with no consistent sign, provid-ing no reliable signal toward E∗.Crucially, ∂ Ldata /∂ E = 0 because E does not appear in the forward prediction ˆu = fθ (x): the only gradient signal for E comes from LPDE . Simultaneously, Ldata 
+
+drives the shared network weights θ to fit observed dis-placements, but the network acquires fourth derivatives ˆu(4) 
+
+> θ
+
+consistent with the current (incorrect) E rather than with E∗. As shown above, ∂ LPDE /∂ E then evaluates to near-zero at E ≈ Ecurrent , trapping E and preventing convergence. Gradient-direction analysis over the full parameter vector Ω = {θ , φ } confirms the conflict: signed cosine similarity between ∇ΩLdata and ∇ΩLPDE is −0.21 ±
+
+0.07 (mean over 11 runs, multiple seeds), with ∼80 % of training steps showing opposing gradient directions in the tested configurations. 
+
+Expected behaviour without prior. In principle, as the data loss Ldata saturates during EMA-adaptive joint co-evolution, the balancing should keep the PDE resid-ual active enough for ˆu(4) 
+
+> θ
+
+to become physically con-sistent (close to q/(E∗I)). At that point, the residual 15 (EI ˆu(4) 
+
+> θ
+
+− q) would correctly change sign as E crosses 
+
+E∗, providing a properly directed gradient. 
+
+Empirical finding. For the 4th-order Euler–Bernoulli equation with displacement-only data and no prior in-formation, this theoretical prediction is not borne out experimentally. The network’s 4th derivative is domi-nated by the PDE constraint at the current (incorrect) E
+
+value, yielding ˆu(4) 
+
+> θ
+
+≈ q/(Ecurrent I) rather than q/(E∗I),which creates a circular dependency that prevents conver-gence. However, when a Gaussian prior on log E centred at log Edesign is incorporated into the loss, the prior gradi-ent provides a consistent signal toward the design-scale stiffness and mitigates this circular dependency, yielding mean E error ≤ 0.02 % and all single-parameter noise cases below 0.04 % in the tested configurations (Sec-tion 5.2). 
+
+Declaration of Competing Interest 
+
+The author declares no competing financial interests or personal relationships. 
+
+Data Availability 
+
+Synthetic dataset generation scripts and PINN train-ing code available from the corresponding author on request. OpenFAST was explored for future aeroe-lastic validation; input files for the NREL 5 MW ref-erence configuration are publicly available at https: //www.nrel.gov/wind/nwtc/openfast.html (no OpenFAST simulation data were used in the experiments reported here). 
+
+Funding 
+
+This research received no specific external funding. 
+
+Acknowledgements 
+
+The author gratefully acknowledges support from the School of Artificial Intelligence and Data Science at IIT Jodhpur for access to compute infrastructure and re-search facilities. Thanks are also extended to colleagues for productive discussions on inverse PINN training sta-bility and reliability analysis. 
+
+References 
+
+[1] GWEC, Global wind report 2026, Tech. rep., Global Wind Energy Council, Lisbon, Portugal (2026). URL https://www.gwec.net/reports/globa lwindreport 
+
+[2] GWEC, Global offshore wind report 2026, Tech. rep., Global Wind Energy Council, Lisbon, Portu-gal (2026). URL https://www.gwec.net/reports/globa loffshorewindreport 
+
+[3] IEA, Renewables 2025: Analysis and forecasts to 2030, Tech. rep., International Energy Agency, Paris (2025). URL https://www.iea.org/reports/renewa bles-2025 
+
+[4] DNV, DNV-ST-0126: Support Structures for Wind Turbines, Høvik, Norway, edition 2021-12 (2021). URL https://www.dnv.com/energy/standar ds-guidelines/dnv-st-0126-support-str uctures-for-wind-turbines/ 
+
+[5] D. Augustyn, M. D. Ulriksen, J. D. Sørensen, Reli-ability updating of offshore wind substructures by use of digital twin information, Energies 14 (18) (2021) 5859. doi:10.3390/en14185859 .[6] M. Wang, C. Wang, A. Hnydiuk-Stefan, S. Feng, I. Atilla, Z. Li, Recent progress on reliability anal-ysis of offshore wind turbine support structures considering digital twin solutions, Ocean Engineer-ing 232 (2021) 109168. doi:10.1016/j.oceane ng.2021.109168 .[7] J. X. Leon-Medina, D. A. Tibaduiza, N. Parés, F. Pozo, Digital twin technology in wind turbine components: A review, Intelligent Systems with Applications 26 (2025) 200535. doi:10.1016/j. iswa.2025.200535 .[8] L. Wang, A. Kolios, X. Liu, D. Venetsanos, R. Cai, Reliability of offshore wind turbine support struc-tures: A state-of-the-art review, Renewable and Sustainable Energy Reviews 161 (2022) 112250. 
+
+doi:10.1016/j.rser.2022.112250 .[9] M. Raissi, P. Perdikaris, G. E. Karniadakis, Physics-informed neural networks: A deep learning frame-work for solving forward and inverse problems involving nonlinear partial differential equations, Journal of Computational Physics 378 (2019) 686– 707. doi:10.1016/j.jcp.2018.10.045 .16 [10] E. Haghighat, M. Raissi, A. Moure, H. Gomez, R. Juanes, A physics-informed deep learning frame-work for inversion and surrogate modeling in solid mechanics, Computer Methods in Applied Mechan-ics and Engineering 379 (2021) 113741. doi: 10.1016/j.cma.2021.113741 .[11] X. Chen, Y. Yu, L. Liu, Physics-informed neural network for prediction of scour depth using natural frequency of monopiles, Ocean Engineering 339 (2025) 122054. doi:10.1016/j.oceaneng.202 5.122054 .[12] A. Rasheed, O. San, T. Kvamsdal, Digital twin: Values, challenges and enablers from a modeling perspective, IEEE Access 8 (2020) 21980–22012. 
+
+doi:10.1109/ACCESS.2020.2970143 .[13] T. G. Ritto, F. A. Rochinha, Digital twin, physics-based model, and machine learning applied to damage detection in structures, Mechanical Sys-tems and Signal Processing 155 (2021) 107614. 
+
+doi:10.1016/j.ymssp.2021.107614 .[14] E. E. Ambarita, A. Karlsen, F. Scibilia, A. Hasan, Industrial digital twins in offshore wind farms, En-ergy Informatics 7 (1) (2024) 5. doi:10.1186/s4 2162-024-00306-6 .[15] T. Bull, D. V. Muff, P.-R. Wagner, W.-H. Zhang, M. Schubert, H. J. Riber, M. H. Faber, Probabilistic digital-twin-informed risk-based inspection plan-ning for offshore wind turbine structures, Structural Health Monitoring (2025). doi:10.1177/1475 9217251316199 .URL https://doi.org/10.1177/1475921725 1316199 
+
+[16] J. Walker, A. Coraddu, M. Collu, L. Oneto, Dig-ital twins of the mooring line tension for float-ing offshore wind turbines to improve monitor-ing, lifespan, and safety, Journal of Ocean Engi-neering and Marine Energy 8 (2022) 1–16. doi: 10.1007/s40722-021-00213-y .[17] M. Chiachío, M. Megía, J. Chiachío, J. Fernán-dez, M. L. Jalón, Structural digital twin frame-work: Formulation and technology integration, Automation in Construction 140 (2022) 104333. 
+
+doi:10.1016/j.autcon.2022.104333 .[18] B.-Q. Chen, K. Liu, T. Yu, R. Li, Enhancing reli-ability in floating offshore wind turbines through digital twin technology: A comprehensive review, Energies 17 (8) (2024) 1964. doi:10.3390/en17 081964 .[19] X. Lai, L. Yang, X. He, Y. Pang, X. Song, W. Sun, Digital twin-based structural health monitoring by combining measurement and computational data: An aircraft wing example, Journal of Manufactur-ing Systems 69 (2023) 76–90. doi:10.1016/j. jmsy.2023.06.006 .[20] G. E. Karniadakis, I. G. Kevrekidis, L. Lu, P. Perdikaris, S. Wang, L. Yang, Physics-informed machine learning, Nature Reviews Physics 3 (6) (2021) 422–440. doi:10.1038/s42254-021-0 0314-5 .[21] J. Zhang, X. Zhao, Digital twin of wind farms via physics-informed deep learning, Energy Conver-sion and Management 293 (2023) 117507. doi: 10.1016/j.enconman.2023.117507 .[22] Y. A. Yucesan, F. A. C. Viana, Physics-informed digital twin for wind turbine main bearing fa-tigue: Quantifying uncertainty in grease degrada-tion, Applied Soft Computing 149 (2023) 110921. 
+
+doi:10.1016/j.asoc.2023.110921 .[23] A. Gijón, A. Pujana-Goitia, E. Perea, M. Molina-Solana, J. Gómez-Romero, Prediction of wind turbines power with physics-informed neural net-works and evidential uncertainty quantification, arXiv:2307.14675 (2023). doi:10.48550/arXiv .2307.14675 .URL https://arxiv.org/abs/2307.14675 
+
+[24] Y. Qin, H. Liu, Y. Wang, Y. Mao, Inverse physics-informed neural networks for digital twin-based bearing fault diagnosis under imbalanced samples, Knowledge-Based Systems 292 (2024) 111641. do i:10.1016/j.knosys.2024.111641 .[25] S. Das, S. Das, A. Chakraborty, Bayesian neu-ral network based probability density evolution approach for efficient structural reliability analy-sis, Computers & Structures 315 (2025) 107807. 
+
+doi:10.1016/j.compstruc.2025.107807 .[26] J. Jonkman, S. Butterfield, W. Musial, G. Scott, Definition of a 5-mw reference wind turbine for off-shore system development, Tech. Rep. NREL/TP-500-38060, National Renewable Energy Labora-tory, Golden, CO (2009). doi:10.2172/947422 .URL https://www.osti.gov/biblio/947422 
+
+17 [27] J. R. Morison, M. P. O’Brien, J. W. Johnson, S. A. Schaaf, The force exerted by surface waves on piles, Journal of Petroleum Technology 2 (5) (1950) 149– 154. doi:10.2118/950149-G .[28] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Brad-bury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, A. Desmaison, A. Kopf, E. Yang, Z. DeVito, M. Raison, A. Tejani, S. Chilamkurthy, B. Steiner, L. Fang, J. Bai, S. Chintala, PyTorch: An imperative style, high-performance deep learn-ing library, in: Advances in Neural Information Processing Systems, Vol. 32, 2019, pp. 8024–8035. URL https://papers.neurips.cc/paper/90 15-pytorch-an-imperative-style-high-p erformance-deep-learning-library 
+
+[29] D. P. Kingma, J. Ba, Adam: A method for stochastic optimization, International Conference on Learning Representations; arXiv:1412.6980 (2015). URL https://arxiv.org/abs/1412.6980 
+
+[30] NREL, OpenFAST, official software page (2024). URL https://www.nrel.gov/wind/nwtc/ope nfast.html 
+
+18
