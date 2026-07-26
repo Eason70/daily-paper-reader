@@ -6,85 +6,83 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-20
-- 运行时间：2026-07-20 21:47:40 UTC
+- 最新运行日期：2026-07-26
+- 运行时间：2026-07-26 21:37:29 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日推荐21篇论文，精读8篇，聚焦强化学习与安全控制。  
-重点关注Knowledge- and Gradient-Guided RL for PAMDPs和Latency-Aware Orchestration，前者解决参数化动作空间，后者优化多智能体延迟。  
-建议从精读高分论文入手，理解梯度引导与延迟感知在强化学习中的应用。
-- 详情：[/202607/20/README](/202607/20/README)
+今日共推荐21篇论文，精读8篇，速读13篇，重点覆盖安全控制与多智能体系统。最值得关注的是两篇满分精读：高阶控制障碍函数实现最优安全控制，以及基于CBF的强化学习实现多无人机零样本仿真到现实的载荷运输。建议优先阅读CBF相关论文，理解其提升安全性和可扩展性的核心机制。
+- 详情：[/202607/26/README](/202607/26/README)
 
 ### 精读区论文标签
-1. [Knowledge- and Gradient-Guided Reinforcement Learning for Parametrized Action Markov Decision Processes](/202607/20/2607.12924v2-knowledge--and-gradient-guided-reinforcement-learning-for-parametrized-action-markov-decision-processes)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：整合安全约束知识的参数化动作RL
-2. [Learning Latency-Aware Orchestration for Multi-Agent Systems](/202607/20/2607.13359v1-learning-latency-aware-orchestration-for-multi-agent-systems)  
-   标签：评分：8.0/10、query:multi-agent
-   evidence：面向LLM驱动的多智能体系统的延迟感知编排
-3. [Flow-aware Optimal Navigation in Unsteady Flows through Reinforcement Learning](/202607/20/2607.13553v1-flow-aware-optimal-navigation-in-unsteady-flows-through-reinforcement-learning)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：利用强化学习在非稳态流场中导航，适用于自主水下航行器控制
-4. [RxBrain: Embodied Cognition Foundation Model with Joint Language-Visual Reasoning and Imagination](/202607/20/2607.14187v1-rxbrain-embodied-cognition-foundation-model-with-joint-language-visual-reasoning-and-imagination)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：具身认知基础模型，联合语言-视觉推理与想象
-5. [SafeRelBench: A Spatial-Relation-Aware Benchmark for Process-Level Safety in VLM-Driven Embodied Agents](/202607/20/2607.14543v1-saferelbench-a-spatial-relation-aware-benchmark-for-process-level-safety-in-vlm-driven-embodied-agents)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：具身智能体安全基准，关注空间关系过程级安全
-6. [MIND-CAVs: Multi-Intelligence Negotiation and Decision System for CAVs based on Intent-Driven Autonomy](/202607/20/2607.14688v1-mind-cavs-multi-intelligence-negotiation-and-decision-system-for-cavs-based-on-intent-driven-autonomy)  
-   标签：评分：8.0/10、query:multi-agent
-   evidence：面向联网自动驾驶车辆的多智能体协商与决策系统
-7. [Robust Peak-cost Constrained Reinforcement Learning](/202607/20/2607.15457v1-robust-peak-cost-constrained-reinforcement-learning)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：针对安全关键应用的鲁棒峰值代价约束强化学习
-8. [Distributed Continuous Aerial Surveillance by UAS Swarms Under Formal Mission Specifications](/202607/20/2607.15583v1-distributed-continuous-aerial-surveillance-by-uas-swarms-under-formal-mission-specifications)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：分布式无人机集群监视，使用深度神经网络和形式化安全规范，与无人机安全控制相关
+1. [Optimal Safety Control using High-Order Control Barrier Functions](/202607/26/2607.17032v1-optimal-safety-control-using-high-order-control-barrier-functions)  
+   标签：评分：10.0/10、query:safe-rl-cbf
+   evidence：使用高阶控制屏障函数的最优安全控制
+2. [Safe and Scalable Multi-Drone Payload Transport via CBF-based Reinforcement Learning with Zero-Shot Sim-to-Real Transfer](/202607/26/2607.20665v1-safe-and-scalable-multi-drone-payload-transport-via-cbf-based-reinforcement-learning-with-zero-shot-sim-to-real-transfer)  
+   标签：评分：10.0/10、query:safe-rl-cbf
+   evidence：基于CBF和RL的安全多无人机载荷运输
+3. [Certifiable Safe Model-Based Reinforcement Learning with Control-Affine Dynamics Approximation](/202607/26/2607.16501v1-certifiable-safe-model-based-reinforcement-learning-with-control-affine-dynamics-approximation)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：可认证安全模型基强化学习结合控制理论安全保证
+4. [Differentiable Reinforcement Learning for Path Tracking by an Agile Fish-Like Robot](/202607/26/2607.16508v1-differentiable-reinforcement-learning-for-path-tracking-by-an-agile-fish-like-robot)  
+   标签：评分：9.0/10、query:ocean-robot
+   evidence：基于可微分强化学习的仿鱼水下机器人路径跟踪
+5. [Beyond Fixed Goal Delivery: Online POMDP Planning for Target Interception in Crowds](/202607/26/2607.18517v1-beyond-fixed-goal-delivery-online-pomdp-planning-for-target-interception-in-crowds)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：在线POMDP规划实现人群中的目标拦截
+6. [CHMAS: A Coupled Hierarchical Framework for Multi-Agent Reinforcement Learning](/202607/26/2607.19555v1-chmas-a-coupled-hierarchical-framework-for-multi-agent-reinforcement-learning)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：多智能体强化学习分层协调框架
+7. [Distributed Motion Planning with Safety Guarantees for Self-Reconfiguring Robotic Boats](/202607/26/2607.20352v1-distributed-motion-planning-with-safety-guarantees-for-self-reconfiguring-robotic-boats)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：分布式MPC结合CBF的多智能体机器船避碰与形状形成
+8. [End-to-End Learning of Safe Optimal Feedback Control in High Dimensions with Control Barrier Function Layers](/202607/26/2607.20674v1-end-to-end-learning-of-safe-optimal-feedback-control-in-high-dimensions-with-control-barrier-function-layers)  
+   标签：评分：9.0/10、query:safe-rl-cbf
+   evidence：利用控制屏障函数层实现高维安全最优反馈控制
 
 ### 速读区论文标签
-1. [NavCMPO: Critic-Guided MeanFlow Policy Optimization for Adaptive Navigation](/202607/20/2607.14643v1-navcmpo-critic-guided-meanflow-policy-optimization-for-adaptive-navigation)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：基于评论家引导的均值流策略优化和强化学习微调的自适应机器人导航
-2. [Dynamic Constraint Reconstruction Based Control Barrier Functions for Safety-Critical Control of High-Dimensional Manipulators](/202607/20/2607.15961v1-dynamic-constraint-reconstruction-based-control-barrier-functions-for-safety-critical-control-of-high-dimensional-manipulators)  
+1. [Learning from World Feedback: Why Model Uncertainty Fails as a Risk Signal in Model-Based RL](/202607/26/2607.16591v1-learning-from-world-feedback-why-model-uncertainty-fails-as-a-risk-signal-in-model-based-rl)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：基于动态约束重建的控制屏障函数用于机械臂安全关键控制
-3. [Actor-Critic Learning for Extended Mean Field Control with Deterministic Policies](/202607/20/2607.11005v1-actor-critic-learning-for-extended-mean-field-control-with-deterministic-policies)  
+   evidence：安全模型基控制，世界反馈替代模型不确定性，碰撞避免
+2. [AI-Augmented Model Predictive Control for Safe and Adaptive Rendezvous and Proximity Operations](/202607/26/2607.16630v1-ai-augmented-model-predictive-control-for-safe-and-adaptive-rendezvous-and-proximity-operations)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：多智能体对抗场景下的安全自适应MPC
+3. [Laplacian Spectral Shaping for Non-Uniform Scaling Formation Control of Open Multi-Agent Systems](/202607/26/2607.16709v1-laplacian-spectral-shaping-for-non-uniform-scaling-formation-control-of-open-multi-agent-systems)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：基于拉普拉斯谱整形的多智能体编队控制
+4. [When Can Safe Controllers Adapt? Information before Commitment](/202607/26/2607.16895v1-when-can-safe-controllers-adapt-information-before-commitment)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：安全约束下自适应控制的理论分析
+5. [On Optimal Event-Triggered Distributed Control for Stochastic Multi-Agent Systems via Reinforcement Learning](/202607/26/2607.17635v1-on-optimal-event-triggered-distributed-control-for-stochastic-multi-agent-systems-via-reinforcement-learning)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：基于强化学习的多智能体系统最优分布式控制
+6. [SAGE: A Socially-Aware Generative Engine for Heterogeneous Multi-Agent Navigation](/202607/26/2607.16619v1-sage-a-socially-aware-generative-engine-for-heterogeneous-multi-agent-navigation)  
    标签：评分：7.0/10、query:multi-agent
-   evidence：多智能体强化学习的均值场控制
-4. [ExToken: Structured Exploration for Efficient Vision-Language-Action Reinforcement Fine-tuning](/202607/20/2607.12931v1-extoken-structured-exploration-for-efficient-vision-language-action-reinforcement-fine-tuning)  
+   evidence：异构多智能体安全导航
+7. [PhyAgentOS: A Self-Evolving Operating System for Embodied Agents with Decoupled Cognitive Planning and Physical Execution](/202607/26/2607.16636v1-phyagentos-a-self-evolving-operating-system-for-embodied-agents-with-decoupled-cognitive-planning-and-physical-execution)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：强化学习微调视觉-语言-动作模型，带有结构化探索
-5. [SMC-ES: Automated synthesis of formally verified control policies](/202607/20/2607.15003v1-smc-es-automated-synthesis-of-formally-verified-control-policies)  
+   evidence：将安全作为系统服务的具身智能体操作系统
+8. [Relative Entropy-Bounded Ambiguous Chance Constraints for Robust Planning in Nonlinear Systems](/202607/26/2607.16977v1-relative-entropy-bounded-ambiguous-chance-constraints-for-robust-planning-in-nonlinear-systems)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：自动综合形式化验证的安全控制策略
-6. [Implicit Virtual Leader: Decentralized Vision-Only Relative Pose Estimation for Multi-Robot Formations](/202607/20/2607.15708v1-implicit-virtual-leader-decentralized-vision-only-relative-pose-estimation-for-multi-robot-formations)  
-   标签：评分：7.0/10、query:multi-agent
-   evidence：基于图神经网络的去中心化视觉相对位姿估计用于多机器人编队
-7. [Learning Reach-Avoid Task with Reinforcement Learning: Vectorized Simulation and Benchmark](/202607/20/2607.15935v1-learning-reach-avoid-task-with-reinforcement-learning-vectorized-simulation-and-benchmark)  
+   evidence：分布模糊下的鲁棒机会约束规划用于安全
+9. [ADMM-Based Safety-Critical Distributed NMPC for Cooperative Transportation by Quadrupedal Robots](/202607/26/2607.17007v1-admm-based-safety-critical-distributed-nmpc-for-cooperative-transportation-by-quadrupedal-robots)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：深度强化学习用于避碰任务（安全控制）
-8. [Physics-enhanced reinforcement learning for real-time optimal control of dynamical systems](/202607/20/2607.16177v1-physics-enhanced-reinforcement-learning-for-real-time-optimal-control-of-dynamical-systems)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：物理增强强化学习用于动力系统最优控制，可应用于机器人
-9. [Coverage Path Planning: Classical Foundations, Recent Advances, and Future Directions](/202607/20/2607.10649v1-coverage-path-planning-classical-foundations-recent-advances-and-future-directions)  
-   标签：评分：6.0/10、query:multi-agent
-   evidence：覆盖路径规划综述，涵盖多机器人系统
-10. [Agile perceptive multi-skill locomotion for quadrupedal robots in the wild](/202607/20/2607.13579v1-agile-perceptive-multi-skill-locomotion-for-quadrupedal-robots-in-the-wild)  
+   evidence：用于协作机器人的安全关键分布式NMPC
+10. [PAVXploreRL: Physical-Action-Visual World Model Reinforcement Learning with Action Exploration](/202607/26/2607.16602v2-pavxplorerl-physical-action-visual-world-model-reinforcement-learning-with-action-exploration)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：基于强化学习的四足机器人运动控制
-11. [Learning Robust Execution in Robotic Manipulation with Agentic Reinforcement Learning](/202607/20/2607.13818v1-learning-robust-execution-in-robotic-manipulation-with-agentic-reinforcement-learning)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：用于机器人操作鲁棒执行的智能体强化学习
-12. [A Slow-Fast Stochastic Framework for Zeroth-Order Distributed Time-Varying Optimization](/202607/20/2607.14734v1-a-slow-fast-stochastic-framework-for-zeroth-order-distributed-time-varying-optimization)  
+   evidence：用于具身AI的世界模型强化学习
+11. [SAGE: A Socially-Aware Generative Engine for Heterogeneous Multi-Agent Navigation](/202607/26/2607.16619v2-sage-a-socially-aware-generative-engine-for-heterogeneous-multi-agent-navigation)  
    标签：评分：6.0/10、query:multi-agent
-   evidence：随机多智能体系统的分布式时变优化
-13. [PAC Learning in Turn-Based Stochastic Games with Reachability Objectives: A Decentralized Private Approach via Expected Conditional Distance](/202607/20/2607.14877v1-pac-learning-in-turn-based-stochastic-games-with-reachability-objectives-a-decentralized-private-approach-via-expected-conditional-distance)  
+   evidence：异构多智能体社会感知导航
+12. [RELIC: Revealed Principles for Learning Interpretable Composable Skills in Multi-Agent Planning](/202607/26/2607.16745v1-relic-revealed-principles-for-learning-interpretable-composable-skills-in-multi-agent-planning)  
    标签：评分：6.0/10、query:multi-agent
-   evidence：回合制随机博弈中的PAC学习涉及两个对抗玩家
+   evidence：通过揭示原则学习可解释可组合技能的多智能体规划
+13. [A Multi-Agent System for 5G Throughput Prediction in Multi-Operator Urban Environments](/202607/26/2607.16930v1-a-multi-agent-system-for-5g-throughput-prediction-in-multi-operator-urban-environments)  
+   标签：评分：6.0/10、query:multi-agent
+   evidence：用于5G吞吐量预测的多智能体系统
 
 
 <div class="dpr-home-promo-card">
