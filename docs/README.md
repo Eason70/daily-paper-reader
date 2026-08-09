@@ -6,89 +6,86 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-02
-- 运行时间：2026-08-02 21:40:44 UTC
+- 最新运行日期：2026-08-09
+- 运行时间：2026-08-09 20:47:31 UTC
 - 运行状态：成功
-- 本次总论文数：23
-- 精读区：10
+- 本次总论文数：21
+- 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-今日精读10篇、速读13篇，聚焦博弈论与水下机器人控制两大高分行列；最值得关注的是重复博弈中的欺骗威力（9.0分）与洋流下欠驱动AUV的鲁棒轨迹跟踪（9.0分）。另有分布式多机器人优化、混行交通纳什均衡及方差缩减Q-learning等8分速读可作扩展。建议普通读者优先从“欺骗如何影响长期博弈策略”切入，再按需探索机器人协同与控制细节。
-- 详情：[/202608/02/README](/202608/02/README)
+- 今日共生成 21 篇推荐（精读 8 篇，速读 13 篇）
+- 精读：《RL Bootstrapping of OpenVLA-OFT for a Novel Robot Embodiment》（9.0/10）, 《Training Small LLMs as Spatial Multi-Agent Policies》（9.0/10）
+- 速读：《PRISM: Polynomial Representations for Interaction-Structured Motor Control》（8.0/10）, 《$N_0$-VTLA: Scaling Vision-Tactile-Language-Action Model with Latent Tactile Tokens》（8.0/10）, 《WorldDiT: A Unified Diffusion Architecture for World and Action Modeling》（8.0/10）
+- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
+- 详情：[/202608/09/README](/202608/09/README)
 
 ### 精读区论文标签
-1. [On the Power of Deception in Repeated Games](/202608/02/2607.23049v1-on-the-power-of-deception-in-repeated-games)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：针对计数学习者的重复博弈对抗欺骗与欺骗收益
-2. [Observer-Assisted Relative-Velocity Compensation with LPV-$H_\infty$ Robust Correction for 3D Trajectory Tracking of Underactuated Non-Minimum-Phase AUVs under Ocean Currents](/202608/02/2607.23653v1-observer-assisted-relative-velocity-compensation-with-lpv-hinfty-robust-correction-for-3d-trajectory-tracking-of-underactuated-non-minimum-phase-auvs-under-ocean-currents)  
+1. [RL Bootstrapping of OpenVLA-OFT for a Novel Robot Embodiment](/202608/09/2608.01013v1-rl-bootstrapping-of-openvla-oft-for-a-novel-robot-embodiment)  
    标签：评分：9.0/10、query:ocean-robot
-   evidence：欠驱动AUV在未知洋流下的三维轨迹跟踪控制
-3. [GNN-based Multi-Agent Control of Traffic Shockwaves in Sparse Vehicular Ad-hoc Networks](/202608/02/2607.23792v1-gnn-based-multi-agent-control-of-traffic-shockwaves-in-sparse-vehicular-ad-hoc-networks)  
+   evidence：使用PPO和GRPO进行机器人本体对齐的强化学习
+2. [Training Small LLMs as Spatial Multi-Agent Policies](/202608/09/2608.01425v1-training-small-llms-as-spatial-multi-agent-policies)  
    标签：评分：9.0/10、query:multi-agent
-   evidence：去中心化多智能体强化学习交通流控制；多智能体系统最新进展。
-4. [Flight Envelope Protection for a Hypersonic Glide Vehicle Using Adaptive Safety-Critical Control](/202608/02/2607.23839v1-flight-envelope-protection-for-a-hypersonic-glide-vehicle-using-adaptive-safety-critical-control)  
+   evidence：采用多智能体强化学习的协作空间博弈
+3. [Online Learning in Stackelberg Security Games with Adaptive Attacker Sequences and Time-Varying Attack Intensities](/202608/09/2608.01703v1-online-learning-in-stackelberg-security-games-with-adaptive-attacker-sequences-and-time-varying-attack-intensities)  
+   标签：评分：9.0/10、query:multi-agent
+   evidence：自适应攻击者的对抗Stackelberg安全博弈
+4. [Control Barrier Functions via Minkowski Operations for Safe Navigation among Polytopes](/202608/09/2608.02886v1-control-barrier-functions-via-minkowski-operations-for-safe-navigation-among-polytopes)  
    标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：基于控制屏障函数的误差安全滤波器的自适应安全关键控制，用于飞行包线保护
-5. [Egocentric Station Holding of Robotic Fish in Unknown Turbulent Background Flow](/202608/02/2607.24860v1-egocentric-station-holding-of-robotic-fish-in-unknown-turbulent-background-flow)  
+   evidence：基于控制障碍函数的多面体安全导航，精确SDF
+5. [A Vision-based Control Framework for Real-time Autonomous UUV Operations](/202608/09/2608.04723v1-a-vision-based-control-framework-for-real-time-autonomous-uuv-operations)  
    标签：评分：9.0/10、query:ocean-robot
-   evidence：未知湍流中仿生机器鱼强化学习定点保持控制
-6. [Hybrid Artificial Potential Fields and Spatio-Temporal Transformers for Real-Time AUV Path Planning](/202608/02/2607.25056v1-hybrid-artificial-potential-fields-and-spatio-temporal-transformers-for-real-time-auv-path-planning)  
-   标签：评分：9.0/10、query:ocean-robot
-   evidence：AUV路径规划：人工势场与时空Transformer
-7. [Towards Trustworthy Embodied Intelligence: A Systems Framework and Graded Trustworthiness Levels](/202608/02/2607.26121v1-towards-trustworthy-embodied-intelligence-a-systems-framework-and-graded-trustworthiness-levels)  
-   标签：评分：9.0/10、query:ocean-robot
-   evidence：具身智能系统框架，强调安全偏好与持续安全成功
-8. [Multi-Objective Compliance-Integrated Coevolution For Simulated And Real-World Deployment Of Multi-Robot Marine Autonomy](/202608/02/2607.26279v1-multi-objective-compliance-integrated-coevolution-for-simulated-and-real-world-deployment-of-multi-robot-marine-autonomy)  
-   标签：评分：9.0/10、query:ocean-robot
-   evidence：面向多机器人海洋自主的合规集成多目标协同进化
-9. [$Σ$-Mem: An Online Reliability Memory for LLM-based Multi-Agent Systems](/202608/02/2607.27958v1--mem-an-online-reliability-memory-for-llm-based-multi-agent-systems)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：面向大语言模型多智能体系统的在线可靠性记忆
-10. [PAC-MAN: Perception-Aware CBF-RL for Whole-Body Safety in Humanoid Dodgeball](/202608/02/2607.28623v1-pac-man-perception-aware-cbf-rl-for-whole-body-safety-in-humanoid-dodgeball)  
+   evidence：基于视觉的UUV自主作业控制框架，实时导航与建图
+6. [Toward Integrating Adaptive Experience Replay and Online Uncertainty Estimation in Safe Actor-Critic Optimal Control](/202608/09/2608.04732v1-toward-integrating-adaptive-experience-replay-and-online-uncertainty-estimation-in-safe-actor-critic-optimal-control)  
    标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：将控制屏障函数与强化学习结合并融入感知信息，实现全身安全控制
+   evidence：集成安全演员-评论家、CBF屏障过滤、不确定性估计与自适应经验回放
+7. [Focus Is All You Need: Adaptive Goal-aware Attention Orchestration for Multi-Agent Graph Systems](/202608/09/2607.23678v1-focus-is-all-you-need-adaptive-goal-aware-attention-orchestration-for-multi-agent-graph-systems)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：面向多智能体图系统的注意力编排
+8. [MixedComplementarityProblems.jl: A Fast, Batched, Open-Source Interior Point Solver for Mixed Complementarity Problems](/202608/09/2608.00959v1-mixedcomplementarityproblemsjl-a-fast-batched-open-source-interior-point-solver-for-mixed-complementarity-problems)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：用于多智能体轨迹优化与博弈的混合互补问题开源求解器
 
 ### 速读区论文标签
-1. [Distributed Model-Based Diffusion For Scalable Multi-Robot Trajectory Optimization](/202608/02/2607.20992v1-distributed-model-based-diffusion-for-scalable-multi-robot-trajectory-optimization)  
-   标签：评分：8.0/10、query:multi-agent
-   evidence：基于模型的扩散分布式多机器人轨迹优化
-2. [A Real-Time Generalized Nash Equilibrium Framework for Interaction-Aware Autonomous Driving in Mixed Traffic](/202608/02/2607.21043v1-a-real-time-generalized-nash-equilibrium-framework-for-interaction-aware-autonomous-driving-in-mixed-traffic)  
-   标签：评分：8.0/10、query:multi-agent
-   evidence：自动驾驶中的广义纳什均衡框架
-3. [Variance-Reduced Q-Learning over Static and Time-Varying Networks](/202608/02/2607.21876v1-variance-reduced-q-learning-over-static-and-time-varying-networks)  
-   标签：评分：8.0/10、query:multi-agent
-   evidence：基于网络共识的分散式多智能体Q学习
-4. [Strategic Inference of Adversarial Navigation Objectives for Unmanned Underwater Vehicles](/202608/02/2607.21945v1-strategic-inference-of-adversarial-navigation-objectives-for-unmanned-underwater-vehicles)  
+1. [PRISM: Polynomial Representations for Interaction-Structured Motor Control](/202608/09/2607.23473v1-prism-polynomial-representations-for-interaction-structured-motor-control)  
    标签：评分：8.0/10、query:ocean-robot
-   evidence：无人水下航行器对抗导航目标推断
-5. [Impedance Control of Ship-Borne Manipulators via Optimization-based Task-Space Inverse Dynamics](/202608/02/2607.22030v1-impedance-control-of-ship-borne-manipulators-via-optimization-based-task-space-inverse-dynamics)  
+   evidence：机器人运动控制的强化学习策略表示
+2. [$N_0$-VTLA: Scaling Vision-Tactile-Language-Action Model with Latent Tactile Tokens](/202608/09/2607.23782v1-n0-vtla-scaling-vision-tactile-language-action-model-with-latent-tactile-tokens)  
    标签：评分：8.0/10、query:ocean-robot
-   evidence：海上船载机械臂的阻抗控制
-6. [Actuator-Aware Spatiotemporal Tube Synthesis for Temporal Reach-Avoid-Stay Tasks](/202608/02/2607.23040v1-actuator-aware-spatiotemporal-tube-synthesis-for-temporal-reach-avoid-stay-tasks)  
+   evidence：视觉-触觉-语言-动作基础模型，面向接触丰富的机器人操作与离线策略改进
+3. [WorldDiT: A Unified Diffusion Architecture for World and Action Modeling](/202608/09/2607.23909v1-worlddit-a-unified-diffusion-architecture-for-world-and-action-modeling)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：机器人动作与世界建模的扩散Transformer；符合具身智能主题。
+4. [Learning Adaptive Multi-Task Guidance, Navigation, and Control via Hypernetworks](/202608/09/2607.24292v1-learning-adaptive-multi-task-guidance-navigation-and-control-via-hypernetworks)  
+   标签：评分：8.0/10、query:ocean-robot
+   evidence：多任务强化学习用于机器人制导导航与控制，匹配机器人控制中的强化学习
+5. [CAP-DO: Learned Contextual Action Proposals for Certified Double-Oracle Solving Across Related Zero-Sum Games](/202608/09/2607.24610v1-cap-do-learned-contextual-action-proposals-for-certified-double-oracle-solving-across-related-zero-sum-games)  
+   标签：评分：8.0/10、query:multi-agent
+   evidence：面向对抗多智能体的零和博弈求解
+6. [Neural operator learning for collision-aware trajectory planning of spacecraft swarms](/202608/09/2608.00320v1-neural-operator-learning-for-collision-aware-trajectory-planning-of-spacecraft-swarms)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：在执行器约束下综合时空管以完成时间到达-规避-驻留任务的安全控制
-7. [Shapley Meets Tutte](/202608/02/2607.23106v1-shapley-meets-tutte)  
+   evidence：基于神经算子的航天器集群避碰轨迹规划，是神经网络安全控制在避碰约束下的体现。
+7. [MAPLE-Guard: Memory-Aware Link Enforcement Against Memory-Link Poisoning in Multi-Agent Systems](/202608/09/2608.00426v1-maple-guard-memory-aware-link-enforcement-against-memory-link-poisoning-in-multi-agent-systems)  
    标签：评分：7.0/10、query:multi-agent
-   evidence：预对齐智能体群组的合作博弈与Shapley值贡献
-8. [Mission-Level Runtime Assurance for LLM-Assisted ISR Swarms over a Verification-Aware Fabric](/202608/02/2607.23532v1-mission-level-runtime-assurance-for-llm-assisted-isr-swarms-over-a-verification-aware-fabric)  
+   evidence：针对基于LLM的多智能体系统中记忆链接投毒的内存感知链路执行，直接关联多智能体系统安全研究。
+8. [SSTG-Nav: Metric-Grounded Spatial-Semantic Topological Graphs for Reusable Object Navigation](/202608/09/2608.00527v1-sstg-nav-metric-grounded-spatial-semantic-topological-graphs-for-reusable-object-navigation)  
    标签：评分：7.0/10、query:ocean-robot
-   evidence：自主系统安全控制；LLM辅助集群的运行时保障。
-9. [Anticipatory Risk-Guided Reinforcement Learning for Safe Flight Through Dynamic Clutter](/202608/02/2607.23565v1-anticipatory-risk-guided-reinforcement-learning-for-safe-flight-through-dynamic-clutter)  
-   标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：面向动态杂乱环境的无人机安全强化学习；无人机安全控制。
-10. [All in One: Generative Modeling as Mean-Field Game Design](/202608/02/2607.23026v1-all-in-one-generative-modeling-as-mean-field-game-design)  
+   evidence：面向具身机器人的空间语义拓扑记忆与可复用导航
+9. [From Failures to Supervision: DynamicEnvPlan for Robust Long-Horizon Embodied Planning](/202608/09/2608.00613v1-from-failures-to-supervision-dynamicenvplan-for-robust-long-horizon-embodied-planning)  
+   标签：评分：7.0/10、query:ocean-robot
+   evidence：动态环境下利用失败作为监督的具身长时域规划
+10. [SIPTraj: Map-Free End-to-End Trajectory Prediction via Physics-Guided Scene Interaction](/202608/09/2608.00779v1-siptraj-map-free-end-to-end-trajectory-prediction-via-physics-guided-scene-interaction)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：面向自动驾驶安全规划的轨迹预测
+11. [StochSIPP: Safe Interval Path Planning in Stochastic Dynamic Environments](/202608/09/2608.00792v1-stochsipp-safe-interval-path-planning-in-stochastic-dynamic-environments)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：不确定环境下的安全区间路径规划
+12. [Resilient Consensus-Based Target Tracking under False Data Injection Attacks in Multi-Agent Networks](/202608/09/2608.01222v1-resilient-consensus-based-target-tracking-under-false-data-injection-attacks-in-multi-agent-networks)  
    标签：评分：6.0/10、query:multi-agent
-   evidence：面向多智能体系统的平均场博弈框架
-11. [Sparse Gaussian-Mixture-Model Q-Functions via Hadamard Overparametrization for Online Reinforcement Learning](/202608/02/2607.23474v1-sparse-gaussian-mixture-model-q-functions-via-hadamard-overparametrization-for-online-reinforcement-learning)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：在线离策略强化学习，提出稀疏Q函数模型方法，可迁移用于机器人控制。
-12. [Hierarchical Soft Actor-Critic for Sparse-Reward Long-Horizon Reinforcement Learning](/202608/02/2607.23726v1-hierarchical-soft-actor-critic-for-sparse-reward-long-horizon-reinforcement-learning)  
-   标签：评分：6.0/10、query:ocean-robot
-   evidence：面向稀疏奖励控制任务的层次化强化学习与Soft Actor-Critic，相关于机器人控制强化学习
-13. [Learning Input-Constrained Funnel Controllers from State Trajectory Data](/202608/02/2607.23876v1-learning-input-constrained-funnel-controllers-from-state-trajectory-data)  
+   evidence：多智能体网络中的分布式目标跟踪，针对对抗性攻击的弹性估计
+13. [Do Neural Networks Really Beat the Curse of Dimensionality? A Bit-Complexity View](/202608/09/2608.01357v1-do-neural-networks-really-beat-the-curse-of-dimensionality-a-bit-complexity-view)  
    标签：评分：6.0/10、query:safe-rl-cbf
-   evidence：从状态轨迹学习带约束的安全反馈控制器
+   evidence：从比特复杂度与度量熵角度分析神经网络逼近能力
 
 
 <div class="dpr-home-promo-card">
