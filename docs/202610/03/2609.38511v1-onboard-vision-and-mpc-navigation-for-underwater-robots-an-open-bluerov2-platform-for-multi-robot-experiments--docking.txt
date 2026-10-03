@@ -1,0 +1,515 @@
+Title: Onboard Vision and MPC Navigation for Underwater Robots: An Open BlueROV2 Platform for Multi-Robot Experiments     Docking
+
+URL Source: https://arxiv.org/pdf/2609.38511v1
+
+Published Time: Thu, 01 Oct 2026 00:27:53 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# Onboard Vision and MPC Navigation for Underwater Robots: An Open BlueROV2 Platform for Multi-Robot Experiments & Docking 
+
+Victor Nan Fernandez-Ayala 1, Wiktor Kowalczyk 1,∗, Cezary Banaszek 1,∗ and Dimos V. Dimarogonas 1
+
+Abstract — Autonomous underwater robots require robust perception, estimation and control to operate in confined environments. This paper presents an open-source BlueROV2 platform combining onboard vision with nonlinear Model Predictive Control (NMPC) for autonomous navigation and docking. The platform integrates an NVIDIA Jetson Orin NX and an Intel RealSense D435i stereo camera in a modular pressure housing. Underwater-calibrated stereo depth and real-time object detection provide relative position measurements of nearby BlueROV2 vehicles in the camera and body frames. A quaternion-based estimator fuses external pose and inertial measurements, while an NMPC controller based on a nonlinear six-degree-of-freedom model tracks planned navigation and docking trajectories. To support reproducible development, we also provide open-source physics-based PX4 SITL and Gazebo environments, multi-robot simulation tools and a low-cost physical docking station. Experiments evaluate underwater perception, onboard computational performance, state estima-tion, trajectory tracking and autonomous docking. 
+
+I. I NTRODUCTION 
+
+Autonomous underwater robots can reduce the cost and risk of marine inspection, environmental monitoring, scien-tific exploration and infrastructure maintenance. However, their deployment remains challenging due to the coupled nonlinear vehicle dynamics, limited communication, uncer-tain localization and optical degradation from light atten-uation, scattering and refraction [1], [2]. These difficulties are particularly relevant in confined environments, where accurate perception, state estimation and control operate concurrently with limited onboard computational resources. Low-cost open-source underwater platforms have consid-erably improved access to experimental marine robotics. The LoCO AUV provides an open and modular vision-guided platform [3], while BlueROV2-based systems showed how a commercially available Remotely Operated Vehicle (ROV) can be extended for autonomous operation [4]. Open simula-tion models have also been developed to support control de-sign for the BlueROV2 [5]. Nevertheless, the implementation of a complete autonomy stack still requires the integration of embedded computing, perception, state estimation, planning, control and suitable experimental infrastructure. Vision is especially useful for short-range underwater navigation, since cameras provide geometric and semantic                    
+
+> ∗Equal contribution.
+> 1Department of Decision and Control Systems, School of Elec-trical Engineering and Computer Science, KTH Royal Institute of Technology, Stockholm, Sweden. Emails: {vnfa, wmko, banaszek, dimos}@kth.se
+> This work was supported by Vinnova, Sweden’s Innovation Agency, within the Advanced Digitalisation programme (grant no. 2024-01430) with co-funding from KTH Digital Futures and the Swedish Defence Materiel Administration (FMV).
+
+Fig. 1: BlueROV2 Heavy with the modular autonomy tube. information using compact and comparatively inexpensive sensors. Underwater camera measurements, however, require a suitable calibration to account for the refractive interfaces introduced by the camera housing and the outside water [2]. During docking, visual markers can provide accurate relative pose measurements for the final approach and have been previously combined with other localization sources in autonomous underwater docking systems [6]. Nonlinear Model Predictive Control (NMPC) is also well suited for this type of operation, since it accounts for nonlinear vehicle dynamics and actuator constraints while re-optimizing from the latest state estimate at every sampling instant, allowing feedback correction of disturbances and model mismatch [7]. In this work, we develop an open autonomy platform for the BlueROV2 Heavy that combines embedded stereo perception, quaternion-based state estimation, reference plan-ning, NMPC navigation and docking. All perception, es-timation, planning and control computations are executed onboard. The platform builds upon the BlueROV2 fleet and six-degree-of-freedom (DoF) model of the Marinarium, an underwater robotics test facility introduced in [8], where it is experimentally evaluated using underwater motion capture. The resulting platform is shown in Fig. 1. The contributions are: (i) an onboard autonomy framework combining calibrated stereo relative localization, quaternion-based state estimation, reference planning and NMPC for navigation and docking; (ii) an open-source software and hardware platform implementing this stack on the BlueROV2, together with a low-cost docking station, PX4 SITL/Gazebo environments and multi-robot simulation tools; and (iii) experimental evaluation of underwater stereo, object detection, onboard computation, state estimation, NMPC tracking and autonomous docking. arXiv:2609.38511v1 [cs.RO] 29 Sep 2026 II. V EHICLE MODEL AND PROBLEM FORMULATION 
+
+A. Vehicle Model 
+
+Consider the modified BlueROV2 Heavy shown in Fig. 1. The vehicle has an additional tube with the onboard au-tonomy hardware, which changes its total mass, displaced volume and inertia. We denote the North-East-Down (NED) navigation frame by {n} and the Forward-Right-Down (FRD) body-fixed frame by {b}. In the standard 6 DoF marine vehicle formulation [9], the vehicle state is 
+
+x = (pn)⊤ q⊤ ν⊤⊤ ∈ R3 × S3 × R6, (1) where pn = [pn, p e, p d]⊤ is the position in {n}, q =[qw, q x, q y , q z ]⊤ is the unit quaternion representing the rotation from {b} to {n}, and ν = [v⊤, ω⊤]⊤ =[u, v, w, p, q, r ]⊤ contains the body-frame linear and angular velocities. The control input is the desired body wrench 
+
+τ = f ⊤ m⊤⊤ = [ Fx, F y , F z , M x, M y , M z ]⊤ ∈ R6,
+
+(2) which is mapped to the eight individual thruster commands by the PX4 control allocation layer. Let R(q) ∈ SO (3) denote the rotation matrix from {b} to 
+
+{n} and let qv = [ qx, q y , q z ]⊤. The vehicle kinematics are 
+
+˙pn = R(q)v, (3) 
+
+˙q = 12
+
+ −q⊤
+
+> v
+
+qwI3 + S(qv )
+
+
+
+ω, (4) where S(·) is the skew-symmetric matrix operator and 
+
+q⊤q = 1. The dynamics are then adapted from the BlueROV2 model in [5] and [8], but its parameters are modified to account for the mass and buoyancy of the additional autonomy tube. The dynamics are thus given by 
+
+˙ν = M −1(τ − C(ν)ν − D(νr )νr − g(q)) , (5) where M = MRB +MA are the rigid-body and added-mass contributions, respectively, and C(ν) = CRB (ν) + CA(ν)
+
+contains the corresponding Coriolis and centripetal terms. A constant irrotational water current vnc can be included through the vehicle velocity relative to the surrounding water 
+
+νr = [( v − R⊤(q)vnc )⊤, ω⊤]⊤. The damping matrix, with linear and quadratic components [9], is written as 
+
+D(νr ) = diag ( dl + dq ⊙ | νr |) , (6) where ⊙ denotes the Hadamard (element-wise) product. Let 
+
+m, V , ρ and g denote the vehicle mass, volume, water density and gravitational acceleration, respectively. Then, W = mg ,
+
+B = ρgV and R(q) = [ rij ]. With the center of gravity located at the body-frame origin and the center of buoyancy 
+
+rb = [ xb, y b, z b]⊤, the restoring vector used in the model is 
+
+g(q) = 
+
+
+
+−(W − B)r31 
+
+−(W − B)r32 
+
+−(W − B)r33 
+
+B(ybr33 − zbr32 )
+
+B(zbr31 − xbr33 )
+
+B(xbr32 − ybr31 )
+
+
+
+. (7) TABLE I: Parameters of the modified BlueROV2 Heavy.                                   
+
+> Parameter Value in SI units
+> m,V15 .6 kg ,0.015 65 m 3
+> ρ,g1000 kg /m3,9.82 m /s2
+> rb[0 ,0,−0.01] ⊤m[Ix, I y, I z][0 .3000 ,0.2652 ,0.4272] kg m 2
+> diag( MA)[6 .36 ,7.12 ,18 .68 ,0.189 ,0.135 ,0.222]
+> dl[13 .7,0,33 .0,0,0.8,0]
+> dq[141 ,217 ,190 ,1.19 ,0.47 ,1.50]
+
+The parameters for the vehicle with the autonomy tube are summarized in Table I. The mass and volume are obtained from the physical vehicle, with the inertia obtained by scaling the benchmark values in [5] by the vehicle mass ratio. These parameters result in B −W = 0 .491 N , yielding the intended near-neutral, slightly positively buoyant configuration. Combining (3), (4) and (5), the state x in (1) evolves according to the continuous-time system 
+
+˙x = f (x, τ ), (8) where f denotes the nonlinear vector field defined by the preceding kinematics and dynamics. For prediction and simulation, (8) is discretized using a fixed-step fourth-order explicit Runge-Kutta method [10] 
+
+xk+1 = Nq (RK4( xk, τk, T s)) =: fd(xk, τk), (9) where fd denotes the discrete-time dynamics and Nq re-places q by q/∥q∥2, leaving the remaining state unchanged. 
+
+B. Problem Formulation 
+
+At time step k, the vehicle receives noisy IMU, stereo-camera and external-pose measurements and a desired ter-minal pose (pnd , qd), representing either a navigation goal or a docking configuration. Let 
+
+X rk =
+
+n
+
+xrk+ℓ|k
+
+oNℓ=0 
+
+(10) denote a reference sequence terminating at the desired pose, where N is the prediction-horizon length. 
+
+Problem 1. Using these measurements, estimate the current state ˆxk, generate X rk from ˆxk to the terminal pose and determine the body-wrench sequence {τℓ|k}N −1 
+
+> ℓ=0
+
+such that 
+
+x0|k = ˆ xk, (9) is satisfied for ˆxk, the predicted state tracks 
+
+X rk , and τℓ|k ∈ U for ℓ = 0 , . . . , N − 1, where U = [ τ , τ ] is the nonempty actuator-limited wrench set. All computations must be performed onboard within Ts.III. O PEN PLATFORM , P ERCEPTION AND SIMULATION 
+
+A. Autonomy Hardware and Software 
+
+The standard BlueROV2 Heavy is extended with a modu-lar pressure housing mounted on top of the vehicle, as shown in Fig. 1. The housing contains an NVIDIA Jetson Orin NX 8GB, an Intel RealSense D435i stereo camera and a compact Gigabit Ethernet switch. The D435i is installed behind the transparent front end cap, while the Jetson and networking hardware are mounted on removable internal trays. The complete module is attached to the standard BlueROV2 roof racks using detachable enclosure clamps. On the Jetson, ROS 2 nodes acquire and align the D435i measurements, perform YOLO/depth-based relative local-ization, run the EKF and reference planner, and solve the NMPC. The Ethernet switch connects the Jetson, the vehicle autopilot and the external network interface. The autopilot runs PX4 [11] and exchanges vehicle measurements and body-wrench setpoints with the onboard ROS 2 nodes. The external connection is retained for monitoring, data recording and delivery of the motion-capture measurements, but no external computer is needed to execute the autonomy stack. The CAD files, Bill of Materials (BoM), assembly in-structions and software installation procedure are provided in the open-source project repository 1. The modular design allows the autonomy system to be installed on an existing BlueROV2 without modifying any of its components. 
+
+B. Underwater Stereo Perception 
+
+The D435i provides synchronized color and stereo depth measurements. Since the camera is placed behind an acrylic interface and operated underwater, its stereo parameters are recalibrated after installation. The resulting depth image is aligned with the color image so that the depth and object-detection outputs share the same pixel coordinates. A lightweight YOLO detector [12] is fine-tuned to identify other BlueROV2 vehicles. Let Ωj,k denote the image region associated with the detection of vehicle j at time step k, and let Dk(a, b ) denote the aligned depth measurement at pixel 
+
+(a, b ). Invalid measurements and depth outliers are removed from this region, resulting in the set of accepted samples 
+
+Zj,k = {Dk(a, b ) : ( a, b ) ∈ Ωj,k , D k(a, b ) accepted } .
+
+(11) The estimated depth of the detected vehicle is obtained as 
+
+ˆzj,k = 1
+
+|Z j,k |
+
+X
+
+> z∈Z j,k
+
+z. (12) Let (¯ aj,k , ¯bj,k ) be the center of the detected image region and let K be the calibrated intrinsic matrix [2]. The relative position of detected vehicle j with respect to observer vehicle 
+
+i in the camera frame {c} is calculated through back-projection as 
+
+ˆpcj/i,k = ˆ zj,k K−1 ¯aj,k ¯bj,k 1⊤ . (13) Using the calibrated camera-to-body rotation bRc and trans-lation btc, the corresponding body-frame measurement is 
+
+ˆpbj/i,k = bRc ˆpcj/i,k + btc. (14) Thus, the relative position comes only from onboard mea-surements and does not need communication or global position of the vehicle. The trained YOLO model, ROS 2 modules for synchronized color and depth processing, and relative position estimation are released in the open-source 
+
+> 1https://github.com/KTH-DHSG/BlueROV-Setup
+
+Fig. 2: Underwater BlueROV2 detection and aligned stereo-depth output produced by the onboard perception module. perception repository 2. Figure 2 shows a snapshot of the video with the object-detection and aligned-depth outputs (see accompanying video). The perception module also sup-ports ArUco-based relative pose estimation for docking [13]. 
+
+C. Simulation and Docking Infrastructure 
+
+A physics-based simulation environment is developed us-ing PX4 SITL and Gazebo [11]. The simulated BlueROV2 contains the complete eight-thruster configuration and re-produces the mass, buoyancy, inertia and hydrodynamic parameters of the modified vehicle. The simulation exposes the same PX4 and ROS 2 interfaces used by the physical platform, allowing the same estimation, planning and control nodes to operate in simulation and in the tank. An underwater environment is also provided imitating the geometry of the Marinarium [8], including the tank bound-aries and a simulated version of a docking station, as shown together with the physical one in Fig. 3. An additional multi-vehicle launch file can be used to create several independent PX4 instances, with each robot assigned its own system identifier, ROS 2 namespace and communication topics. The physical docking station is constructed from standard aluminium profiles and 3D-printed PLA components coated with a capillary sealant. It is detachable from the tank structure and does not require custom-machined components. It can also be equipped with a 3D printed ArUco marker. The same geometry and marker placement are reproduced in Gazebo. Its CAD files are also provided in the setup repository introduced above. The PX4 software develop-ments and the Gazebo models and environments have already been merged upstream into the official PX4. Installation and execution instructions are provided in the setup repository. IV. S TATE ESTIMATION AND NMPC N AVIGATION 
+
+A. Quaternion-Based State Estimation 
+
+The underwater motion-capture measurements contain noise and occasional outliers due to refraction and marker occlusion. A quaternion error-state Extended Kalman Filter 
+
+> 2https://github.com/KTH-DHSG/BlueROV-ROS-Modules
+
+(a) Docking station in the Marinarium. (b) Multi-robot PX4 SITL simulation in the Marinarium environment (see accompanying video). 
+
+Fig. 3: Open experimental infrastructure. The physical docking station and the simulator from the multi-robot launch file. (EKF) is thus used to fuse the measured global pose with the onboard accelerometer and gyroscope data [14], [15]. Let ˜abk and ˜ωbk denote the specific-force and angular-velocity measurements from the onboard Inertial Measure-ment Unit (IMU). They satisfy 
+
+˜abk = R⊤(qk) ( ˙ vnk − gn) + ba,k + na,k , (15) 
+
+˜ωbk = ωbk + bg,k + ng,k , (16) where gn = [0 , 0, g ]⊤ in NED frame, ba,k and bg,k are the accelerometer and gyroscope biases, and na,k and ng,k are zero-mean measurement noise terms. The estimator state is then xek = [( pnk )⊤, (vnk )⊤, q⊤ 
+
+> k
+
+, b⊤
+
+> a,k
+
+, b⊤
+
+> g,k
+
+]⊤.Let ∆tk denote the IMU sampling time interval. Between global-pose updates, the IMU measurements propagate the state estimate at the IMU rate according to 
+
+ˆank = R( ˆ qk)
+
+
+
+˜abk − ˆba,k 
+
+
+
++ gn,
+
+ˆpn− 
+
+> k+1
+
+= ˆ pnk + ∆ tk ˆvnk + ∆t2
+
+> k
+
+2 ˆank ,
+
+ˆvn− 
+
+> k+1
+
+= ˆ vnk + ∆ tk ˆank ,
+
+ˆq− 
+
+> k+1
+
+= Nq
+
+
+
+ˆqk ⊗ Exp q
+
+
+
+∆tk
+
+
+
+˜ωbk − ˆbg,k 
+
+ 
+
+, (17) 
+
+ˆb− 
+
+> a,k +1
+
+= ˆba,k , ˆb− 
+
+> g,k +1
+
+= ˆbg,k ,
+
+where ⊗ denotes quaternion multiplication and Exp q : R3 →
+
+S3 denotes the quaternion exponential map [15]. The biases are modelled as random walks in the covariance propagation. The associated 15-dimensional error state is δxek =[δp⊤ 
+
+> k
+
+, δ v⊤ 
+
+> k
+
+, δ θ⊤ 
+
+> k
+
+, δ b⊤
+
+> a,k
+
+, δ b⊤
+
+> g,k
+
+]⊤, where δθk ∈ R3 is the local attitude error. Its covariance is propagated as 
+
+P − 
+
+> k+1
+
+= FkPkF ⊤ 
+
+> k
+
++ GkQekG⊤ 
+
+> k
+
+, (18) where Fk and Gk are the discrete error-dynamics Jacobians computed over ∆tk, and Qek contains the IMU and bias random-walk covariances. Let pmk and qmk be a global pose measurement. The position and multiplicative attitude residuals are then 
+
+rk =
+
+ pmk − ˆpn−
+
+> k
+
+Log q
+
+ qmk ⊗ ( ˆ q− 
+
+> k
+
+)−1
+
+, (19) where Log q : S3 → R3 is the quaternion logarithmic map. Using error-state correction [14], [15], the EKF update is 
+
+Kk = P − 
+
+> k
+
+H⊤
+
+> k
+
+ HkP − 
+
+> k
+
+H⊤ 
+
+> k
+
++ Σm
+
+−1 ,δ ˆxek = Kkrk, (20) 
+
+Pk = ( I − KkHk)P − 
+
+> k
+
+(I − KkHk)⊤ + KkΣmK⊤ 
+
+> k
+
+,
+
+(21) 
+
+Hk =
+
+I3 0 0 0 00 0 I3 0 0
+
+
+
+. (22) The quaternion correction is applied multiplicatively as 
+
+ˆqk = Nq
+
+
+
+Exp q (δ ˆθk) ⊗ ˆq−
+
+> k
+
+
+
+, (23) while the remaining components are corrected additively. The state supplied to the NMPC is finally constructed as 
+
+ˆxk =
+
+
+
+( ˆ pnk )⊤ ˆq⊤
+
+> k
+
+ R⊤( ˆ qk)ˆ vnk
+
+⊤ 
+
+˜ωbk − ˆbg,k 
+
+⊤⊤
+
+.
+
+(24) 
+
+B. Reference Generation and Docking 
+
+For both navigation and docking, RRT* [16] generates a geometric path P = {pr
+
+> 0
+
+, . . . , prM } from the current vehicle position to the desired terminal position. The path is interpo-lated and time-parametrized at constant speed to obtain X rk
+
+in (10). During docking, the RRT* goal is the predefined dock position pnd , while the attitude reference is interpolated from the initial attitude to qd. The perception module also supports ArUco-based relative dock-pose estimation [13]. 
+
+C. Nonlinear Model Predictive Control 
+
+At prediction stage ℓ, the quaternion tracking error is 
+
+˜qℓ|k = qrk+ℓ|k ⊗ q−1
+
+> k+ℓ|k
+
+,
+
+eq,ℓ |k = sgn  ˜qw,ℓ |k
+
+ vec   ˜qℓ|k
+
+ , (25) where vec( ·) extracts the vector part of a quaternion. The sign correction selects the shortest quaternion representation and avoids unwinding. The stage cost is then defined as 
+
+ℓ(xℓ|k, τℓ|k) = pnℓ|k − pn,r k+ℓ|k
+
+> 2
+> Qp
+
++ eq,ℓ |k
+
+> 2
+> Qq
+
++ vℓ|k − vrk+ℓ|k
+
+> 2
+> Qv
+
++ ωℓ|k − ωrk+ℓ|k
+
+> 2
+> Qω
+
++ τℓ|k
+
+> 2
+> Rτ
+
+,
+
+(26) where, for any vector e and weighting matrix W , ∥e∥2 
+
+> W
+
+:= 
+
+e⊤W e . The terminal cost Vf (xN |k) contains the same state-tracking terms as (26), weighted by Pp, Pq , Pv and Pω ,respectively, without an input penalty. Finally, the NMPC problem solved at time step k is 
+
+min x0|k ,..., xN |k   
+
+> τ0|k,..., τN−1|k
+> N−1
+
+X
+
+> ℓ=0
+
+ℓ(xℓ|k, τℓ|k) + Vf (xN |k)s.t. x0|k = ˆ xk,
+
+xℓ+1 |k = fd(xℓ|k, τℓ|k),
+
+τ ≤ τℓ|k ≤ τ , ℓ = 0 , . . . , N − 1.
+
+(27) With only nonempty input-box constraints, recursive fea-sibility follows directly [17]. The nonlinear model and cost functions are implemented symbolically using CasADi [18]. The Optimal Control Problem (OCP) is solved using acados [10], with a Gauss-Newton Hessian approximation, four-stage Explicit Runge-Kutta integration, partial-condensing HPIPM and a Sequential Quadratic Programming Real-Time Iteration (SQP-RTI) scheme. The solution from the previous time step is shifted to warm-start the optimization. At each sampling time, only the first optimized body wrench τ ⋆
+
+> 0|k
+
+is sent to PX4 and the problem is solved again using the updated state estimate and reference. All the controller, reference generation and EKF code is released open-source 3.V. E XPERIMENTAL EVALUATION 
+
+A. Experimental Setup 
+
+The physical experiments are conducted in the Marinarium using the modified BlueROV2 Heavy and the docking station shown in Fig. 3. The underwater motion-capture system provides global pose measurements, while the vehicle IMU provides acceleration and angular-velocity measurements to the EKF. The water current vnc = 0 is assumed negligible. All estimation, planning and control algorithms are exe-cuted onboard. The NMPC operates with sampling time Ts =0.04 s and horizon N = 25 , i.e., a prediction interval of 1 s .The terminal state weights are set to twice the stage weights, with |f | ≤ [44 , 44 , 13 .7] ⊤ N and |m| ≤ [30 , 16 .5, 21] ⊤ N m .All the experimental parameters are summarized in Ta-ble II. The perception, state-estimation and NMPC modules are evaluated using the available underwater data and the au-tonomous docking experiment. Their computational loads are reported separately, while the aggregate onboard utilization is estimated from the module-wise measurements. 
+
+B. Underwater Perception and Onboard Performance 
+
+The stereo-ranging evaluation uses an underwater record-ing of a BlueROV2 observed at reference distances between 1.8 and 2.9 m. The distances are obtained using a docked BlueROV2 as the target object and another BlueROV2 with the camera as the observer. The estimated range in (12) is compared with the motion-capture ground truth. For nz
+
+> 3https://github.com/KTH-DHSG/bluerov2_control
+
+TABLE II: Experimental and algorithmic parameters.                                  
+
+> Parameter Value Camera profiles RGB 1280x720x15fps; D 848x480x30fps YOLO input resolution 1280x720 pixels YOLO confidence threshold 0.9 Jetson power mode 15W IMU sampling rate 200 Hz
+> Motion-capture rate 100 Hz
+> Ts,N0.04 s ,25
+> Qp,Qqdiag(15 ,100 ,50) ,diag(5 ,5,5)
+> Qv,Qωdiag(5 ,70 ,30) ,diag(1 ,1,1)
+> Rτdiag(0 .1,0.1,0.1,0.05 ,0.05 ,0.05)
+
+accepted measurements, the depth Root Mean Square Error (RMSE) is 
+
+ez 
+
+> RMSE
+
+=
+
+vuut 1
+
+nznzX
+
+> k=1
+
+ ˆzk − zref 
+
+> k
+
+2. (28) The Mean Absolute Error (MAE) is also reported in Fig. 4a, together with the stereo and motion-capture ranges, com-pared with the ideal line of error-free measurements. The object detector is evaluated on 1067 labeled under-water BlueROV2 images, using separate recorded sequences for training, validation, and testing. Precision, recall, mAP 50 
+
+and mAP 50:95 are reported in Fig. 4b. Figure 4c reports the inference time and CPU, GPU and memory utilization during onboard execution on the Jetson Orin NX. The final selected operating profile uses a color resolution of 1280x720 at 15 Hz and a depth resolution of 848x480 at 30 Hz . It achieves a depth RMSE of 0.26 m, a valid-depth proportion of 55.38 % and a detector rate of 15 Hz .
+
+C. State Estimation and NMPC Tracking 
+
+The EKF is evaluated using the autonomous docking experiment. Since the motion-capture stream contains sev-eral tracking losses, including a maximum interruption of approximately 1.19 s, the analysis focuses on measurement filtering and robustness to losses rather than absolute lo-calization accuracy. Figure 5a compares the raw motion-capture odometry with the filtered estimate. During the final hold interval, the EKF reduces the body-velocity standard deviation by approximately 74%. The NMPC tracking performance is evaluated during the docking using the filtered state estimate. Figure 5b shows the measured trajectory with the commanded docking pose. 
+
+D. Autonomous Docking 
+
+The vehicle follows the time-parametrized RRT* reference to the predefined docking pose, with a speed of 0.10 m /s.The trajectory lasts 32 .1 s , after which the NMPC maintains the final reference. The final position and attitude errors are 
+
+0.067 m and 10 .9 deg , respectively. Figure 5c shows the final docking configuration (see accompanying video). VI. C ONCLUSION 
+
+In this work, we developed an open BlueROV2 Heavy autonomy platform combining underwater stereo perception, quaternion-based state estimation, reference planning and 6 DoF NMPC for navigation and docking. Open hardware, (a) Stereo-ranging error. (b) BlueROV2 detection performance. (c) Computational performance. 
+
+Fig. 4: Perception evaluation: (a) stereo range versus motion-capture ground truth; (b) held-out YOLO precision, recall and mAP; and (c) Jetson Orin NX utilization and inference time for the selected profile. 
+
+(a) Raw and EKF-filtered surge velocity. (b) Measured trajectory and docking pose. (c) Docking sequence. 
+
+Fig. 5: Docking evaluation: (a) raw motion-capture and EKF surge velocity during the final hold; (b) measured horizontal trajectory, commanded dock pose and final position; and (c) overlaid frames of the physical docking sequence. ROS 2/PX4 software, Gazebo environments, multi-robot sim-ulation tools and a low-cost docking station support repro-ducible experimentation. Experiments demonstrate onboard relative perception, state estimation, NMPC tracking and au-tonomous docking. Future work investigates sampling-based methods, e.g., Model Predictive Path Integral control, safety-critical multi-robot coordination and diver-robot interaction. REFERENCES [1] J. Yuh, “Design and control of autonomous underwater robots: A survey,” Autonomous Robots , vol. 8, no. 1, pp. 7–24, 2000. [2] A. Jordt-Sedlazeck and R. Koch, “Refractive calibration of underwater cameras,” in Computer Vision – ECCV 2012 , ser. Lecture Notes in Computer Science, vol. 7576. Springer, 2012, pp. 846–859. [3] C. Edge et al. , “Design and experiments with LoCO AUV: A low cost open-source autonomous underwater vehicle,” in 2020 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) ,2020, pp. 1761–1768. [4] A. Wilby and E. Lo, “Low-cost, open-source hovering autonomous underwater vehicle (HAUV) for marine robotics research based on the BlueROV2,” in 2020 IEEE/OES Autonomous Underwater Vehicles Symposium (AUV) , 2020, pp. 1–5. [5] M. von Benzon, F. F. Sørensen, E. Uth, J. Jouffroy, J. Liniger, and S. Pedersen, “An open-source benchmark simulator: Control of a BlueROV2 underwater robot,” Journal of Marine Science and Engineering , vol. 10, no. 12, p. 1898, 2022. [6] T. Creutz, B. Wehbe, S. Arnold, and M. Hildebrandt, “Towards robust autonomous underwater docking for long-term under-ice exploration,” in OCEANS 2023 - Limerick , 2023, pp. 1–8. [7] D. C. Fernández and G. A. Hollinger, “Model predictive control for underwater robots in ocean waves,” IEEE Robotics and Automation Letters , vol. 2, no. 1, pp. 88–95, 2017. [8] I. Torroba et al. , “Marinarium: A new arena to bring maritime robotics closer to shore,” arXiv preprint arXiv:2602.23053 , 2026. [9] T. I. Fossen, Handbook of Marine Craft Hydrodynamics and Motion Control , 2nd ed. John Wiley & Sons, 2021. [10] R. Verschueren et al. , “acados—a modular open-source framework for fast embedded optimal control,” Mathematical Programming Compu-tation , vol. 14, no. 1, pp. 147–183, 2022. [11] L. Meier, D. Honegger, and M. Pollefeys, “Px4: A node-based multithreaded open source robotics framework for deeply embedded platforms,” in 2015 IEEE International Conference on Robotics and Automation (ICRA) , 2015, pp. 6235–6240. [12] J. Redmon, S. Divvala, R. Girshick, and A. Farhadi, “You only look once: Unified, real-time object detection,” in 2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , 2016, pp. 779– 788. [13] S. Garrido-Jurado, R. Muñoz-Salinas, F. Madrid-Cuevas, and M. Marín-Jiménez, “Automatic generation and detection of highly re-liable fiducial markers under occlusion,” Pattern Recognition , vol. 47, no. 6, pp. 2280–2292, 2014. [14] F. L. Markley, “Attitude error representations for kalman filtering,” 
+
+Journal of Guidance, Control, and Dynamics , vol. 26, no. 2, pp. 311– 317, 2003. [15] J. L. Crassidis, F. L. Markley, and Y. Cheng, “Survey of nonlinear attitude estimation methods,” Journal of Guidance, Control, and Dynamics , vol. 30, no. 1, pp. 12–28, 2007. [16] S. Karaman and E. Frazzoli, “Sampling-based algorithms for optimal motion planning,” The International Journal of Robotics Research ,vol. 30, no. 7, pp. 846–894, 2011. [17] J. Rawlings, D. Mayne, and M. Diehl, Model Predictive Control: Theory, Computation, and Design , 2nd ed. Nob Hill Publishing, 2020. [18] J. A. E. Andersson, J. Gillis, G. Horn, J. B. Rawlings, and M. Diehl, “CasADi – A software framework for nonlinear optimization and optimal control,” Mathematical Programming Computation , vol. 11, no. 1, pp. 1–36, 2019.
