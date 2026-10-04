@@ -1,0 +1,783 @@
+Title: Strategically Robust Game-Theoretic Multi-Agent Trajectory Optimization
+
+URL Source: https://arxiv.org/pdf/2609.35142v1
+
+Published Time: Tue, 29 Sep 2026 04:07:24 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# Strategically Robust Game-Theoretic Multi-Agent Trajectory Optimization 
+
+Victor L. Qin 1∗, Nicolas Lanzetti 2, Saverio Bolognani 3, and Hamsa Balakrishnan 1
+
+Abstract — Aviation authorities worldwide expect Advanced Air Mobility (AAM) traffic management to be decentralized among service providers, requiring AAM flights to autonomously plan trajectories by predicting other flights’ control inputs rather than relying on centralized coordination. Game-theoretic approaches that formulate multi-agent collision avoidance as an exact dynamic potential game can efficiently find open-loop equilibria, but they assume that agents exactly follow their equilibrium trajectories—an unrealistic assumption given uncertainties in actuation, perception, and computation. We propose a strategically robust formulation where each agent protects against a fictitious adversary that, for each timestep, perturbs other agents’ control inputs within a bounded budget to minimize distance at that timestep. We show that, under reasonable assumptions on agents’ distance cost and robustness levels, the strategically robust game remains an exact dynamic potential game and admits a quasi-closed-form solution to the inner adversarial problem for linear dynamics, which limits computational overhead. Experiments with up to eight agents using logarithmic distance costs show that strategic robustness selects more robust trajectories in high-collision-risk configurations while leaving low-risk trajectories nearly unchanged, with only a modest increase in runtime. 
+
+I. I NTRODUCTION 
+
+Advanced Air Mobility (AAM) vehicles, such as unmanned aircraft systems (UASs) and electric vertical take-off and landing aircraft (eVTOLs), could transform urban and regional transportation [1, 2]. However, AAM operations pose a chal-lenge for current air traffic management systems, as they are expected to operate autonomously on demand between many urban destinations. National aviation authorities worldwide envision AAM traffic management services being provided by several service providers in a region [3, 4]. With the decentralization of traffic management responsi-bilities, autonomous AAM flights cannot rely on a centralized authority to guarantee collision avoidance. Instead, they must solve a game-theoretic trajectory optimization problem, where each flight (each agent) finds the most efficient trajectory  
+
+> V. Qin would like to thank Geoffrey Ding for helpful conversations. V. Qin is supported by the National Science Foundation Graduate Research Fellowship Program under Grant #2141064, by NCCR Automation, grant agreement 51NF40 225155 from the Swiss National Science Foundation, and in part by NASA Grant #80NSSC23M0220. N. Lanzetti is supported by the PIMCO Fellows Program, by the National Science Foundation under Grant #CCF-2326609, and by the Resnick Sustainability Institute. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the National Science Foundation or of the National Aeronautics and Space Administration.
+> 1Department of Aeronautics and Astronautics, MIT.
+> 2Department of Computing and Mathematical Sciences, Caltech.
+> 3Automatic Control Laboratory, ETH Zurich.
+> ∗Corresponding author,
+
+victorqi@mit.edu 
+
+Fig. 1: Illustration of the strategically robust approach for a two-agent scenario. The ego agent (blue trajectory) plans against a fictitious adversary that, for each timestep 1 ≤ H ≤ T , perturbs the other agent’s control inputs away from its nominal trajectory (gray) to minimize the distance between agents at that timestep (orange). The adversary’s worst-case trajectory for each timestep (red) is subject to a budget constraint on the total control input deviation (PH−1 
+
+> k=0
+
+∥ujk − ˆuj,H k ∥2 ≤ ϵj,H 2, gray shaded region). See (5). 
+
+while avoiding collisions with other agents. Standard game-theoretic methods that solve for the Nash equilibrium assume that each agent strictly adheres to its Nash equilibrium trajectory—a difficult assumption given the uncertainties inherent in aviation, even if agents are not adversarial (e.g., perception at night, miscalibrated sensors or systems, pilot errors)—and provide no guarantees when agents deviate. Clearly, misspecified control inputs from other AAM flights, due to factors like limited computation or partial information, could lead to catastrophic collisions. It is thus natural for flights to seek protection against such deviations, i.e., against uncertainty in the control inputs of other flights. Such strategic uncertainty—in contrast to the standard uncertainty in robust control or optimization—is not exogenous (e.g., against environmental noise as in robust control) but endogenous to the flights, where the control inputs of a flight affect those of the other flights against which they seek protection. Placing the uncertainty on control inputs rather than directly on states also guarantees that every deviation that is being protected against is dynamically feasible for the deviating flight. To achieve this goal, we adopt a strategically robust approach, introduced for static games [5], and propose that each agent minimizes its control cost against a fictitious adversary. The key idea is illustrated in Fig. 1. Each agent arXiv:2609.35142v1 [eess.SY] 28 Sep 2026 plans its own trajectory while anticipating that other agents may not exactly follow their nominal trajectories, by assuming that a fictitious adversary, at each step, perturbs the nominal control inputs of each of the other agents so as to minimize the distances to the ego agent—that is, to create the worst-case collision scenario. Crucially, the adversary is budget-constrained: for each of the other agents, the total deviation from its nominal control inputs cannot exceed a prescribed budget. By optimizing against this worst-case scenario at every timestep, each agent obtains a trajectory that is robust to bounded perturbations in the other agents’ control inputs. Agents can tune their desired level of robustness through this budget. If the budget is reduced to zero, the fictitious adversary is forced to replicate the control inputs of the other flights, recovering the standard Nash equilibrium in dynamic games. As the budget is increased, players assign more power to their fictitious adversary, thereby increasing robustness to perturbations in the strategies of the other players. The budget can therefore be directly interpreted as the level of robustness. While attractive in spirit, integrating strategic robustness into multi-agent trajectory optimization poses significant challenges. Even in the absence of strategic robustness, finding equilibria in dynamic games involves solving coupled nonlin-ear optimization problems and is computationally expensive. Recent work [6, 7] identified that, under mild assumptions, multi-agent trajectory optimization can be structured as a dynamic potential game [8, 9, 10], which effectively allows us to find multi-agent equilibrium trajectories by solving a single constrained optimization problem. Whether strategic robustness preserves this structure without altering its favorable computational properties is the main challenge in deploying it for multi-agent trajectory optimization. In this paper, we answer this question affirmatively. In particular, our contribution is threefold: 1) We show that, under natural assumptions on the distance cost, using strategic robustness in exact dynamic po-tential games leads to another dynamic potential game with an appropriately modified potential function. 2) While the modified potential function requires solving a worst-case optimization problem, we obtain a quasi-closed-form solution to this adversarial maximization that can be quickly computed online. 3) Through various numerical examples, we show that our strategically robust method does not significantly add to the runtime of the trajectory optimization. 
+
+A. Related work Game-theoretic planners: ALGAMES [11] solves for generalized Nash equilibria using Newton’s method on KKT conditions, while dynamic potential games [9] enable faster convergence by reducing the game to a single optimization problem [6, 7, 12, 13]. This optimization problem is solved online using iterative trajectory optimization methods based on linear-quadratic approximations, such as iLQR [14] and ALTRO [15]. While dynamic potential games are more restrictive than generalized Nash equilibrium games, multi-agent trajectory problems naturally fit in the dynamic potential game structure [6, 9]. However, these planners assume perfect knowledge of other agents’ cost functions and dynamics. 
+
+Exogenous uncertainty: In decision theory, there are var-ious approaches that are robust against exogenous uncertainty, including distributionally robust optimization [16] and risk measures [17]. Risk measures have been applied to risk-aware robotics [18, 19]. Risk-sensitive iLQR games [20] incorporate noise in dynamics via entropic risk. Yet these approaches are primarily robust to exogenous uncertainty, and not to strategic uncertainty which is instead endogenous. 
+
+Strategically robust game theory: To protect against strategic uncertainty (i.e., uncertainty about the other players), we adopt the strategically robust game-theoretic approach [5]. In strategically robust game theory, agents make decisions against a fictitious agent that aims to inflict maximum damage but is constrained to lie within a prescribed distance of the mixed strategy of all other players. This way, strategically robust equilibria interpolate between Nash and security equilibria. The open-loop strategically robust equilibria we use for this work are precisely inspired by this philosophy and can be interpreted as pure strategically robust equilibria in open-loop dynamic games. Under natural assumptions on the interagent cost structure, we show that our strategically robust game retains the exact dynamic potential game property [9], thereby preserving the computational advantages of solving a single optimization problem while adding robustness. More broadly, our work subscribes to a growing body of recent literature that leverages strategic robustness and risk aversion, sometimes combined with bounded rationality, in multi-agent settings to improve robustness, tractability, and sometimes even collaboration [21, 22, 23, 24, 25]. II. S TRATEGICALLY ROBUST TRAJECTORY OPTIMIZATION 
+
+We consider a multi-agent trajectory optimization problem, where agents i ∈ {1, 2, . . . , N } := N optimize their trajectories over a time horizon 0 ≤ k ≤ T . Let xik ∈ Rn and 
+
+uik ∈ Rm be the state and control input of agent i at time k;
+
+xk and uk are the concatenations of the state and input of all agents at time k; xi and ui are the concatenations of the state and input of agent i for all timesteps; and x = {xk}0≤k≤T
+
+and u = {uk}0≤k≤T −1. The agent dynamics are linear and identical across all agents: 
+
+Assumption 1 (Dynamics) . The agent dynamics are 
+
+xik+1 = Ax ik + Bu ik ∀i ∈ N .
+
+We define the set of feasible trajectories for an agent given some fixed initial state xi 
+
+> 0
+
+to be Ci, and the set of trajectories for all agents to be C := Q 
+
+> i∈N
+
+Ci:
+
+Ci ={(xi
+
+> 0
+
+, . . . , x iT , u i
+
+> 0
+
+, . . . , u iT −1)|
+
+xik+1 = Ax ik + Bu ik ∀k ∈ [0 , T − 1] }.
+
+Given other agents’ control inputs u−i and fixed initial state 
+
+xi
+
+> 0
+
+, each agent seeks to minimize the control cost 
+
+min  
+
+> ui
+
+Ji(x0, u ) := LiT (xT ) +  
+
+> T−1
+
+X
+
+> k=0
+
+Lik(xk, u k)
+
+s.t. xlk+1 = Ax lk + Bu lk ∀l ∈ N , k ∈ [0 , T − 1] ,
+
+(1) where we assume all functions are continuously differentiable. As in [7], we decompose Lik(xk, u k) into a private component 
+
+Lii k , which depends on the agent state and input, and an interagent component Lij k for j ∈ N \ { i}, which captures effects such as collision avoidance and depends on the states 
+
+xik and xjk of agents i and j:
+
+Lik(xk, u k) = Lii k (xik, u ik) + X
+
+> j∈N \{ i}
+
+Lij k (xik, x jk)
+
+LiT (xT ) = Lii T (xiT ) + X
+
+> j∈N \{ i}
+
+Lij T (xiT , x jT ). (2) For example, the private cost can be a standard quadratic cost on the distance to a goal xif , i.e., Lii k (xik, u ik) =(xik − xif )⊤Qik(xik − xif ) + uik
+
+> ⊤
+
+Rikuik, while the interagent cost Lij k (xik, x jk) = −c ln( ∥xik −xjk∥2 +η) pushes agents apart to avoid collisions, given parameters c > 0, 1 ≫ η > 0.1
+
+A. Game-theoretic solution concept 
+
+We consider a finite horizon open-loop trajectory optimiza-tion problem with horizon T , where agent i decides on a strategy γi(x0) = {uik}k∈[0 ,T −1] ∈ Γi, a sequence of control inputs that generates a trajectory xi = {xik}k∈[0 ,T ] such that 
+
+(xi, γ i(x0)) ∈ Ci, with the initial state xi 
+
+> 0
+
+given by x0. The joint strategy of all players is γ(x0) = ( γ1(x0), . . . , γ N (x0)) ,where Γ = Q 
+
+> i∈N
+
+Γi is the space of all joint strategies; we will write γi(x0, k ) = uik. We write the cost to an agent as Ji(x0, {γi(x0), γ −i(x0)}), where the trajectory x is generated from x0 by the strategies in the second argument. 
+
+Definition 1 (Nash equilibrium) . An open-loop Nash equi-librium for a game G = (N , {Ji}i∈N , Γ) given initial conditions x0 is a set of strategies γ⋆ = ( γ1⋆, . . . , γ N ⋆) ∈ Γ
+
+with (x, γ ⋆(x0)) ∈ C such that for all agents i ∈ N , γ i ∈ Γi:
+
+Ji(x0, {γi⋆(x0), γ −i⋆(x0)}) ≤ Ji(x0, {γi(x0), γ −i⋆(x0)}).
+
+The computation of open-loop Nash equilibria involves solving nonlinear equations coupled between players and is therefore computationally challenging. However, if the inter-agent costs satisfy symmetry properties—i.e., Lij k (xik, x jk) = 
+
+Lji k (xjk, x ik)—then the game admits a potential function; see [6, 7, 9] and the proof of our Theorem 1 below for details. 
+
+Definition 2 (Dynamic potential game) . A game G =(N , {Ji}i∈N , Γ) is an exact dynamic potential game if there exists a potential function Φ( x0, γ (x0)) such that 
+
+Ji(x0, {γi(x0), γ −i(x0)})−Ji(x0, {γi′
+
+(x0), γ −i(x0)})=Φ( x0, {γi(x0), γ −i(x0)})−Φ( x0, {γi′
+
+(x0), γ −i(x0)}).
+
+(3) If a game is an exact dynamic potential game, every minimizer of the potential function is an open-loop Nash equilibrium. Thus, whenever the potential attains its minimum (e.g. when it is coercive), an equilibrium exists and can be found by solving a single optimization problem [6, 7]. Dynamic potential games can also be defined as games where        
+
+> 1The regularizer ηsimply keeps Lij k(xik, x jk)finite so that the cost remains well-defined.
+
+we can represent Ji as the sum of a potential function and a term that is independent of the agent’s own strategy; see [9, Lemma 3] and [26, Theorem 2.1] for more details. 
+
+Lemma 1 (adapted from [26, Theorem 2.1]) . The game 
+
+G = ( N , {Ji}i∈N , Γ) is an exact dynamic potential game with potential function Φ if and only if there exist functions 
+
+Θi, i ∈ N , such that 
+
+Ji(x0, γ (x0)) = Φ( x0, γ (x0)) + Θ i(x0, γ −i(x0)) (4) 
+
+for all i ∈ N and all γ ∈ Γ.B. Strategically robust equilibria 
+
+The Nash equilibrium is a natural solution concept for such a multi-agent decision problem, but in practice agents might fear misbehavior from others, i.e., deviations in their control inputs. We seek protection against such deviations by modifying the distance cost between ego agent i and agent j
+
+at time H ∈ [1 , T ] as follows: 2
+
+˜Lij H (xiH ,x jH )= max 
+
+> ˆγj,H
+
+Lij H (xiH , ˆxj,H H )
+
+s.t. ˆxj,H k+1 = Aˆxj,H k + B ˆuj,H k ∀k ∈ [0 , H − 1] ˆxj,H  
+
+> 0
+
+= xj
+
+> 0
+> H−1
+
+X
+
+> k=0
+
+∥ujk − ˆuj,H k ∥2 ≤ ϵj,H 2.
+
+(5) Each agent i ∈ N evaluates the distance cost against a fictitious adversary. This adversary selects, for each agent 
+
+j ∈ N \ { i} and timestep H ∈ [1 , T ], an open-loop policy 
+
+ˆγj,H with the goal of maximizing the distance cost for agent 
+
+i at each timestep H (equivalently, minimizing the distance between agents i and j at time H), but cannot deviate in total by more than ϵj,H from the nominal control inputs ujk, k ∈
+
+[0 , H − 1] .3 As described in Section I, ϵj,H is the robustness level: at ϵj,H = 0 the adversary is constrained to the nominal inputs ujk and we recover the standard Nash equilibrium, while larger values protect against larger perturbations. Given this robust distance cost, the strategically robust control cost of each agent i is 
+
+˜Ji(x0, {γi(x0), γ −i(x0)})= Lii T (xiT ) +  
+
+> T−1
+
+X
+
+> k=0
+
+Lii k (xik, u ik) + X
+
+> j∈N \{ i}
+> T
+
+X
+
+> H=0
+
+˜Lij H (xiH , x jH ).
+
+(6) With this, we can define strategically robust equilibria in our context as follows: 
+
+Definition 3 (Open-loop strategically robust equilibrium) .
+
+An open-loop strategically robust equilibrium for a game 
+
+˜G = ( N , { ˜Ji}i∈N , Γ) given initial conditions x0 is a set of                              
+
+> 2At H= 0 ,ˆxj, 00=xj
+> 0, so ˜Lij
+> 0=Lij
+> 0and we recover the nominal cost.
+> 3The budget constrains deviations from {ujk}H−1
+> k=0 , so the adversary’s reachable set at time His fixed, convex, and centered at xjH. Equivalently, under Assumption 2, (8) below depends on agents iand jonly through the relative position zH=xiH−xjH. Hence ˜Lij His well defined as written and continuously differentiable (since squared distance to a convex set is).
+
+strategies γ⋆ = ( γ1⋆, . . . , γ N ⋆) ∈ Γ with (x, γ ⋆(x0)) ∈ C
+
+such that for all agents i ∈ N , γ i ∈ Γi we have 
+
+˜Ji(x0, {γi⋆(x0), γ −i⋆(x0)}) ≤ ˜Ji(x0, {γi(x0), γ −i⋆(x0)}).
+
+Note that our fictitious adversary is solving a target intercept problem with a separate adversarial trajectory ˆγj,H 
+
+given deviation budget ϵj,H for each timestep H. This is deliberate: a collision between two aircraft at any one timestep is catastrophic. Our fictitious adversary is at least as powerful as one committing to a single trajectory maximizing the more standard formulation of a summed distance cost over the entire horizon [0 , T ], given the same budget. III. C OMPUTATION OF STRATEGICALLY ROBUST 
+
+EQUILIBRIA 
+
+We now show that the strategically robust game preserves the potential structure of the nominal game, which makes its equilibria efficiently computable. 
+
+A. Strategic robustness in exact dynamic potential games 
+
+We make two further assumptions. First, we assume the interagent cost is a monotone function of the distance between agents. 4
+
+Assumption 2 (Distance cost) . The distance cost is 
+
+Lij k (xik, x jk) = −μ(∥xik − xjk∥2), where μ : R≥0 → R is a monotonically increasing function. 
+
+This assumption is natural for collision avoidance, where the cost should grow as agents approach one another. The logarithmic distance penalty from Section II, Lij k (xik, x jk) = 
+
+−c ln( ∥xik − xjk∥2 + η), satisfies this assumption. Second, we assume players have the same robustness level. 
+
+Assumption 3 (Symmetric robustness) . For all times H ∈
+
+[1 , T ], agents have the same robustness level, i.e., ϵi,H = ϵj,H 
+
+for all i, j ∈ N .
+
+Our main theoretical result follows. 
+
+Theorem 1. Let G = ( N , {Ji}i∈N , Γ) be a dynamic game with Ji given by (1) and (2) , and let Assumptions 1 and 2 hold so that G is an exact dynamic potential game. Suppose Assumption 3 holds. Then the strategically robust game ˜G =(N , { ˜Ji}i∈N , Γ) is also an exact dynamic potential game with potential function 
+
+˜Φ( x0, γ (x0)) = X
+
+> i∈N
+
+"
+
+Lii T (xiT ) +  
+
+> T−1
+
+X
+
+> k=0
+
+Lii k (xik, u ik)
+
+#
+
++ X 
+
+> i,j ∈N ,i<j T
+
+X
+
+> H=0
+
+˜Lij H (xiH , x jH ).
+
+(7) We prove Theorem 1 in Appendix A. Because the strate-gically robust costs ˜Ji form an exact dynamic potential game, every minimizer of the potential function (7) is a strategically robust equilibrium. Finally, two comments on the symmetry. First, Assumption 2 implies Lij H (xiH , x jH ) =          
+
+> 4Only the collision-relevant components of the state enter the distance cost; formally, ∥D(xiH−xjH)∥2for a fixed selection matrix D. We take
+> D=Ito lighten notation.
+
+Algorithm 1 Strategically Robust Potential Game 
+
+Require: Game G, dynamics (A, B ), deviation bounds 
+
+{ϵj,H } 
+
+> 1:
+
+Precompute eigendecompositions QH , ΣσH 
+
+> 2:
+
+repeat  
+
+> 3:
+
+for pairs i < j , timesteps H = 1 , . . . , T do  
+
+> 4:
+
+Set λH = 0 or find the positive root of (14) via Newton’s method (Step 3)  
+
+> 5:
+
+Compute δz j,H H in closed form (Step 2)  
+
+> 6:
+
+end for  
+
+> 7:
+
+Take minimization step on ˜Φ( x0, γ (x0))  
+
+> 8:
+
+until convergence 
+
+Lji H (xjH , x iH ). Relaxing this assumption in certain ways (e.g., allowing agent-dependent weights) would still yield a weighted dynamic potential game [7]. Second, we also hypothesize that relaxing Assumption 3 such that ϵi,H ̸ = ϵj,H 
+
+under certain conditions could yield an ordinal potential game. Ordinal and weighted potential games, with appropriate assumptions, have convergence guarantees [8]. 
+
+B. Fast computation of the strategically robust distance cost 
+
+While attractive, minimizing the potential still entails a computational challenge: the mere evaluation of ˜Lij H requires solving an optimization problem. We now derive a quasi-closed-form and computationally efficient solution to this worst-case problem in three steps: 
+
+Step 1 (Monotonicity) By monotonicity of μ, we can maximize the distance cost by minimizing the squared distance in (5) for a given j, H . Define the relative position 
+
+zH = xiH − xjH , and the deviations δz j,H k = xjk − ˆxj,H k and 
+
+δu j,H k = ujk − ˆuj,H k . Plugging into (5) gives 
+
+max 
+
+> ˆγj,H
+
+−μ(∥xiH − ˆxj,H H ∥2) = max 
+
+> δu j,H k
+
+−μ(∥zH + δz j,H H ∥2)= − μ min 
+
+> δu j,H k
+
+∥zH + δz j,H H ∥2
+
+!
+
+,
+
+where we used the monotonicity of μ. Thus, we can focus on solving the inner minimization. The inner minimization satisfies Slater’s condition for ϵj,H > 0, so strong duality holds. For fixed dual multiplier λH ≥ 0, we therefore write its Lagrangian relaxation, with δz j,H  
+
+> 0
+
+= 0 :
+
+min 
+
+> δu j,H k
+
+∥zH + δz j,H H ∥2 + λH
+
+> H−1
+
+X
+
+> k=0
+
+∥δu j,H k ∥2 − ϵj,H 2
+
+!
+
+s.t. δz j,H k+1 = Aδz j,H k + Bδu j,H k ∀k ∈ [0 , H − 1] .
+
+(8) 
+
+Step 2 (Optimal Control) For fixed dual multiplier λH ≥ 0,(8) is a quadratic optimization problem that gives us δu j,H k and 
+
+δz j,H H in closed form, where MH = [ AH−1B, . . . , AB, B ]
+
+(see Appendix B): 
+
+δz j,H H = MH δu j,H 
+
+= −MH MH ⊤ 
+
+MH MH ⊤ + λH I
+
+†
+
+zH .
+
+Here † denotes the Moore–Penrose pseudoinverse, which equals the ordinary inverse when λH > 0. We then decompose (a) Head-on scenario. (b) Parallel scenario. (c) 4-agent scenario. (d) 8-agent scenario. 
+
+Fig. 2: Comparison of trajectory optimization methods. Solid lines show nominal trajectories; different dashes show other methods. All trajectories are open-loop. (a) Head-on: agents start at (0 , 0.95) and (2 , 1.05) and swap positions. (b) Parallel: agents start at (0 , 0) and 
+
+(2 , 0) and travel in the y-direction to (0 , 2) and (2 , 2) . (c) 4 agents crossing a region. (d) 8 agents swapping antipodal positions on a circle. TABLE I: Two-agent computation time  
+
+> ×nominal (s)
+
+Head-on Parallel Nominal 1.00 × (0.045s) 1.00 × (0.012s) 
+
+Wider 0.89 × (0.040s) 1.17 × (0.014s) 
+
+Strat. Robust 1.41 × (0.064s) 2.01 × (0.024s) TABLE II: Deviation from nominal 
+
+Head-on Parallel Nominal 0.000 0.000 
+
+Wider 0.516 0.449 
+
+Strat. Robust 0.252 0.109 
+
+TABLE III: Multi-agent computation time  
+
+> ×nominal (s)
+
+4 agents 8 agents Nominal 1.00 × (0.095s) 1.00 × (1.356s) 
+
+Wider 1.04 × (0.099s) 1.57 × (2.125s) 
+
+Strat. Robust 1.99 × (0.190s) 1.45 × (1.973s) 
+
+MH MH ⊤ into its eigendecomposition QH ΣσH QH ⊤, which can be precomputed for all H.
+
+Step 3 (Updating λH ) We can efficiently compute the dual multipliers λH by first testing whether λH = 0 is optimal; otherwise, we take the eigendecomposition of MH MH ⊤ and solve the first-order condition of the dual using Newton iterations, as shown in Appendix B. The final algorithm is summarized in Algorithm 1. IV. R ESULTS 
+
+We now illustrate strategic robustness on four multi-agent trajectory optimization scenarios, with two, four, and eight agents. We compare three different methods, with η = 10 −8: 
+
+> •
+
+Nominal : We compute the open-loop Nash equilibria by solving the exact dynamic potential game formed by Ji
+
+in (1), with Lij k (xik, x jk) = −2 ln( ∥xik − xjk∥2 + η). 
+
+> •
+
+Strategically robust : We compute the open-loop strate-gically robust equilibria by solving the exact dynamic potential game formed by ˜Ji using Algorithm 1, with 
+
+Lij k (xik, x jk) = −2 ln( ∥xik −xjk∥2 +η) and the robustness parameter ϵj,H = 2 for all players and times.  
+
+> •
+
+Wider : We compute the open-loop Nash equilibria with increased distance cost Lij k (xik, x jk) = −5 ln( ∥xik −
+
+xjk∥2 + η). This adds robustness by increasing the distance between agents in all scenarios compared to the “nominal” method. We used a direct single shooting method (cf. [27]) to optimize the problem, solved using scipy ’s SLSQP solver [28], which we provide with the function and its gradient (the Hessian is instead approximated numerically). Every example uses single integrator dynamics in R2, with A = I, B = 0 .1I, and 
+
+T = 20 ; positions, times, and budgets are in normalized units. The private cost is Lii k = ( xik − xif )⊤Qk(xik −xif )+ uik
+
+> ⊤
+
+Ru ik,with Qk = I for all k ∈ { 0, . . . , T − 1}, QT = 150 I, and 
+
+R = I. The strategically robust method is initialized by first solving the nominal potential game; its reported computational time includes that initialization. 5
+
+A. Two-player system 
+
+We consider the two scenarios in Figs. 2a and 2b, where two agents are traveling either head-on or in parallel. To start, we observe that the strategically robust trajectories are wider compared to the nominal trajectories. This is a direct consequence of strategic robustness: since agents protect against misbehavior by other agents, they commit to wider trajectories to reduce the collision risk. 
+
+Increasing the collision parameter: It is natural to ask if strategic robustness can be reproduced by a simple increase in the collision parameter, as in the “wider” method. We argue here that strategic robustness offers protection in a targeted way. Indeed, when comparing the “strategically robust” and “wider” methods, we observe that the effect of strategic robustness differs between Figs. 2a and 2b. In Fig. 2a, the collision risk is concrete and strategic robustness leads to significantly wider trajectories. In Fig. 2b, strategic robustness instead leaves the trajectories nearly unchanged, as it reasons that a significantly larger deviation in control inputs is needed for a collision to occur. Merely increasing the weight of the distance cost instead leads to approximately the same effect in both settings. This qualitative observation can be made quantitative by inspecting the deviation of the trajectories from the nominal Nash equilibrium trajectory in Table II, calculated as the trapezoidal approximation of the area between trajectories. Strategic robustness deviates 2.3× more  
+
+> 5The code can be found at https://github.com/victor-qin/s trategically_robust_potential_trajopt
+
+from the nominal trajectory in the head-on scenario than in the parallel one, whereas merely increasing the collision parameter deviates by a comparable amount in both scenarios. 
+
+Runtime: We measure the runtime of different methods in Table I, using 100 runs for each scenario, reported as [multiple of nominal time] (median time in seconds). The strategically robust method only modestly increases the runtime compared to simply solving for the nominal trajectory. 
+
+B. A multi-agent system 
+
+Finally, we test our strategically robust trajectory planner for four and eight agents. We plot only the nominal and strate-gically robust methods for clarity. The resulting trajectories are shown in Figs. 2c and 2d, and the computational times are listed in Table III. Strategic robustness takes between 
+
+1.41 × and 2.01 × the time of solving the nominal trajectory across two to eight agents, and the factor does not grow with the number of agents N .V. C ONCLUDING REMARKS 
+
+We believe our approach of reframing collision avoidance through strategic robustness [5] offers interesting directions for building fast trajectory optimization methods with collision avoidance guarantees. We mention a few. First, we have assumed that agents have identical dynamics, interagent costs, and robustness levels. As discussed in Section III-A, we expect these assumptions can be relaxed to form weighted or ordinal dynamic potential games [8]. Second, strategic robustness protects against the positions another agent could reach within its budget, pointing towards a separation certificate like those of backward reachability arguments. Subtracting a constant from the squared distance in our log-barrier cost (e.g., −c ln( ∥xik − xjk∥2 − ∆2) for 
+
+∆ > 0) would enforce a minimum separation, similar to control barrier functions. Finally, we assumed linear dynamics and used scipy ’s SLSQP. Integrating our method to work with dedicated solvers such as ALTRO [15] (see [6, 7]) or distributed potential iLQR [13] could facilitate extensions to nonlinear dynamics and constraints. REFERENCES [1] McKinsey & Company, “Perspectives on advanced air mobility,” 2022. [Online]. Available: https://www.mckinsey.com/industries/aerospace-a nd-defense/our-insights/perspectives-on-advanced-air-mobility [2] T. Greenawalt, “Amazon Prime Air drone delivery is expanding to nearly 500 US cities and towns this year,” 2026. [Online]. Available: https://www.aboutamazon.com/news/transportation/amazon-prime-air -drone-delivery-expansion [3] Federal Aviation Administration, “Unmanned Aircraft Systems (UAS) Traffic Management (UTM) Implementation Plan,” Federal Aviation Administration, Washington, DC, Tech. Rep., 2023. [4] ——, “Urban Air Mobility (UAM) Concept of Operations Version 2.0,” Federal Aviation Administration, Washington, DC, Tech. Rep., 2023. [5] N. Lanzetti, S. Fricker, S. Bolognani, F. D¨ orfler, and D. Paccagnan, “Strategically robust game theory via optimal transport,” 2025, arXiv:2507.15325. [6] M. Bhatt, Y. Jia, and N. Mehr, “Efficient constrained multi-agent trajectory optimization using dynamic potential games,” in 2023 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , 2023, pp. 7303–7310. [7] ——, “Strategic decision-making in multiagent domains: A weighted constrained potential dynamic game approach,” IEEE Transactions on Robotics , vol. 41, pp. 2749–2764, 2025. [8] D. Monderer and L. S. Shapley, “Potential games,” Games and Economic Behavior , vol. 14, no. 1, pp. 124–143, 1996. [9] S. Zazo, S. Valcarcel Macua, M. S´ anchez-Fern´ andez, and J. Zazo, “Dy-namic potential games with constraints: Fundamentals and applications in communications,” IEEE Transactions on Signal Processing , vol. 64, no. 14, pp. 3806–3821, 2016. [10] A. Zanardi, E. Mion, M. Bruschetta, S. Bolognani, A. Censi, and E. Frazzoli, “Urban driving games with lexicographic preferences and socially efficient Nash equilibria,” IEEE Robotics and Automation Letters , vol. 6, no. 3, pp. 4978–4985, 2021. [11] S. Le Cleac’h, M. Schwager, and Z. Manchester, “ALGAMES: A fast solver for constrained dynamic games,” in Robotics: Science and Systems (RSS) , 2020. [12] T. Kavuncu, A. Yaraneri, and N. Mehr, “Potential iLQR: A potential-minimizing controller for planning multi-agent interactive trajectories,” in Robotics: Science and Systems (RSS) , 2021. [13] Z. Williams, J. Chen, and N. Mehr, “Distributed potential iLQR: Scalable game-theoretic trajectory planning for multi-agent interactions,” in IEEE International Conference on Robotics and Automation (ICRA) ,2023. [14] W. Li and E. Todorov, “Iterative linear quadratic regulator design for nonlinear biological movement systems,” in 1st International Conference on Informatics in Control, Automation and Robotics , 2004, pp. 222–229. [15] T. A. Howell, B. E. Jackson, and Z. Manchester, “ALTRO: A fast solver for constrained trajectory optimization,” in IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , 2019. [16] D. Kuhn, S. Shafiee, and W. Wiesemann, “Distributionally robust optimization,” Acta Numerica , vol. 34, pp. 579–804, 2025. [17] H. F¨ ollmer and A. Schied, “Convex measures of risk and trading constraints,” Finance and Stochastics , vol. 6, no. 4, pp. 429–447, 2002. [18] P. Akella, A. Dixit, M. Ahmadi, L. Lindemann, M. P. Chapman, G. J. Pappas, A. D. Ames, and J. W. Burdick, “Risk-aware robotics: Tail risk measures in planning, control, and verification,” IEEE Control Systems , vol. 45, no. 4, pp. 46–78, 2025. [19] K. Ryu and N. Mehr, “Integrating predictive motion uncertainties with distributionally robust risk-aware control for safe robot navigation in crowds,” in 2024 IEEE International Conference on Robotics and Automation (ICRA) , 2024, pp. 2410–2417. [20] M. Wang, N. Mehr, A. Gaidon, and M. Schwager, “Game-theoretic planning for risk-aware interactive agents,” in IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , 2020, pp. 6998– 7005. [21] E. Mazumdar, K. Panaganti, and L. Shi, “Tractable multi-agent reinforcement learning through behavioral economics,” in 13th In-ternational Conference on Learning Representations , 2025. [22] Y. Zhang and E. Mazumdar, “Convergent Q-learning for infinite-horizon general-sum Markov games through behavioral economics,” in IEEE 64th Conference on Decision and Control (CDC) , 2025, pp. 5899–5904. [23] C. Qu, Y. Zhang, N. Lanzetti, and E. Mazumdar, “Training gen-eralizable collaborative agents via strategic risk aversion,” 2026, arXiv:2602.21515. [24] A. Feik, N. Lanzetti, S. Bolognani, F. D¨ orfler, and D. Paccagnan, “Strategically robust aggregative games,” in 2026 European Control Conference (ECC) , 2026, pp. 2014–2019. [25] B. Velasevic, N. Lanzetti, and E. Mazumdar, “Strategically robust linear quadratic dynamic games,” arXiv preprint arXiv:2604.22318 , 2026. [26] M. Voorneveld, P. Borm, F. van Megen, S. Tijs, and G. Facchini, “Congestion games and potentials reconsidered,” International Game Theory Review , vol. 1, no. 3–4, pp. 283–299, 1999. [27] M. Diehl, H. G. Bock, H. Diedam, and P.-B. Wieber, “Fast direct multiple shooting algorithms for optimal robot control,” in Fast Motions in Biomechanics and Robotics , ser. Lecture Notes in Control and Information Sciences. Springer, 2006, vol. 340, pp. 65–93. [28] P. Virtanen, R. Gommers, T. E. Oliphant, M. Haberland, T. Reddy, D. Cournapeau, E. Burovski, P. Peterson, W. Weckesser, J. Bright, S. J. van der Walt, M. Brett, J. Wilson, K. J. Millman, N. Mayorov, A. R. J. Nelson, E. Jones, R. Kern, E. Larson, C. J. Carey, ˙ I. Polat, Y. Feng, E. W. Moore, J. VanderPlas, D. Laxalde, J. Perktold, R. Cimrman, I. Henriksen, E. A. Quintero, C. R. Harris, A. M. Archibald, A. H. Ribeiro, F. Pedregosa, P. van Mulbregt, and SciPy 1.0 Contributors, “SciPy 1.0: Fundamental Algorithms for Scientific Computing in Python,” Nature Methods , vol. 17, pp. 261–272, 2020. APPENDIX 
+
+A. Proof of Theorem 1 
+
+It suffices to show that ˜Lij H (xiH , x jH ) = ˜Lji H (xjH , x iH ) for all i < j ∈ N , H ∈ [0 , T ], because then the terms of ˜Φ from (7) involving agent i are exactly ˜Ji. Define Θi := ˜Ji − ˜Φ:
+
+Θi(x−i 
+
+> 0
+
+, γ −i(x0)) = − X
+
+> l∈N \{ i}
+
+"
+
+Lll T (xlT ) +  
+
+> T−1
+
+X
+
+> k=0
+
+Lll k (xlk, u lk)
+
+#
+
+− X  
+
+> p,l ∈N ,p,l ̸=i,p<l T
+
+X
+
+> H=0
+
+˜Lpl H (xpH , x lH ).
+
+Because dynamics are decoupled, Θi is a dummy function in-dependent of γi(x0). Thus { ˜Ji}i∈N forms an exact dynamic potential game by Lemma 1. Next, we show ˜Lij H (xiH , x jH ) = ˜Lji H (xjH , x iH ) using Assumptions 2 and 3. Recall ˜Lij H (xiH , x jH )
+
+given by (5): 
+
+max 
+
+> ˆγj,H
+
+Lij H (xiH , ˆxj,H H )
+
+s.t. ˆxj,H k+1 = Aˆxj,H k + B ˆuj,H k ∀k ∈ [0 , H − 1] ˆxj,H  
+
+> 0
+
+= xj
+
+> 0
+> H−1
+
+X
+
+> k=0
+
+∥ujk − ˆuj,H k ∥2 ≤ ϵj,H 2.
+
+(9) Define δz j,H k = xjk − ˆxj,H k and δu j,H k = ujk − ˆuj,H k to rewrite the dynamics as 
+
+ˆxj,H k+1 − xjk+1 = A(ˆ xj,H k − xjk) + B(ˆ uj,H k − ujk)
+
+δz j,H k+1 = Aδz j,H k + Bδu j,H k ,
+
+with the initial condition δz j,H  
+
+> 0
+
+= 0 as ˆxj,H  
+
+> 0
+
+= xj
+
+> 0
+
+. Since 
+
+zH = xiH − xjH is constant with respect to the adversarial optimization of (9), we can rewrite it as 
+
+max 
+
+> δu j,H k
+
+− μ(∥zH + δz j,H H ∥2)
+
+s.t. δz j,H k+1 = Aδz j,H k + Bδu j,H k ∀k ∈ [0 , H − 1] 
+
+δz j,H  
+
+> 0
+
+= 0 
+
+> H−1
+
+X
+
+> k=0
+
+∥δu j,H k ∥2 ≤ ϵj,H 2.
+
+(10) Second, we consider ˜Lji H (xjH , x iH ), defined similarly to (9). Following similar steps, define δz i,H k = ˆxi,H k − xik and 
+
+δu i,H k = ˆ ui,H k − uik, so that xjH − ˆxi,H H = −zH − δz i,H H (the sign flip ensures a match with the definition of zH above). Then, we can rewrite ˜Lji H (xjH , x iH ) as 
+
+max 
+
+> δu i,H k
+
+− μ(∥zH + δz i,H H ∥2)
+
+s.t. δz i,H k+1 = Aδz i,H k + Bδu i,H k ∀k ∈ [0 , H − 1] 
+
+δz i,H  
+
+> 0
+
+= 0 
+
+> H−1
+
+X
+
+> k=0
+
+∥δu i,H k ∥2 ≤ ϵi,H 2.
+
+(11) The case H = 0 is trivial by ˆxj, 00 = xj
+
+> 0
+
+. Given that 
+
+ϵi,H = ϵj,H by Assumption 3 and (A, B ) are identical by Assumption 1, the problems (10) and (11) are the same, which implies that ˜Lij H (xiH , x jH ) = ˜Lji H (xjH , x iH ) for all 
+
+H ∈ [0 , T ].
+
+B. Details on Section III-B Step 2 (Optimal Control) Consider (8) for timesteps 
+
+H ∈ [1 , T ], assuming ϵj,H > 0 with fixed λH ≥ 0 and 
+
+δz j,H  
+
+> 0
+
+= 0 . Let MH = [ AH−1B, . . . , AB, B ] and δu j,H 
+
+be the vertical concatenation of δu j,H  
+
+> 0
+
+, . . . , δu j,H H−1, so that 
+
+δz j,H H = MH δu j,H . We can rewrite (8) as 
+
+min 
+
+> δu j,H
+
+∥zH + MH δu j,H ∥2 + λH
+
+
+
+δu j,H ⊤δu j,H − ϵj,H 2
+
+.
+
+(12) For λH > 0, the objective is strictly convex, and setting its gradient to zero gives the unique input minimizer: 
+
+δu j,H = −
+
+
+
+MH ⊤MH + λH I
+
+−1
+
+MH ⊤zH
+
+= −MH ⊤ 
+
+MH MH ⊤ + λH I
+
+−1
+
+zH .
+
+Substituting into δz j,H H gives 
+
+δz j,H H = −MH MH ⊤ 
+
+MH MH ⊤ + λH I
+
+−1
+
+zH .
+
+The matrix MH MH ⊤ is the positive semidefinite controlla-bility Gramian. We can compute its eigendecomposition of-fline as QH ΣσH QH ⊤, where ΣσH = diag (σ1,H , . . . , σ n,H ),
+
+σl,H ≥ 0, and QH is an orthogonal matrix. For λH > 0, we can then rewrite δz j,H H as 
+
+δz j,H H = −QH Σ σHλH +σH
+
+QH ⊤zH ,
+
+where Σ σHλH +σH
+
+is quickly formed online. If λH = 0 , the problem reduces to least squares. We select the minimum-norm input δu j,H = −M † 
+
+> H
+
+zH , giving 
+
+δz j,H H = −MH M † 
+
+> H
+
+zH , where M † 
+
+> H
+
+is the Moore–Penrose pseudoinverse. We can also derive this using the limit as 
+
+λH → 0+ and following the singular value decomposition. 
+
+Step 3 (Updating λH ) We maximize the dual function 
+
+q(λH ) over λH ≥ 0. Substituting δu j,H from Step 2 into the Lagrangian and simplifying gives, for λH > 0,
+
+q(λH ) = zH ⊤QH Σ λHλH +σH
+
+QH ⊤zH − λH ϵj,H 2. (13) Let w = QH ⊤zH . As λH → 0+, the ratio λH /(λH + σl,H )
+
+becomes one for σl,H = 0 and zero otherwise, so q(0) = P  
+
+> l:σl,H =0
+
+w2 
+
+> l
+
+, the squared residual in unreachable directions. The dual function q(λH ) is concave on λH ≥ 0. An interior maximizer satisfies 
+
+∂q ∂λ H
+
+= w⊤Σ σH   
+
+> (λH+σH)2
+
+w − ϵj,H 2
+
+=
+
+> n
+
+X
+
+> l=1
+
+wl2σl,H 
+
+(λH + σl,H )2 − ϵj,H 2 = 0 .
+
+(14) This unique positive root exists if and only if 
+
+P  
+
+> l:σl,H >0
+
+w2 
+
+> l
+
+/σ l,H > ϵj,H 2. Then we can compute the root using Newton’s method, initialized at λH > 0 with 
+
+q′(λH ) > 0. Otherwise, λH = 0 is optimal, and the adversary exactly intercepts the agent if and only if zH ∈ range( MH ).

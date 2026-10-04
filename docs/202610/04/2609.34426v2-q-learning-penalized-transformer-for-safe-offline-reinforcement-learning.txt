@@ -1,0 +1,1040 @@
+Title: Q-learning Penalized Transformer for Safe Offline Reinforcement Learning
+
+URL Source: https://arxiv.org/pdf/2609.34426v2
+
+Published Time: Wed, 30 Sep 2026 01:00:38 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+Shengchao Hu 1 Peng Wang 2 Jifeng Hu 3 Qiyang Zhou 2 Anning Hu 1 Li Shen 2 Ya Zhang 1 Dacheng Tao 4
+
+Abstract 
+
+This paper addresses the problem of safe offline reinforcement learning, which involves training a policy to satisfy safety constraints using an offline dataset. This problem is inherently challenging as it requires balancing three highly interconnected and competing objectives: satisfying safety con-straints, maximizing rewards, and adhering to the behavior regularization imposed by the of-fline dataset. To tackle this trilogy challenge, we propose Q-learning Penalized Transformer policy (QPT), a training–inference consistent framework that bridges conditional sequence modeling with constraint-aware value estimation. QPT trains a Transformer policy that generates actions condi-tioned on trajectory context and target return/cost, retaining strong behavior regularization. To inject explicit safety semantics during learning, we aug-ment sequence-model training with a Q-shaped penalty using learned reward and cost Q-functions to favor high return under low constraint viola-tion. At inference, the same Q-functions enforce the cost threshold and choose the highest-reward feasible action, closing the loop between training and deployment. We provide a principled analysis under stylized near-deterministic CMDPs, charac-terizing how Q-penalized conditional generation improve safety and performance. Empirically, QPT consistently outperforms strong safe offline RL baselines across 38 tasks on the DSRL bench-mark, and exhibits robust zero-shot adaptation to different constraint thresholds. 
+
+1. Introduction 
+
+Offline reinforcement learning (RL) focuses on learning effective policies entirely from previously collected data, without requiring interaction with the environment. This 
+
+> 1
+
+Shanghai Jiao Tong University, China 2Shenzhen Campus of Sun Yat-sen University, China 3Jilin University, China 4Nanyang Technological University, Singapore. Correspondence to: Li Shen <mathshenli@gmail.com>. 
+
+Preprint. September 30, 2026. 
+
+paradigm has emerged as a powerful approach for address-ing sequential decision-making tasks, such as autonomous driving (Hu et al., 2022) and control systems (Zhan et al., 2022). Various paradigms have been developed to maximize the utility of pre-collected trajectories while mitigating pol-icy overfitting (Kumar et al., 2019; Fujimoto et al., 2019; Kostrikov et al., 2021a; Kumar et al., 2020). However, stan-dard offline RL often falls short in real-world applications, where diverse safety constraints limit feasible solutions, making the mere maximization of a scalar reward function insufficient. The requirement for safety, or the satisfaction of constraints, is particularly critical when deploying RL algorithms in real-world scenarios (Garcıa & Fernández, 2015). Ensuring constraint satisfaction not only broadens the applicability of RL methods but also enhances their reliability in safety-critical domains. Developing an optimal policy within a constrained man-ifold has been a central focus of recent research in safe offline RL, which seeks to integrate safety requirements into offline RL frameworks (Garcıa & Fernández, 2015). Sev-eral approaches bridge concepts from offline RL and safe RL, employing techniques such as pessimistic estimations (Xu et al., 2022) and stationary distribution correction (Lee et al., 2022). Constrained optimization formulations, often incorporating Lagrange multipliers, are commonly used to identify policies that maximize rewards while adhering to safety constraints (Le et al., 2019). Sequential modeling methods, such as the Transformer (Liu et al., 2023b) and Diffuser (Lin et al., 2023; Zheng et al., 2024), have also been explored, demonstrating promising results in achieving both optimal policies and satisfying safety requirements. However, the challenges of safe offline RL are amplified by the offline setting, which necessitates behavior regu-larization to mitigate distributional shift (Fujimoto et al., 2019). Balancing constraint satisfaction, reward maximiza-tion, and offline policy regularization is particularly diffi-cult due to the intricate inter-dependencies among these objectives. Jointly optimizing them often results in unsta-ble training and suboptimal safety performance (Lee et al., 2022; Zheng et al., 2024). Furthermore, these objectives may inherently conflict (Xu et al., 2022). For instance, adhering to offline policy regularization can compromise constraint satisfaction when the dataset includes unsafe tra-jectories. Conversely, excluding unsafe trajectories may 1arXiv:2609.34426v2 [cs.LG] 29 Sep 2026 Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+lead to suboptimal policies by omitting critical high-reward data, underscoring the inherent trade-offs in safe offline RL. Besides, Lagrange-based methods frequently integrate the constraint threshold as a constant within the training process, seeking to optimize policy performance while adhering to specified constraints (Le et al., 2019). We argue that the ability to adapt a trained policy to varying constraint thresh-olds is crucial for a wide range of real-world applications. In practice, enforcing stricter constraints typically results in diminished task performance and induces more conserva-tive agent behaviors (Liu et al., 2022b). Consequently, our objective is to investigate a training paradigm that enables an agent to dynamically adjust its constraint threshold at deployment. This approach would allow for flexible control over the agent’s level of conservativeness, eliminating the need for additional fine-tuning or retraining. To address these challenges, we propose Q-learning Penal-ized Transformer policy (QPT), a training–inference con-sistent framework that couples conditional sequence mod-eling with constraint-aware value estimation. QPT trains a Transformer policy that generates actions conditioned on trajectory context and target return/cost specifications, re-taining strong behavior regularization and enabling flexible conditioning at test time. To inject explicit safety seman-tics beyond imitation, we augment sequence-model training with a Q-shaped objective using learned reward and cost Q-functions, which biases generation toward high return with low constraint violation. At inference, the same Q-functions are reused to certify feasibility under a given cost threshold and select the highest-reward feasible action, clos-ing the loop between optimization and deployment. On the theory side, we provide a principled analysis under stylized near-deterministic CMDPs, characterizing how Q-penalized conditional generation improve safety and performance in offline settings. Experimental evaluations on 38 tasks from the DSRL benchmark (Liu et al., 2023a) further validate QPT’s effectiveness, showing its ability to learn safe, ro-bust, and high-reward policies. QPT consistently outper-forms strong safe offline RL baselines in both reward and constraint satisfaction, and demonstrates robust zero-shot adaptation to varying constraint thresholds. 
+
+2. Related Work 
+
+Offline RL trains policies from a static offline dataset D,without online interaction (Levine et al., 2020), making it ideal for scenarios where interaction is costly or unsafe. A major challenge is distribution shift , where the learned pol-icy deviates from the behavior policy, causing performance degradation (Fujimoto et al., 2019). To address this, prior works have employed constrained or regularized dynamic programming to limit policy deviations (Fujimoto & Gu, 2021; Kumar et al., 2020; Kostrikov et al., 2021b). Condi-tional sequence modeling predicts future actions from past experiences, constraining the policy within behavior bound-aries and enabling zero-shot adaptability (Chen et al., 2021a; Hu et al., 2025c;a;b; 2026; 2024c). 
+
+Safe RL involves learning policies that maximize long-term rewards while satisfying safety constraints (Wachi & Sui, 2020; Gu et al., 2024; Liu et al., 2025). A common approach to constrained optimization in safe RL is the primal-dual framework, which reformulates the problem into an uncon-strained optimization using Lagrangian multipliers (Chen et al., 2021b). Correction-based methods provide another solution by projecting unsafe actions onto safe sets, incor-porating domain knowledge to improve exploration safety (Zhao et al., 2021; Luo & Ma, 2021). Model-based RL has also been applied to improve data efficiency and perfor-mance (Huang et al., 2023), though it often requires larger models to parameterize environment dynamics, increasing computational complexity. 
+
+Safe offline RL has also received growing attention, with the goal of ensuring zero constraint violations during infer-ence. These methods combine offline RL techniques with safety constraints, such as using DICE-style approaches for constrained optimization (Polosky et al., 2022; Lee et al., 2022; Kim et al., 2025) and Lagrangian-based methods for simplicity and compatibility with existing offline RL frameworks. Recent studies have introduced novel networks for safe offline RL (Koirala et al., 2024b;a; Gong et al., 2025). For instance, CDT (Liu et al., 2023b; Wang & Zhou, 2024) employs sequential modeling to learn from trajectory datasets, while TREBI (Lin et al., 2023) and FISOR (Zheng et al., 2024) utilize diffusion models for safe policy develop-ment. TREBI generates safe trajectories directly, whereas FISOR uses a diffusion actor to constrain actions within fea-sible regions. Beyond model-architecture advances, a com-plementary line of work improves safety from a data-centric perspective, e.g., by constructing or augmenting datasets to mitigate distributional shift and reduce out-of-distribution (OOD) behaviors. (Guo et al., 2025; Yao et al., 2024; Gong et al., 2025). In contrast to these methods, we propose a framework that explicitly casts reward maximization and cost control as controllable loss terms . This formulation provides a direct mechanism to trade off performance and safety during optimization, yielding policies that simultane-ously achieve high reward while maintaining low cost. 
+
+3. Methodology 
+
+3.1. Problem Setup 
+
+RL problems with safety constraints are naturally formu-lated within the Constrained Markov Decision Process (CMDP) framework (Altman, 1998). A CMDP is defined by a tuple M = ( S, A, T , R, C, μ 0), where S is the state 2Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+space, A is the action space, T : S × A × S → [0 , 1] is the state transition probability function, R : S × A → R
+
+defines the reward function, and C : S × A → [0 , C max ]
+
+quantifies the costs associated state-action pairs, where Cmax 
+
+is the maximum possible cost, and μ0 : S → [0 , 1] is the initial state distribution. In safe offline RL problems, we are given a fixed pre-collected dataset D={(s, a, r, c, s′)i}H 
+
+> i=1
+
+from one or more (unknown) behavior policies, where each training example 
+
+i contains the action a taken at state s, reward received r,cost incurred c, and the next state s′. The goal is to learn a policy π : S → A from the offline dataset D to maximize the expected reward while satisfying a specified cost/safety constraint. This problem is mathematically formulated as: 
+
+max  
+
+> π
+
+Eτ ∼π [R(τ )] subject to Eτ ∼π [C(τ )] ≤ κ. (1) Here, κ ∈ [0 , +∞) is the cost threshold for safety constraint, H is the horizon length of episode, τ =
+
+{s1, a1, r 1, c 1, . . . , sH, aH, r H, c H} denotes a trajectory sampled by executing the policy π, R(τ ) = PH 
+
+> t=1
+
+rt is the total accumulated reward, and C(τ ) = PH 
+
+> t=1
+
+ct is the total incurred cost. Most existing offline safe RL methods approach policy train-ing as a constrained optimization problem, wherein learn-able dual variables are updated according to estimates of constraint violation costs and a target threshold (Xu et al., 2022; Lee et al., 2022; Polosky et al., 2022). While this con-strained optimization paradigm is effective in online safe RL settings (Stooke et al., 2020), it faces significant challenges in the offline context (Liu et al., 2023b). First, offline RL policies often become either unsafe or overly conservative due to biased value estimates, stemming from incomplete dataset coverage. In the Lagrangian dual optimization of Equation 1, such bias in cost estimation C(τ ) can mislead dual variable updates relative to the fixed threshold κ, re-sulting in unsafe or overly cautious behaviors, a problem exacerbated in offline settings (Liu et al., 2022a). Second, policies cannot adapt to new constraint thresholds without retraining, as the threshold must remain fixed during train-ing. Changing it post hoc destabilizes dual variables and can cause optimization to diverge, thus requiring full retraining for each new constraint. To address these issues, we reformulate the learning ob-jective described in Equation 1 and leverage sequential modeling techniques, which have shown promise in achiev-ing zero-shot adaptation to varying constraint thresholds while maintaining near-optimal task performance (Hu et al., 2024b; Liu et al., 2023b). However, a key limitation of sequence modeling in this context is its tendency to imi-tate the behavior distribution present in the training dataset (Brandfonbrener et al., 2022), which often includes unsafe trajectories. Directly learning from such datasets may there-fore result in unsafe policies. One potential remedy is to filter out unsafe trajectories from the dataset D to construct a “safe” dataset. Unfortunately, this strategy often elimi-nates high-reward transitions, leading to suboptimal poli-cies. Ideally, a safe offline learner should exploit the dataset more selectively—preserving strong behavior regulariza-tion while biasing generation toward high-return, constraint-satisfying decisions, including “stitching” together safe seg-ments from otherwise unsafe trajectories. We therefore pro-pose QPT, a training–inference consistent framework based on a conditional Transformer and reward/cost Q-functions. QPT uses a Q-shaped objective to bias conditional imitation toward high return with low constraint violation, without discarding informative data. At deployment, the same Q-functions certify feasibility under a given cost threshold and select the highest-reward feasible action, closing the loop between learning and decision making. We also include a lightweight augmentation scheme for infeasible speci-fications and validate QPT theoretically and empirically (Sections 3.2–3.5). 
+
+3.2. Conditional Transformer Policy 
+
+The Transformer architecture (Vaswani et al., 2017), exten-sively studied in NLP (Devlin et al., 2018) and CV (Dosovit-skiy et al., 2020), has also been explored in RL through the conditional sequence modeling (CSM) paradigm (Hu et al., 2024b). In contrast to most traditional RL methods, which rely on value function estimation or policy gradient com-putation, DT (Chen et al., 2021a) directly predicts desired future actions based on a sequence of historical data compris-ing state ( st), action ( at), and return-to-go ( ˆrt = PTi=t ri)tuples. In the context of safe offline RL, this formulation is extended by including an additional cost-to-go token, 
+
+ˆct = PTi=t ci, which quantifies the cumulative cost from the current time step to the end of the episode (Liu et al., 2023b). During training on offline data, the Transformer processes trajectory sequences in an auto-regressive manner, utilizing a historical context of the most recent K steps. A trajectory sequence τt is formulated as follows: 
+
+τt = (ˆ rt−K+1 , ˆct−K+1 , st−K+1 , at−K+1 , . . . , ˆrt, ˆct, st, at).
+
+(2) The prediction head corresponding to the state token st is trained to predict the associated action at. For continuous action spaces, the training objective is to minimize the mean squared error (MSE) loss, defined as: 
+
+LDT = Eτt∼D 
+
+"
+
+1
+
+K
+
+> t
+
+X
+
+> i=t−K+1
+
+(ai − π(τt)i)2
+
+#
+
+, (3) where π(τt)i denotes the i-th action output of the policy π
+
+learned by Equation 3. 3Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+3.3. Q-learning Penalization 
+
+To address the “stitching” challenge and design a target-conditioned policy that aligns the expected returns of sam-pled actions with the optimal returns while simultaneously minimizing the associated expected cost, we leverage the pe-nalization from the Q-learning module (Kumar et al., 2022; Hu et al., 2024a). In the safe offline RL setting, two types of Q-networks are utilized: the reward Q-network and the cost Q-network. A straightforward approach to learning these networks in-volves applying the empirical Bellman evaluation operator, 
+
+T ˆπ , to samples (s, a, r, c, s′) ∼ B :
+
+Qr (s, a) = r + γEa′∼ˆπ(·| s′) [Qr (s′, a′)] , (4) 
+
+Qc(s, a) = c + γEa′∼ˆπ(·| s′) [Qc(s′, a′)] , (5) where Qr and Qc denote the reward and cost Q-networks, re-spectively, γ represents the discount factor, and ˆπ represents the learned policy by Equation 8. To mitigate overestimation bias, we employ the double Q-learning technique (Hasselt, 2010), constructing two Q-networks for each type: Qrϕ1 , Q rϕ2 for the reward Q-network and Qcψ1 , Q cψ2 for the cost Q-network. These are accompanied by their corresponding target networks: 
+
+Qrϕ′
+
+> 1
+
+, Q rϕ′
+
+> 2
+
+, Q cψ′
+
+> 1
+
+, Q cψ′
+
+> 2
+
+. Additionally, we construct a target policy ˆπθ′ to guide the learning process. Given that the input to the Transformer policy includes trajectory history, we adopt the n-step Bellman equation to estimate the Q-networks. This choice is motivated by its demonstrated improvements over the 1-step approximation (Sutton & Barto, 2018). The optimization of the reward Q-network parameters ϕi for i ∈ { 1, 2} is performed by minimizing the following objective: 
+
+Eτt∼D ,ˆat∼ˆπθ′
+
+> t−1
+
+X
+
+> m=t−K+1
+
+ˆQrm − Qrϕi (sm, am) 2
+
+, (6) 
+
+s.t. ˆQrm =
+
+> t−1
+
+X
+
+> j=m
+
+γj−mrj + γt−m min  
+
+> i=1 ,2
+
+Qrϕ′ 
+
+> i
+
+(st, ˆat),
+
+where ˆat denotes the predicted action output by the target policy ˆπθ′ . Similarly, the optimization of the cost Q-network parameters ψi for i ∈ { 1, 2} is performed by minimizing the following objective: 
+
+Eτt∼D ,ˆat∼ˆπθ′
+
+> t−1
+
+X
+
+> m=t−K+1
+
+ˆQcm − Qcψi (sm, am) 2
+
+, (7) 
+
+s.t. ˆQcm =
+
+> t−1
+
+X
+
+> j=m
+
+γj−mcj + γt−m min  
+
+> i=1 ,2
+
+Qcψ′ 
+
+> i
+
+(st, ˆat).
+
+Leveraging the learned Q-networks, we incorporate them as penalization mechanisms during the training phase. This approach aims to enhance the policy’s “stitching” capability by prioritizing the sampling of high-reward actions while ensuring low-cost trajectories are favored. The final learning objective is formulated as a linear combination of MSE loss and Q-learning penalization terms: 
+
+ˆπ = arg min 
+
+> ˆπθ
+
+{L (θ) := LDT (θ) − L Qr (θ) + LQc (θ)}
+
+= arg min 
+
+> ˆπθ
+
+LDT (θ)
+
+| {z }
+
+> regularization
+
+−α1 · Eτt∼D E(si,ai)∼τt Qrϕ(si, ˆπ(τt)i)
+
+| {z }
+
+> reward maximization
+
++ α2 · Eτt∼D E(si,ai)∼τt Qcψ (si, ˆπ(τt)i)
+
+| {z }
+
+> cost minimization
+
+. (8) To account for variations in the scale of the Q-networks across different offline datasets, we employ a normalization technique inspired by Fujimoto & Gu (2021). Specifically, the weighting factors α1 and α2 are defined as follows: 
+
+α1 = η1
+
+Eτt∼D E(s,a)∼τt
+
+h
+
+|Qrϕ(s, a)|
+
+i , (9) 
+
+α2 = η2
+
+Eτt∼D E(s,a)∼τt
+
+h
+
+|Qcψ (s, a)|
+
+i , (10) where η1, η 2 are hyperparameters that control the balance between these loss terms. Notably, these Q-networks in the denominator serve exclusively for normalization and are not subject to differentiation. 
+
+3.4. Data Augmentation and Ensemble 
+
+QPT leverages a conditional transformer structure, making the agent’s behavior highly sensitive to the selection of tar-get reward and cost values. In the context of safe offline RL, the range of feasible and valid target cost and reward pairs is inherently limited. This limitation poses a significant chal-lenge: how can conflicts between the two target returns be effectively resolved while ensuring that meeting the target cost is prioritized over maximizing the target reward? To ad-dress the aforementioned issues, we employ two techniques: data augmentation and ensemble. Inspired by CDT (Liu et al., 2023b), when an infeasible pair of target reward and cost (ρ, κ ) arises, we associate the conflicting target with the safest trajectory that achieves the maximum reward: 
+
+τ ∗ = arg max  
+
+> τ∼D
+
+R(τ ), s.t. C (τ ) ≤ κ. (11) Based on the identified trajectory τ ∗ = {ˆr∗ 
+
+> t
+
+, ˆc∗ 
+
+> t
+
+, s∗ 
+
+> t
+
+, a∗ 
+
+> t
+
+}t,we construct a new augmented trajectory: 
+
+ˆτ = {ˆr∗ 
+
+> t
+
++ ρ − R(τ ∗), ˆc∗ 
+
+> t
+
++ κ − C(τ ∗), s∗ 
+
+> t
+
+, a∗ 
+
+> t
+
+}t, (12) where the operation over ˆr∗ and ˆc∗ are applied element-wise. This augmentation technique enables the agent to learn by 4Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+imitating the behavior of the most rewarding and safe tra-jectory τ ∗ when the desired target pair (ρ, κ ) is infeasible. Further details on this process are provided in Appendix B.2. Moreover, sequence modeling methods are sensitive to the choice of target conditioning, which serves as input to the policy during inference. Rather than manually tuning the values of the return-to-go and cost-to-go tokens, as required in previous conditional transformer policies – a process that demands extensive trial and error – we leverage learned re-ward and cost Q-networks to guide action selection. Specif-ically, actions are preferentially sampled to maximize ex-pected returns while minimizing costs, following the ap-proach in Hu et al. (2024a). This process can be formulated as: 
+
+arg max 
+
+> ˆajt
+
+Qrϕ′ (st, ˆajt ), (13) 
+
+s.t. Qcψ′ (st, ˆajt ) ≤ ˆcjt , (14) 
+
+ˆajt = ˆ π(ˆ rjt−K+1: t, ˆcjt−K+1: t, st−K+1: t, at−K+1: t−1)) .
+
+Here, (ˆ rj , ˆcj ) represent candidate target reward and cost pairs. This approach is highly parallelizable. By assign-ing distinct return-to-go and cost-to-go pairs to each batch, we can effectively utilize GPU capabilities to concurrently generate multiple action sequences, thereby minimizing computational overhead. Further details on this process are provided in Appendix B.3 A larger number of candidate target pairs provides a broader search space, potentially im-proving performance. However, this also incurs increased computational costs and greater susceptibility to noisy or suboptimal pairs, stemming from the biased estimation of the learned Q-networks. Corresponding ablation studies are conducted to demonstrate the efficacy of this procedure, as detailed in Section 4.1 and Appendix C.3. The training and inference procedures are thoroughly outlined in Algorithm 1, providing a comprehensive summary of the processes involved. 
+
+3.5. Theoretical Analysis 
+
+We provide a theoretical justification for QPT in a stylized setting. Under mild coverage and regularity assumptions, we show that the Q-penalized update in Equation 8 improves action selection compared to the standard sequence-model objective in Equation 3, which yields corresponding im-provements in expected return and expected cost. 
+
+Theorem 3.1. Consider an MDP with binary rewards and costs, behavior policy β, and conditioning function f r and 
+
+f c. Let gr (τ ) = PH 
+
+> t=1
+
+rt, g c(τ ) = PH 
+
+> t=1
+
+ct. Assume the following: 1. Return coverage: Pβ (gr (τ ) = f r (s1)|s1) ≥
+
+αf r , P β (gc(τ ) = f c(s1)|s1) ≥ αf c for all initial states s1.2. Near determinism: P (r̸ = R(s, a) or c̸ =
+
+C(s, a) or s′̸ = T (s, a)|s, a) ≤ ϵ at all s, a for some functions T , R and C.3. Consistency of f r and f c: f r (s) = f r (s′)+ r, f c(s) = 
+
+f c(s′) + c for all s.For timestep i, the probabilities of selecting actions with maximum reward or minimum cost satisfy: 1. Reward Selection : P { ˆP ri − P ri ≥ σr , ∀ i} ≥ 1 −
+
+δr, where P ri and ˆP ri are probabilities under the policies updated by Equation 3 and Equation 8, respectively. With probability at least (1 − δr ):
+
+Eτ ∼π∗ [gr (τ )] − Eτ ∼ˆπ [gr (τ )] ≤ ϵ( 1
+
+αf r
+
++ 3) H2 − H σr .
+
+2. Cost Selection : P { ˆP ci − P ci ≥ σc, ∀ i} ≥ 1 − δc, where 
+
+P ci and ˆP ci are probabilities under the policies updated by Equation 3 and Equation 8, respectively. With probability at least (1 − δc):
+
+Eτ ∼ˆπ [gc(τ )] − Eτ ∼π∗ [gc(τ )] ≤ ϵ( 1
+
+αf c
+
++ 3) H2 − H σc.
+
+Theorem 3.1 establishes that, with high probability, Q-penalized training leads to improved expected reward and re-duced expected cost relative to the baseline sequence-model training. The complete proof and discussion are deferred to Appendix A. 
+
+4. Experiment 
+
+Experimental Setups. We conducted extensive evaluations on tasks from Safety-Gymnasium (Ray et al., 2019; Ji et al., 2024), Bullet-Safety-Gym (Gronauer, 2022), and MetaDrive 
+
+(Li et al., 2022), utilizing the DSRL benchmark (Liu et al., 2023a) to assess the performance of QPT against state-of-the-art safe offline RL methods. The evaluation metrics used are normalized return and normalized cost, where a normal-ized cost below 1 is indicative of safety. In accordance with the DSRL benchmark, safety is prioritized as the primary evaluation criterion, with higher rewards pursued only after meeting safety requirements. To ensure fair comparisons, we set the cost limit for all tasks to 10. 
+
+Baselines. We compared our method with four types of baseline methods: (1) Q-learning-based methods : CPQ (Xu et al., 2022), BCQ-Lag (Fujimoto et al., 2019; Stooke et al., 2020), and CAPS (Chemingui et al., 2025), which augments a Q-learning backbone with an additional wrapper to en-force cost constraints; (2) Distribution correction estimation: 5Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+Table 1. Complete evaluation results of the normalized reward and cost. The cost threshold is 1. The ↑ symbol denotes that the higher reward, the better. The ↓ symbol denotes that the lower normalized cost (up to threshold 1, corresponding to original cost limit 10), the better. Each value is averaged over 20 evaluation episodes and 3 random seeds. Bold : Safe agents whose normalized cost is smaller than 1. Gray: Unsafe agents with normalized costs exceeding 1. Blue : Safe agent with the highest reward. 
+
+QPT (Ours) BC-Safe CDT BCQ-Lag CPQ COptiDICE FISOR OASIS CAPS Task reward ↑ cost ↓ reward ↑ cost ↓ reward ↑ cost ↓ reward ↑ cost ↓ reward ↑ cost ↓ reward ↑ cost ↓ reward ↑ cost ↓ reward ↑ cost ↓ reward ↑ cost ↓
+
+PointButton1 0.13 0.81 0.10 0.63 0.62 7.17 0.24 1.73 0.69 3.2 0.13 1.35 0.03 0.81 0.26 1.33 0.02 0.30 
+
+PointButton2 -0.01 0.88 0.04 0.58 0.31 5.15 0.4 2.66 0.58 4.3 0.15 1.51 0.02 0.69 0.31 1.89 0.01 0.92 
+
+PointCircle1 0.58 0.93 0.45 0.67 0.57 0.75 0.17 1.04 0.43 0.29 0.78 15.64 0.60 12.8 0.32 0.00 0.25 2.10 PointCircle2 0.62 0.92 0.49 0.44 0.61 1.39 0.53 8.35 0.28 0.77 0.78 25.94 0.70 11.79 0.36 0.20 0.38 0.40 
+
+PointGoal1 0.68 0.65 0.42 0.70 0.70 1.54 0.59 1.30 0.68 0.76 0.35 1.75 0.54 2.73 0.66 4.35 0.22 1.05 PointGoal2 0.18 0.76 0.16 0.29 0.57 3.45 0.71 7.53 0.08 2.14 0.42 2.71 0.04 0.14 0.31 3.00 0.20 1.21 PointPush1 0.34 0.81 0.17 0.72 0.23 1.65 0.19 1.05 0.21 0.29 0.12 0.82 0.28 0.54 0.00 1.95 0.16 0.64 
+
+PointPush2 0.18 0.90 0.15 0.76 0.18 1.69 0.12 1.19 0.14 0.56 0.08 1.19 0.05 0.27 -1.30 1.33 0.10 2.29 CarButton1 -0.15 0.87 0.05 0.51 0.16 4.91 0.04 1.63 0.42 9.66 -0.08 1.68 0.02 0.12 -0.43 9.15 -0.08 0.45 
+
+CarButton2 -0.33 0.99 -0.01 0.71 0.08 5.87 0.06 2.13 0.37 12.51 -0.07 1.59 0.01 0.20 -0.01 17.17 -0.09 1.58 CarCircle1 0.31 0.39 0.21 0.95 0.45 4.62 0.59 11.06 -0.09 1.02 0.64 15.47 0.60 6.54 0.41 4.16 0.46 4.41 CarCircle2 0.48 0.94 0.54 3.38 0.45 6.24 0.53 8.35 0.50 0.13 0.64 18.15 0.45 1.46 0.75 30.71 0.39 2.36 CarGoal1 0.60 0.44 0.39 0.25 0.72 2.25 0.44 2.76 0.33 4.93 0.43 2.81 0.49 0.83 -0.20 0.86 0.29 1.25 CarGoal2 0.28 0.64 0.19 0.68 0.39 3.53 0.34 4.72 0.10 6.31 0.19 2.83 0.06 0.33 -0.51 2.02 0.09 1.05 CarPush1 0.34 0.65 0.23 0.35 0.34 0.79 0.23 1.33 0.08 0.77 0.21 1.28 0.28 0.28 -0.12 0.56 0.17 0.77 
+
+CarPush2 0.18 0.61 0.10 0.91 0.11 2.33 0.10 2.78 -0.03 10.00 0.10 4.55 0.14 0.89 -1.15 9.06 0.03 1.92 SwimmerVelocity 0.65 0.58 0.55 0.89 0.65 0.94 0.29 4.10 0.31 11.58 0.58 23.64 -0.04 0.00 0.56 0.65 0.41 2.56 HopperVelocity 0.88 0.45 0.58 0.45 0.76 0.97 0.12 0.97 0.57 0.00 0.23 1.44 0.19 0.51 0.35 0.79 0.34 0.35 
+
+HalfCheetahVelocity 1.01 0.03 0.90 0.53 1.01 0.28 1.04 57.06 0.08 2.56 0.43 0.00 0.89 0.00 0.65 0.25 0.87 0.76 
+
+Walker2dVelocity 0.83 0.47 0.81 0.31 0.83 0.97 0.81 0.37 0.31 0.65 0.09 0.84 0.23 0.83 0.75 1.42 0.78 0.08 
+
+AntVelocity 0.99 0.78 0.96 0.89 0.98 0.94 0.85 18.54 -1.01 0.00 1.00 10.29 0.89 0.00 0.84 0.93 0.85 0.16 SafetyGym Average 0.42 0.69 0.36 0.74 0.51 2.73 0.40 6.70 0.24 3.45 0.34 6.45 0.31 2.01 0.13 4.37 0.28 1.27 BallRun 0.31 0.00 0.29 0.37 0.32 1.00 0.30 0.89 0.33 0.00 0.26 0.96 0.24 0.00 0.27 0.00 0.17 0.02 
+
+CarRun 0.99 0.30 0.98 0.34 0.99 0.78 0.98 0.13 0.98 0.23 0.95 0.54 0.76 0.00 0.67 0.00 0.98 0.22 
+
+DroneRun 0.60 0.48 0.57 0.00 0.59 0.80 0.68 4.47 0.46 0.00 0.57 6.67 0.31 0.16 0.44 3.29 0.41 3.28 AntRun 0.73 0.82 0.70 0.79 0.72 0.99 0.58 0.77 0.09 0.46 0.61 0.92 0.52 0.83 0.61 1.70 0.54 1.03 BallCircle 0.68 0.95 0.55 0.08 0.68 0.97 0.68 1.57 0.71 0.30 0.64 3.28 0.36 0.00 0.72 0.62 0.58 0.28 
+
+CarCircle 0.67 0.90 0.55 0.43 0.73 0.83 0.46 1.42 0.73 0.89 0.46 2.78 0.42 0.16 0.72 2.42 0.56 0.42 
+
+DroneCircle 0.60 0.92 0.57 0.56 0.58 0.96 0.52 0.98 -0.20 0.45 0.26 0.51 0.49 0.00 0.36 0.24 0.51 0.49 
+
+AntCircle 0.41 0.41 0.45 0.98 0.31 1.25 0.57 2.11 0.02 0.00 0.10 1.31 0.29 0.00 0.35 1.04 0.34 0.01 BulletGym Average 0.62 0.60 0.58 0.44 0.61 0.95 0.60 1.54 0.39 0.29 0.48 2.12 0.42 0.14 0.52 1.16 0.51 0.72 
+
+easysparse 0.70 0.98 0.28 0.20 0.51 0.76 0.09 0.92 -0.05 0.19 0.07 0.86 0.44 0.28 -0.01 0.09 0.19 0.10 
+
+eastmean 0.67 0.99 0.49 0.06 0.52 0.99 0.08 0.70 -0.06 0.00 0.04 0.83 0.40 0.30 -0.01 0.10 0.08 0.10 
+
+easydense 0.65 0.50 0.59 0.01 0.47 0.87 0.04 0.80 -0.05 0.10 0.17 1.54 0.46 0.64 -0.02 0.10 0.03 0.10 
+
+mediumsparse 0.97 0.76 0.50 0.10 0.52 0.03 0.92 0.42 -0.07 0.00 0.05 0.72 0.73 0.06 -0.03 0.08 0.22 0.09 
+
+mediummean 0.97 0.66 0.36 0.05 0.68 0.97 0.03 0.68 -0.06 0.00 0.09 0.77 0.52 0.01 -0.03 0.10 0.42 0.08 
+
+mediumdense 0.97 0.95 0.25 0.10 0.25 0.10 0.94 0.29 -0.05 0.00 0.00 0.31 0.81 0.15 -0.02 0.08 0.33 0.09 
+
+hardsparse 0.44 0.98 0.24 0.00 0.37 0.48 0.47 0.80 -0.05 0.06 0.16 1.92 0.32 0.01 -0.01 0.10 0.20 0.10 
+
+hardmean 0.48 0.94 0.30 0.28 0.20 0.77 -0.01 0.44 -0.04 0.16 0.03 0.82 0.30 0.01 -0.03 0.08 0.17 0.10 
+
+harddense 0.50 0.81 0.27 0.39 0.24 0.16 0.05 0.74 -0.05 0.00 0.02 0.57 0.39 0.32 -0.02 0.05 0.19 0.10 MetaDrive Average 0.71 0.84 0.36 0.13 0.42 0.57 0.29 0.64 -0.05 0.10 0.07 0.93 0.49 0.20 -0.02 0.09 0.20 0.10 
+
+COptiDICE (Lee et al., 2022; 2021); (3) Imitation learning: Behavior Cloning (BC-Safe) (Liu et al., 2023a), which is trained exclusively on safe trajectories that satisfy safety constraints, FISOR (Zheng et al., 2024), which leverages diffusion models for the development of safe policies, and OASIS (Yao et al., 2024), which uses diffusion-based data augmentation with BCQ-Lag as the underlying policy; (4) Sequential modeling algorithms: CDT (Liu et al., 2023b), which incorporates cost-to-go token in the training process. The codebase for these baseline methods are sourced from Liu et al. (2023a) and executed by us to ensure a fair com-parison. For evaluation, when the normalized cost is below 1, we select the configuration with the highest normalized reward. Otherwise, we prioritize minimizing normalized cost and report the corresponding normalized reward. 
+
+Metrics. We use the normalized cost return and the normal-ized reward return as the evaluation metric for comparison. Denote rmax (M) and rmin (M) as the maximum empirical reward return and the minimum empirical reward return for task M. The normalized reward is computed by: 
+
+Rnormalized = Rπ − rmin (M)
+
+rmax (M) − rmin (M) × 100 , (15) where Rπ denotes the evaluated reward return of policy π.While the normalized cost is computed by the ratio between the evaluated cost return Cπ and the target threshold κ:
+
+Cnormalized = Cπ + ϵκ + ϵ , (16) where ϵ is a positive number to ensure numerical stability if the threshold κ = 0 . The agent is safe if Cnormalized ≤ 1.Without otherwise statements, we will abbreviate “normal-ized cost return" as “cost" and “normalized reward return" as “reward" for simplicity. 
+
+Main Results. The evaluation results are summarized in Ta-ble 1. QPT stands out as the only method that consistently achieves satisfactory safety performance across all tasks while also attaining the highest returns in most cases. This 6Q-learning Penalized Transformer for Safe Offline Reinforcement Learning                                                                                                                              
+
+> Table 2. Impact of different components. Average scores and standard deviations are reported over three random seeds for the harddense
+> task in the MetaDrive setting and the HopperVelocity setting. “Train with Qr” and “Train with Qc” indicate whether the corresponding penalization in Equation 8 is applied. “Data aug.” refers to the use of data augmentation, while “Inf. with ensemble" denotes ensemble applied at inference time.
+> Exp Data aug. Train with Qr
+> Train with Qc
+> Inf. with ensemble harddense Reward harddense Cost HopperVelocity Reward HopperVelocity Cost 10.37 ±0.19 1.00 ±0.08 0.04 ±0.02 1.49 ±0.12
+> 2✓0.40 ±0.05 0.94 ±0.04 0.54 ±0.03 0.65 ±0.03
+> 3✓✓0.48 ±0.08 0.94 ±0.05 0.85 ±0.05 0.99 ±0.04
+> 4✓✓0.43 ±0.06 0.14 ±0.10 0.15 ±0.02 0.22 ±0.01
+> 5✓✓✓0.49 ±0.04 0.84 ±0.02 0.69 ±0.04 0.51 ±0.02
+> 6✓✓0.46 ±0.05 0.91 ±0.06 0.56 ±0.02 0.60 ±0.04
+> 7✓✓✓0.50 ±0.01 0.93 ±0.02 0.66 ±0.03 0.56 ±0.03
+> 8✓✓✓✓0.50 ±0.02 0.81 ±0.03 0.88 ±0.02 0.45 ±0.04
+
+highlights its effectiveness in simultaneously ensuring safety and achieving high rewards. In contrast, other methods ex-hibit significant limitations, either due to severe constraint violations or suboptimal returns. Notably, BC-Safe, which is trained exclusively on safe trajectories, satisfies most safety requirements but demonstrates conservative perfor-mance with comparatively lower rewards. Q-learning-based algorithms, including BCQ-Lag and CPQ, as well as the dis-tribution correction estimation-based method, COptiDICE, show inconsistent performance. These methods tend to os-cillate between overly conservative behavior and excessive risk-taking. For instance, CPQ achieves high rewards at the expense of significant safety violations in tasks such as CarGoal1 and CarGoal2 , while in MetaDrive tasks, it achieves nearly zero cost but at the cost of extremely low rewards. FISOR employs a diffusion-based architecture to maximize rewards within the largest safe region, thereby offering strong safety guarantees. However, it tends to sacri-fice potential rewards by strictly adhering to the safe region, resulting in lower reward values while maintaining predom-inantly safe cost levels. CDT, leveraging its advanced ar-chitecture and efficient data utilization, demonstrates more balanced performance. However, it still struggles with trade-offs between safety and utility in safe offline RL settings, particularly in SafetyGym tasks, where it fails to meet safety requirements in most cases. In contrast, QPT, which shares the same Transformer architecture as CDT, surpasses it by utilizing our novel framework. QPT achieves the highest returns while consistently satisfying safety requirements, underscoring the efficacy of our proposed method. 
+
+4.1. Ablation Role of Different Components. As detailed in Section 3, our methodology incorporates four key components: data augmentation, reward Q-network, cost Q-network, and in-ference ensemble. Each component warrants individual analysis. We evaluate these components on the harddense 
+
+dataset from the MetaDrive task and on the HopperVelocity 
+
+task, both selected for their challenging nature in achieving high rewards and for the substantial performance improve-ments that QPT demonstrates over baseline methods. The results are summarized in Table 2. Integrating the Qr and 
+
+Qc networks substantially enhances performance, as evi-denced by comparisons between Exp 2 vs. 3 and Exp 2 vs. 4, where the added Q-learning penalization leads to notable improvements in reward and cost metrics. Furthermore, incorporating an ensemble of learned Q-networks further boosts performance, as shown by comparisons between Exp 2 vs. 6 and Exp 5 vs. 8. Data augmentation also improves cost performance by “stitching” additional safe trajectories into the training dataset, as demonstrated by Exp 1 vs. 2 and Exp 7 vs. 8. These findings highlight the effectiveness of our method in addressing the challenges of safe offline RL. 
+
+Hyper-parameters. This ablation introduces the hyper-parameters η1 and η2, as defined in Equation 8, which reg-ulate the influence of two additional loss components. To evaluate their effects, we conducted an ablation study on two tasks: SwimmerVelocity and HopperVelocity . As illustrated in Figure 1, when η2 is held constant and η1 is gradually increased, the normalized reward rises within a specific range. For instance, in the HopperVelocity task, the reward increases consistently when η1 ≤ 1. However, beyond this point (e.g., η1 = 2 ), the reward decreases sharply with no further performance gains. Conversely, increasing η1 also leads to a corresponding increase in the normalized cost within a certain range, indicating that the policy faces chal-lenges in stitching trajectories with higher associated costs. Similarly, when η1 is kept constant and η2 is increased, the normalized reward decreases progressively, accompanied by a reduction in the normalized cost within a certain range. This observation suggests that a larger η2 can contribute to a safer policy, albeit with a trade-off in reward performance within specific bounds. 
+
+Zero-shot Adaptation. One significant advantage of the Transformer-based policy is its capability for zero-shot adap-tation to varying cost thresholds (Liu et al., 2023b). In con-trast, the Q-learning-based baselines introduced earlier lack this capability, as they require a fixed, pre-defined thresh-7Q-learning Penalized Transformer for Safe Offline Reinforcement Learning Step 
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Eval Reward
+
+SwimmerVelocity ( 2 = 0.01) 
+
+> 1=0.0
+> 1=0.01
+> 1=0.1
+> 1=0.5
+> 1=1.0
+> 1=2.0
+
+Step HopperVelocity ( 2 = 0.01) 
+
+> 1=0.0
+> 1=0.01
+> 1=0.1
+> 1=0.5
+> 1=1.0
+> 1=2.0
+
+Step SwimmerVelocity ( 1 = 0.1) 
+
+> 2=0.0
+> 2=0.01
+> 2=0.1
+> 2=0.5
+> 2=1.0
+> 2=2.0
+
+Step HopperVelocity ( 1 = 0.1)      
+
+> 2=0.0
+> 2=0.01
+> 2=0.1
+> 2=0.5
+> 2=1.0
+> 2=2.0
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Step ×10 5
+
+> 020 40 60
+> Eval Cost
+
+SwimmerVelocity ( 2 = 0.01)      
+
+> 1=0.0
+> 1=0.01
+> 1=0.1
+> 1=0.5
+> 1=1.0
+> 1=2.0
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Step ×10 5
+
+HopperVelocity ( 2 = 0.01)      
+
+> 1=0.0
+> 1=0.01
+> 1=0.1
+> 1=0.5
+> 1=1.0
+> 1=2.0
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Step ×10 5
+
+SwimmerVelocity ( 1 = 0.1)      
+
+> 2=0.0
+> 2=0.01
+> 2=0.1
+> 2=0.5
+> 2=1.0
+> 2=2.0
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Step ×10 5
+
+HopperVelocity ( 1 = 0.1) 
+
+> 2=0.0
+> 2=0.01
+> 2=0.1
+> 2=0.5
+> 2=1.0
+> 2=2.0
+
+Figure 1. Results of the impact of hyper-parameters η1 and η2. Each column is a task with one hyper-parameter stable. The x-axis is the training steps. The first row shows the evaluated normalized reward, and the second row shows the evaluated normalized cost. All plots are averaged among 3 random seeds and 20 trajectories for each seed. The solid line is the mean value, and the light shade represents the area within one standard deviation. 0.70 0.75 0.80 0.85 0.90                                 
+
+> Eval Reward
+> HopperVelocity
+> 0.875 0.900 0.925 0.950 0.975 1.000 1.025
+> HalfCheetahVelocity
+> 0.74 0.76 0.78 0.80 0.82 0.84
+> Walker2dVelocity
+> 0.4
+> 0.2
+> 0.0 0.2 0.4
+> CarButton1
+> 0.0 0.2 0.4 0.6 0.8
+> PointButton1
+> 01234560246
+> Eval Cost
+> 012345601234560123456
+> Target Cost
+> 0246801234560246810 01234560246810
+> QPT (ours) CDT Eval Cost = Target Cost
+
+Figure 2. Results of zero-shot adaption to different cost returns. Each column is a task. The x-axis is the target cost return. The first row shows the evaluated normalized reward, and the second row shows the evaluated normalized cost under different target costs. All plots are averaged among 3 random seeds and 20 trajectories for each seed. The solid line is the mean value, and the light shade represents the area within one standard deviation. 
+
+old to solve constrained optimization problems. Adapting these methods to new constraint conditions necessitates re-training, which limits their flexibility. Consequently, we pri-marily compare our method with CDT, which also supports zero-shot adaptation. In this evaluation, each cost-return threshold is treated as a distinct task, with corresponding adjustments made to the target reward. The results are pre-sented in Figure 2. Both methods demonstrate improved performance when conditioned on a higher cost threshold, highlighting the zero-shot adaptation capability of sequence modeling approaches. Furthermore, our method consis-tently outperforms CDT in scenarios where both methods satisfy the constraint, achieving lower costs than the speci-fied threshold (as shown in the left three plots of Figure 2). Although CDT achieves higher rewards than our method in the CarButton1 and PointButton1 environments, it does so at the expense of greater safety violations. In contrast, our method adheres to the cost threshold, underscoring its effectiveness in maintaining safety while delivering compet-itive performance. We attribute QPT’s stronger zero-shot performance to the way constraint information enters train-ing. In offline datasets, cost-to-go estimates are often noisy surrogates of the trajectory-level expected cost, and this mismatch can be amplified under distribution shift (Yam-agata et al., 2023). As a result, directly conditioning on or optimizing against these tokens may miscalibrate the learned reward-cost trade-off. By contrast, QPT leverages Q-learning guidance to provide a more informative training signal that better reflects the latent cost-to-go distribution, thereby enabling more reliable cost control and a superior reward-cost balance. 
+
+5. Conclusion 
+
+This paper studies safe offline RL through the lens of tril-ogy optimization and proposes Q-learning Penalized Trans-former policy (QPT). QPT couples a conditional Trans-former policy with reward/cost Q-functions via a Q-shaped objective, enabling behavior-regularized learning that favors high return under low constraint violation. We provide a the-oretical analysis in a stylized setting and evaluate QPT on 38 DSRL tasks, where it consistently outperforms strong safe offline RL baselines and exhibits robust zero-shot adaptation to different constraint thresholds. 8Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+Impact Statement 
+
+This paper presents work regarding the safe policy learned from the offline dataset. While there are many potential societal consequences of our work, we believe that none require specific emphasis in this context. 
+
+References 
+
+Altman, E. Constrained markov decision processes with total cost criteria: Lagrangian approach and dual linear program. Mathematical methods of operations research ,1998. Brandfonbrener, D., Bietti, A., Buckman, J., Laroche, R., and Bruna, J. When does return-conditioned supervised learning work for offline reinforcement learning? Ad-vances in Neural Information Processing Systems , 35: 1542–1553, 2022. Chemingui, Y., Deshwal, A., Wei, H., Fern, A., and Doppa, J. Constraint-adaptive policy switching for offline safe reinforcement learning. In Proceedings of the AAAI Con-ference on Artificial Intelligence , volume 39, pp. 15722– 15730, 2025. Chen, L., Lu, K., Rajeswaran, A., Lee, K., Grover, A., Laskin, M., Abbeel, P., Srinivas, A., and Mordatch, I. De-cision transformer: Reinforcement learning via sequence modeling. Advances in neural information processing systems , 34:15084–15097, 2021a. Chen, Y., Dong, J., and Wang, Z. A primal-dual approach to constrained markov decision processes. arXiv preprint arXiv:2101.10895 , 2021b. Devlin, J., Chang, M.-W., Lee, K., and Toutanova, K. Bert: Pre-training of deep bidirectional transformers for lan-guage understanding. arXiv preprint arXiv:1810.04805 ,2018. Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer, M., Heigold, G., Gelly, S., et al. An image is worth 16x16 words: Transformers for image recognition at scale. arXiv preprint arXiv:2010.11929 , 2020. Fujimoto, S. and Gu, S. S. A minimalist approach to offline reinforcement learning. Advances in neural information processing systems , 34:20132–20145, 2021. Fujimoto, S., Meger, D., and Precup, D. Off-policy deep reinforcement learning without exploration. In Interna-tional conference on machine learning , 2019. Garcıa, J. and Fernández, F. A comprehensive survey on safe reinforcement learning. Journal of Machine Learning Research , 2015. Gong, Z., Kumar, A., and Varakantham, P. Offline safe reinforcement learning using trajectory classification. In 
+
+Proceedings of the AAAI Conference on Artificial Intelli-gence , volume 39, pp. 16880–16887, 2025. Gronauer, S. Bullet-safety-gym: A framework for con-strained reinforcement learning. 2022. Gu, S., Yang, L., Du, Y., Chen, G., Walter, F., Wang, J., and Knoll, A. A review of safe reinforcement learning: Methods, theories and applications. IEEE Transactions on Pattern Analysis and Machine Intelligence , 2024. Guo, Z., Zhou, W., Wang, S., and Li, W. Constraint-conditioned actor-critic for offline safe reinforcement learning. In The Thirteenth International Conference on Learning Representations , 2025. Hasselt, H. Double q-learning. Advances in neural informa-tion processing systems , 23, 2010. Hu, J., Huang, S., Shen, L., Yang, Z., Hu, S., Tang, S., Chen, H., Sun, L., Chang, Y., and Tao, D. Tackling continual offline rl through selective weights activation on aligned spaces. 2025a. Hu, J., Huang, S., Yang, Z., Hu, S., Shen, L., Chen, H., Sun, L., Chang, Y., and Tao, D. Analytic energy-guided policy optimization for offline reinforcement learning. Advances in Neural Information Processing Systems , 2025b. Hu, S., Chen, L., Wu, P., Li, H., Yan, J., and Tao, D. St-p3: End-to-end vision-based autonomous driving via spatial-temporal feature learning. In European Conference on Computer Vision , pp. 533–549. Springer, 2022. Hu, S., Fan, Z., Huang, C., Shen, L., Zhang, Y., Wang, Y., and Tao, D. Q-value regularized transformer for offline reinforcement learning. In International Conference on Machine Learning , pp. 19165–19181. PMLR, 2024a. Hu, S., Shen, L., Zhang, Y., Chen, Y., and Tao, D. On trans-forming reinforcement learning with transformers: The development trajectory. IEEE Transactions on Pattern Analysis and Machine Intelligence , 46(12):8580–8599, 2024b. Hu, S., Shen, L., Zhang, Y., and Tao, D. Learning multi-agent communication from graph modeling perspective. In The Twelfth International Conference on Learning Representations , 2024c. Hu, S., Shen, L., Zhang, Y., and Tao, D. Graph decision transformer for offline reinforcement learning. Science China Information Sciences , 68(6):169101, 2025c. Hu, S., Shen, L., Zhang, Y., and Tao, D. Prompt tuning with preference ranking for few-shot pre-trained decision 9Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+transformer. Science China Information Sciences , 69(1): 112105, 2026. Huang, W., Ji, J., Zhang, B., Xia, C., and Yang, Y. Safe dreamerv3: Safe reinforcement learning with world mod-els. arXiv preprint arXiv:2307.07176 , 2023. Ji, J., Zhou, J., Zhang, B., Dai, J., Pan, X., Sun, R., Huang, W., Geng, Y., Liu, M., and Yang, Y. Omnisafe: An infrastructure for accelerating safe reinforcement learning research. Journal of Machine Learning Research , 2024. Kim, W., Seo, J., Lee, J., and Lee, B.-J. Semi-gradient dice for offline constrained reinforcement learning. arXiv preprint arXiv:2506.08644 , 2025. Koirala, P., Jiang, Z., Sarkar, S., and Fleming, C. Fawac: Feasibility informed advantage weighted regression for persistent safety in offline reinforcement learning. arXiv preprint arXiv:2412.08880 , 2024a. Koirala, P., Jiang, Z., Sarkar, S., and Fleming, C. Latent safety-constrained policy approach for safe offline rein-forcement learning. arXiv preprint arXiv:2412.08794 ,2024b. Kostrikov, I., Fergus, R., Tompson, J., and Nachum, O. Of-fline reinforcement learning with fisher divergence critic regularization. In International Conference on Machine Learning , pp. 5774–5783. PMLR, 2021a. Kostrikov, I., Nair, A., and Levine, S. Offline reinforce-ment learning with implicit q-learning. arXiv preprint arXiv:2110.06169 , 2021b. Kumar, A., Fu, J., Soh, M., Tucker, G., and Levine, S. Stabilizing off-policy q-learning via bootstrapping error reduction. Advances in Neural Information Processing Systems , 32, 2019. Kumar, A., Zhou, A., Tucker, G., and Levine, S. Con-servative q-learning for offline reinforcement learning. 
+
+Advances in Neural Information Processing Systems , 33: 1179–1191, 2020. Kumar, A., Hong, J., Singh, A., and Levine, S. When should we prefer offline reinforcement learning over behavioral cloning? arXiv preprint arXiv:2204.05618 , 2022. Le, H., Voloshin, C., and Yue, Y. Batch policy learning un-der constraints. In International Conference on Machine Learning , 2019. Lee, J., Jeon, W., Lee, B., Pineau, J., and Kim, K.-E. Op-tidice: Offline policy optimization via stationary distribu-tion correction estimation. In International Conference on Machine Learning , 2021. Lee, J., Paduraru, C., Mankowitz, D. J., Heess, N., Precup, D., Kim, K.-E., and Guez, A. Coptidice: Offline con-strained reinforcement learning via stationary distribution correction estimation. arXiv preprint arXiv:2204.08957 ,2022. Levine, S., Kumar, A., Tucker, G., and Fu, J. Offline rein-forcement learning: Tutorial, review, and perspectives on open problems. arXiv preprint arXiv:2005.01643 , 2020. Li, Q., Peng, Z., Feng, L., Zhang, Q., Xue, Z., and Zhou, B. Metadrive: Composing diverse driving scenarios for generalizable reinforcement learning. IEEE Transactions on Pattern Analysis and Machine Intelligence , 2022. Lin, Q., Tang, B., Wu, Z., Yu, C., Mao, S., Xie, Q., Wang, X., and Wang, D. Safe offline reinforcement learning with real-time budget constraints. In International Conference on Machine Learning , 2023. Liu, P., Bou-Ammar, H., Peters, J., and Tateo, D. Safe re-inforcement learning on the constraint manifold: Theory and applications. IEEE Transactions on Robotics , 2025. Liu, Z., Cen, Z., Isenbaev, V., Liu, W., Wu, S., Li, B., and Zhao, D. Constrained variational policy optimization for safe reinforcement learning. In International Conference on Machine Learning , pp. 13644–13668. PMLR, 2022a. Liu, Z., Guo, Z., Cen, Z., Zhang, H., Tan, J., Li, B., and Zhao, D. On the robustness of safe reinforcement learn-ing under observational perturbations. arXiv preprint arXiv:2205.14691 , 2022b. Liu, Z., Guo, Z., Lin, H., Yao, Y., Zhu, J., Cen, Z., Hu, H., Yu, W., Zhang, T., Tan, J., et al. Datasets and benchmarks for offline safe reinforcement learning. arXiv preprint arXiv:2306.09303 , 2023a. Liu, Z., Guo, Z., Yao, Y., Cen, Z., Yu, W., Zhang, T., and Zhao, D. Constrained decision transformer for offline safe reinforcement learning. In International Conference on Machine Learning , pp. 21611–21630. PMLR, 2023b. Luo, Y. and Ma, T. Learning barrier certificates: Towards safe reinforcement learning with zero training-time vi-olations. Advances in Neural Information Processing Systems , 2021. Polosky, N., Da Silva, B. C., Fiterau, M., and Jagannath, J. Constrained offline policy optimization. In International Conference on Machine Learning , 2022. Ray, A., Achiam, J., and Amodei, D. Benchmarking safe ex-ploration in deep reinforcement learning. arXiv preprint arXiv:1910.01708 , 2019. 10 Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+Stooke, A., Achiam, J., and Abbeel, P. Responsive safety in reinforcement learning by pid lagrangian methods. In 
+
+International Conference on Machine Learning , 2020. Sutton, R. S. and Barto, A. G. Reinforcement learning: An introduction . MIT press, 2018. Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. At-tention is all you need. Advances in neural information processing systems , 30, 2017. Wachi, A. and Sui, Y. Safe reinforcement learning in con-strained markov decision processes. In International Conference on Machine Learning , 2020. Wang, R. and Zhou, D. Safe decision transformer with learning-based constraints. In Neurips Safe Generative AI Workshop 2024 , 2024. Xu, H., Zhan, X., and Zhu, X. Constraints penalized q-learning for safe offline reinforcement learning. In Pro-ceedings of the AAAI Conference on Artificial Intelli-gence , 2022. Yamagata, T., Khalil, A., and Santos-Rodriguez, R. Q-learning decision transformer: Leveraging dynamic pro-gramming for conditional sequence modelling in offline rl. In International Conference on Machine Learning , pp. 38989–39007. PMLR, 2023. Yao, Y., Cen, Z., Ding, W., Lin, H., Liu, S., Zhang, T., Yu, W., and Zhao, D. Oasis: Conditional distribution shaping for offline safe reinforcement learning. Advances in Neural Information Processing Systems , 37:78451– 78478, 2024. Zhan, X., Xu, H., Zhang, Y., Zhu, X., Yin, H., and Zheng, Y. Deepthermal: Combustion optimization for thermal power generating units using offline reinforcement learn-ing. In Proceedings of the AAAI Conference on Artificial Intelligence , 2022. Zhao, W., He, T., and Liu, C. Model-free safe control for zero-violation reinforcement learning. In 5th Annual Conference on Robot Learning , 2021. Zheng, Y., Li, J., Yu, D., Yang, Y., Li, S. E., Zhan, X., and Liu, J. Safe offline reinforcement learning with feasibility-guided diffusion model. arXiv preprint arXiv:2401.10700 , 2024. 11 Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+Limitations. The theoretical guarantees of our algorithms rely on a near-deterministic environment, an assumption that does not always hold in real-world deep learning models. Moreover, current evaluations rely on limited offline data, potentially constraining performance. Extending QPT to a safe offline-to-online RL framework presents a promising direction to enhance performance through online interactions while maintaining safety. 
+
+A. Proof of Theorem 3.1 
+
+First, we give the following Lemma. 
+
+Lemma A.1 (A stylized guarantee for return-conditioned sequence modeling (Brandfonbrener et al., 2022)) . Consider an MDP, behavior β and conditioning function f r . Let Jr (π) = Eτ ∼π [gr (τ )] , where gr (τ ) = PH 
+
+> t=1
+
+rt. Assume the following: 1. Return coverage: Pβ (gr (τ ) = f r (s1)|s1) ≥ αf r for all initial states s1.2. Near determinism: P (r̸ = R(s, a) or s′̸ = T (s, a)|s, a) ≤ ϵ at all s, a for some functions T and R. Note that this does not constrain the stochasticity of the initial state. 3. Consistency of f r : f r (s) = f r (s′) + r for all s. 1
+
+Then 
+
+Jr (π∗) − Jr (π) ≤ ϵ
+
+ 1
+
+αf r
+
++ 3 
+
+
+
+H2, (17) 
+
+where π is the policy induced by training with Eq. 3, and π∗ denotes an optimal policy in this stylized setting, and H is the horizon length of episode. Moreover, there exist problems where the bound is tight up to constant factors. 
+
+Corollary A.2. Under assumptions analogous to those in Lemma A.1 for the cost function, specifically: Pβ (gc(τ ) = 
+
+f c(s1)|s1) ≥ αf c , P (c̸ = C(s, a) or s′̸ = T (s, a)|s, a) ≤ ϵ, f c(s) = f c(s′) + c. Let Jc(π) = Eτ ∼π [gc(τ )] , the following bound holds: 
+
+Jc(π) − Jc(π∗) ≤ ϵ
+
+ 1
+
+αf c
+
++ 3 
+
+
+
+H2. (18) The proof follows the same argument as Lemma A.1. Based on Lemma A.1 and Corollary A.2, we now give the proof of Theorem 3.1. 
+
+Proof. We prove the bounds for reward and cost separately. 
+
+Reward Bound. For the reward, we begin with: 
+
+Eτ ∼π∗ [gr (τ )] − Eτ ∼ˆπ [gr (τ )] (19) 
+
+= Eτ ∼π∗ [gr (τ )] − Eτ ∼π [gr (τ )] + Eτ ∼π [gr (τ )] − Eτ ∼ˆπ [gr (τ )] (20) 
+
+= Jr (π∗) − Jr (π) + Jr (π) − Eτ ∼ˆπ [gr (τ )] (21) 
+
+≤ ϵ
+
+ 1
+
+αf
+
++ 3 
+
+
+
+H2 + Jr (π) − Eτ ∼ˆπ [gr (τ )] . (22) Next, for the second term in Equation 22: 
+
+Jr (π) − Eτ ∼ˆπ [gr (τ )] (23) 
+
+= Eτ ∼π [gr (τ )] − Eτ ∼ˆπ [gr (τ )] (24) 
+
+= Eτ ∼π [
+
+> H
+
+X
+
+> t=1
+
+(rt)] − Eτ ∼ˆπ [
+
+> H
+
+X
+
+> t=1
+
+(rt)] (25) 
+
+= Es1
+
+> H
+
+X
+
+> t=1
+
+(P rt · rt) − Es1
+
+> H
+
+X
+
+> t=1
+
+( ˆP rt · rt), (26) (27) 
+
+> 1
+
+Note this can be exactly enforced (as in prior work) by augmenting the state space to include the cumulative reward observed so far. 
+
+12 Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+where P rt and ˆP rt represent the probabilities of selecting the maximum-reward actions under policies derived from Equation 3 and Equation 8, respectively. Since rewards are binary and by the condition P { ˆP ri − P ri ≥ σr , ∀ i} ≥ 1 − δr , we have: 
+
+Es1
+
+> H
+
+X
+
+> t=1
+
+(P rt · rt) − Es1
+
+> H
+
+X
+
+> t=1
+
+( ˆP rt · rt) (28) 
+
+= Es1
+
+> H
+
+X
+
+> t=1
+
+[( P rt − ˆP rt )rt] (29) 
+
+≤ Es1
+
+> H
+
+X
+
+> t=1
+
+(−σr ) · rt (30) 
+
+≤ −H σr . (31) Substituting Equation 31 into Equation 22, we get: 
+
+Eτ ∼π∗ [gr (τ )] − Eτ ∼ˆπ [gr (τ )] (32) 
+
+≤ ϵ
+
+ 1
+
+αf
+
++ 3 
+
+
+
+H2 − H σr . (33) 
+
+Cost Bound. Similarly, 
+
+Eτ ∼ˆπ [gc(τ )] − Eτ ∼π∗ [gc(τ )] =  Jc(ˆ π) − Jc(π) +  Jc(π) − Jc(π∗)
+
+≤  Jc(ˆ π) − Jc(π) + ϵ
+
+ 1
+
+αf c
+
++ 3 
+
+
+
+H2. (34) Moreover, 
+
+Jc(ˆ π) − Jc(π) = Es1
+
+> H
+
+X
+
+> t=1
+
+( ˆP ct − P ct ) ct
+
+≤ −H σc, (35) where we used the binary cost and the event { ˆP ct − P ct ≥ σc, ∀t}. Combining equation 34–equation 35 yields 
+
+Eτ ∼ˆπ [gc(τ )] − Eτ ∼π∗ [gc(τ )] ≤ ϵ
+
+ 1
+
+αf c
+
++ 3 
+
+
+
+H2 − H σc.
+
+where P ct and ˆP ct represent the probabilities of selecting minimum-cost actions under policies derived from Equation 3 and Equation 8, respectively. 
+
+Remark A.3 (Scope of the analysis) . The above results are derived in a stylized setting (binary signals, near-determinism, and consistent conditioning) to isolate the effect of Q-penalized updates relative to the baseline objective in Equation 3. They should be viewed as an explanatory guarantee rather than a full characterization of deep offline RL with function approximation. 
+
+Remark A.4 (Interpretation) . Compared with Lemma A.1 (and its cost analogue), Theorem 3.1 introduces additional improvement terms −H σr and −H σc, capturing the gain from Q-penalized training in increasing the probability of selecting reward-maximizing and cost-minimizing actions, respectively. 
+
+Corollary A.5. If αf r > 0, ϵ = 0 , and f r (s1) = V r∗(s1) for all initial states s1, then Jr (π∗) = Jr (π) = Jr (ˆ π) under 
+
+ˆP ri = P ri and σr = 0 . Analogously, if αf c > 0, ϵ = 0 , and f c(s1) = V c∗(s1) for all s1, then Jc(π∗) = Jc(π) = Jc(ˆ π).Remark A.6 (Reward–cost trade-off) . The reward-side and cost-side conditions are stated and analyzed separately. In general constrained control problems, optimizing reward and minimizing cost may not be simultaneously achievable under a single conditioning specification. QPT addresses this trade-off operationally by combining reward/cost terms in Equation 8 and enforcing a user-specified cost threshold at inference. 13 Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+Algorithm 1 QPT: Q-learning Penalized Transformer 
+
+Input: Sequence horizon K, offline datasets D, coefficient ρ, a set of candidate pairs of return-to-go and cost-to-go 
+
+{(ˆ r00 , ˆc00), (ˆ r10 , ˆc10), . . . , (ˆ rm 
+
+> 0
+
+, ˆcm 
+
+> 0
+
+)}.Initialize policy network πθ, reward Q-networks Qrϕ1 , Q rϕ2 , cost Q-networks Qcψ1 , Q cψ2 , and target networks 
+
+πθ′ , Q rϕ′
+
+> 1
+
+, Q rϕ′
+
+> 2
+
+, Q cψ′
+
+> 1
+
+and Qcψ′
+
+> 2
+
+.Update the dataset D with data augmentation technique based on Equation 12. 
+
+// Train the QPT 
+
+for t = 1 to H do 
+
+Sample sequence transition mini-batch B = {(ˆ rj , ˆcj , sj , aj , r j , c j )t+Kj=t , } ∼ D .
+
+// Reward Q-network and cost Q-network learning 
+
+Sample ˆat+K ∼ πθ′ (ˆ at+K |ˆrt:t+K , ˆct:t+K , st:t+K , at:t+K−1).Update Qrϕ1 and Qrϕ2 by Equation 6, update Qcψ1 and Qcψ2 by Equation 7. 
+
+// Policy learning 
+
+for i = 1 to K do 
+
+Sample ˆat+i ∼ πθ (ˆ at+i|ˆrt:t+i, ˆct:t+i, st:t+i, at:t+i−1) in an auto-regressive way. 
+
+end for .Update policy by minimizing Equation 8. 
+
+θ′ = ρθ ′ + (1 − ρ)θ, ϕ ′ 
+
+> i
+
+= ρϕ ′ 
+
+> i
+
++ (1 − ρ)ϕi, ψ′ 
+
+> i
+
+= ρψ ′ 
+
+> i
+
++ (1 − ρ)ψi for i = {1, 2}.
+
+end for .
+
+// Inference with QPT 
+
+Given multiple pairs of target return-to-go and target cost-to-go choice (ˆ rj , ˆcj )j=1: m 
+
+> 0
+
+and initial state s0.
+
+repeat 
+
+Sample multiple actions with different return-to-go ˆajt = πθ (ˆ ajt |ˆrjt−K+1: t, ˆcjt−K+1: t, st−K+1: t, at−K+1: t−1) for j =1, . . . , m .Compute Q networks with candidate state-action pair (st, ˆajt ) for j = 1 , . . . , m .Sample the action at from action set {ˆajt }mj=1 with Equation 13 and Equation 14. Execute the action at and collect the reward rt, cost ct and next state st+1 .Update current return-to-go ˆrjt+1 = ˆ rjt − rt, cost-to-go ˆcjt+1 = ˆ cjt − ct for j = 1 , . . . , m .
+
+until Done is true .
+
+B. Algorithm Details 
+
+B.1. Algorithm Pseudocode 
+
+The detailed pipeline of QPT is summarized in Algorithm 1. 
+
+B.2. Data Augmentation 
+
+The intuition is to relabel the associated Pareto trajectory’s reward and cost returns, such that the agent can learn to imitate the behavior of the most rewarding and safe trajectory τ ∗ when the desired return (ρ, κ ) is infeasible, i.e., ρ > RF (κ, D).The Reward Frontier (RF) value is defined by the maximum reward with cost κ ∈ C, where C := {C(τ ) : τ ∈ D} is the set of all the possible episodic cost in D:RF (κ, D) = max   
+
+> τ∈D
+
+R(τ ), s.t. C (τ ) = κ. (36) The augmentation procedure is detailed in Algorithm 2 (Liu et al., 2023b). Figure 3 provides an illustrative example: arrows map Pareto-optimal trajectories to their corresponding augmented return-cost pairs. 
+
+B.3. Ensemble 
+
+In this section, we highlight the detailed ensemble process. During the training phase, RTG and CTG values are derived directly from the trajectory data within the dataset. Specifically, these values are computed as the cumulative discounted rewards and costs from each state to the terminal state along the observed trajectories, thereby preserving the ground-truth signal from the environment. For inference, we utilize the default RTG and CTG pairs established in the DSRL benchmark 14 Q-learning Penalized Transformer for Safe Offline Reinforcement Learning cost return C( )   
+
+> reward return  R( )
+> trajectory data RF( , )
+> associated RF( , )
+> sampled value points association direction
+> Figure 3. Illustrative example of the data-augmentation procedure (Liu et al., 2023b).
+
+as our baseline. To generate candidate pairs, we perturb the RTG values by introducing random noises while maintaining constant CTG values across all candidates. This asymmetric perturbation strategy is theoretically motivated: our objective is to maximize expected returns while adhering to a fixed cost constraint. By holding CTG constant while exploring a diverse range of RTG values, we effectively search the action-value landscape for optimal policies that maximize reward within the predetermined cost threshold. The ensemble inference mechanism represents a computationally efficient approach to action selection that leverages our learned Q-networks to identify optimal actions from multiple candidates. This process operates exclusively during the inference phase and involves the following structured procedure: First, we generate multiple return-to-go and cost-to-go conditioning pairs by introducing controlled stochastic perturbations to a default reference pair. This creates a diverse set of conditioning signals that explore different regions of the reward-safety trade-off space. Rather than processing these pairs sequentially, we exploit the parallelization capabilities of modern GPU architectures by batching all candidate pairs into a single forward pass through our trained Transformer model. This parallelization technique ensures that the computational overhead remains minimal compared to evaluating a single conditioning pair. Once the model generates actions corresponding to each conditioning pair, we employ our learned Q-networks ( Qr and Qc) as evaluation metrics to select the optimal action according to specified criteria. Depending on the deployment context, these criteria may prioritize reward maximization subject to hard safety constraints, or implement a parameterized trade-off between reward and safety considerations. By dynamically evaluating multiple conditioning pairs during inference, our method effectively automates this hyperparameter selection process, reducing the need for exhaustive offline tuning while potentially discovering superior action candidates that might be overlooked in a single-sample approach. 
+
+C. Experiment Details 
+
+C.1. Environment descriptions 
+
+The environments designed for evaluating safe offline RL methods are based on different simulators, each tailored to specific tasks and agent types. Figure 4 visualize some representative tasks of these environments. 
+
+Safety-Gymnasium (Ray et al., 2019; Ji et al., 2024): Built on the Mujoco physics simulator, Safety-Gymnasium provides safety-critical environments with diverse tasks. The Car agent engages in tasks such as Button, Push, and Goal, each available in two difficulty levels. These tasks require navigating hazards while completing objectives. For example, in Goal, the agent moves toward randomly reset goal positions upon completion. In Push, it moves a box to dynamic goal locations, while Button involves pressing scattered goal buttons. Additional velocity-constrained tasks are included for agents such as 15 Q-learning Penalized Transformer for Safe Offline Reinforcement Learning 
+
+Algorithm 2 Data Augmentation via Relabeling 
+
+Input: dataset D, samples N , reward sample max rmax 
+
+Output: augmented trajectory dataset D 
+
+> 1:
+
+cmin ← min τ ∼D C(τ ), cmax ← max τ ∼D C(τ ) 
+
+> 2:
+
+for i = 1 , ..., N do  
+
+> 3:
+
+▷ sample a cost return  
+
+> 4:
+
+κi ∼ Uniform (cmin , c max ) 
+
+> 5:
+
+▷ sample a reward return above the RF value  
+
+> 6:
+
+ρi ∼ Uniform (RF (κi, D), r max ) 
+
+> 7:
+
+▷ find the closest and safe Pareto trajectory  
+
+> 8:
+
+τ ∗ 
+
+> i
+
+← arg max τ ∼D R(τ ), s.t. C(τ ) ≤ κi 
+
+> 9:
+
+▷ relabel the reward and cost return  
+
+> 10:
+
+ˆτi ← { ˆr∗ 
+
+> i
+
++ ρi − R(τ ∗ 
+
+> i
+
+), ˆc∗ 
+
+> i
+
++ κi − C(τ ∗ 
+
+> i
+
+), s∗ 
+
+> i
+
+, a∗ 
+
+> i
+
+} 
+
+> 11:
+
+▷ append the trajectory to the dataset  
+
+> 12:
+
+D ← D ∪ { ˆτi} 
+
+> 13:
+
+end for  
+
+> Figure 4. Visualization of the simulation environments and representative tasks (Liu et al., 2023a).
+
+Ant, HalfCheetah, and Swimmer. The Velocity task challenges agents to coordinate leg movements to move forward, while Run requires navigating from a random direction and speed to a designated endpoint. The Circle task rewards agents for following a circular path while avoiding hazardous zones. Tasks are named by combining agent, task, and difficulty level (e.g., CarPush1), reflecting complexity and objectives. 
+
+Bullet-Safety-Gym (Gronauer, 2022): Developed with the PyBullet physics simulator, this suite includes four agent types–Ball, Car, Drone, and Ant–and two primary tasks: Circle and Run. In Run, agents navigate corridors bounded by safety lines, incurring penalties for crossing them or exceeding speed limits. In Circle, agents move clockwise along a circular path, earning rewards for higher speeds near the boundary and penalties for straying outside the safety zone. These environments focus on safety evaluation with shorter, more straightforward tasks compared to Safety-Gymnasium. 
+
+MetaDrive (Li et al., 2022): MetaDrive is a self-driving simulation environment based on the Panda3D game engine, offering realistic driving conditions with varying road complexity (easy, medium, hard) and traffic density (sparse, medium, dense). Tasks are named by their road and vehicle conditions. This environment enables testing offline RL algorithms in scenarios that closely mimic real-world driving challenges. An overview of these environments and tasks is presented in Table 3. Each environment presents unique challenges for safe offline RL evaluation, from self-driving simulations to hazard-avoidance tasks, offering varied complexities and objectives for testing algorithm robustness. 
+
+C.2. Hyperparameters 
+
+The reward and cost Q-networks used across all tasks consist of four linear layers, each employing Mish activation functions for non-linearity. To ensure a fair comparison between QPT and the baseline methods, we use a consistent setup of 10 5
+
+gradient steps (except for the MetaDrive tasks) and a rollout length equal to the maximum episode length for all experiments. 16 Q-learning Penalized Transformer for Safe Offline Reinforcement Learning  
+
+> Table 3. Overview of the safe RL benchmarks and tasks for dataset collection (Liu et al., 2023a).
+
+Benchmarks Backends Environments Agents Difficulty Levels Total Tasks Dataset Trajectories SafetyGymnasium Mujoco Goal, Button, Push, Circle Point, Car 2 16 40310 Velocity Ant, HalfCheetah, Hopper, Swimmer, Walker2d 1 5 11399 BulletSafetyGym PyBullet Run, Circle Ball, Car, Drone, Ant 1 8 14498 MetaDrive Panda3D Driving Vehicle 3 9 9000 A comprehensive list of hyperparameters utilized in the experiments is provided in Table 4.  
+
+> Table 4. Hyperparameters for QPT
+
+Parameter All tasks Parameter All tasks Number of layers 3 Number of attention heads 8Embedding dimension 128 Batch size 2048 Context length K 10 Learning rate 0.0001 Droupout 0.1 Adam betas (0.9, 0.999) Grad norm clip 0.25 Cost threshold 10 Training steps (BulletGym, SafetyGym) 100000 Training steps (MetaDrive) 200000 
+
+C.3. Ablation of the number of candidate actions in Ensemble 
+
+In our implementation, we utilize a default ensemble size of 50 candidate actions during inference. We also conduct a systematic ablation study specifically examining the impact of ensemble size on performance using the MetaDrive harddense environment as our testbed. The results in Table 5 reveal a nuanced relationship between ensemble size and overall performance. As the number of sampled candidates increases from small values, we observe consistent performance improvements, indicating that larger ensemble sizes enable more comprehensive exploration of the action space and higher-quality policy selection. However, this relationship exhibits clear non-monotonicity, with performance plateauing and eventually declining beyond a certain threshold. A larger number of candidate target pairs provides a broader search space, potentially improving performance. However, this also incurs increased computational costs and greater susceptibility to noisy or suboptimal pairs, stemming from the biased estimation of the learned Q-networks.      
+
+> Table 5. Impact of the number of candidate target reward and cost pairs in the harddense task in the MetaDrive setting.
+
+1 10 30 50 100 Reward 0.49 ± 0.04 0.50 ± 0.02 0.52 ± 0.03 0.50 ± 0.02 0.48 ± 0.04 
+
+Cost 0.84 ± 0.02 0.83 ± 0.03 0.90 ± 0.05 0.81 ± 0.03 0.80 ± 0.03 
+
+17

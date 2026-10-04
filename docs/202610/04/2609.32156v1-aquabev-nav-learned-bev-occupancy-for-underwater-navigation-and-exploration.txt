@@ -1,0 +1,282 @@
+Title: AquaBEV-Nav: Learned BEV Occupancy for Underwater Navigation and Exploration
+
+URL Source: https://arxiv.org/pdf/2609.32156v1
+
+Published Time: Tue, 29 Sep 2026 00:31:25 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# AquaBEV-Nav: Learned BEV Occupancy for Underwater Navigation and Exploration 
+
+Trung Tien Dong 1∗, Zhenqi Wu 1∗, Sahasra Kondapalli 1, Jiayi Wu 3, Yi Sheng 2 and Xiaomin Lin 1
+
+Abstract —Safe underwater exploration requires a robot to understand where surrounding structures are located and which regions are available for motion. Existing vision-based un-derwater exploration systems commonly obtain this informa-tion indirectly by estimating monocular depth, unprojecting the geometry into 3D space, and accumulating it into a 2D bird’s-eye-view occupancy map. This reliance on intermediate depth estimation is particularly problematic underwater, where scattering and wavelength-dependent attenuation degrade visual cues and limit the reliability of monocular depth estimates. We introduce AquaBEV-Nav, an underwater exploration framework that bypasses explicit monocular depth estimation through direct bird’s-eye-view occupancy prediction. Built upon the CORAL hierarchical exploration framework, AquaBEV-Nav replaces its depth-based perception front end with AquaBEV. Given a single RGB frame, AquaBEV maps visual features into a learned polar representation, performs causal reasoning along the range dimension, and reconstructs local Cartesian occupancy without relying on intermediate depth prediction. The resulting occu-pancy map is accumulated into CORAL’s persistent spatial memory, providing spatial context for VLM-based high-level planning and collision constraints for dynamics-aware local trajectory generation. Across ten simulated reef environments and six occupancy backbones evaluated under a single protocol, AquaBEV-Nav reaches 37.48 structure IoU and 53.2 target IoU, 88.95% closed-loop coverage with zero collisions. 
+
+I. I NTRODUCTION 
+
+Underwater exploration, ecological monitoring, and infras-tructure inspection require autonomous robots to reason about the spatial structure of their surroundings in order to navigate safely [1]–[3]. Beyond recognizing objects or semantic re-gions, a robot must determine which parts of the environment are occupied, which remain traversable, and how this infor-mation changes as the vehicle moves. Recent vision-language exploration systems [4], [5] maintain this spatial understanding in a persistent bird’s eye view (BEV) occupancy map, enabling a high level planner to reason over accumulated observations and generate collision free waypoints for low level tracking. BEV occupancy has been widely studied in autonomous driving, where it provides a common spatial representation for perception and planning [6], [7]. AquaBEV [8] extends this idea to underwater perception by predicting local BEV occupancy directly from a single RGB image using 3D imag-ing sonar supervision. However, AquaBEV is optimized as 
+
+> ∗
+
+Equal contribution This research was supported through a cooperative agreement between NOAA’s Office of Coast Survey and the University of South Florida through the Center for Ocean Mapping and Innovative Technologies (COMIT 2.0), NA26NOSX402C0001 and NVIDIA academic grant 
+
+> 1
+
+ERA Lab, University of South Florida, Florida, USA. Emails: {dongt, zhenqi, xlin2 }@usf.edu .
+
+> 2
+
+YES Lab, University of South Florida, Florida, USA  
+
+> 3
+
+University of Maryland- College Park, College Park, Maryland Monocular RGB  Depth Map  Point cloud  Segmentation  BEV Map      
+
+> A. Baseline: Depth-based Pipeline
+> Monocular RGB BEV Map
+> B. Proposed AquaBEV-Nav: Direct Pipeline
+> AquaBEV-Nav Unified Perception
+> Combine &
+> Accumulate
+> Structure Target Occupancy
+
+Fig. 1. AquaBEV-Nav. CORAL constructs occupancy through monocular depth estimation, geometric reconstruction, and rasterization (top). AquaBEV-Nav replaces this perception pipeline with direct monocular BEV occupancy prediction (bottom). 
+
+a perception model rather than as the spatial representation consumed by a navigation system. Current underwater nav-igation systems instead commonly construct persistent maps through monocular depth estimation, 3D unprojection using camera geometry and vehicle pose, and rasterization into a 2D occupancy grid. Errors introduced during depth estimation and geometric reconstruction can therefore propagate into the map that ultimately determines navigation behavior. This observation motivates AquaBEV-Nav . Rather than estimating depth as an intermediate representation, AquaBEV-Nav connects learned BEV occupancy directly to the naviga-tion stack, as showm in Fig. 1. Direct substitution, however, is not sufficient. Navigation needs more than a single occupancy field, it needs obstacles localized accurately enough to avoid, and targets localized accurately enough to approach. Occu-pancy predictors are optimized for perception metrics such as IoU or geometric agreement, which score a cell as right or wrong regardless of how far it lies from the truth, whereas navigation is sensitive to spatial error in proportion to its effect on traversability and collision margin. We analyze how learned occupancy errors propagate into navigation, decompose the predicted field into the obstacle and target evidence the planner consumes, and introduce spatially calibrated BEV objectives that align prediction with downstream navigation Our contributions are:  
+
+> •
+
+We introduce AquaBEV-Nav , which connects monocu-lar BEV occupancy directly to hierarchical underwater navigation.  
+
+> •
+
+We develop spatially calibrated BEV objectives derived from the observed navigation relevant error structure, improving the planning representation without increasing model parameter count. arXiv:2609.32156v1 [cs.RO] 26 Sep 2026 • We conduct a controlled evaluation across six occupancy backbones in simulation and physical pool experiments to study how occupancy prediction quality translates into downstream navigation performance. II. R ELATED WORK 
+
+A. Underwater Navigation and Spatial Mapping 
+
+Underwater navigation requires a robot to reason about surrounding geometry despite the absence of GPS, degraded visual observations, and constrained vehicle dynamics [9]. Classical autonomy has addressed these challenges through ex-plicit mapping and motion planning, including obstacle aware planning [10], perception aware trajectory generation [11], and adaptive exploration of unknown environments [12]. More recent systems increasingly connect learned perception with navigation. Semantic scene understanding has been used to guide autonomous cave exploration [13], while information driven navigation has been learned from demonstrations [14]. Across these approaches, navigation depends on maintaining a spatial representation that extends beyond the current ob-servation and allows the robot to reason about where it can move. Foundation models have expanded this direction by pro-viding semantic reasoning and higher level goal selection. Language grounded maps [15] and semantic frontier explo-ration [16] established similar ideas in embodied navigation, while recent work has begun transferring them to marine environments [17], [18]. However, vision language models still have limitations in precise spatial grounding [19] and long horizon planning [20]. As a result, recent systems commonly combine semantic reasoning with an explicit geometric repre-sentation used for verification and local planning. CORAL [5] follows this structure by maintaining persistent occupancy that supports waypoint generation and collision avoidance. These systems establish the importance of spatial maps for underwater autonomy, but the construction and quality of the occupancy representation are generally not their primary focus. 
+
+B. BEV and Occupancy Prediction 
+
+Bird’s eye view occupancy provides a compact represen-tation of surrounding free, occupied, and unknown space in a common coordinate frame [21]. Lift Splat Shoot [22] transports image features into BEV through predicted depth distributions, while BEVDepth [23] improves this process us-ing explicit depth supervision. Query based approaches instead learn the transformation between perspective observations and spatial representations. BEVFormer [6] aggregates image fea-tures into learned BEV queries, while later methods represent scene occupancy through orthogonal planes [24], multi scale volumetric reasoning [25], or Gaussian primitives [7], [26]. These methods demonstrate that useful spatial representations can be learned without requiring a conventional depth map as the final perception output. Polar representations provide another direction for spatial prediction when measurements are organized by bearing and distance. PolarNet [27], PolarFormer [28], and PVP [29] show that polar coordinates can better reflect radial sensing geometry and range dependent spatial structure. Most BEV and occupancy methods, however, have been developed for terrestrial sensing with well characterized camera geometry, dense geometric supervision, and substantially larger training than are typically available underwater. AquaBEV [8] adapts this family to underwater perception by using paired 3D imaging sonar as geometric supervision for monocular BEV occupancy. 
+
+C. From Occupancy Prediction to Navigation 
+
+Although learned occupancy provides the representation required by a planner, occupancy prediction and navigation are commonly evaluated with different objectives. Perception methods emphasize overlap and geometric accuracy [7], [8], while navigation systems evaluate quantities such as collision avoidance, coverage, and path efficiency [5], [30]. This sepa-ration leaves the relationship between occupancy quality and navigation behavior less understood. A map with strong aggregate occupancy accuracy is not necessarily equally useful for planning. False occupied regions can remove traversable space, while false free regions can increase collision risk. Prior work on risk aware occupancy mapping and predicted occupancy navigation has shown that map uncertainty and occupancy structure directly affect path selection and navigation safety [31], [32]. These errors can become more consequential when local predictions are ac-cumulated into persistent spatial memory and influence later planning decisions [5]. AquaBEV-Nav studies this interface by inserting learned occupancy into CORAL while keeping the downstream mapping, planning, and control components fixed. Rather than asking only whether monocular occupancy is accurate, we study whether its spatial structure is suitable for the navigation system that consumes it. III. A QUA BEV-N AV 
+
+A. Planner Ready BEV Prediction 
+
+At time t, AquaBEV-Nav receives an RGB image It and vehicle pose Tt ∈ SE (3) . Instead of estimating monocular depth, reconstructing a point cloud, and rasterizing the result into occupancy, AquaBEV-Nav directly predicts the spatial representation consumed by the navigation system. We retain the AquaBEV perception trunk [8]. Image fea-tures are mapped through learned polar queries into a feature field F (θ, r ), processed causally along the range dimension, and reconstructed into Cartesian BEV occupancy. This pre-serves the direct RGB to BEV formulation of AquaBEV while adapting its output to the requirements of persistent navigation. A binary occupancy field alone is insufficient for naviga-tion systems because different parts of the navigation stack query different spatial information. We therefore predict three independent fields, 
+
+fθ (It) = (ˆ st, ˆgt, ˆot), (1) where ˆst represents standing structure, ˆgt represents mission targets, and ˆot represents observability. Independent sigmoid RGB Image I ₜ    
+
+> Robot Position p ₜ
+> Input Integrated Perception Module
+> AquaBEV  Occupancy
+> Structure
+> Target
+> Training
+> ℒ_rad
+> ℒ_sfp
+> ℒ_ot
+> Separable Layers Prediction Backbone
+> Fused BEV Map Hierarchical
+> Navigation
+> Low-Level Planner
+> (Dynamics-Aware
+> Trajectory Generation)
+> (VLM & Geometric
+> Verification)
+> High-Level Planner Fig. 2. AquaBEV-Nav architecture. AquaBEV-Nav predicts local structure, target, and observability fields from a single RGB image. These fields are transformed into the world frame and accumulated in navigation system persistent spatial memory.
+
+outputs allow these fields to overlap rather than forcing each cell into a single semantic class. This is important when, for example, a mission target lies on an otherwise navigable seabed. Structure is routed to the obstacle map, target predic-tions to the semantic map, and observability to the explored area map. 
+
+B. Planner Aware Spatial Objectives 
+
+Cellwise supervision treats spatial errors independently of how they affect the planner. AquaBEV-Nav therefore intro-duces field specific objectives that target the dominant geomet-ric errors of each output, as shown in Fig. 2. Radial transport and structure distillation act on the structure field, while spatial false positive and target transport losses act on the target field. All variants retain an occupancy preservation term, 
+
+Lanchor = zocc − zfrozen occ  
+
+> 22
+
+, (2) where zocc is the current occupancy logit and zfrozen occ is produced by a frozen copy of the original AquaBEV model. This constrains adaptation of the planner specific fields without allowing the underlying occupancy representation to drift. 
+
+Radial transport. For structure, the distance of an obstacle along its viewing direction is directly relevant to collision constraints. We therefore penalize radial displacement using the one dimensional Earth Mover distance. Let pθj and qθj 
+
+denote predicted and ground truth structure mass at range bin 
+
+j. Each valid ray is first normalized, 
+
+˜pθj = pθj 
+
+P 
+
+> j
+
+pθj + ϵ , ˜qθj = qθj 
+
+P 
+
+> j
+
+qθj + ϵ . (3) The radial objective is then 
+
+Lrad = 1
+
+|Θ+|
+
+X
+
+> θ∈Θ+
+
+∆r
+
+> Nr
+
+X
+
+> k=1
+
+X
+
+> j≤k
+
+˜pθj − X
+
+> j≤k
+
+˜qθj , (4) where Θ+ contains rays with valid structure supervision. Normalizing each ray makes the objective sensitive to spatial displacement rather than differences in total predicted mass. 
+
+Spatial target extent. Target predictions require a different spatial constraint. Excess target mass can spread beyond the true object and distort the semantic region later used for target localization. We therefore weight false positive target mass by its distance Di from the nearest true target cell, 
+
+Lsfp =
+
+P 
+
+> i
+
+pgi (1 − ygi ) min( Di, D max )
+
+P 
+
+> i
+
+pgi (1 − ygi ) + ϵ δ, (5) where pgi and ygi denote predicted and ground truth target values and δ is the BEV cell size. Nearby errors receive a smaller penalty, while target mass extending farther from the true spatial support is penalized more strongly. 
+
+Target transport. Controlling target extent does not ensure that the predicted target is centered at the correct location. We therefore additionally compare normalized target distributions along both range and azimuth using Ltgt . Radial displace-ment is already expressed in metres. Angular displacement is converted to metres at a 5 m reference range, placing the two transport components in a common unit. Since both distributions are normalized before transport, this objective measures target displacement and is intentionally independent of total predicted target mass. 
+
+Structure distillation. A second RayOccNet receives ground truth depth during training and acts as a frozen teacher for the RGB student. Rather than distilling depth itself, we transfer the teacher’s structure representation in polar space. Let zsθr and ztθr denote student and teacher structure logits. We use 
+
+Ldistill = 1
+
+N
+
+X
+
+> θ,r
+
+
+
+1 + r
+
+5
+
+  zsθr − ztθr 
+
+2 . (6) The weighting places greater emphasis on distant structure, where monocular visual geometry is weakest. The teacher is used only during training and is discarded at inference. The complete objective is 
+
+L = Ltask +λaLanchor +λr Lrad +λsLsfp +λtLtgt +λdLdistill ,
+
+(7) with λa = 1.0 and the remaining weights selected using validation data. 
+
+C. Integration with CORAL 
+
+At each navigation step, the three local BEV fields are trans-formed into the world frame using Tt and accumulated into TABLE I                                                                                                                                                                               
+
+> PLANNER FACING BEV P REDICTION PERFORMANCE .COMPARISON OF OCCUPANCY ,STRUCTURE ,AND TARGET PREDICTION UNDER A UNIFIED TRAINING PROTOCOL . A LL LEARNED MODELS ARE INITIALIZED FROM THEIR RESPECTIVE REAL WORLD CHECKPOINTS ,ANCHORED TO FROZEN OCCUPANCY TEACHERS ,AND TRAINED FOR 25 EPOCHS UNDER THE SAME SCHEDULE .( BEST / SECOND BEST) Occupancy Structure →grid Target →seg. map
+> Arm mIoU ↑Prec. % ↑Recall % ↑mIoU ↑Prec. % ↑Recall % ↑mIoU ↑Prec. % ↑Recall % ↑
+> CORAL (DAv2) [5] ———10.0 10.6 65.2 11.0 18.3 21.5 TPVFormer [24] 14.8 76.1 15.6 11.0 22.2 18.0 38.6 45.8 71.0 SurroundOcc [25] 16.7 75.3 17.7 16.0 31.7 24.5 38.9 47.4 68.3 MonoScene [33] 24.1 80.4 25.6 21.5 26.8 52.4 39.7 43.5 82.0 GaussianFormer-fix [7] 23.5 80.0 24.9 27.6 31.0 71.5 41.8 47.0 78.8 AquaBEV [8] 28.3 83.6 29.9 29.9 41.5 51.7 46.6 51.5 83.1 AquaBEV-Nav (ours) 30.5 84.1 32.4 37.48 55.3 56.3 53.2 59.4 79.6 TABLE II
+> ACCUMULATED PLANNER MAP PERFORMANCE .COMPARISON OF STRUCTURE AND TARGET MAPS AFTER TRAJECTORY LEVEL FUSION . ( BEST /SECOND BEST)
+> Structure Target
+> Arm max IoU ↑max P ↑mean IoU ↑mean P ↑max IoU ↑max P ↑mean IoU ↑mean P ↑
+> CORAL (DAv2) [5] 8.3 8.3 21.5 25.7 25.0 28.7 8.5 20.7 TPVFormer [24] 21.9 25.1 7.9 47.7 47.5 48.8 47.8 67.7 SurroundOcc [25] 27.4 32.0 11.8 71.7 47.6 49.1 46.2 71.8 MonoScene [33] 22.5 23.7 31.3 56.7 46.0 46.6 53.2 63.0 GaussianFormer-fix [7] 27.1 28.0 44.7 55.4 52.2 53.8 53.8 67.5 AquaBEV [8] 33.8 37.6 37.8 80.8 55.4 56.5 58.3 75.6
+> AquaBEV-Nav (ours) 45.2 51.9 41.4 86.0 67.9 71.6 59.8 85.0
+
+CORAL’s persistent maps. Structure updates obstacles, target updates semantic memory, and observability updates explored space. All downstream components, including target tracking, vision language reasoning, geometric verification, and local trajectory generation, remain unchanged from CORAL [5]. This isolates the effect of the perception representation on closed loop navigation. IV. E XPERIMENTS 
+
+A. Setup 
+
+Simulation. Simulation. We use CORAL’s Blender reef environments [5], comprising 16 runs across ten environ-ments and five reef topologies. The dataset contains 2,945 RGB frames with semantic renders, vehicle poses, and BEV labels. We split complete environments into train 
+
+{s1, s 3, s 4, s 6, s 7, s 9} with 1,978 frames, validation {s2, s 8}
+
+with 494 frames, and test {s5, s 10 } with 473 frames. Runs from the same environment remain within the same split. Generated BEV labels agree with an independent reference at 
+
+98 .1, 96 .2, and 99 .9 IoU for observability, target, and structure. For closed loop evaluation, all perception front ends use the same simulator segmentation to control target semantics. CORAL constructs its spatial map from Depth Anything V2 [34], whereas AquaBEV-Nav predicts the BEV representa-tion directly from RGB. All downstream mapping, reasoning, planning, and control components remain unchanged. 
+
+Real world deployment. Physical trials use a BlueROV2 Heavy equipped with a front-facing camera and a Waterlinked Sonar3D-15 in a controlled swimming pool. The sonar pro-vides the obstacle map used by CORAL’s local planner but is not an input to the AquaBEV-Nav perception network. Cups serve as mission targets and floating balloons as obstacles. AquaBEV-Nav is initialized from uScenes weights [35] and adapted using the simulation data. 
+
+Metrics and protocol. Perception is evaluated at three levels, per frame IoU, precision, recall, and predicted to ground truth mass; accumulated world maps under max and mean fusion; and spatial error decomposition by extent, range, and hallucination. Navigation uses CORAL’s original metrics [5], coverage, coverage time, collisions, VLM calls, and verifier deviations. All six perception arms train for 25 epochs at three paired seeds. We report the mean from epochs 20 through 24. A fixed checkpoint bootstrap over 2,000 frame resamples gives noise floors of ±0.84 structure IoU and ±0.50 target IoU. 
+
+B. Simulation 1) Perception and Mapping: Table I reports occupancy and planner field prediction under the same protocol. Occupancy recall spans 15 .6 to 32 .4 % across the learned arms. AquaBEV-Nav reaches 30 .5 occupancy IoU, compared with 28 .3 for the AquaBEV baseline. The planner fields separate the models more strongly. Structure occupies only 2.08 % of observed training cells, while target occupies 14 .7 % , and target IoU ranges from 38 .6 to 53 .2 across the learned arms. Per frame accuracy does not fully determine the map seen by the planner. Table II therefore accumulates predictions along each validation trajectory. Max fusion improves target IoU for every learned arm by 6.3 to 14 .7 points, while structure improves only when placement remains consistent across observations. AquaBEV increases from 29 .9 to 33 .8Front-view RGB  Ground-truth  CORAL (ours)  AquaBEV  MonoScene  SurroundOcc  TPVFormer  GaussianFormer                                                                                                                                            
+
+> structure target free to travel not observed Fig. 3. Simulation perception. Qualitative comparison of local BEV predictions across representative environments. TABLE III
+> ARCHITECTURE ABLATION FOR PLANNER FIELD PREDICTION .COMPARISON OF STRUCTURAL CHANGES APPLIED TO THE
+> AQUA BEV BACKBONE .
+> Method Structure Target mIoU ↑Prec. % ↑mIoU ↑Prec. % ↑
+> AquaBEV 29.47 ±0.31 39.0 ±1.8 46.39 ±0.50 51.9 ±1.5 + ray PE 29.28 ±0.76 39.1 ±2.0 45.94 ±0.50 51.2 ±1.3 + ray consist. 29.24 ±0.55 39.3 ±2.7 45.91 ±0.25 50.5 ±0.8 + ray PE & consist. 29.30 ±0.07 38.5 ±0.3 45.81 ±0.91 50.8 ±2.3 + range CE 30.35 ±0.41 39.8 ±1.4 47.10 ±0.11 52.1 ±0.9
+> TABLE IV
+> PLANNER AWARE OBJECTIVE ABLATION .EFFECT OF THE PROPOSED FIELD SPECIFIC TRAINING OBJECTIVES ON STRUCTURE AND TARGET PREDICTION .
+> Method Structure Target mIoU ↑Prec. % ↑mIoU ↑Prec. % ↑
+> AquaBEV 29.47 ±0.31 39.8 ±1.4 46.39 ±0.50 51.9 ±1.5 +Lrad 36.00 ±0.71 49.5 ±1.7 46.32 ±0.65 50.4 ±1.5 +Lsfp 35.96 ±0.76 49.9 ±2.9 48.54 ±0.38 53.6 ±1.5 +Lot 36.26 ±0.56 51.7 ±4.1 52.74 ±0.20 59.6 ±1.0
+> + distillation 37.39 ±0.62 54.6 ±0.4 51.74 ±0.29 59.1 ±0.2
+
+structure IoU, whereas GaussianFormer decreases from 27 .6
+
+to 27 .1. Mean fusion changes the ordering again, motivating the joint reporting of IoU, precision, and predicted mass. The error decomposition further shows that structure false positives are dominated by range error, accounting for 53 to 
+
+70 % , whereas target false positives are dominated by lateral extent at 48 to 78 % . In the far field, 55 of 63 ground truth structures have a prediction on the correct bearing, indicating that range placement rather than visibility is a major source of error. GaussianFormer achieves a 0.10 m same bearing range error at matched mass despite weaker IoU, further showing that overlap alone does not describe map quality. 
+
+2) Ablations: Across 17 architectural modifications, Ta-ble III reports the representative variants evaluated under the final protocol. The auxiliary range classification objective is the only displayed modification that improves both planner fields beyond the measured noise floor, increasing structure IoU from 29 .47 to 30 .35 and target IoU from 46 .39 to 47 .10 ,corresponding to gains of 0.88 and 0.71 . Its associated lifting gate converges to α = 0.00000 at every seed, indicating that the gain comes from range supervision rather than the additional lifting path. Other changes to feature transport, positional encoding, and range reasoning do not improve both fields consistently. This suggests that the principal limitation is not insufficient architectural capacity, but the spatial super-vision used to shape the learned representation. These results redirect the final design toward stronger spatial supervision rather than additional topology changes. We first verify that the occupancy anchor is necessary during semantic adaptation: removing it reduces occupancy IoU from 
+
+37 .9 to 20 .4, showing that the adapted trunk can otherwise overwrite the geometry inherited from AquaBEV. Table IV then evaluates the planner aware objectives cumulatively. Ra-dial transport primarily improves structure, reaching 36 .00 IoU while leaving target performance nearly unchanged. Adding the target specific spatial false positive loss changes structure by only −0.04 while improving target IoU by 2.22 . Target transport further raises target IoU from 48 .54 to 52 .74 , while structure distillation produces the strongest structure result at 
+
+37 .39 IoU. The resulting improvements, shown in Fig. 3, are also reflected qualitatively in the sharper structure placement Fig. 4. Closed loop navigation by reef topology. Executed trajectories produced by different perception front ends under the same CORAL navigation stack. TABLE V                                                
+
+> CLOSED -LOOP SIMULATION NAVIGATION COMPARISON ACROSS TEN REEF ENVIRONMENTS .
+> Front end cov.% ↑time s ↓coll. ↓VLM ↓dev. ↓
+> DREAM [4] 80.00 1513.2 91261 15 CORAL (DA2) 59.58 620 0519 3+ TPVFormer [24] 68.33 734 0191 19 + GaussianFormer [7] 43.21 612 0394 19 + SurroundOcc [25] 49.17 669 0188 29 +AquaBEV-Nav (ours) 88.95 734 0353 5
+> CORAL [5] 94.28 642.0 0547 3
+
+and more compact target predictions. 
+
+3) Navigation: Table V evaluates the full CORAL explo-ration loop with perception as the only changing compo-nent. AquaBEV-Nav achieves the highest coverage among the learned front ends at 88 .95% , compared with 59 .58% for the DAv2-based CORAL front end and 68 .33% for the strongest learned baseline, TPVFormer. Although TPVFormer and Sur-roundOcc invoke the VLM less frequently, their substantially lower coverage indicates that fewer queries alone do not imply more effective exploration. AquaBEV-Nav also produces only five verifier-detected deviations, substantially fewer than the 19–29 deviations observed for the other learned BEV front ends, suggesting that its accumulated spatial representation provides more stable guidance to the downstream planner. The published CORAL system reports 94 .28% coverage under its original experimental configuration [5], providing a reference point for the current controlled evaluation. Fig. 4 complements these aggregate results by showing the executed trajectories across representative reef topologies. The different front ends produce noticeably different exploration patterns even though the downstream CORAL stack is un-changed. In the representative cases, the yellow AquaBEV-Nav trajectories more closely follow the spatial distribution of the oyster targets, allowing the vehicle to progress continuously along target regions and cover them with fewer unnecessary detours. In contrast, several other front ends exhibit more pronounced circuitous or repeated motions before reaching the same regions. The figure further illustrates how perception quality affects which regions are revisited, which branches are explored, and how the robot progresses through more constrained layouts. Together, Table V and Fig. 4 show that improvements in the learned BEV representation translate beyond per-frame perception accuracy into more complete and stable closed-loop exploration. 
+
+C. Real World Deployment 
+
+Pool evaluation is qualitative because no instrumented BEV ground truth or target cluster annotation is available. We therefore compare predicted geometry against synchronized sonar and inspect accumulated maps and executed trajectories against the known physical layout. Observability also exposes a deployment issue hidden by simulation. A static sensor wedge reaches 65 .7 IoU but marks approximately 2, 200 cells per frame as observed despite no corresponding measurement, which incorrectly expands the explored region behind occluding structure. Estimates derived from the auxiliary range head perform substantially worse, reaching only 18 .6 IoU by expectation and 35 .3 by argmax, because a single range estimate cannot recover the full spatial pattern of visibility. AquaBEV-Nav therefore predicts Front-view RGB  AquaBEV-Nav  CORAL      
+
+> structure (balloons) target (cups, pins) free to travel not observed Fig. 5. Pool perception. Representative front-view RGB observations and corresponding local BEV predictions from AquaBEV-Nav and the depth-based CORAL front end.
+
+observability directly as a separate field, allowing explored space to vary with scene geometry rather than with a fixed sensor footprint. The resulting local structure predictions and accumulated map are shown in Fig. 5. V. C ONCLUSION 
+
+We presented AquaBEV-Nav , a framework that connects learned monocular BEV occupancy with hierarchical under-water navigation. Rather than constructing the planner map through an intermediate monocular depth estimate, AquaBEV-Nav predicts the required spatial representation directly from RGB and integrates it into CORAL’s persistent memory while leaving the downstream reasoning, planning, and control stack unchanged. This formulation allows the effect of the learned BEV representation to be evaluated independently from changes to the navigation system itself. 
+
+A. Discussion 
+
+Our results show that strong occupancy prediction alone does not guarantee a representation suitable for navigation. CORAL requires distinct information about physical structure, mission targets, and explored space, motivating the decom-position of learned occupancy into separate structure, target, and observability fields. This distinction is important because the same occupied region can have different meanings for perception and planning. A returned surface may correspond to navigable terrain, an obstacle, or a mission target, and these cases should not be represented by a single binary field. The experiments further show that spatial supervision mat-ters more than additional architectural complexity. Across the architectural variants tested, only auxiliary range super-vision consistently improves both planner fields, whereas the planner aware objectives produce substantially larger changes in the specific spatial errors they are designed to address. Radial transport improves structure placement along range, while target specific objectives reduce target displacement and excessive spatial extent. Structure distillation provides additional geometric supervision where monocular prediction remains difficult. Together, these results suggest that learned occupancy for navigation should be optimized according to how spatial errors affect the planner rather than only according to aggregate overlap accuracy. 
+
+B. Future Work 
+
+The current study evaluates AquaBEV-Nav in simulated reef environments and controlled pool trials. Future work should extend evaluation to larger and more diverse natural underwater environments containing greater variation in visi-bility, terrain, vehicle motion, and target appearance. Longer deployments will also make it possible to study how local prediction errors accumulate in persistent spatial memory over extended trajectories. A second direction is to expose prediction uncertainty directly to the planner. The current experiments intentionally keep CORAL fixed in order to isolate the effect of the perception representation. Future systems could instead allow the planner to reason over confidence in structure, target, and observability predictions and adjust exploration or collision constraints accordingly. More generally, jointly optimizing learned spatial perception and downstream planning offers a promising direction for improving closed loop underwater autonomy while preserving a modular interface between per-ception and navigation. REFERENCES [1] S. McCammon, L. Cai, D. Yang, J. Walsh, J. D. Cast, T. A. Mooney, and Y. Girdhar, “Autonomous seeking and mapping coral reef biodiversity hotspots with a multimodal auv,” Science Robotics , vol. 11, no. 114, p. eadx9939, 2026. [2] S. Yuan, Y. Li, F. Bao, H. Xu, Y. Yang, Q. Yan, S. Zhong, H. Yin, J. Xu, Z. Huang, and J. Lin, “Marine environmental monitoring with unmanned vehicle platforms: Present applications and future prospects,”              
+
+> Science of The Total Environment , vol. 858, p. 159741, 2023. [3] F. Nauert and P. Kampmann, “Inspection and maintenance of indus-trial infrastructure with autonomous underwater robots,” Frontiers in Robotics and AI , vol. 10, p. 1240276, 2023. [4] Z. Wu, A. Modi, A. Mavrogiannis, K. Joshi, N. Chopra, Y. Aloimonos, N. Karapetyan, I. Rekleitis, and X. Lin, “DREAM: Domain-aware rea-soning for efficient autonomous underwater monitoring,” arXiv preprint arXiv:2509.13666 , 2025. [5] Z. Wu, Y. Lu, X. Xiao, and X. Lin, “CORAL: COntextual reasoning and local planning in a hierarchical VLM framework for underwater monitoring,” arXiv preprint arXiv:2603.14786 , 2026. [6] Z. Li, W. Wang, H. Li, E. Xie, C. Sima, T. Lu, Y. Qiao, and J. Dai, “BEV-Former: Learning bird’s-eye-view representation from multi-camera images via spatiotemporal transformers,” in European Conference on Computer Vision (ECCV) , 2022.
+
+[7] Y. Huang, W. Zheng, Y. Zhang, J. Zhou, and J. Lu, “GaussianFormer: Scene as Gaussians for vision-based 3D semantic occupancy prediction,” in European Conference on Computer Vision (ECCV) , 2024. [8] T. T. Dong, S. Jin, C. Chen, Y. Sheng, and X. Lin, “AquaBEV: Monocular underwater BEV occupancy with 3D sonar supervision,” 
+
+arXiv preprint arXiv:2609.04411 , 2026. [9] L. Paull, S. Saeedi, M. Seto, and H. Li, “AUV navigation and localiza-tion: A review,” IEEE Journal of Oceanic Engineering , vol. 39, no. 1, pp. 131–149, 2014. [10] M. Xanthidis, N. Karapetyan, H. Damron, S. Rahman, J. Johnson, A. O’Connell, J. M. O’Kane, and I. Rekleitis, “Navigation in the presence of obstacles for an agile autonomous underwater vehicle,” in 
+
+IEEE International Conference on Robotics and Automation (ICRA) ,2020, pp. 892–899. [11] M. Xanthidis, M. Kalaitzakis, N. Karapetyan, J. Johnson, N. Vitzilaios, J. O’Kane, and I. Rekleitis, “AquaVis: A perception-aware autonomous navigation framework for underwater vehicles,” in IEEE/RSJ Interna-tional Conference on Intelligent Robots and Systems (IROS) , 2021, pp. 5387–5394. [12] Y. Girdhar, P. Giguere, and G. Dudek, “Autonomous adaptive exploration using realtime online spatiotemporal topic modeling,” The International Journal of Robotics Research , vol. 33, no. 4, pp. 645–657, 2014. [13] A. Gupta, A. Abdullah, X. Li, V. Ramesh, I. Rekleitis, and M. J. Islam, “Demonstrating CavePI: Autonomous exploration of underwater caves by semantic guidance,” in Robotics: Science and Systems (RSS) , 2025. [14] X. Lin, N. Karapetyan, K. Joshi, T. Liu, N. Chopra, M. Yu, P. Tokekar, and Y. Aloimonos, “UIVNav: Underwater information-driven vision-based navigation via imitation learning,” in IEEE International Con-ference on Robotics and Automation (ICRA) , 2024, pp. 5250–5256. [15] C. Huang, O. Mees, A. Zeng, and W. Burgard, “Visual language maps for robot navigation,” in IEEE International Conference on Robotics and Automation (ICRA) , 2023. [16] D. S. Chaplot, D. Gandhi, A. Gupta, and R. Salakhutdinov, “Object goal navigation using goal-oriented semantic exploration,” in Advances in Neural Information Processing Systems (NeurIPS) , 2020. [17] R. Yang, F. Zhang, and M. Hou, “OceanPlan: Hierarchical planning and replanning for natural language AUV piloting in large-scale unexplored ocean environments,” in Proc. International Conference on Underwater Networks and Systems (WUWNet) , 2024. [18] A. Saad, W. Akram, and I. Hussain, “AquaChat++: LLM-assisted multi-ROV inspection for aquaculture net pens,” arXiv preprint arXiv:2508.06554 , 2025. [19] B. Chen, Z. Xu, S. Kirmani, B. Ichter, D. Sadigh, L. Guibas, and F. Xia, “SpatialVLM: Endowing vision-language models with spatial reasoning capabilities,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2024, pp. 14 455–14 465. [20] S. Kambhampati, K. Valmeekam, L. Guan, M. Verma, K. Stechly, S. Bhambri, L. P. Saldyt, and A. Murthy, “Position: LLMs can’t plan, but can help planning in LLM-modulo frameworks,” in International Conference on Machine Learning (ICML) , 2024, pp. 22 895–22 907. [21] T. T. Dong, D. Thakkar, A. Sargolzaei, and X. Lin, “Post fusion bird’s eye view feature stabilization for robust multimodal 3D detection,” arXiv preprint arXiv:2603.05623 , 2026. [22] J. Philion and S. Fidler, “Lift, splat, shoot: Encoding images from arbitrary camera rigs by implicitly unprojecting to 3D,” in European Conference on Computer Vision (ECCV) , 2020. [23] Y. Li, Z. Ge, G. Yu, J. Yang, Z. Wang, Y. Shi, J. Sun, and Z. Li, “BEVDepth: Acquisition of reliable depth for multi-view 3D object detection,” in AAAI Conference on Artificial Intelligence , 2023. [24] Y. Huang, W. Zheng, Y. Zhang, J. Zhou, and J. Lu, “Tri-perspective view for vision-based 3D semantic occupancy prediction,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2023. [25] Y. Wei, L. Zhao, W. Zheng, Z. Zhu, J. Zhou, and J. Lu, “SurroundOcc: Multi-camera 3D occupancy prediction for autonomous driving,” in 
+
+IEEE/CVF International Conference on Computer Vision (ICCV) , 2023. [26] Y. Huang, A. Thammatadatrakoon, W. Zheng, Y. Zhang, D. Du, and J. Lu, “GaussianFormer-2: Probabilistic Gaussian superposition for effi-cient 3D occupancy prediction,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2025, pp. 27 477–27 486. [27] Y. Zhang, Z. Zhou, P. David, X. Yue, Z. Xi, B. Gong, and H. Foroosh, “PolarNet: An improved grid representation for online LiDAR point clouds semantic segmentation,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2020. [28] Y. Jiang, L. Zhang, Z. Miao, X. Zhu, J. Gao, W. Hu, and Y.-G. Jiang, “PolarFormer: Multi-camera 3D object detection with polar transformer,” in AAAI Conference on Artificial Intelligence , 2023, pp. 1042–1050. [29] Y. Xue, J. Liu, J. Du, and J. T. Zhou, “PVP: Polar representation boost for 3D semantic occupancy prediction,” in IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , 2025, pp. 2746–2755. [30] K. D. Katyal, A. Polevoy, J. L. Moore, C. Knuth, and K. M. Popek, “High-speed robot navigation using predicted occupancy maps,” in 2021 IEEE International Conference on Robotics and Automation , 2021, pp. 5476–5482. [31] J. Laconte, A. Kasmi, F. Pomerleau, R. Chapuis, L. Malaterre, C. De-bain, and R. Aufr` ere, “A novel occupancy mapping framework for risk-aware path planning in unstructured environments,” Sensors , vol. 21, no. 22, p. 7562, 2021. [32] K. Katyal, K. Popek, C. Paxton, P. Burlina, and G. D. Hager, “Uncertainty-aware occupancy map prediction using generative net-works for robot navigation,” in 2019 International Conference on Robotics and Automation , 2019, pp. 5453–5459. [33] A.-Q. Cao and R. de Charette, “MonoScene: Monocular 3D semantic scene completion,” in IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , 2022. [34] L. Yang, B. Kang, Z. Huang, Z. Zhao, X. Xu, J. Feng, and H. Zhao, “Depth anything v2,” in Advances in Neural Information Processing Systems (NeurIPS) , 2024. [35] T. T. Dong, Z. Wu, A. Penumarti, Z.-H. Zhang, M. Bartlett, J. Shin, and X. Lin, “uScenes: A multimodal RGB and 3D sonar dataset for underwater robot perception,” arXiv preprint arXiv:2608.27795 , 2026.
