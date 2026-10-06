@@ -1,0 +1,1253 @@
+Robust Variable-Horizon MPC for Landing a Multirotor UAV on a
+Moving Platform
+Sander Doodeman1, Niels Berkers1, Paula Chanfreut1, Elena Torta1, and Duarte Antunes1
+Abstract— Landing a multirotor Unmanned Aerial Vehicle
+(UAV) on a moving platform is challenging because a UAV is
+underactuated and the desired landing state is generally a non-
+equilibrium state. Shrinking- and variable-horizon approaches
+are promising for reaching such non-equilibrium targets, but
+often lack robustness to disturbances. Robust Variable-Horizon
+Model Predictive Control (VH-MPC) addresses this limitation
+but is computationally complex for a high-dimensional system
+such as a multirotor UAV.
+This paper presents a computationally efficient robust
+Variable-Horizon MPC method for reaching non-equilibrium
+targets under bounded disturbances. The online horizon search
+is restricted to a neighborhood of the previously selected
+horizon, while maintaining recursive feasibility under bounded
+disturbances. A fixed robust positively invariant tube provides
+horizon-independent constraint tightening. By exploiting the
+differential flatness property of a UAV, this approach is applied
+to a decoupled linearized system, enabling real-time implemen-
+tation on an onboard Raspberry Pi 5 at 20 Hz. Simulations
+show that restricting the horizon search substantially reduces
+computation with limited impact on the objective, while real-
+time Gazebo simulations demonstrate the robustness of the
+method. Physical experiments demonstrate successful landing
+of a multirotor UAV on a moving Stewart platform.
+SUPPLEMENTARY MATERIAL
+Video: youtu.be/qeYP8OFipIc
+Repository: gitlab.tue.nl/tue-waari/rvhmpc
+I. INTRODUCTION
+The application of autonomous UAVs has the potential
+to transform offshore infrastructure inspection. Assets such
+as wind turbines, ships, and oil and gas platforms are still
+inspected mostly by manual inspection, at high cost and
+in hazardous conditions [1]. UAV-based methods, including
+aerial radiography [2], can perform the same work faster
+and without exposing people to that hazard. However, the
+further adoption of these platforms is severely restricted by a
+limited time-of-flight, which requires time-optimal planning
+and fast mission execution. Enabling UAVs to safely land on
+a nearby vessel for recharging during extensive inspections
+greatly increases the flexibility in task execution. Having a
+fast and reliable way to land during a variety of weather
+conditions is therefore essential, especially when the battery
+is running low, leaving little time for the landing maneuver.
+However, landing successfully on a moving vessel is gen-
+erally difficult, especially under harsh sea conditions, when
+1 Department of Mechanical Engineering, TU/e, Eindhoven University
+of Technology, Eindhoven, The Netherlands
+Email: s.doodeman@tue.nl
+This research is supported by the Renewable Energy Transition Topsector
+Energy subsidies (HER+22-02-03430912) from the Dutch Ministry of
+Economic Affairs.
+Fig. 1.
+Experimental setup where a Holybro X500 successfully lands on
+a 6-DOF Acrome Stewart Stage mimicking vessel motion
+the vessel experiences pronounced roll and pitch motions. A
+standard multirotor UAV has four independent control inputs
+(total thrust and three rotation moments), but six degrees of
+freedom (DOFs) and is therefore underactuated. Therefore,
+the 6-DOF landing platform on a vessel is a non-equilibrium
+target, creating a challenging control problem. A trajectory
+tracking controller is therefore not a feasible solution. The
+presence of disturbances, such as wind disturbances and the
+ground effect [3], [4], makes landing on a moving vessel an
+even more complicated task.
+One solution is to equip the UAV with tilting rotors,
+allowing 6-DOF actuation [5], [6], or to design a custom
+actuated landing platform to cancel the motion of the vessel
+[7]. However, these solutions require additional hardware and
+a custom UAV with an added payload for actuation, or rely
+on a communication link to the vessel. Therefore, we focus
+on solutions within the UAV control framework.
+Existing solutions include a dynamic cost Model Predic-
+tive Control (MPC) method [8], which starts prioritizing
+orientation of the UAV over tracking the position as it gets
+closer to the moving vessel. Similarly, [9] and [10] use an
+MPC position tracking controller to land on a moving vessel,
+while minimizing tilt during landing. A disadvantage of
+these position tracking methods is that they always introduce
+an error when reaching the non-equilibrium point, and an
+appropriate descent rate has to be picked to make sure the
+UAV is not too low before reaching the right horizontal
+position. Greer and Sultan propose a shrinking horizon MPC
+approach to land a helicopter on a moving platform, allowing
+arXiv:2609.34574v1  [eess.SY]  28 Sep 2026
+
+
+it to reach a non-equilibrium point [11]. However, this
+method is only verified in simulation. In [12], landing on
+a moving mobile robot with an inclined surface is achieved
+by introducing a terminal set at the platform within an MPC
+formulation and optimizing the horizon length. However,
+all methods in [8], [11], [12] do not consider disturbances,
+making them vulnerable, for example, to wind forces acting
+on the UAV. This is especially troublesome as recursive
+feasibility is then not assured; disturbances may drive the
+system into regions where the MPC optimization problem is
+no longer guaranteed to remain feasible. This results in the
+undesired need to have a fallback scenario (e.g., switching
+to a simpler controller) to provide the control input, and the
+properties promised by MPC are lost.
+Deep reinforcement learning methods have been applied
+as well [13], [14]. Although these methods are promising,
+they suffer from a lack of robustness guarantees, which is
+essential when the UAVs carry expensive inspection equip-
+ment, such as cameras or X-ray devices, e.g., for offshore
+asset inspections [2], [15].
+As multirotor UAVs are underactuated, matching the po-
+sition and orientation of a vessel requires optimizing the
+trajectory of the UAV over a given time, rather than tracking
+a state. VH-MPC does this and also optimizes the arrival
+horizon online. However, in the presence of disturbances,
+VH-MPC loses recursive feasibility. To guarantee robustness
+against bounded disturbances, [16] combines VH-MPC with
+tube MPC, also known as robust MPC, providing recursive
+feasibility. The tube MPC formulation introduces additional
+computational complexity through the horizon-dependent
+propagation of disturbance sets and the resulting tightened
+constraints. This can be avoided by employing a single
+robust positively invariant (RPI) set as the tube cross-section,
+yielding horizon-independent constraint tightening [17].
+The optimization over the full horizon length in VH-MPC
+can result in high computational costs, as multiple candidate
+horizons must be considered online [16]. This is limiting for
+a multirotor UAV, where a body rate controller must run at
+a high rate to match the tilt of the UAV with the moving
+platform while landing. Moreover, such a high control rate
+requires small step sizes, requiring a longer horizon length
+with longer computation times to still include the full landing
+procedure.
+To the best of the authors’ knowledge, no robust variable-
+horizon approach exists that is efficient enough to apply to
+a real-time multirotor UAV landing on a 6-DOF moving
+platform in the presence of bounded disturbances. This paper
+closes that gap for a 6-DOF vessel. The contributions of
+this work are threefold. First, we develop a computationally
+efficient Robust Variable-Horizon MPC formulation for ro-
+bustly reaching a non-equilibrium target under bounded dis-
+turbances. The computational cost of the proposed variable-
+horizon approach is reduced by restricting the online horizon
+search to a neighborhood of the previously selected horizon.
+In addition, using a fixed RPI tube makes the constraint tight-
+ening independent of the prediction horizon, thereby simpli-
+fying the optimization while retaining recursive feasibility
+guarantees. Second, we develop a practical control architec-
+ture that applies a robust VH-MPC formulation to the landing
+of a UAV on a 6-DOF moving platform, which integrates an
+outer-loop horizon selection procedure for a decoupled lin-
+earized UAV model. Differential flatness allows decoupling
+of the linearized system [18], which makes the calculation
+of the fixed RPI tube feasible, and it also allows solving
+the robust VH-MPC control inputs under a high control rate.
+Third, we experimentally demonstrate the effectiveness of the
+resulting controller for landing maneuvers. The experiments
+validate both the real-time computational performance and
+the ability to robustly reach a non-equilibrium landing state.
+This paper is organized as follows: Section II provides the
+preliminaries. In Section III, we present the robust VH-MPC
+method to reach a non-equilibrium point under bounded
+disturbances. Section IV elaborates on the framework that
+applies the robust VH-MPC method to a multirotor UAV to
+land on a moving platform in real-time. The experiments
+that were performed to validate the introduced framework
+are described in Section V. Finally, Section VI provides
+concluding remarks.
+II. PRELIMINARIES
+Let us denote the Minkowski sum and Minkowski (Pon-
+tryagin) set difference as ⊕and ⊖, respectively. Specifically,
+given two sets A and B, A ⊕B = {a + b : a ∈A, b ∈B}
+and A ⊖B = {a : {a} ⊕B ⊆A}.
+Throughout this paper, we consider the discrete linear
+time-invariant system
+x(k + 1) = Ax(k) + Bu(k) + w(k),
+(1)
+where x(k) ∈Rn, u(k) ∈Rm, and w(k) ∈Rn are the
+system state, control input, and disturbance at time k ∈N+,
+respectively. System matrices A and B define the linear
+dynamics of the system. The state and input constraints
+are described by the convex sets X ⊆Rn and U ⊆Rm,
+respectively. The disturbance is assumed to be bounded by
+the compact convex set W ⊆Rn, where 0 ∈W. Within the
+tube MPC formulation [17], the trajectory of the nominal
+system is optimized, and the implemented control action is
+derived from the first element of the resulting nominal input
+sequence. Specifically, the nominal system is given by
+z(k + 1) = Az(k) + Bv(k),
+(2)
+where z(k) ∈Rn and v(k) ∈Rm are the nominal states
+and inputs, respectively. We assume that the system is
+controllable and thus a linear feedback gain K can be derived
+such that (A+BK) is Schur. Then, the control input for the
+real system (1) is given by
+u(k) = v(k) + K(x(k) −z(k)) = v(k) + Ke(k),
+(3)
+where e(k) = x(k) −z(k) denotes the error between the
+real and nominal states. The error dynamics evolve as
+e(k + 1) = (A + BK)e(k) + w(k).
+(4)
+Then, as proved in [17] under the underlying assumptions
+mentioned above, an RPI set E exists such that (A+BK)E⊕
+
+
+W ⊆E. Furthermore, we assume that X ⊖E and U ⊖KE
+are nonempty.
+III. ROBUST VARIABLE-HORIZON MPC
+This section presents a computationally efficient robust
+VH-MPC method that enables robustly reaching a non-
+equilibrium point, using an efficient horizon search.
+Using robust VH-MPC is motivated by the fact that
+nominal MPC fails to reach a non-equilibrium target, as
+Fig. 2 illustrates. For an objective function that, over the full
+horizon length, penalizes the error in position and velocity,
+as well as the input, the nominal MPC cannot attain the
+target state. VH-MPC could reach the target in the absence of
+disturbances but becomes infeasible since it is pushed outside
+the constraint set X due to the given bounded disturbances.
+Robust VH-MPC combines VH-MPC with tube MPC to
+guarantee recursive feasibility, making it a suitable choice
+for landing a UAV on a moving platform under bounded
+disturbances. This is why we base our formulation on [16].
+At each robust VH-MPC update instant k, the pre-
+dicted
+nominal
+state
+and
+input
+sequences
+are
+de-
+noted by Zk
+=
+[zk(0), zk(1), ..., zk(Nk)] and Vk
+=
+[vk(0), vk(1), ..., vk(Nk −1)], respectively, with prediction
+horizon Nk. Given the target state r(k) ∈Rn at step k, we
+define the following nominal cost function, similar to [16]:
+J(Zk, Vk, Nk) =
+Nk
+X
+j=0
+||zk(j) −r(k + j)||2
+Q
++
+Nk−1
+X
+j=0
+||vk(j)||2
+R + γNk.
+(5)
+Here, positive definite Q and R are state and input cost
+matrices, and γ ≥0 is a weighting factor that enforces a
+reduction of the horizon length. Cost (5) is to be minimized
+for the horizon length Nk, nominal state sequence sequence
+Zk and control input sequence Vk via the following robust
+VH-MPC problem:
+J∗= min
+Nk min
+Zk,Vk J(Zk, Vk, Nk),
+(6a)
+s.t. x(k) ∈{zk(0)} ⊕E,
+(6b)
+zk(j + 1) = Azk(j) + Bvk(j),
+j ∈{0, ..., Nk −1},
+(6c)
+zk(j) ∈X ⊖E for j ∈{0, ..., Nk −1},
+(6d)
+vk(j) ∈U ⊖KE for j ∈{0, ..., Nk −1},
+(6e)
+zk(Nk) = r(k + Nk),
+(6f)
+Nk ∈
+
+N ∗
+k−1 −1 −∆N, N ∗
+k−1 −1 + ∆N
+
+∩N+,
+(6g)
+where ∆N defines the search range of horizon lengths
+around the optimal horizon length N ∗
+k−1 from the previous
+iteration. Based on the optimal horizon length N ∗
+k, the
+applied nominal control input is then picked as the first
+control input in
+V ∗
+k = arg min
+V
+N∗
+k
+k
+J(V N∗
+k
+k
+, N ∗
+k).
+(7)
+Since solving (6) is computationally demanding for a
+large set of horizon lengths, we modify the formulation
+with respect to [16] by only considering a range of horizons
+around the previous optimal horizon length in (6g). We now
+prove that recursive feasibility is still maintained for this
+formulation.
+Proposition 1. If problem (6) is feasible at time k with
+optimal horizon N ∗
+k ≥1, then it is feasible at time k + 1 for
+horizon Nk+1 = N ∗
+k −1.
+Proof. Let {z∗
+k(j), v∗
+k(j)} denote a feasible solution at time
+k. Since
+x(k) ∈{z∗
+k(0)} ⊕E,
+the tube error satisfies e(k) ∈E. By the RPI property,
+e(k + j) ∈E,
+∀j ≥0,
+and therefore
+x(k + j) ∈{z∗
+k(j)} ⊕E,
+∀j ≥0.
+In particular,
+x(k + 1) ∈{z∗
+k(1)} ⊕E.
+Hence, the shifted sequence
+ˆzk+1(j) = z∗
+k(j + 1),
+ˆvk+1(j) = v∗
+k(j + 1)
+satisfies the initial, state, and input constraints at time k + 1.
+Moreover,
+ˆzk+1(N ∗
+k −1) = z∗
+k(N ∗
+k) = r(k + N ∗
+k)
+= r((k + 1) + (N ∗
+k −1)) ,
+and thus satisfies the terminal equality. Consequently, the
+OCP is feasible at time k + 1 with horizon N ∗
+k −1. Since
+N ∗
+k −1 belongs to the feasible horizon set in (6g) for any
+∆N ≥0, recursive feasibility follows.
+Fig. 3 illustrates the influence of γ on the task execution,
+where a higher value of γ enforces a faster time of arrival. A
+low value of γ will result in a smoother trajectory (by tuning
+Q) and/or a smoother input profile (by tuning R).
+Since this controller is designed to run at a high frequency,
+depending on the chosen value of ∆N, the horizon can
+quickly adjust to an optimal value over time. This is also
+visible in Fig. 3, where for high values of γ, the lowest
+horizon length in the given range in (6g) is only selected
+once. Note that for ∆N = 0, the approach is identical to a
+standard shrinking horizon approach.
+IV. ROBUST VH-MPC-BASED UAV CONTROL
+ARCHITECTURE
+To apply robust VH-MPC at a high control rate for UAV
+landing, we combine the formulation of Section III with a
+decoupled linearized UAV model and a fixed RPI tube.
+Fig. 4 shows an overview of the applied control architec-
+ture. For the calculation of the thrust and body rate inputs
+of the UAV, we apply the robust VH-MPC method from
+Section III to a decoupled, linearized model of a multirotor
+
+
+0
+1
+2
+3
+p [m]
+-2
+-1
+0
+1
+2
+v [m/s]
+Nominal MPC
+0
+1
+2
+3
+p [m]
+-2
+-1
+0
+1
+2
+v [m/s]
+VH-MPC
+0
+1
+2
+3
+p [m]
+-2
+-1
+0
+1
+2
+v [m/s]
+Robust VH-MPC
+X
+X * E
+E
+Real trajectory x
+Nominal trajectory z
+Target state r
+Infeasible
+Fig. 2.
+Trajectories for a simple double integrator system from initial state [2.5 0]⊤to non-equilibrium target state [1 1]⊤(green cross) obtained with
+robust VH-MPC, VH-MPC, and nominal MPC approaches under bounded disturbances. The light red boxes indicate the constraint set X, the yellow box
+shows the shrunken set X ⊖E, and the light blue regions represent tube E. Finally, the magenta cross shows an infeasible state due to state or input bound
+constraints. See the full implementation at gitlab.tue.nl/tue-waari/rvhmpc
+0
+10
+k
+0
+5
+10
+Nk
+γ = 0.0, kend = 16
+0
+10
+k
+0
+5
+10
+Nk
+γ = 1.0, kend = 15
+0
+5
+10
+k
+0
+5
+10
+Nk
+γ = 10.0, kend = 12
+0
+5
+k
+0
+5
+10
+Nk
+γ = 100.0, kend = 9
+2
+4
+log(J + γNk)
+1
+2
+3
+4
+5
+log(J + γNk)
+3
+4
+5
+log(J + γNk)
+5
+6
+7
+log(J + γNk)
+Cost per candidate horizon
+Invalid horizon
+Chosen horizon
+Fig. 3.
+Costs for the evaluated horizons for each timestep for a simulation
+of a simple 3D system. The red dots indicate the chosen Nk, the magenta
+crosses indicate infeasible Nk. A constant reference state rk is used for
+these simulations. See our repository for details.
+UAV and introduce an inner and outer optimization step to
+cope with the decoupling of the system. In the architecture
+in Fig. 4, the robust VH-MPC control loop is designed to
+run at 20 Hz; this computational performance is evaluated
+experimentally in Section V-A. The thrust and body rates
+are maintained in a high-rate inner loop, resulting in the
+direct PWM motor signals. Since this inner loop runs at a
+higher rate, we treat the rate tracking as instantaneous. For
+the robust VH-MPC implementation, an RPI set is required.
+Section IV-B describes how this RPI set is derived. We now
+elaborate on the control design choices that were made to
+achieve a practical real-time robust VH-MPC control loop
+for a UAV, starting with the modeling of the system.
+A. Modeling and OCP for the multirotor UAV
+The states of the multirotor UAV that are considered
+relevant for landing on a moving platform are the position
+p ∈R3, velocity v ∈R3, and attitude η ∈R3, for which the
+Tube calculation
+AcadosSolver
+Build MPC
+fomulation
+Robust
+VH-MPC
+20 Hz
+UAV
+PWM
+PX4 inner loop
+controller
+1000 Hz
+Platform motion
+estimate
+Offline
+Onboard Raspberry Pi 5
+Onboard Pixhawk 6C
+Fig. 4.
+Robust VH-MPC control loop for the multirotor UAV
+Fig. 5.
+Used UAV coordinate frame
+latter is decomposed into the roll φ, pitch θ, and yaw ψ of
+the UAV. These angles form the rotation matrix R ∈SO(3)
+that maps any vector in the UAV body-fixed frame B to the
+inertial frame I using the Euler XY Z convention (Fig. 5).
+The considered control inputs for the system are given by
+the total thrust T, and the body rates p, q, and r. Since
+the translational dynamics are independent of the yaw of a
+multirotor UAV, the yaw is omitted from the UAV state and is
+controlled separately with a PD controller. This leaves eight
+states to be controlled. Although an MPC formulation with a
+linear model can be solved very efficiently with a Quadratic
+Programming (QP) solver, this high dimensionality still
+results in computational complexity. Therefore, we apply the
+differential flatness result in [18] and decouple the system
+into subsystems with at most three states.
+Given the general multirotor UAV system dynamics
+˙p = v,
+(8a)
+˙v = −g + 1
+mR(η)
+0
+0
+T⊤+ Fext,
+(8b)
+˙η =
+p
+q
+r⊤,
+(8c)
+
+
+where g is the gravitational acceleration and Fext represents
+the external disturbance forces acting on the system; we
+then derive the decoupled linearized dynamics for system
+states x1 =
+px
+vx
+θ⊤, x2 =
+py
+vy
+φ⊤, and
+x3 =
+pz
+vz
+⊤as
+˙x1 =
+
+
+0
+1
+0
+0
+0
+g
+0
+0
+0
+
+x1 +
+
+
+0
+0
+1
+
+q + w1,
+(9a)
+˙x2 =
+
+
+0
+1
+0
+0
+0
+−g
+0
+0
+0
+
+x2 +
+
+
+0
+0
+1
+
+p + w2,
+(9b)
+˙x3 =
+0
+1
+0
+0
+
+x3 +
+0
+1
+
+T + w3.
+(9c)
+This decoupling is central to the real-time implementation:
+it reduces the RPI-set calculation and MPC subproblems to
+systems of at most three states, while allowing the horizon
+selection to be performed over the complete UAV objective,
+as we show next.
+We discretize this linear system and use it within the MPC
+framework. To efficiently solve the robust VH-MPC problem
+in (6), we first solve the MPC formulation for each subsystem
+in (9) individually for the selected horizon range
+Ji(xi(k), Nk) = min
+Vk
+Nk
+X
+j=0
+||zk,i(j) −ri(k + j)||2
+Qi
++
+Nk−1
+X
+j=0
+||vk,i(j)||2
+Ri,
+s.t. (6b)- (6g),
+(10)
+after which we choose the best horizon:
+J∗= min
+Nk γNk +
+X
+i∈{1,2,3}
+Ji(xi(k), Nk),
+(11)
+where Qi and Ri are such that Q = diag(Q1, Q2, Q3) and
+R = diag(R1, R2, R3) for i ∈{1, 2, 3}.
+Remark 1. The linearized model is valid around the hover-
+ing state of a multirotor UAV. Especially for touchdowns with
+higher angles, this approximation is less accurate. However,
+the discrepancies caused by the nonlinearity of the system
+can be seen as part of the disturbance wi for i ∈{1, 2, 3}.
+From the resulting optimal horizon in (11), we derive the
+optimal control inputs for each subsystem.
+B. Tube calculation
+The robust VH-MPC formulation evaluates multiple can-
+didate horizons at each update. Using state- or horizon-
+dependent tube sets would therefore increase the computa-
+tional burden. We therefore use a single fixed RPI set E as
+the tube cross-section, which can be calculated offline. The
+decoupling of the linearized system ensures that such an RPI
+set only needs to be calculated for up to three dimensions.
+However, computing this RPI set is still challenging.
+A polytopic representation of tube cross-section E is
+adopted in this work, i.e.,
+E = e ∈Rn : He ≤h,
+where matrix H and vector h define the half-space repre-
+sentation. This yields linear constraints and preserves the
+tractability of problem (6) at high control rates. However,
+the number of facets required to represent an exact finite
+RPI set generally increases rapidly with the state dimension,
+resulting in a significant computational burden. To address
+this and retain the robustness properties, an approximation of
+the RPI set is used based on [19]. Under this framework, E
+is computed offline by optimizing vector h for a prescribed
+matrix H. The associated optimization problem is a linear
+program (LP) and can therefore be solved efficiently.
+To obtain a suitable matrix H, we first construct an
+invariant ellipsoid S(P) = {e ∈Rn
+: ||e||2
+P
+≤1}
+from the closed-loop system matrix Acl = A + BK and
+disturbance set W, using [20], such that for system (1)-(2),
+if e ∈S(P), then e ∈S(P) for i ∈N+. The ellipsoidal
+invariant set is then approximated by a polytope obtained
+from supporting hyperplanes. The hyperplane normals are
+generated by sampling rotations in each coordinate plane,
+while the corresponding offsets are computed exactly from
+the ellipsoid support function h(n) = ||n||P . While this
+ellipsoidal approximation is not guaranteed to be invariant, it
+is used only to define the facet normals H. The optimization
+of offset vector h according to [19] guarantees that the
+resulting set is RPI.
+Remark 2. Numerous methods utilize a dynamic shape of
+the tube E for less conservatism and better control perfor-
+mance [21], [22]. Although especially at the final stages of
+landing, high control performance is essential, a dynamic
+tube comes at a high computational cost. Therefore, we have
+chosen a fixed RPI set, trading potential reduction in conser-
+vatism for a reduction in computational complexity, which
+is important for the considered high-rate implementation.
+A full implementation of the described method can be
+found at gitlab.tue.nl/tue-waari/rvhmpc.
+V. EXPERIMENTAL VALIDATION
+This section validates four aspects required for the pro-
+posed approach: the computational feasibility of the proposed
+controller, its robustness, and the landing performance of a
+real multirotor UAV on a moving platform. The range of
+initial conditions for which the landing problem is feasible
+is analyzed as well. Throughout this section, the parameters
+in Table I are used. Furthermore, K is chosen to be the LQR
+feedback gain.
+A. Computational performance and horizon selection
+The proposed efficient horizon search from Section III
+aims at reducing the computational complexity of robust VH-
+MPC, while still maintaining its effectiveness. To validate
+this, the discretized linear system in (9) was simulated in
+Python with a fixed time step. In these simulations, the initial
+
+
+UAV positions are 1.0 ± 0.5 [m] above the target state, with
+horizontal deviations of 1.0 ± 0.5 [m]. Noise is bounded
+such that ||wi,max|| <= 1.0. In this analytical simulation, the
+platform target state has a roll angle of 15 degrees and a pitch
+of 30 degrees. All simulations are performed on a Raspberry
+Pi 5 to show that the method is practical for a relatively
+lightweight computer. For each horizon set dependent on
+∆N, 1000 simulation runs are performed.
+From the results in Table II, it is clear that restricting the
+horizon search substantially reduces the computation times
+with only a limited increase in cumulative objective costs.
+For example, at ∆N = 4, the controller evaluates nine
+candidate horizons and remains below a control period of
+50 ms for all iterations, with a total cost almost equal to
+considering all horizons, indicating that the proposed method
+is computationally suitable for 20 Hz real-time operation.
+B. Initial feasibility
+Proposition 1 guarantees recursive feasibility only when
+the initial optimization problem is feasible. Therefore, we
+characterize the set of relative UAV positions from which the
+proposed controller can initiate landing for the parameters in
+Table I. When hovering and for a flat platform, the initial
+position p0 should lie in {p : px ∈[−2.93, 2.93], py ∈
+[−2.93, 2.93], pz ∈[−0.10, 3.47]}. For a moving platform
+with a roll of 30 degrees, pitch of 15 degrees, and velocity
+of vt =
+1.0
+2.0
+0.5⊤, and a moving UAV with a roll
+of 15 degrees, pitch of 30 degrees, and a horizontal velocity
+of v =
+2.0
+−1.0
+0.0⊤, p0 should lie in {p : px ∈
+[−3.74, 1.31], py
+∈
+[−2.93, 1.92], pz
+∈
+[−0.10, 3.35]}.
+These results show that, for varying initial conditions, land-
+ing can be initiated from a safe distance from the platform.
+TABLE I
+USED PARAMETERS THROUGHOUT SIMULATIONS AND EXPERIMENTS
+Parameter
+Value
+Parameter
+Value
+Timestep
+0.05 s
+Q1, Q2
+diag(2.0, 2.0, 0.8)
+Maximum horizon
+30
+Q3
+diag(30.0, 10.0)
+∆N
+1
+R1, R2
+6.0
+γ
+0.50
+R3
+2.0
+vz,land
+−0.35
+TABLE II
+EFFECT OF ∆N ON LANDING PERFORMANCE FOR PYTHON
+SIMULATIONS, ASSUMING INSTANT ROBUST VH-MPC CALCULATION
+TIMES
+∆N
+Solve Time
+Landing Time
+Landing
+Total Cost
+(ms)
+(s)
+Accuracy
+×103
+(m)
+0
+5.03 ± 0.10
+1.50 ± 0.00
+0.15 ± 0.03
+14.97 ± 9.9
+1
+15.10 ± 1.09
+1.72 ± 0.20
+0.14 ± 0.04
+14.38 ± 8.7
+2
+23.18 ± 1.30
+1.72 ± 0.21
+0.14 ± 0.04
+14.37 ± 8.7
+4
+38.97 ± 1.78
+1.71 ± 0.21
+0.14 ± 0.04
+14.36 ± 8.8
+10
+80.86 ± 2.43
+1.71 ± 0.22
+0.14 ± 0.04
+14.35 ± 8.8
+All
+146.9 ± 2.4
+1.71 ± 0.22
+0.14 ± 0.04
+14.35 ± 8.8
+C. Robustness
+A Gazebo setup simulates a virtual Holybro X500 quadro-
+tor together with a 6-DOF moving platform, using the
+architecture in Fig. 4. These simulations are performed in
+real time and include computation delays. For all simulations,
+the platform moves periodically with the amplitudes and
+frequencies given in Table III, together with the range of
+initial hovering positions from which the landing maneuvers
+were started. Throughout the simulation, the ground truth
+states of the UAV and platform are available for the robust
+VH-MPC implementation, and the required platform motion
+prediction is estimated by an Extended Kalman Filter (EKF).
+The results in Table IV demonstrate the importance of the
+efficient horizon search. For each ∆N, around 25 simulations
+were performed. Although evaluating all horizons provides
+lower cumulative costs, the success rate is substantially lower
+when real-time computation delays are included. From this,
+∆N = 2 provides the best real-time performance in terms of
+the cost function and success rate, while ∆N = 0 provides
+the highest mission success rate.
+D. UAV landing experiment
+To validate the effectiveness of the proposed architecture
+on a real UAV, the experimental setup in Fig. 1 was used.
+This setup consists of a Holybro X500 quadcopter with a
+Pixhawk 6C flight controller and an onboard Raspberry Pi
+5 for the robust VH-MPC control loop. To mimic vessel
+motions, an Acrome Stewart Platform [23] has been used to
+land on. Since general vessel motions are close to sinusoidal
+motions [24], the Stewart platform was controlled to move
+in sinusoidal motions, specifically, a harmonic pitch motion
+with an amplitude of 15 degrees at a period of 7 seconds. An
+TABLE III
+INITIAL UAV POSITIONS AND PLATFORM MOTION PARAMETERS
+x
+y
+z
+Initial UAV position [m]
+[2.5, 3.0]
+[−1.0, 0.0]
+2.5
+Platform amplitude [m]
+0.2
+0.3
+0.3
+Platform frequency [rad/s]
+0.3
+0.5
+0.8
+ϕ
+θ
+ψ
+Platform amplitude [deg]
+10
+20
+5
+Platform frequency [rad/s]
+0.4
+0.2
+0.1
+TABLE IV
+EFFECT OF ∆N ON LANDING PERFORMANCE DURING REAL-TIME
+GAZEBO SIMULATIONS
+∆N
+Success
+Landing Time
+Landing
+Total Cost
+Rate
+(s)
+Accuracy
+(m)
+0
+92.9%
+2.00 ± 0.66
+0.17 ± 0.01
+96.3 ± 27.9
+1
+70.8%
+2.20 ± 1.24
+0.16 ± 0.00
+110.4 ± 74.2
+2
+72.0%
+1.76 ± 0.84
+0.17 ± 0.00
+88.7 ± 17.5
+4
+67.9%
+2.46 ± 1.66
+0.17 ± 0.00
+99.0 ± 31.4
+10
+50.0%
+3.04 ± 2.18
+0.17 ± 0.01
+116.2 ± 71.3
+All
+0.0%
+—
+—
+—
+
+
+OptiTrack Motion Capture system provides UAV and plat-
+form position and attitude measurements. In the experiments,
+the reference estimation in the robust VH-MPC problem
+in (11) is represented by a platform state estimation in 6
+DOFs over time for the future horizons, obtained using a
+simple Extended Kalman Filter (EKF). The standard PX4
+EKF was used to obtain full state measurements of the
+UAV, incorporating the UAV motion capture measurements.
+In an offshore application, these state estimates can be
+obtained using computer vision measurements, for example.
+The predicted state of the moving platform was not directly
+used withing the robust VH-MPC formulation; instead, a
+downward landing velocity of vz,land, normal to the platform,
+was considered to ensure a timely and decisive touchdown.
+During the experiments, the platform motion estimates and
+robust VH-MPC control inputs were calculated in real-time
+on an onboard Raspberry Pi 5, following the architecture
+in Fig. 4. The robust VH-MPC control scheme was imple-
+mented in Python with acados [25], using an SQP-based
+formulation with Gauss-Newton Hessian approximation and
+the partial-condensing HPIPM QP solver, running at 20
+Hz. The calculation of the RPI set and building the MPC
+formulation in acados can be done offline. For the state and
+input bounds X and U, box constraints were used. The distur-
+bances during the experiments are assumed to be bounded
+using a box constraint, where |w1| ≤
+0.0
+0.0
+0.10⊤,
+|w2| ≤
+0.0
+0.0
+0.10⊤, and |w3| ≤
+0.0
+0.0
+0.15⊤.
+The robust VH-MPC formulation assumes bounded distur-
+bances. However, in implementation, if no feasible solution
+is found within the nominal search range, the horizon range
+is extended as a practical fallback.
+During the experiments with the setup in Fig. 1, the UAV
+was manually flown to a feasible state above the moving
+platform, 0.75−1.4 [m] above the platform, after which the
+controller from Section IV was enabled.
+Fig. 6 shows the 3D trajectory of the UAV during one
+of these experiments, including a projection of the tube set
+E, and Fig. 7 shows the evolution of the states during the
+landing procedure of a typical experiment. Here, the real
+state remains within the RPI set around the nominal trajec-
+tory throughout the landing procedure, while the nominal
+trajectory matches the terminal target state, i.e., the moving
+platform. The decoupling of the UAV dynamics explains the
+rectangular shape of the RPI tube. The deviation of the real
+state with respect to the nominal state, permitted by the tube,
+is relatively high for the position, whereas the velocity and
+tilt deviations are smaller, which is particularly important for
+a successful landing. The y-position and velocity, as well as
+the roll of the UAV, are omitted in Fig. 7 since these are
+similar to the x state and exhibit less pronounced control
+behavior, since the roll of the platform was close to zero.
+Fig. 8 highlights the selection of the horizon length from
+the given range using ∆N. The selected horizons demon-
+strate how the horizon can adapt while searching only a small
+neighborhood around the previously selected horizon. This,
+together with the results in Table IV, indicates that a small
+0.6
+0.8
+1
+0.4
+1.2
+1.4
+1.6
+y [m]
+z [m]
+1.8
+0.6
+x [m]
+Trajectory with tube
+0.8
+2.5
+2.6
+2.7
+2.8
+2.9
+Real state x
+Nominal state z
+Target state r
+Terminal x
+Terminal z
+Terminal r
+Projected tube E
+Fig. 6.
+3D UAV landing trajectory and projected RPI tube E. The nominal
+trajectory reaches the moving target state r at the terminal time, while the
+measured trajectory remains within the tube.
+State and nominal state evolution over time
+0
+0.5
+1
+t [s]
+2.4
+2.6
+2.8
+3
+px [m]
+0
+0.5
+1
+t [s]
+-0.4
+-0.2
+0
+0.2
+vx [m=s]
+0
+0.5
+1
+t [s]
+-0.1
+0
+0.1
+0.2
+0.3
+3 [rad]
+0
+0.5
+1
+t [s]
+0
+0.5
+1
+1.5
+2
+2.5
+px [m]
+0
+0.5
+1
+t [s]
+-1.5
+-1
+-0.5
+0
+vz [m=s]
+Real state x
+Nominal state z
+Target state r
+Projected tube E
+Fig. 7.
+State evolution over time during the landing procedure. The
+measured state x mostly remains within the projected tube.
+horizon search is sufficient for effective real-time horizon
+adaptation.
+E. Discussion
+The use of a fixed RPI tube introduces a trade-off between
+robustness and landing accuracy. Larger disturbance bounds
+result in a larger tube and therefore more conservative
+tightened constraints, which can limit how closely the UAV
+can match the platform state at touchdown.
+During the experiments, disturbances are never fully
+bounded within W and can still lead to infeasible candidate
+horizons. The implemented extension of the horizon search
+provides a practical fallback, but this behavior is not covered
+by the recursive-feasibility guarantee.
+The physical experiments demonstrate the feasibility of the
+complete onboard architecture and robust control behavior,
+
+
+0
+0.2
+0.4
+0.6
+0.8
+1
+Time [s]
+0
+10
+20
+30
+Horizon length Nh
+Cost per horizon
+4
+5
+6
+7
+8
+Cost log(J)
+Best Nh
+Fig. 8.
+Cost per horizon and selected horizon over time. The cost-to-go
+is reduced at every time step, while the horizon length has the flexibility to
+change to achieve a lower cost-to-go.
+but the experimental conditions remain simpler than those of
+a real vessel. The Stewart platform reproduces representative
+periodic platform motion, but is limited to a harmonic pitch
+motion. Consequently, the proposed architecture has not yet
+been experimentally evaluated under simultaneous 6-DOF
+vessel motion. Such experiments are an important next step
+toward validating the approach under more representative
+landing conditions.
+VI. CONCLUSION
+The robust VH-MPC method allows a system to robustly
+reach a non-equilibrium point, while the extension to a
+multirotor UAV system offers a method to robustly land on a
+6-DOF moving platform in real-time. Experiments showcase
+how the method can be run on a lightweight Raspberry
+Pi onboard computer to control the body rates and thrust
+reliably at 20 Hz. Future work includes using vision-based
+measurements for platform detection to allow running the al-
+gorithm fully onboard the UAV, without the need for external
+measurements. Including the measurement and vessel motion
+modelling errors could then also be incorporated in the robust
+VH-MPC framework. When implemented successfully, the
+proposed method can be tested in a real scenario to land a
+multirotor UAV robustly on a vessel in the presence of wind
+disturbances.
+REFERENCES
+[1] M. Fun Sang Cepeda, M. D. S. Freitas Machado, F. H. Sousa Barbosa,
+D. Santana Souza Moreira, M. J. Legaz Almansa, M. I. Lourenc¸o
+De Souza, and J.-D. Caprace, “Exploring Autonomous and Remotely
+Operated Vehicles in Offshore Structure Inspections,” Journal of
+Marine Science and Engineering, vol. 11, no. 11, p. 2172, Nov. 2023.
+[2] B. Meere, S. Doodeman, F. P. Vidal, P. Chanfreut, E. Torta, and D. An-
+tunes, “X-ray Image Generation for Robotic Radiography: a Case
+Study on Motion Blur in Drone-Based Wind Turbine Inspections,”
+Journal of Nondestructive Evaluation, vol. 44, no. 4, p. 139, Dec.
+2025.
+[3] P. Sanchez-Cuevas, G. Heredia, and A. Ollero, “Characterization of the
+Aerodynamic Ground Effect and Its Influence in Multirotor Control,”
+International Journal of Aerospace Engineering, vol. 2017, pp. 1–17,
+2017.
+[4] X. Kan, J. Thomas, H. Teng, H. G. Tanner, V. Kumar, and K. Karydis,
+“Analysis of Ground Effect for Small-Scale UAVs in Forward Flight,”
+IEEE Robotics and Automation Letters, vol. 4, no. 4, pp. 3860–3867,
+Oct. 2019.
+[5] D. Lee, S. Hwang, J. Byun, S. J. Lee, and H. Jin Kim, “Autonomous
+aerial perching and unperching using omnidirectional tiltrotor and
+switching controller,” in 2024 IEEE International Conference on
+Robotics and Automation (ICRA).
+Yokohama, Japan: IEEE, May
+2024, pp. 1590–1596.
+[6] H. Iida, J. Sugihara, K. Sugihara, H. Kozuka, J. Li, K. Nagato, and
+M. Zhao, “Adaptive Perching and Grasping by Aerial Robot with
+Light-Weight and High Grip-Force Tendon-Driven Three-Fingered
+Hand Using Single Actuator,” in 2025 IEEE International Conference
+on Robotics and Automation (ICRA).
+Atlanta, GA, USA: IEEE, May
+2025, pp. 15 218–15 224.
+[7] X. Liu, M. Shao, T. Zhang, H. Zhou, L. Song, F. Jia, C. Sun, and
+Z. Yang, “Research on Motion Control and Compensation of UAV
+Shipborne Autonomous Landing Platform,” World Electric Vehicle
+Journal, vol. 15, no. 9, p. 388, Aug. 2024.
+[8] O. Proch´azka, F. Nov´ak, T. B´aˇca, P. M. Gupta, R. Pˇeniˇcka, and
+M. Saska, “Model predictive control-based trajectory generation for
+agile landing of unmanned aerial vehicle on a moving boat,” Ocean
+Engineering, vol. 313, p. 119164, Dec. 2024.
+[9] J. Stephenson, N. T. Duncan, and M. Greeff, “Distributed Model
+Predictive Control for Cooperative Multirotor Landing on Uncrewed
+Surface Vessel in Waves,” in 2024 International Conference on Un-
+manned Aircraft Systems (ICUAS).
+Chania - Crete, Greece: IEEE,
+June 2024, pp. 645–651.
+[10] P. M. Gupta, E. Pairet, T. Nascimento, and M. Saska, “Landing a
+UAV in Harsh Winds and Turbulent Open Waters,” IEEE Robotics
+and Automation Letters, vol. 8, no. 2, pp. 744–751, Feb. 2023.
+[11] W. B. Greer and C. Sultan, “Shrinking Horizon Model Predictive Con-
+trol Method for Helicopter–Ship Touchdown,” Journal of Guidance,
+Control, and Dynamics, vol. 43, no. 5, pp. 884–900, May 2020.
+[12] P. Vlantis, P. Marantos, C. P. Bechlioulis, and K. J. Kyriakopoulos,
+“Quadrotor landing on an inclined platform of a moving ground
+vehicle,” in 2015 IEEE International Conference on Robotics and
+Automation (ICRA).
+Seattle, WA, USA: IEEE, May 2015, pp. 2202–
+2207.
+[13] A. Rodriguez-Ramos, C. Sampedro, H. Bavle, P. de la Puente, and
+P. Campoy, “A Deep Reinforcement Learning Strategy for UAV
+Autonomous Landing on a Moving Platform,” Journal of Intelligent
+& Robotic Systems, vol. 93, no. 1, pp. 351–366, Feb. 2019.
+[14] B. Habas, A. Brown, D. Lee, M. Goldman, and B. Cheng, “From
+Ceilings to Walls: Universal Dynamic Perching of Quadrotors on
+Surfaces with Variable Orientations,” in 2025 IEEE International
+Conference on Robotics and Automation (ICRA).
+Atlanta, GA, USA:
+IEEE, May 2025, pp. 288–294.
+[15] K. Zhang, V. Pakrashi, J. Murphy, and G. Hao, “Inspection of
+Floating Offshore Wind Turbines Using Multi-Rotor Unmanned Aerial
+Vehicles: Literature Review and Trends,” Sensors, vol. 24, no. 3, p.
+911, Jan. 2024.
+[16] A. Richards and J. P. How, “Robust variable horizon model predictive
+control for vehicle maneuvering,” International Journal of Robust and
+Nonlinear Control, vol. 16, no. 7, pp. 333–351, 2006.
+[17] D. Mayne, M. Seron, and S. Rakovi´c, “Robust model predictive control
+of constrained linear systems with bounded disturbances,” Automatica,
+vol. 41, no. 2, pp. 219–224, Feb. 2005.
+[18] D. Mellinger and V. Kumar, “Minimum snap trajectory generation
+and control for quadrotors,” in 2011 IEEE International Conference
+on Robotics and Automation.
+Shanghai, China: IEEE, May 2011, pp.
+2520–2525.
+[19] P. Trodden, “A One-Step Approach to Computing a Polytopic Robust
+Positively Invariant Set,” IEEE Transactions on Automatic Control,
+vol. 61, no. 12, pp. 4100–4105, Dec. 2016.
+[20] M. V. Kothare, V. Balakrishnan, and M. Morari, “Robust constrained
+model predictive control using linear matrix inequalities,” Automatica,
+vol. 32, no. 10, pp. 1361–1379, Oct. 1996.
+[21] R. Gonzalez, M. Fiacchini, T. Alamo, J. Guzman, and F. Rodriguez,
+“Online robust tube-based MPC for time-varying systems: a practical
+approach,” International Journal of Control, vol. 84, no. 6, pp. 1157–
+1170, June 2011.
+[22] D. Saccani, G. Ferrari-Trecate, M. N. Zeilinger, and J. K¨ohler, “Ho-
+mothetic Tube Model Predictive Control With Multi-Step Predictors,”
+IEEE Control Systems Letters, vol. 7, pp. 3561–3566, 2023.
+[23] “Stewart Platform: 6-DoF Hexapod Positioner System | Acrome.”
+[24] T. I. Fossen, Handbook of Marine Craft Hydrodynamics and Motion
+Control, 1st ed.
+Wiley, June 2021.
+[25] Robin Verschueren, Gianluca Frison, Dimitris Kouzoupis, Jonathan
+Frey, Niels van Duijkeren, Andrea Zanelli, Branimir Novoselnik,
+Thivaharan Albin, Rien Quirynen, and Moritz Diehl, “acados – a
+modular open-source framework for fast embedded optimal control,”
+Mathematical Programming Computation, 2021.

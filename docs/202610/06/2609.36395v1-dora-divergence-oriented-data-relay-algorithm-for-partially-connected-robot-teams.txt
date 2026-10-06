@@ -1,0 +1,1350 @@
+DORA: Divergence-Oriented Data-Relay Algorithm
+for Partially Connected Robot Teams
+Jonathan Diller, Fernando Cladera, Camillo Jose Taylor, and Vijay Kumar
+Abstract— Teams of unmanned aerial vehicles (UAVs) de-
+ployed for search and monitoring missions frequently operate
+as partially connected networks, forcing each robot to trade
+off exploring the environment against relaying information
+to teammates. This tradeoff is especially acute when robots
+are semantically heterogeneous: an observation that appears
+uninformative to the robot that made it may be critical to a
+teammate with complementary detection capabilities. In this
+work, we formalize this setting as the heterogeneous mission-
+aware coverage (HMAC) problem, which couples complete
+multi-robot coverage of an area with capability-constrained
+mission-relevant target (MRT) discovery under intermittent
+communication. We then present DORA, a divergence-oriented
+data-relay algorithm that drives communication by the value
+of information to the team rather than by discovery alone.
+DORA quantifies the mission-relevant divergence between a
+robot’s current information state and its estimate of each
+teammate’s knowledge, capturing mission relevance, discovery
+novelty, sensor uncertainty, and the age of information. We
+evaluate DORA in simulation across four environments with
+differing object densities and spatial structure, and validate
+it on a physical UAV platform. Our results show that DORA
+improves MRT resolution delay by up to 74.8% over traditional
+time-based communication scheduling methods.
+I. INTRODUCTION
+Teams of unmanned aerial vehicles (UAVs) are increas-
+ingly deployed to search large areas from the air, with appli-
+cations that include search and rescue, security and intruder
+detection, environmental monitoring, and reconnaissance. By
+the nature of these tasks, the robot team usually spreads
+out over large deployment spaces in an effort to maximize
+coverage and parallelize monitoring. This often leads to
+partially connected teams and creates a tradeoff between
+searching the environment and relaying information.
+This tradeoff is especially problematic when heterogeneity
+is semantic rather than geometric. For example, consider a
+team of UAVs searching an area for mission-relevant targets
+(MRTs). Every UAV can identify common object classes,
+such as cars, buildings, and roads, but each robot can evaluate
+only a subset of the MRT types that the team as a whole
+is tasked to discover. An observation itself may therefore
+have value to one teammate despite appearing uninformative
+to the robot that initially made the observation. A robot
+must determine not only whether it has discovered new
+information, but also whether that information is sufficiently
+valuable to a teammate to justify the cost of communicating.
+*This work was supported by the ARL DCIST CRA W911NF-17-2-0181
+All authors are with the GRASP Laboratory, University of Pennsylva-
+nia, Philadelphia, PA 19104, USA {diller, fclad, cjtaylor,
+kumar}@engineering.upenn.edu
+While the classical coverage path planning (CPP) problem
+is well understood [1], [2], these lines of work assume
+that observations follow from geometry: whatever a robot’s
+sensor footprint passes over is fully observed. Conversely,
+existing communication-aware exploration methods either
+limit coverage by strictly requiring constant communica-
+tion [3], [4], use precomputed rendezvous that ignore online
+discoveries [5], [6], or rely on mission-agnostic metrics such
+as time-lapse [7], [8].
+In this work, we formalize this setting as the heteroge-
+neous mission-aware coverage (HMAC) problem: a team of
+UAVs with complementary MRT-detection capabilities must
+guarantee complete coverage of an area of interest and the
+discovery of every MRT present in it, while minimizing
+the mission completion time. HMAC strictly generalizes
+classical multi-robot coverage, reducing to the latter when
+all robots share the same detection capabilities, and couples
+it with capability-constrained inspection, which induces task-
+allocation and coordination subproblems that do not arise in
+conventional coverage.
+To address this challenge, we introduce DORA: a
+divergence-oriented data-relay algorithm for partially con-
+nected robot teams based on the central idea that communi-
+cation should be driven by the value of information to the
+team, rather than by discovery alone. DORA explicitly quan-
+tifies the information divergence between a robot’s current
+information state and its estimate of a teammate’s knowledge,
+accounting for mission relevance, discovery novelty, sensor
+uncertainty, and the age of information. This paper makes
+the following contributions:
+• We introduce and formalize HMAC, a problem formu-
+lation that couples complete multi-robot coverage with
+capability-constrained MRT discovery (Sec. III).
+• We develop DORA, a decentralized online planner for
+guiding the actions of partially connected, semantically
+heterogeneous teams (Sec. IV).
+• We evaluate our approach in simulation and field ex-
+periments, showing that DORA improves the balance
+between exploration and information relaying relative to
+mission-agnostic and time-based approaches for sharing
+information (Sec. V).
+II. RELATED WORK
+Classical coverage path planning (CPP) and its multi-
+robot
+extensions—which
+partition
+spaces
+to
+minimize
+makespan [1] or plan redundant sweeps to maximize de-
+tection [9]—rely on a strictly geometric assumption: any
+region swept by a sensor is successfully observed [2]. This
+arXiv:2609.36395v1  [cs.RO]  28 Sep 2026
+
+
+assumption breaks down in heterogeneous teams, where
+a robot’s specific capabilities determine the value of an
+observation. Consequently, spatial coverage alone cannot
+guarantee that mission-relevant information is effectively
+gathered or delivered to the appropriate teammate.
+Beyond strict area coverage, general multi-robot explo-
+ration and search methods, including frontier-based [10],
+coordinated [11], and information-theoretic approaches [12],
+must constantly balance exploration progress against the
+need to share information. When addressing communication
+constraints, a conservative paradigm focuses on connectivity
+maintenance. These methods ensure continuous information
+flow via consensus-based control, graph-theoretic constraints,
+or joint communication-and-mobility control [13], [14], [3],
+[4]. However, tethering a team to a strict communication
+graph severely restricts motion, degrading coverage effi-
+ciency and precluding the wide-area deployments character-
+istic of search missions.
+To alleviate the constraints of persistent connectivity,
+intermittent-connectivity methods allow for temporary dis-
+connections. One prominent approach is pre-planned ren-
+dezvous, where robots compute specific meeting locations
+and times to exchange information while otherwise exploring
+independently [5], [6], [15]. The decision of when and
+where to communicate in these frameworks is primarily
+geometric or temporal, balancing travel costs against map
+synchronization requirements. While rendezvous planning
+effectively decouples communication from continuous line-
+of-sight, it typically relies on offline scheduling rather than
+the dynamic value of the information being gathered.
+A more flexible sub-class of methods attempts to deter-
+mine communication events online. Mechanisms for online
+synchronization vary widely, ranging from simple time-based
+triggers [7], [8] and purely opportunistic encounters [16],
+to occasionally backtracking to restore network links [17],
+[18]. Recent advances also explore learning to rendezvous
+during mapping tasks [19] or predicting teammate locations
+based on environmental structure and signal loss [20]. Some
+communication-aware systems attempt to reduce message
+frequency by transmitting only when data provides suffi-
+cient novelty or general utility. Yet, these online decisions
+generally remain mission-agnostic; they treat information
+as uniformly valuable across the team, relying on arbitrary
+timeouts or raw observation counts rather than the semantic
+value of the accumulated data.
+In heterogeneous systems, an observation redundant to
+one robot may be critical to another. DORA builds on
+decentralized opportunistic methods but replaces arbitrary
+synchronization triggers with a mission-aware formulation:
+a robot interrupts exploration only when the estimated infor-
+mation divergence between its state and a teammate’s state
+exceeds a threshold. This ensures communication sacrifices
+efficiency only to materially update the team’s knowledge.
+III. PROBLEM DEFINITION
+We consider a team of m UAVs, R = {1, . . . , m}, tasked
+with searching an area of interest X ⊂R2. The environment
+contains a set of objects O = {o1, . . . , on}, where each
+object has a spatial position and an associated object class
+from a set of known classes K (e.g., vehicles, buildings,
+roads). A UAV may observe an object and determine its
+class, but additional capability may be required to evaluate
+whether that object constitutes an MRT.
+Each UAV possesses a potentially distinct MRT-detection
+capability. Let Aj ⊆K denote the set of object classes whose
+mission-relevant status UAV j is capable of evaluating. More
+generally, UAV j’s detection capability is represented as a
+mapping gj : O →Yj, where Yj describes the mission-
+relevant information that UAV j can infer from an observa-
+tion. Because capabilities across the team are heterogeneous,
+an observation may be sufficient for UAV j to identify an
+MRT while remaining uninformative to UAV i.
+Each UAV j maintains an information state Ij(t) =
+{x1, . . . , xnj}, consisting of its collected observations. An
+observation xk includes the estimated object location, class,
+detection confidence, and timestamp. Observations are sub-
+ject to sensor uncertainty, and objects may change position
+over time.
+The team operates under intermittent connectivity. Two
+UAVs i, j
+∈R with communication ranges ri and rj
+can exchange data only when dist(i, j) ≤min(ri, rj). Let
+C(t) ⊆R×R denote the set of communicating UAV pairs at
+time t. When two UAVs communicate, they synchronize ob-
+servations and routing state. Between communication events,
+UAV j maintains an estimate Iji(t) of the information state
+currently possessed by UAV i. This estimate is initialized
+at the most recent synchronization event and degrades in
+accuracy as teammates make new discoveries.
+Let A∗⊆O denote the set of ground-truth MRTs present
+in X. For any MRT a ∈A∗, we define two critical
+timestamps:
+• tobs
+a : the earliest time at which any UAV in the team
+observes object a.
+• tid
+a : the earliest time at which a UAV j capable of
+evaluating a (i.e., a matches capability gj) receives the
+observation and correctly identifies it.
+The quantity τa = tid
+a −tobs
+a
+≥0 represents the information-
+induced relay delay.
+Let Xj(t) ⊆X denote the cumulative spatial area swept by
+UAV j’s sensor footprint up to time t. The mission requires
+the team to achieve complete spatial coverage of X while
+minimizing the average time required to identify all MRTs.
+Formally, we state the Heterogeneous Mission-Aware Cov-
+erage problem as:
+min
+1
+|A∗|
+X
+a∈A∗
+τa
+(1)
+s.t.
+[
+j∈R
+Xj(Tm) = X,
+(2)
+tid
+a < ∞,
+∀a ∈A∗,
+(3)
+kinematic and velocity constraints ∀j ∈R,
+(4)
+communication constraints defined by C(t),
+(5)
+
+
+where Tm is the mission makespan at which complete spatial
+coverage is completed. Under this formulation, coverage is a
+strict requirement, and the objective explicitly rewards strate-
+gies that minimize the relay latency τa by propagating critical
+observations to capable teammates as early as possible.
+IV. PROPOSED SOLUTION
+A. Information Gain
+We propose the following set of requirements for an
+information valuation model: (1) the model must map to a
+range that can be used for traceable decision making, (2) the
+model must be computationally efficient to evaluate, and (3)
+the model must quantify the novelty of information.
+Suppose that robot j detects ground target i at time ti and
+position xi ∈X. Let the probability of an accurate detection
+be pi and qi = 1 −pi be the probability that i was a false
+positive. Under the assumption that i was a true positive,
+let fi(t) be the probability density function that describes
+the probability that i moves from position xi at time t. The
+probability that i has moved between times ti and t′, where
+t′ > ti, is defined by the cumulative distribution function of
+fi(t),
+Fi(t′) =
+Z t′−ti
+0
+fi(t) dt,
+(6)
+which is defined over elapsed time since detection (t ≥0).
+The probability that target i is a true positive and is located
+at xi at time t′ is
+pe(i, t′) = pi
+ 1 −Fi(t′)
+
+.
+(7)
+We do not make assertions about i remaining within search
+space X if i moves from xi and assume that fi(t) is known
+a priori.
+Let I = {x1, x2, . . . , xn} be the set of all previously
+observed targets and I be the Random Finite Set (RFS) of
+targets that currently exist in X. Random Finite Sets are sets
+containing a random number of possibly random vectors.
+We treat each i ∈I as an independent binomial trial, where
+the probability that i is in I at time t′ is pe(i, t′) and the
+probability that i is not in I is
+qe(i, t′) = 1 −pe(i, t′).
+(8)
+Given that each binomial trial is independent, the probability
+that ˜n trials are successful follows a Poisson binomial
+distribution (PBD), where 0 ≤˜n ≤n. Using the probability
+mass function (PMF) for the PBD introduced in [21], the
+probability that the cardinality of I is ˜n at time t′, given the
+set of observations I, is
+Pr
+
+|I| = ˜n, t′  I
+
+=
+1
+n+1
+n
+X
+l=0
+(
+e
+-2πl˜n
+√
+-1
+n+1
+Y
+i∈I
+n
+pe(i, t′)e
+2πl
+√
+-1
+n+1 + qe(i, t′)
+o)
+. (9)
+We define the RFS cardinality function as
+P(˜n, t′, I) =
+(
+Pr
+
+|I| = ˜n, t′  I
+
+,
+0 ≤˜n ≤n
+0,
+n < ˜n.
+(10)
+Observe that, by definition of the PMF of the PBD,
+n
+X
+˜n=0
+P(˜n, t′, I) = 1
+(11)
+and Equ. (10) is a valid probability measure.
+Let I(k) ⊆I denote the subset of observations belonging
+to class k ∈K, where
+I =
+[
+k∈K
+I(k)
+(12)
+and
+I(a) ∩I(b) = ∅,
+(13)
+if a̸ = b. Let αki ∈[0, 1] denote the importance weight
+associated with class k for robot i, where
+K
+X
+k=1
+αki = 1,
+∀j ∈R.
+(14)
+For each class k, we define the corresponding cardinality
+probability distribution
+P (k)(˜n, t′, I(k))
+(15)
+using Eq. (9) and Eq. (10) restricted to observations in I(k).
+Let Ij be the set of target observations currently held
+by robot j at time t′. Let Iji ⊆Ij denote the subset of
+observations that robot j believes robot i possesses based on
+their most recent synchronization event. Equivalently, Iji is
+robot j’s estimate of robot i’s information state. We define
+the information divergence between robot j’s current infor-
+mation state and its estimate of robot i’s information state for
+target class k as the Hellinger distance between cardinality
+probabilities of the RFS generated by the observation sets
+Hk(Ij, Iji) =
+1
+√
+2
+
+q
+P (k)(·, t′, I(k)
+j
+) −
+q
+P (k)(·, t′, I(k)
+ji )
+
+2
+.
+(16)
+We define mission-relevant information divergence between
+j’s complete information state and its estimate of i’s com-
+plete information state as
+H(Ij, Iji) =
+K
+X
+k=1
+αkiHk(Ij, Iji).
+(17)
+To clarify, the divergence is not between independent world
+models. It is between a robot’s current information state and
+the information state it believes a teammate possesses.
+Information Valuation Requirements: Since each class-
+specific Hellinger distance satisfies
+Hk(Ij, Iji) ∈[0, 1],
+and the class weights satisfy
+αki ≥0,
+K
+X
+k=1
+αki = 1, ∀j ∈R
+the overall divergence H(Ij, Iji) is a convex combination of
+bounded distances and therefore also satisfies H(Ij, Iji) ∈
+
+
+Explore
+start
+start
+Relay
+Neighbor
+Tour
+End
+∃i : H(Ij, Iji) ≥φ
+∄i :
+H(Ij, Iji) ≥φ
+coverage
+complete
+∃i : H(Ij, Iji) ≥φ
+all robots
+complete
+Fig. 1: Finite state machine depicting our decentralized
+information relaying algorithm.
+[0, 1], meeting requirement 1. Observe that Eq. (9) can be
+computed in O(n2) time, where n = |Ij|, while (10) tells us
+that the summation in (17) is zero for values above n, which
+means that we can calculate H(Ij, Iji) in O(n3), meeting
+requirement 2. The Hellinger distance between two RFS Ij
+and Iji initially grows quickly for making discoveries when
+there is little known about the environment but the delta
+in H(Ij, Iji) for making additional, unreported discoveries
+shrinks as the equation converges to 1; this naturally weights
+novel discoveries more heavily than incremental updates,
+satisfying requirement 3.
+Triggering Communication: We define the communication
+trigger for robot j to communicate with robot i as
+H(Ij, Iji) ≥φ,
+(18)
+where φ ∈[0, 1] is a communication threshold. Setting
+φ = 0 signifies that keeping teammates informed takes
+complete precedence over information gathering, whereas
+setting φ = 1 dictates that information gathering takes
+complete precedence over communication.
+B. Decentralized Information Relay Algorithm
+Our algorithm, DORA, integrates our communication trig-
+ger mechanism into a decentralized algorithm for multi-robot
+coverage. We assume each robot follows a precomputed
+exploration route formulated as a Vehicle Routing Problem
+(VRP) [22]. The algorithm determines exactly when a robot
+should divert from this baseline path to share mission-
+relevant discoveries with teammates.
+1) Opportunistic Communication: Robot-to-robot com-
+munication is opportunistic, following a pattern similar
+to [7]: transmissions occur only when two robots are
+within communication range of one another. This gossip-
+style mechanism allows information to diffuse through the
+team over multiple encounters without requiring any robot
+to maintain a centralized record.
+In addition to observations, each robot shares its most
+recent routing schedule whenever it synchronizes with a
+peer. A routing schedule contains the robot’s intended ad
+hoc meetings with other robots and its remaining exploration
+waypoints, together with the expected time at which the robot
+anticipates performing each of these tasks. Because sched-
+ules are exchanged during every synchronization event, each
+robot maintains a (possibly stale) estimate of its teammates’
+intended positions over time, which it uses when planning
+relay visits.
+2) Behavior Modes: Figure 1 illustrates the local state
+machine that dictates each robot’s behavior. In short, the
+decentralized algorithm alternates between guiding the robot
+along its precomputed exploration path and temporarily
+diverting it into a relay mode whenever the communication
+trigger indicates a necessary information exchange with
+teammates.
+Explore: The robots begin in the exploration state, follow-
+ing the precomputed queue of exploration waypoints. While
+exploring, each robot j iteratively evaluates the information
+divergence H(Ij, Iji) between its current information state
+and its estimate of every teammate i’s information state. If
+H(Ij, Iji) ≥φ for some robot i, then i becomes a relay
+candidate for j, and j transitions to the relay state.
+Relay: While in the relay state, robot j must decide the
+order in which to visit its relay candidates. When j acquires
+more than one relay candidate, it solves a traveling sales-
+person problem (TSP) over the candidates using the most
+recently received routing schedule of each candidate i to
+estimate where and when each candidate can be intercepted.
+Robot j then visits each relay candidate in the order returned
+by the TSP solver. When robot j encounters a candidate
+i, the two robots synchronize their databases using the
+opportunistic communication stack described above. After
+synchronization, H(Ij, Iji) drops below φ and i is removed
+from the relay candidate list. Robot j replans the TSP only
+if (1) a relay candidate that is not the next scheduled visit
+is removed from the candidate list, (2) a new robot i with
+H(Ij, Iji) ≥φ is added, or (3) if there exists a robot
+k that has advertised that it intends to attempt an ad hoc
+meeting with robot i at an earlier time than j’s the intended
+encounter with i; in all other cases the existing visiting
+order is retained, which avoids unnecessary recomputation.
+Once all relay candidates have been visited and removed
+(i.e., all databases are synchronized), robot j returns to the
+exploration state.
+If robot j arrives at an intercept location but candidate i
+is not at the position promised in its last shared schedule—
+for example, because i diverted to perform its own relay
+visits—robot j removes i from its relay candidate list and
+ignores the communication trigger for i until it receives an
+updated routing schedule from i. This prevents robot j from
+indefinitely chasing stale estimates of a teammate’s position.
+Neighbor Tour: When a robot exhausts its exploration
+waypoint queue, it transitions to the neighbor-tour phase. In
+this phase, the robot constructs a tour that visits each team-
+mate that has not yet finished exploring and terminates at
+the base station. The purpose of this tour is to guarantee that
+information gathered during the final stages of exploration
+is delivered to the base station even if no relay candidate
+triggers fired. If the communication trigger fires while the
+robot is executing its neighbor tour, the robot returns to the
+relay state to service its relay candidates before resuming the
+tour. The mission ends when all robots have completed their
+exploration waypoints and returned to the base station.
+
+
+TABLE I: Object inventory of the four simulation environ-
+ments.
+Environment
+Area [km2]
+Cars
+Buildings
+Roads
+Camp
+0.12
+11
+31
+55
+Suburbia
+0.17
+364
+187
+131
+Farm
+0.24
+10
+22
+64
+Business Park
+0.37
+78
+20
+189
+TABLE II: Object class weights αki for each UAV and base.
+Class
+Base
+UAV1
+UAV2
+UAV3
+UAV4
+UAV5
+Cars
+0.7
+0.9
+0.3
+0.5
+0.0
+0.2
+Road Segments
+0.3
+0.0
+0.0
+0.5
+0.5
+0.8
+Buildings
+0.0
+0.1
+0.7
+0.0
+0.5
+0.0
+V. EVALUATION
+We evaluate DORA in simulation and on physical robots,
+organized around three claims:
+(E1) HMAC Performance and Scaling. DORA outperforms
+baseline methods when applied to the HMAC problem
+and scales well with the size of the UAV team.
+(E2) Trigger Quality. A divergence-based trigger achieves
+a better trade-off between mission time and team in-
+formation freshness than time- and observation-count-
+based triggers across environments with very different
+object densities and spatial structure.
+(E3) Feasibility. The approach runs online, onboard physical
+robots, with results consistent with simulation.
+A. Simulation Setup
+1) Environments: We use four environments that vary
+greatly in layout, object distributions, and object densities.
+These four environments are: Camp, a mixed terrain of
+forest, buildings, winding roads, and small parking lots;
+Suburbia, dense with cars, houses, roads, and a school; Farm,
+with sparse buildings, vehicles, and roads surrounded by
+mostly empty land; and Business Park, with parking lots
+clustered around office buildings and connected by roads.
+Table I provides the statistics of each environment. The target
+movement probability density function, fi(t), follows a log-
+normal distribution parameterized by µ = 3.6 × 103 and
+σ = 1.8 × 103 for cars, and µ = 109 and σ = 101 for static
+buildings and road segments.
+2) Robot Team, Capabilities, and Communication: Unless
+otherwise stated, each simulation uses a team of m = 2
+UAVs and a single base station. The base uses the same
+database and communication stack as the UAVs, as well as
+providing MRT detection capabilities, acting as a non-mobile
+teammate that still requires information sharing. Each UAV
+travels at a max speed of 10.0 m/s and has a sensor footprint
+of 256πm2. Communication follows the model of Sec. III
+with communication range rc = 75 m for all UAVs and the
+base. The UAVs maintain a consistent flight level of 40 m
+above the ground while the base is located at ground level.
+Table II shows the peer-wise class priority weights, αki, for
+each robot and the base.
+3) Baseline & Ablations: We consider three baselines:
+one based on a common information relaying approach found
+in the literature, and two ablations of DORA. All methods
+use DORA’s decentralized tasking algorithm and differ from
+it only in how we trigger deviating from exploration to com-
+municate with peers. The Time-Based (TB) baseline is based
+on works that use a time-based interaction mechanism [7],
+[8] and initiates an ad hoc meetings with teammate i when
+the time elapsed since the last data synchronization event
+with i exceeds a timeout φt ≥0.
+The first ablation that we consider is the Mission-Agnostic
+(MA) approach, which assumes that all discoveries hold
+the same value uniformly across the entire team. The MA
+approach replaces αki in Equation 17 with
+1
+|K| to normalize
+the Hellinger distance across object classes while continuing
+to use Equation 18 to trigger communication. Our sec-
+ond ablation is the Weighted-Count (WC) approach, which
+continues to use αki but removes the Hellinger distance
+calculation. Instead, WC calculates the class-wise difference
+in observations held by robot j but not yet synchronized with
+robot i, triggering communication whenever
+X
+k∈K
+αki|I(k)
+j
+\ I(k)
+ji | ≥φo
+(19)
+for φo ≥0.
+4) Metrics: Our primary metric, as initially defined in
+Equation (1), is the average time required to identify all
+MRTs:
+¯∆mrt =
+1
+|A|
+X
+o∈A
+τo.
+(20)
+A is the set of all MRTs and τo is the time delta between
+o’s discovery and o being delivered to a UAV capable of
+identifying that o ∈A.
+The mission time, Tm, is the time at which coverage
+is complete and all UAVs return to the base station. The
+mean information divergence, ¯H, is the average H(Ij, Iji)
+between teammate pairs (and the base) over the duration of
+the mission.
+The α-weighted delivery delay, ¯∆α, measures how quickly
+mission-relevant information propagates through the team:
+¯∆α =
+1
+|R||Odisc|
+X
+j∈R
+X
+o∈Odisc
+αc(o)j(tdel
+oj −tdisc
+o
+)
+(21)
+where tdisc
+o
+is the time object o is first observed by any UAV,
+tdel
+oj is the time that o is shared with robot j for all robots in R
+other than the discoverer, and c(o) is the class of o. Because
+αki encodes the peer-wise, class-level MRT prior, ¯∆α can
+be interpreted as the expected delay before mission-relevant
+information reaches a teammate capable of processing it. We
+note that ¯∆α considers all objects in O while ¯∆mrt focuses
+on objects that qualify as MRTs.
+B. Experiment 1: HMAC Performance and Scaling
+In this section we evaluate the performance of each algo-
+rithm on the HMAC problem, where we want to minimize
+the time delay between discovering an object and identifying
+
+
+(a) Camp
+(b) Suburbia
+(c) Farm
+(d) Business Park
+Fig. 2: The four experimental areas used in simulation.
+600
+700
+800
+Mission time [s]
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+Mean H(Ij, Iji)
+Time-Based
+Weighted-Count
+Mission-Agnostic
+DORA
+Pareto front
+(a) Camp
+1000
+1500
+2000
+2500
+Mission time [s]
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+Mean H(Ij, Iji)
+Time-Based
+Weighted-Count
+Mission-Agnostic
+DORA
+Pareto front
+(b) Suburbia
+1200
+1400
+1600
+Mission time [s]
+0.2
+0.3
+0.4
+0.5
+0.6
+Mean H(Ij, Iji)
+Time-Based
+Weighted-Count
+Mission-Agnostic
+DORA
+Pareto front
+(c) Farm
+1750
+2000
+2250
+2500
+2750
+Mission time [s]
+0.3
+0.4
+0.5
+0.6
+0.7
+Mean H(Ij, Iji)
+Time-Based
+Weighted-Count
+Mission-Agnostic
+DORA
+Pareto front
+(d) Business Park
+600
+700
+800
+Mission time [s]
+10
+20
+30
+40
+50
+Mean weighted 
+t
+Time-Based
+Weighted-Count
+Mission-Agnostic
+DORA
+Pareto front
+(e) Camp
+1000
+1500
+2000
+2500
+Mission time [s]
+20
+40
+60
+80
+100
+Mean weighted 
+t
+Time-Based
+Weighted-Count
+Mission-Agnostic
+DORA
+Pareto front
+(f) Suburbia
+1200
+1400
+1600
+Mission time [s]
+20
+40
+60
+80
+100
+120
+Mean weighted 
+t
+Time-Based
+Weighted-Count
+Mission-Agnostic
+DORA
+Pareto front
+(g) Farm
+1750
+2000
+2250
+2500
+2750
+Mission time [s]
+25
+50
+75
+100
+125
+150
+175
+Mean weighted 
+t
+Time-Based
+Weighted-Count
+Mission-Agnostic
+DORA
+Pareto front
+(h) Business Park
+Fig. 3: Pareto fronts between total mission time versus mean divergence H(Ij, Iji) (top row), and mean weighted ∆t (bottom
+row), for each arena.
+that it is an MRT. We randomly selected “MRT” objects from
+the set of all objects in the environment using the following
+method: (1) draw an object class k ∈K uniformly; (2) draw
+an object o ∈Ok uniformly; (3) draw an identifier robot j
+in proportion to the team’s normalized-aggregate interest in
+that object class, excluding its discoverer. We then record
+the time delay between object discovery and reporting the
+observation to robot j. We repeat this process 100 times per
+condition and report the mean and standard deviation of the
+sampled delays in Table III.
+From the table, we see that the DORA algorithm con-
+sistently reduces the average relay delay compared to the
+baseline approaches in almost all environments except for
+the Farm. This shows us that the divergence metric helps in
+dense, class-heterogeneous environments where cardinality
+distributions are informative, while large and sparse setups
+may not be semantically rich enough for the metric to be as
+effective.
+C. Experiment 2: Time–Information-Freshness Trade-off
+To demonstrate how DORA can balance exploration ver-
+sus mission-aware information sharing, we mapped out the
+Pareto front between both ¯∆α and ¯H versus the total time,
+Tm, for each environment. We varied the setting of φ for
+DORA from 1 down to 0.5 and set the trigger range of
+the baseline methods to value ranges that give us a similar
+range for Tm. Observe that φ = 1 is equivalent to never
+deviating from exploration to communicate, giving us an
+implicit fourth baseline that is information-agnostic.
+Figure 3 depicts our Pareto front results. Table IV shows
+the percentage of points from each algorithm that make up
+the Pareto front (labeled as % of front) and percentage of
+runs for each algorithm that are within 5% of the Pareto
+front (labeled as within 5%). DORA defines the front on
+two of the four environments in both ¯H and ∆t, while its
+mission-agnostic ablation leads the front on the opposing
+two environments. While not always the defining solution
+of the Pareto front, DORA averages more runs within 5%
+of the front than any of the baseline methods across three
+environments. The primary exception in performance is on
+the Farm, where DORA struggles with the large, sparse
+environment.
+D. Real-Robot Experiments
+We validated DORA with a team of one UAV and one base
+station. The UAV is a custom platform powered by a PX4-
+based flight controller, and a NUC13 onboard computer. We
+used Rajant radios as the backbone for our communications
+
+
+N
+0
+200
+400
+600
+Mission time [s]
+(a) GPS trace of the UAV showing decision points
+0
+100
+200
+300
+400
+500
+600
+Mission time [s]
+0.0
+0.2
+0.4
+0.6
+0.8
+Divergence
+H(UAV | base)
+trigger threshold (0.75)
+Communication Trigger
+Synchronization Event
+(b) Divergence (H(Ij, Iji)) between the UAV and the base station
+Fig. 4: GPS trace and decision points for our physical robot experiment. Red markers show the moment when communication
+is triggered (H(UAV, base) ≥φ) and blue markers show when the UAV has synchronized its database with the base station.
+The emulated perception stack “discovers” four cars at time marks: 50, ∼95, 132, and ∼330 seconds and communicates
+with the base three times at: 58, 270, and ∼575 seconds.
+TABLE III: Simulation showing the time required to identify
+all MRTs, ¯∆mrt (mean ± standard deviation), over 100 trials
+per cell.
+Algorithm
+Robots
+DORA
+MA
+TB
+WC
+Camp
+2
+64.9 ± 68.1
+73.0 ± 77.0
+99.9 ± 71.5
+117.8 ± 103.0
+3
+29.7 ± 37.6
+35.3 ± 39.9
+62.1 ± 60.7
+43.6 ± 39.9
+4
+30.0 ± 40.0
+34.7 ± 37.5
+52.3 ± 60.2
+36.8 ± 44.6
+5
+20.9 ± 25.2
+33.4 ± 50.8
+31.4 ± 41.6
+25.7 ± 30.9
+φ
+0.72
+0.88
+182.0
+6.0
+Suburbia
+2
+59.2 ± 49.8
+69.5 ± 58.4
+61.4 ± 43.6
+81.5 ± 74.9
+3
+45.3 ± 44.6
+59.6 ± 66.7
+71.8 ± 57.6
+51.3 ± 48.1
+4
+40.1 ± 41.1
+65.6 ± 115.0
+59.7 ± 47.8
+46.8 ± 43.1
+5
+54.3 ± 69.1
+58.5 ± 62.3
+67.8 ± 51.6
+80.8 ± 118.7
+φ
+0.92
+0.88
+110.0
+21.0
+Farm
+2
+208.3 ± 185.4
+147.7 ± 116.7
+201.6 ± 97.9
+191.7 ± 154.6
+3
+136.2 ± 97.3
+127.4 ± 93.1
+193.1 ± 109.7
+119.6 ± 78.9
+4
+111.6 ± 106.6
+170.1 ± 123.8
+196.2 ± 120.5
+87.0 ± 72.9
+5
+103.7 ± 104.8
+106.8 ± 93.2
+164.5 ± 107.9
+86.6 ± 69.5
+φ
+0.84
+0.84
+410.0
+5.0
+Business Park
+2
+184.1 ± 163.9
+215.7 ± 157.0
+731.1 ± 542.3
+241.2 ± 186.4
+3
+101.2 ± 71.9
+109.7 ± 93.2
+147.2 ± 104.0
+146.7 ± 98.4
+4
+137.5 ± 114.0
+147.9 ± 134.7
+194.4 ± 124.6
+190.8 ± 132.1
+5
+106.9 ± 105.0
+128.0 ± 155.3
+126.8 ± 111.3
+98.6 ± 78.7
+φ
+0.88
+0.80
+320.0
+13.0
+system, relying on the radios API to provide information
+about the Received Signal Strength Indicator between two
+radios. We triggered communication between two nodes
+when RSSI > 35 and importantly, we only perform point-to-
+point communications. For the purposes of this experiment,
+the perception stack was emulated in the robot. The UAV
+TABLE IV: Pareto front statistics per algorithm and arena
+for both objective metrics: the percentage of the Pareto front
+belonging to each algorithm (front share), and the percentage
+of that algorithm’s runs within 5% of the front.
+Arena
+Camp
+Suburbia
+Farm
+Business Park
+¯H
+TB
+% of front ↑
+14.3%
+20.0%
+12.5%
+0.0%
+within 5% ↑
+23.1%
+46.2%
+20.0%
+6.7%
+WC
+21.4%
+15.0%
+31.2%
+27.3%
+33.3%
+46.2%
+35.7%
+26.7%
+MA
+42.9%
+30.0%
+50.0%
+27.3%
+53.8%
+61.5%
+64.3%
+42.9%
+DORA
+21.4%
+35.0%
+6.2%
+45.5%
+69.2%
+64.3%
+21.4%
+57.1%
+Mean weighted ∆t
+TB
+% of front ↑
+16.7%
+14.3%
+12.5%
+0.0%
+within 5% ↑
+38.5%
+23.1%
+26.7%
+6.7%
+WC
+16.7%
+7.1%
+18.8%
+30.8%
+50.0%
+23.1%
+28.6%
+40.0%
+MA
+27.8%
+35.7%
+37.5%
+38.5%
+53.8%
+38.5%
+71.4%
+42.9%
+DORA
+38.9%
+42.9%
+31.2%
+30.8%
+61.5%
+50.0%
+50.0%
+50.0%
+would “discover” one object on the ground when flying
+within a pre-specified radius. All the other components of
+the system were running online on the robot. The robot and
+base class weights come from Table II for Base and UAV1,
+and we set φ = 0.75.
+Figure 4 depicts how the UAV explored the environment,
+
+
+and the divergence between the UAV’s local database and
+information transmitted back to the base. The UAV flew au-
+tonomously along the depicted path except for three manual
+interventions due to safety concerns to keep the robot from
+flying over buildings and people. The UAV found five cars at
+times 0, 50, 95, 132, and 333 seconds. Two communication
+events were triggered at 50 and 132 seconds, aligning with
+discovering the second and third cars, respectively. The robot
+synchronized with the base at times 58 and 270 seconds, and
+at the very end of the mission at 579 seconds.
+The divergence graph demonstrates how discovering ob-
+jects impacts DORA’s decision-making process. The large
+jumps in divergence are from discovering cars and the small
+increments are from discovering road segments, reflecting the
+Base’s preference for car observations over road segments.
+The graph shows how the novelty of discovering a car
+diminishes as the robot locates more cars, allowing the robot
+to better balance exploration and information sharing as its
+understanding of the environment changes online.
+VI. CONCLUSIONS
+This paper presented DORA, a divergence-oriented data-
+relay algorithm that addresses the challenges posed by the
+HMAC problem. We show that DORA provides an effective
+solution to this problem through simulation experiments with
+teams of up to 5 UAVs in environments with differing
+object densities and spatial structure. We also performed
+field experiments to validate DORA in realistic settings
+with one UAV and one base station over real opportunistic
+communication links. DORA was able to effectively finish
+the coverage mission, returning to the base station when
+required to exchange information.
+One of the biggest limitations of DORA is that it assumes
+obstacle-free motion. For instance, a relay operation esti-
+mates the position of other robots using the most recently
+received routing schedule. While this assumption holds for
+UAVs, it may not hold for Unmanned Ground Vehicles
+moving in an obstacle-rich space. We envision incorporat-
+ing traversability information estimation into our decision
+process. We leave this improvement for future work.
+REFERENCES
+[1] H.
+Choset,
+“Coverage
+for
+robotics
+–
+a
+survey
+of
+recent
+results,”
+Annals
+of
+Mathematics
+and
+Artificial
+Intelligence,
+vol.
+31,
+no.
+1–4,
+pp.
+113–126,
+2001.
+[Online].
+Available:
+https://doi.org/10.1023/A:1016639210559
+[2] E.
+Galceran
+and
+M.
+Carreras,
+“A
+survey
+on
+coverage
+path
+planning
+for
+robotics,”
+Robotics
+and
+Autonomous
+Systems, vol. 61, no. 12, pp. 1258–1276, 2013. [Online]. Available:
+https://www.sciencedirect.com/science/article/pii/S092188901300167X
+[3] J. Fink, A. Ribeiro, and V. Kumar, “Robust control for mobility and
+wireless communication in cyber–physical systems with application to
+robot teams,” Proceedings of the IEEE, vol. 100, no. 1, pp. 164–178,
+2012.
+[4] W. Tang, C. Li, J. Wu, and Q. Zhu, “Decentralized communication-
+maintained coordination for multi-robot exploration: Achieving con-
+nectivity and adaptability,” in 2024 IEEE/RSJ International Confer-
+ence on Intelligent Robots and Systems (IROS), 2024, pp. 3417–3424.
+[5] G. Hollinger and S. Singh, “Multi-robot coordination with periodic
+connectivity,” in 2010 IEEE International Conference on Robotics and
+Automation, 2010, pp. 4457–4462.
+[6] A. R. Da Silva, L. Chaimowicz, T. C. Silva, and M. A. Hsieh,
+“Communication-constrained multi-robot exploration with intermittent
+rendezvous,” in 2024 IEEE/RSJ International Conference on Intelli-
+gent Robots and Systems (IROS), 2024, pp. 3490–3497.
+[7] F. Cladera, Z. Ravichandran, I. D. Miller, M. Ani Hsieh, C. J. Taylor,
+and V. Kumar, “Enabling large-scale heterogeneous collaboration
+with opportunistic communications,” in International Conference on
+Robotics and Automation (ICRA), 2024, pp. 2610–2616.
+[8] I. D. Miller, F. Cladera, T. Smith, C. J. Taylor, and V. Kumar, “Air-
+ground collaboration with spomp: Semantic panoramic online mapping
+and planning,” IEEE Transactions on Field Robotics, vol. 1, pp. 93–
+112, 2024.
+[9] N.
+Hazon
+and
+G.
+A.
+Kaminka,
+“On
+redundancy,
+efficiency,
+and
+robustness
+in
+coverage
+for
+multiple
+robots,”
+Robotics
+and
+Autonomous
+Systems,
+vol.
+56,
+no.
+12,
+pp.
+1102–
+1114,
+2008,
+towards
+Autonomous
+Robotic
+Systems
+2008:
+Mobile
+Robotics
+in
+the
+UK.
+[Online].
+Available:
+https://www.sciencedirect.com/science/article/pii/S0921889008000122
+[10] B. Yamauchi, “Frontier-based exploration using multiple robots,” in
+Proceedings of the Second International Conference on Autonomous
+Agents, ser. AGENTS ’98.
+New York, NY, USA: Association
+for Computing Machinery, 1998, pp. 47–53. [Online]. Available:
+https://doi.org/10.1145/280765.280773
+[11] W. Burgard, M. Moors, C. Stachniss, and F. Schneider, “Coordinated
+multi-robot exploration,” IEEE Transactions on Robotics, vol. 21,
+no. 3, pp. 376–386, 2005.
+[12] B. Charrow, G. Kahn, S. Patil, S. Liu, K. Goldberg, P. Abbeel,
+N. Michael, and V. Kumar, “Information-theoretic planning with
+trajectory optimization for dense 3d mapping.” in Robotics: Science
+and systems, vol. 11.
+Rome, 2015, pp. 3–12.
+[13] R. Olfati-Saber, J. A. Fax, and R. M. Murray, “Consensus and
+cooperation in networked multi-agent systems,” Proceedings of the
+IEEE, vol. 95, no. 1, pp. 215–233, 2007.
+[14] M. M. Zavlanos, M. B. Egerstedt, and G. J. Pappas, “Graph-theoretic
+connectivity control of mobile robot networks,” Proceedings of the
+IEEE, vol. 99, no. 9, pp. 1525–1540, 2011.
+[15] A. R. da Silva and L. Chaimowicz, “Intermittent rendezvous plans with
+mixed integer linear program for large-scale multi-robot exploration,”
+in 2025 IEEE International Conference on Advanced Robotics (ICAR),
+2025, pp. 147–154.
+[16] B. Zhou, H. Xu, and S. Shen, “Racer: Rapid collaborative explo-
+ration with a decentralized multi-uav system,” IEEE Transactions on
+Robotics, vol. 39, no. 3, pp. 1816–1835, 2023.
+[17] M. Tellaroli, M. Luperto, M. Antonazzi, and N. Basilico, “Frontier-
+based exploration for multi-robot rendezvous in communication-
+restricted unknown environments,” in 2024 IEEE/RSJ International
+Conference on Intelligent Robots and Systems (IROS), 2024, pp. 5807–
+5812.
+[18] Y. Gao, Y. Wang, X. Zhong, T. Yang, M. Wang, Z. Xu, Y. Wang,
+Y. Lin, C. Xu, and F. Gao, “Meeting-merging-mission: A multi-robot
+coordinate framework for large-scale communication-limited explo-
+ration,” in 2022 IEEE/RSJ International Conference on Intelligent
+Robots and Systems (IROS), 2022, pp. 13 700–13 707.
+[19] D. M. Siang Tan, Y. Ma, J. Liang, Y. C. Chng, Y. Cao, and G. Sar-
+toretti, “Ir2: Implicit rendezvous for robotic exploration teams under
+sparse intermittent connectivity,” in 2024 IEEE/RSJ International
+Conference on Intelligent Robots and Systems (IROS), 2024, pp.
+13 245–13 252.
+[20] M. A. Schack, J. G. Rogers, and N. T. Dantam, “The sound of
+silence: Exploiting information from the lack of communication,”
+IEEE Robotics and Automation Letters, vol. 9, no. 7, pp. 6736–6743,
+2024.
+[21] M. Fern´andez and S. Williams, “Closed-form expression for the
+poisson-binomial probability density function,” IEEE Transactions on
+Aerospace and Electronic Systems, vol. 46, no. 2, pp. 803–817, 2010.
+[22] P. Toth, D. Vigo, P. Toth, and D. Vigo, Vehicle Routing: Problems,
+Methods, and Applications, Second Edition.
+USA: Society for
+Industrial and Applied Mathematics, 2014.
