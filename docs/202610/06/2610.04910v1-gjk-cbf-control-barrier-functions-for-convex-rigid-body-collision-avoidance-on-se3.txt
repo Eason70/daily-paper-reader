@@ -1,0 +1,917 @@
+Title: GJK-CBF: Control Barrier Functions for Convex Rigid Body Collision Avoidance on SE(3)
+
+URL Source: https://arxiv.org/pdf/2610.04910v1
+
+Published Time: Tue, 06 Oct 2026 01:19:56 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# GJK-CBF: Control Barrier Functions for Convex Rigid Body Collision Avoidance on SE(3) 
+
+Yi-Hsuan Chen 1, Shuo Liu 2, Wei Xiao 3, Michael Otte 1, Calin Belta 4
+
+Abstract — Collision avoidance among convex bodies is afundamental problem in robotics. Control Barrier Functions (CBFs) provide a practical framework for real-time safety filtering due to their computational efficiency. For general convex bodies, exact separation measures, such as distance or scaling factor, are typically computed through optimization. Existing CBF formulations often obtain the required gradient via differentiable optimization (diffOpt), adding computational overhead. In contrast, we leverage the Gilbert-Johnson-Keerthi (GJK) algorithm to obtain the current witness pair—the pair of points realizing the minimum distance or penetration depth— and formulate a CBF, termed GJK-CBF, whose gradient is constructed directly from the relative rigid-body motion of the witness pair, without resorting to diffOpt . This formulation applies to both 2D and 3D environments across a broad class of convex body pairs, provided that at least one in each one-to-one interaction is strictly convex. The proposed GJK-CBF is validated in various scenarios, including multi-robot position swapping in both 2D and 3D, navigation through a vertical slit in 3D, and its applicability to manipulators. The results demon-strate collision-free motion across all scenarios while reducing the conservativeness introduced by geometric approximations, particularly in narrow environments. A video of all simulations is available at https://youtu.be/eDvscHhGIj0 .
+
+I. I NTRODUCTION 
+
+One of the key difficulties in robotic navigation is to si-multaneously satisfy system kinematic/dynamic constraints, safety requirements, and actuation limits. The problem is further complicated when collision avoidance must explic-itly account for the geometry of both the ego robot and nearby robots/obstacles. For each pair of bodies, referred to as a collision pair, the separation distance depends on their relative configuration, i.e., position and orientation, and is nontrivial to evaluate and differentiate. The notion of configuration obstacles [1] was proposed to account for robot geometry via Minkowski operations and has been widely used in motion planning [2]–[4]. While the same ge-ometric representation underlies classical collision-detection algorithms such as Gilbert-Johnson-Keerthi (GJK) [5] and the Expanding Polytope Algorithm (EPA) [6] to characterize distance proximity, these methods are not designed for safety control synthesis. 
+
+> 1
+
+Y. Chen and M. Otte are with the Department of Aerospace Engineering, University of Maryland, College Park, MD, USA. {yhchen91, otte} @umd.edu 
+
+> 2
+
+Shuo Liu is with the Department of Mechanical Engineering, Boston University, Boston, MA 02215, USA. liushuo@bu.edu 
+
+> 3
+
+W. Xiao is with the School of Electrical and Electronic Engineering, Nanyang Technological University, and with M3S, SMART, Singapore 
+
+wei.xiao@ntu.edu.sg , weixy@mit.edu 
+
+> 4
+
+C. Belta is with the Department of Electrical and Computer Engineering and Department of Computer Science, University of Maryland, College Park, MD, USA. calin@umd.edu witness pair witness pair 
+
+Fig. 1: Side (left) and top (right) views of a polytopic robot (blue) traversing a vertical slit in 3D. (Top) Conservative enclosing-ellipsoid approximations render the direct passage through the slit infeasible, forcing the robot to slightly detour above the obstacles [7]. (Bottom) In contrast, the proposed GJK-CBF operates directly on the original convex geometries and successfully guides the robot through. Its construction and gradient computation require only the pair of closest points—witness pair—between two convex bodies without using differentiable optimization . Only the initial and goal poses are given, with no intermediate poses or waypoints. 
+
+Control Barrier Functions (CBFs) [8], on the other hand, provide a systematic approach to synthesizing safe con-trollers. CBF safety constraints can be implemented on-the-fly, either jointly with Control Lyapunov Functions (CLFs) [9] or as minimally invasive safety filters to simultaneously address safety and stabilization objectives. Several CBF formulations have been developed for collision avoidance, and we focus only on those that explicitly account for the geometries of both bodies. Optimization-based approaches solve an optimization problem to compute a measure of separation, such as a scaling factor [10], minimum distance [11], [12], smooth distance approximation [13], or exact Signed Distance (SD) [14]. This measure is then used to define a CBF, and its gradient is obtained through differ-entiable optimization (diffOpt) [15]. A similar workflow has also been applied to uncertain obstacles [16] using constrained convex generators. In contrast, optimization-free approaches construct CBFs based on polytope vertices [17], supporting hyperplanes for ellipsoids [7] and polytopes [18], or Bernstein-polynomial SD fields [19]. Such approaches arXiv:2610.04910v1 [cs.RO] 4 Oct 2026 are computationally efficient, but generally rely on surrogate distance measures. These two classes of methods appear to suggest a trade-off between geometric exactness and computational efficiency. However, although the SD sensitivity in our previous work [14] was derived through diffOpt, the resulting gradient expression was independent of the sensitivity of the optimizer but depended only on the optimizer itself, i.e., the witness pair (the pair of points realizing minimum distance when separated or penetration depth when intersecting). Motivated by this, we propose GJK-CBF 1, a CBF framework that re-tains the exact distance and obtains its gradient directly from the (instantaneous) witness pair without diffOpt (Fig. 1). Related witness-pair-based distance gradients have ap-peared in earlier studies [20]–[24]. Proximity queries like GJK have been incorporated into real-time CBF safety filters, while obtaining their gradients through diffOpt with ran-domized smoothing [25] or a Schur-complement acceleration [26]. Another related work is [7], which designs CBFs using rotating supporting hyperplanes and derives a closed-form gradient by exploiting the special algebraic structure of el-lipsoids, but does not directly generalize to other geometries. The most closely related work to our approach is [27], which formulates the distance-based CBF directly on SE (3) , but does not provide an explicit form for the distance gradient. To the best of our knowledge, existing approaches do not provide a CBF formulation with an explicit expression for the exact distance gradient for general convex rigid bodies. To address this gap, we develop GJK-CBF, in which, once a witness pair is given, the exact distance is immediately determined, and its gradient can be obtained accordingly. The main contributions of this paper are as follows:  
+
+> •
+
+The proposed GJK-CBF is geometry-agnostic within the class of convex rigid bodies and applies in both 2D and 3D workspaces, provided that at least one body in each collision pair is strictly convex (Def. 3).  
+
+> •
+
+We derive an explicit expression for the distance gra-dient on SE (3) solely from the witness pair without diffOpt, enabling optimization-based distance solvers to be replaced by GJK proximity queries. We also provide equivalent Euler-angle and quaternion representations.  
+
+> •
+
+We show that the proposed CBF framework can be implemented in a decentralized fashion, assuming that the information associated with each collision pair is accessible to the corresponding robots.  
+
+> •
+
+We validate our method across different 2D/3D scenar-ios and compare it with the supporting-hyperplane-CBF [7], showing that our method is less conservative while remaining collision-free. The rest of this paper is organized as follows. Section II provides preliminaries and Section III introduces the problem formulation. Section IV contains our main results on the proposed GJK-CBF. Section V presents simulation results and Section VI concludes the paper. 
+
+> 1Although the name suggests the use of GJK, the formulation only requires a witness pair, which may also be obtained via optimization.
+
+II. P RELIMINARIES 
+
+In this section, we provide background on CBFs (II-A) and rigid-body kinematics (II-B) to the extent needed for later development of our main results. 
+
+A. Control Barrier Functions (CBFs) 
+
+Consider a nonlinear system in the control-affine form: 
+
+˙x = f (x) + g(x)u, (1) where x ∈ Rn is the state, u ∈ U ⊆ Rm is the input, with 
+
+U denoting a closed control constraint containing the origin, and f : Rn → Rn, g : Rn → Rn×m are locally Lipschitz. 
+
+Definition 1 ( Forward invariant set [9]) : A set S ⊂ Rn
+
+is forward invariant for (1) if, for every initial condition 
+
+x(0) ∈ S , its unique solution satisfies x(t) ∈ S for all time. Let S be the safe set, defined as the 0-superlevel set of a continuously differentiable function h : Rn → R :
+
+S = {x ∈ Rn : h(x) ≥ 0}. (2) 
+
+Definition 2 ( CBF [9]) : Given a set S as in (2), h(x) is a control barrier function (CBF) for (1) if there exists an extended class K function 2 α such that 
+
+sup u∈U ˙h(x, u) = sup u∈U [Lf h(x) + Lgh(x)u]
+
+≥ − α(h(x)) , ∀x ∈ S , (3) where Lf (·), L g(·) denote the Lie derivatives along f and g,respectively. 
+
+Theorem 1 ( [9]) . Given a CBF h with the associated safe set S from (2), any locally Lipschitz continuous controller 
+
+u : Rn → U that satisfies ˙h(x, u) ≥ − α(h(x)) , ∀x ∈ S 
+
+renders the set S forward invariant for (1). Safe controllers can be synthesized by minimally modi-fying a given nominal controller, u : Rn → U , subject to the CBF constraint derived from (3). For implementation, time [0 , T ] is discretized into intervals of ∆t. At each step, the state is treated as fixed at its value at the beginning of the interval, rendering the CBF constraints affine in u. The control is applied over the interval and recomputed at the next step using the updated state. With the quadratic objective, this yields the following quadratic program (CBF-QP): 
+
+u∗(x) = arg min  
+
+> u∈U
+
+∥u − u(x)∥2
+
+> W
+
+s.t. ˙h(x, u) ≥ − α(h(x)) ,
+
+(4) where ∥x∥2 
+
+> W
+
+≜ x⊤Wx , and W ≻ 0 is a weighting matrix. 
+
+B. Rigid Body Kinematics on Lie Groups 
+
+Rigid-body motion consists of translation and rotation and can be naturally described by the Lie groups SO (d)
+
+and SE (d), with their Lie algebras so (d) and se (d), where 
+
+d ∈ {2, 3} corresponds to 2D and 3D spaces. To de-scribe the configuration of a rigid body, we first intro-duce an inertial world frame I and a body-fixed frame          
+
+> 2An extended class Kfunction is a function α:R→Rthat is strictly increasing and α(0) = 0 , see, e.g., [9].
+
+Bi for rigid body i, whose origin can be arbitrarily cho-sen. The configuration of rigid body i with respect to I
+
+is described by gi = ( Ri, pi) = 
+
+Ri pi
+
+0 1
+
+
+
+∈ SE (d), where 
+
+Ri ∈ SO (d) := {R ∈ Rd×d | RR ⊤ = Id, det( R) = 1 } de-notes its orientation and pi ∈ Rd its position (the origin of 
+
+Bi). The body velocity (twist) of rigid body i with respect to I, expressed in Bi, is denoted by Vi = [ v⊤ 
+
+> i
+
+, ω⊤ 
+
+> i
+
+]⊤ with 
+
+vi ∈ Rd and ωi ∈ R(d(d−1)) /2 being the translational and angular velocities, respectively. The kinematics of rigid body 
+
+i are ˙pi = Rivi, ˙Ri = Ri bωi, where the hat operator, c(·),maps ωi from Euclidean space to Lie algebra bωi ∈ so (d), a vector space of all d × d skew-symmetric matrices. In 2D and 3D, the angular velocity is represented by a scalar ω ∈ R and a vector ω = [ ω1, ω 2, ω 3]⊤ ∈ R3,respectively. The corresponding hat maps are 
+
+bω =
+
+0 −ωω 0
+
+
+
+, bω =
+
+
+
+0 −ω3 ω2
+
+ω3 0 −ω1
+
+−ω2 ω1 0
+
+ . (5) Equivalently, the kinematics can be written in homogeneous form as 
+
+˙gi = gi bVi, bVi := 
+
+bωi vi
+
+0 0
+
+
+
+∈ se (d). (6) We refer interested readers to [28], [29] for more details. III. P ROBLEM FORMULATION 
+
+This work considers collision avoidance among N ≥ 1
+
+robots and M ≥ 0 obstacles, each modeled as a convex rigid body. Their respective index sets are N := {1, . . . , N } and 
+
+M := {1, . . . , M }, with M = ∅ for M = 0 . The workspace 
+
+W ⊂ Rd, d ∈ { 2, 3}, is the physical (2D or 3D Euclidean) environment in which the robots move and avoid obstacles. The regions occupied by robot i and obstacle o are denoted by Ai(gi) ⊂ W and Oo ⊂ W , respectively. Unless otherwise specified, we use xi = gi ∈ SE (d) as the state and ui = Vi
+
+as the input for robot i ∈ N . Alternative Euler-angle and quaternion state representations for 3D are xEi ∈ R6 and 
+
+xQi ∈ R7, respectively. Before stating the assumptions, we recall the notions of convex and strictly convex sets. 
+
+Definition 3 ( Convex and Strictly Convex Sets [23]) : A set 
+
+C is convex if the point p = λx + (1 − λ)y lies in C for any 
+
+x, y ∈ C and any λ ∈ [0 , 1] , and strictly convex if, for any 
+
+x̸ = y and any λ ∈ (0 , 1) , p lies in the interior of C.Our problem is defined under the following assumptions: (i) The occupied sets Ai(xi) of each robot i ∈ N and Oo
+
+of each obstacle o ∈ M , are compact and convex with nonempty interiors; all obstacles are static. (ii) For every collision pair, whether robot-robot or robot-obstacle, at least one of the two sets is strictly convex. (iii) Each robot has access to the current states of all other robots it must avoid, as well as information about the obstacles; inter-robot communication is perfect, i.e., no delays or packet losses. (iv) Each robot is provided with a nominal go-to-goal con-troller ui, ∀i ∈ N , which is not necessarily safe. The collision avoidance problem considered in this work is formulated as follows: 
+
+Problem 1. Consider a workspace W containing M ≥ 0
+
+obstacles and N ≥ 1 robots. Each robot i ∈ N evolves according to (6) with a convex polyhedral admissible control set Ui. Given collision-free initial and goal configurations, 
+
+{x0 
+
+> i
+
+} and {xdi }, and nominal controllers {ui}, design safe controllers {ui ∈ U i} that minimally modify {ui} while avoiding collisions with one another and all obstacles. IV. M AIN RESULTS 
+
+This section presents the proposed GJK-CBF. We first establish its differentiability and derive its explicit gradient on SE (d) (IV-A) and then give equivalent forms in the commonly used Euler angles and quaternions (IV-B). Finally, we present a decentralized implementation, in the sense that each robot independently solves for its own control (IV-C). 
+
+A. Minimum Distance as a CBF 
+
+Collision avoidance between two rigid bodies can be characterized by maintaining a positive (minimum) distance between their occupied sets. We first consider a pair of robots 
+
+i, j ∈ N , i ̸ = j. Let Gij := ( gi, g j ). The pair of closest points (a∗ 
+
+> i
+
+(Gij ), a∗ 
+
+> j
+
+(Gij )) , expressed in I, is referred to as the witness pair w(Gij ), defined alongside the distance as 
+
+w(Gij ) := ( a∗ 
+
+> i
+
+, a∗ 
+
+> j
+
+) = arg min    
+
+> ai∈A i(gi)
+> aj∈A j(gj)
+
+∥ai − aj ∥22, (7) 
+
+dist( w(Gij )) = ∥a∗ 
+
+> i
+
+− a∗ 
+
+> j
+
+∥2. (8) The robot-obstacle case follows analogously from (7)-(8) by replacing Aj (gj ) with Oo and omitting the dependence on 
+
+gj . We then propose the following CBF candidate: 
+
+h(Gij ) = ∥a∗ 
+
+> i
+
+− a∗ 
+
+> j
+
+∥2 − dsafe , (9) where dsafe > 0 is a user-defined safety margin. For brevity, we denote dependence on Gij by the subscript ij , i.e., 
+
+(·)ij = ( ·)( Gij ), when clear from context. The associated safe set is given by Sij = {G ij ∈ SE (d)×SE (d) : hij ≥ 0}.Although the witness pair wij is defined through the optimization in (7), our formulation requires only wij itself to compute the gradient of (9) (see Theorem 2), without dual variables as in diffOpt-based methods [11]–[13]. Thus, wij 
+
+can instead be obtained using proximity-query algorithms such as GJK [5], which applies to general convex geometries. Alternatively, for particular set representations, (7) can be formulated as a convex program, e.g., a QP for polytopes, a quadratically constrained QP (QCQP) for ellipsoids, or a general convex nonlinear program for sets defined by non-linear convex constraints. It is worth noting that computing 
+
+wij does not depend on Assumption (ii), which is required only to ensure the differentiability of the proposed CBF (9), as established next. 
+
+Lemma 1. Under Assumption (ii), for Gij ∈ S ij , the witness pair wij (7) is unique and continuous, and the CBF hij in 
+
+(9) is continuously differentiable ( C1) with respect to Gij .Proof. The uniqueness and continuity of wij in (7) and the 
+
+C1 regularity of the CBF in (9) with respect to the relative configuration grel = g−1 
+
+> i
+
+gj follow directly from [23, Sec. IV-B]. Since grel and the transformation to I depend smoothly on Gij , these properties also hold with respect to Gij . ■
+
+We also remark that the standard CBF [9] is defined with respect to systems evolving in Euclidean spaces in the form of (1). The proposed CBF (9), however, is defined on a man-ifold of SE (d). Recent works have extended CBF theory to manifolds and Lie groups [27], [30], [31]. Forward invariance of the safe set can similarly be established by requiring the time derivative of hij along the system trajectories to satisfy 
+
+˙hij ≥ − α(hij ) [7], [30]. Before giving the result for ˙hij , we introduce the operator (·)⊥ for a = [ a1, . . . , a d]⊤ ∈ Rd:
+
+a⊥ := 
+
+(
+
+[−a2, a 1]⊤, d = 2 
+
+−ba, d = 3 . (10) Here, a⊥ ∈ Rd×d(d−1) /2 satisfies bωa = a⊥ω, with the hat operator defined in (5). We now state the formula for ˙hij .
+
+Theorem 2. Under Assumption (ii), for Gij ∈ S ij , the time derivative of the CBF (9) can be computed solely from the witness pair wij = ( a∗ 
+
+> i
+
+, a∗ 
+
+> j
+
+), the current configurations Gij ,and the body-velocity controls ui and uj as 
+
+˙hij = Jiui + Jj uj , (11a) 
+
+nij = a∗ 
+
+> i
+
+− a∗
+
+> j
+
+∥a∗ 
+
+> i
+
+− a∗ 
+
+> j
+
+∥2
+
+, nji = −nij (11b)             
+
+> (Ji)⊤=
+> R⊤
+> inij
+> (Ri(α∗
+> i)⊥)⊤nij
+> 
+> ,(Jj)⊤=
+> R⊤
+> jnji
+> (Rj(α∗
+> j)⊥)⊤nji
+> 
+> ,
+
+(11c) 
+
+α∗ 
+
+> k
+
+= R⊤ 
+
+> k
+
+(a∗ 
+
+> k
+
+− pk), k ∈ { i, j }. (11d) Here, pk ∈ Rd is the position of the origin of Bk, expressed in I, and α∗ 
+
+> k
+
+∈ Rd is the vector from pk to a∗
+
+> k
+
+, expressed in 
+
+Bk. We refer to Jk ∈ R1×(d+d(d−1) /2) as the body-velocity Jacobian associated with hij . Finally, nij ∈ Rd is the unit vector from a∗ 
+
+> j
+
+to a∗ 
+
+> i
+
+, and vice versa for nji .
+
+Proof. Let G := Gij , Ak denote the representation of rigid body k in Bk, and let z := ( αi, αj ) ∈ A i × A j . Define 
+
+Φ( G, z) := ∥pi + Riαi − pj − Rj αj ∥2. The minimum dis-tance between two bodies is then dist( G) = min z Φ( G, z),with z∗(G) := ( α∗ 
+
+> i
+
+(G), α∗ 
+
+> j
+
+(G)) denoting its unique mini-mizer by Lemma 1. Along G(t), let z∗ 
+
+> t
+
+:= z∗(G(t)) . For any sufficiently small ∆ > 0, optimality of z∗ 
+
+> t+∆
+
+at G(t + ∆) 
+
+gives Φ( G(t + ∆) , z∗
+
+> t+∆
+
+) ≤ Φ( G(t + ∆) , z∗ 
+
+> t
+
+), whereas optimality of z∗ 
+
+> t
+
+at G(t) gives Φ( G(t), z∗ 
+
+> t
+
+) ≤ Φ( G(t), z∗
+
+> t+∆
+
+).Since dist( G(τ )) = Φ( G(τ ), z∗ 
+
+> τ
+
+), for every τ , combining the two inequalities above yields 
+
+Φ( G(t + ∆) , z∗
+
+> t+∆
+
+) − Φ( G(t), z∗
+
+> t+∆
+
+)
+
+≤ dist( G(t + ∆)) − dist( G(t)) 
+
+≤ Φ( G(t + ∆) , z∗ 
+
+> t
+
+) − Φ( G(t), z∗ 
+
+> t
+
+),
+
+By Lemma 1, the unique minimizer is continuous, so that 
+
+z∗ 
+
+> t+∆
+
+→ z∗ 
+
+> t
+
+as ∆ → 0. Since Φ is C1 with respect to 
+
+G whenever dist( G) > 0, division by ∆ (reversing the inequalities if ∆ < 0), followed by the mean value theorem and the squeeze theorem, yields 
+
+ddt dist( G(t)) = ∂∂t Φ( G(t), z) z=z∗
+
+> t
+
+.
+
+Since dsafe is constant, we evaluate the partial derivative above while holding fixed the instantaneous witness points 
+
+α∗ 
+
+> k
+
+defined in (11d). Using (11b), we obtain 
+
+˙hij = ddt dist( G(t)) = n⊤
+
+> ij
+
+
+
+˙pi + ˙Riα∗ 
+
+> i
+
+− ˙pj − ˙Rj α∗
+
+> j
+
+
+
+.
+
+Substituting ˙pk = Rkvk and ˙Rk = Rk bωk into the above equation and using n⊤R bωα = n⊤Rα⊥ω and nji = −nij 
+
+yields ˙hij = Jiui + Jj uj , with Ji and Jj given by (11c). This completes the proof. ■
+
+Since the rigid-body kinematics (6) are driftless and the zero input is admissible, choosing ui = uj = 0 yields 
+
+˙hij = 0 ≥ − α(hij ) for every Gij ∈ S ij ; hence, hij satisfies the CBF condition (3). By Theorem 1, any locally Lips-chitz controller satisfying (3) renders Sij forward invariant, thereby maintaining separation for all time. 
+
+Remark 1. For a robot-obstacle collision pair (i, o ), i ∈N , o ∈ M , we denote its witness pair, CBF, safe set, and separation normal by wio , hio , Sio , and nio , respectively. Since the obstacle is static, its velocity term vanishes, and Theorem 2 reduces to ˙hio = Jiui.
+
+In our previous work [14], the 2D counterpart of Theorem 2 was derived using diffOpt together with the Minkowski-operation property, revealing that the gradient depends only on the witness pair. This observation motivates the present 3D derivation based on rigid-body motion. The same derivative expression also applies to the SD formulation in the intersecting case, provided the penetration witness pair is unique. Nonunique witness pairs introduce nonsmooth-ness, which was analyzed for 2D polygons in the same work; here, we focus on the C1 setting established in Lemma 1. We note that for force- or torque-controlled systems, distance-based CBFs such as our GJK-CBF have relative degree two, i.e., the control first appears in the second time derivative of the CBF. A direct extension requires a higher-order CBF [32], which involves the distance Hessian and thus sensitivity analysis of the optimal witness points a∗
+
+> k
+
+[27], [33]–[35]. Alternatively, specially designed CBFs, such as those proposed in [36], combine kinetic energy with the distance-based safety function to avoid explicit computation of the distance Hessian. 
+
+B. Alternative Attitude Representations in 3D 
+
+In 3D, Euler angles provide an intuitive and minimal pa-rameterization but suffer from singularities, whereas quater-nions avoid them at the cost of an additional parameter. We now present equivalent expressions of the GJK-CBF deriva-tive using Euler angles and quaternions. While using dif-ferent state representations, we retain the body velocity 
+
+ui = [ v⊤ 
+
+> i
+
+, ω⊤ 
+
+> i
+
+]⊤ as the control input. Euler angles. The state is xEi = [p⊤ 
+
+> i
+
+, η⊤ 
+
+> i
+
+]⊤, where 
+
+ηi = [ϕi, θ i, ψ i]⊤ ∈ R3 denotes the roll, pitch, yaw angles, respectively. We adopt the common yaw-pitch-roll convention, i.e., Ri = Rz (ψi)Ry (θi)Rx(ϕi), with 
+
+Rz =
+
+c −s 0
+
+s c 00 0 1
+
+ , R y =
+
+ c 0 s
+
+0 1 0
+
+−s 0 c
+
+ , R x =
+
+1 0 00 c −s
+
+0 s c
+
+ ,
+
+where c and s denote the cosine and sine of each matrix’s angle, respectively. The kinematics are given by: 
+
+˙xEi =
+
+Ri 00 T (ηi)−1
+
+
+
+ui ≜ Eiui, (12a) 
+
+T (ηi) = 
+
+1 0 − sin( θi)0 cos( ϕi) sin( ϕi) cos( θi)0 − sin( ϕi) cos( ϕi) cos( θi)
+
+ , (12b) Using (12a), the time derivative of hij in Euler-angle coor-dinates can be written as 
+
+˙hij = JEi ˙xEi + JEj ˙xEj = JEi Eiui + JEj Ej uj , (13) where JEk = ( ∇xEk hij )⊤ denotes the Jacobian of hij with respect to the Euler-angle coordinates of body k, for k ∈{i, j }. By Theorem 2, it is given by 
+
+JEk = Jk (Ek)−1 = Jk
+
+R⊤ 
+
+> k
+
+00 T (ηk)
+
+
+
+. (14) This expression is valid away from the Euler-angle singu-larity, i.e., for cos θk̸ = 0 . A related result was previously obtained in [20, Appendix A] for rod-shaped robots via a different derivation. Our result in (14) reduces to theirs when the roll angle is set to zero. 
+
+Quaternion. The same approach applies to the unit quaternion representation, with state xQi = [ p⊤ 
+
+> i
+
+, q⊤ 
+
+> i
+
+]⊤, where 
+
+qi = [ q0i , q⊤ 
+
+> vi
+
+]⊤ ∈ R4 and ∥qi∥2 = 1 . The corresponding kinematics are: 
+
+˙xQi =
+
+Ri 00 12 G(qi)
+
+
+
+ui ≜ Qiui, (15a) 
+
+G(qi) = 
+
+ −q⊤
+
+> vi
+
+q0i I3 + cqvi
+
+
+
+, (15b) Similarly, using (15a), the time derivative of hij in quater-nion coordinates can be written as 
+
+˙hij = JQi ˙xQi + JQj ˙xQj = JQi Qiui + JQj Qj uj , (16) where JQk denotes one valid quaternion-coordinate Jacobian associated with body k. Since G(qk)⊤G(qk) = I3 holds for unit quaternions, a left inverse of Qk yields the following valid Jacobian via Theorem 2: 
+
+JQk = Jk
+
+R⊤ 
+
+> k
+
+00 2G(qk)⊤
+
+
+
+. (17) In summary, depending on the chosen attitude repre-sentation, the CBF constraint can be equivalently imposed by evaluating ˙hij using (11) for SE (d) representation, or, for d = 3 , using (13)-(14) for Euler angles, or (16)-(17) for unit quaternions. In the subsequent decentralized CBF formulation and simulations, we adopt the default SE (d)
+
+expression (11). 
+
+C. Decentralized Implementation 
+
+With the CBF derivative available, we now synthesize safe control inputs by solving the safety-filter CBF-QP (4). Under Assumption (iii), following [37], each pairwise CBF constraint can be split between the corresponding robots without compromising safety, yielding a decentralized im-plementation in which each robot solves for its own control input. To describe this allocation, consider a fixed robot pair 
+
+(i, j ). Each robot independently computes the CBF value hij 
+
+from (9) and its own body-velocity Jacobian Jk, k ∈ { i, j }
+
+using (11c). For this pair, their local CBF-QPs are: 
+
+u∗ 
+
+> i
+
+= arg min 
+
+> ui∈U i
+
+∥ui − ui∥2
+
+> Wi
+
+s.t. Jiui ≥ − βij α(hij ), (18a) 
+
+u∗ 
+
+> j
+
+= arg min  
+
+> uj∈U j
+
+∥uj − uj ∥2
+
+> Wj
+
+s.t. Jj uj ≥ − (1 − βij )α(hij ), (18b) where 0 ≤ βij ≤ 1 is the user-defined parameter that allo-cates the avoidance responsibility within the pair and may be chosen according to their control capabilities. Summing the two constraints in (18a)-(18b) and using (11a) yields Jiui + Jj uj = ˙hij ≥ − α(hij ). That is, un-der perfect communication in Assumption (iii), the local constraints (18a)-(18b) recover the original pairwise CBF condition. Then, provided that the local QPs are feasible, the safe set Sij is forward invariant by Theorem 1. For N robots, there are  N
+
+> 2
+
+ distinct inter-robot CBF constraints. Each robot enforces its at most N − 1 associated constraints in a single local QP. With M obstacles, the same QP additionally includes M robot-obstacle CBF constraints. Algorithm 1 summarizes the decentralized implementation, with each robot independently performing its own computations. V. S IMULATION RESULTS 
+
+We validate the proposed GJK-CBF through 2D and 3D simulations, including comparisons with [7] in 2D multi-robot position swapping and 3D slit passage (V-A), followed by 3D position swapping (V-B), and finally demonstrate its applicability to a velocity-controlled manipulator (V-C). Following [7], in all simulations except the manipu-lator example, we use the following nominal controllers 
+
+vi = kv,i R⊤ 
+
+> i
+
+(pdi − pi), ωi = kω,i  
+
+> 2
+
+(R⊤ 
+
+> i
+
+Rdi − (R⊤ 
+
+> i
+
+Rdi )⊤)∨3.All simulations are conducted in MATLAB, with QPs solved using quadprog . We set α(h) = γh with γ = 4 , βij = 0 .5,and dsafe = 0.05 m unless otherwise specified. Control bounds are imposed only in the manipulator example. We note that GJK-CBF applies to any pair of geometries satis-fying Assumption (ii), including superquadrics [25]. Here, we use superellipsoids, a generalization of ellipsoids, to model strictly convex bodies. Each superellipsoid is defined by semi-axes e = ( e1, e 2, e 3) and shape parameter ρ as 
+
+E = {y ∈ R3 : P3 
+
+> i=1
+
+|yi/e i|ρ ≤ 1}. E is strictly convex for 
+
+ρ > 1 and reduces to an ellipsoid when ρ = 2 , with larger 
+
+ρ producing increasingly box-like shapes.                 
+
+> 3The vee map (·)∨:so (d)→Rd(d−1) /2is the inverse of the hat map defined in (5). GJK-CBF (Ours)  supp.-hyperplane-CBF [7]
+> Fig. 2: Left: Comparison between (top) the supporting-hyperplane-CBF [7] and (bottom) the proposed GJK-CBF for six ellipsoidal robots swapping positions. Dotted outlines denote the desired poses, and solid curves show the robot trajectories. Dash-dotted lines in the top row represent the supporting hyperplanes. Right: (top) minimum pairwise CBF values and (bottom) control-loop computation-time distributions, which are measured for the serial implementation and include all pairwise CBF evaluations and local QP solves for the six robots.
+
+Algorithm 1 Decentralized GJK-CBF Safety Filter 
+
+Input: Robots N with {x0 
+
+> i
+
+}, {xdi }, {ui}, {Wi}, ∀i ∈ N ,
+
+β = {βij ∈ [0 , 1] }1≤i<j ≤N , static obstacles {O o}o∈M ,
+
+dsafe , γ, T , and ∆t
+
+Output: Safe control and state trajectories for all robots  
+
+> 1:
+
+K ← T / ∆t 
+
+> 2:
+
+for k = 0 , . . . , K − 1 do  
+
+> 3:
+
+for all i ∈ N do  
+
+> 4:
+
+Ai ← [ ] , bi ← [ ] ▷ Init. CBF-QP constraints  
+
+> 5:
+
+uki ← ui(xki , xdi ) ▷ Nominal control  
+
+> 6:
+
+end for  
+
+> 7:
+
+for all i, j ∈ N , i < j do ▷ Inter-robot safety  
+
+> 8:
+
+(a∗ 
+
+> i
+
+, a∗ 
+
+> j
+
+, d ij ) ← GJK  Ai(xki ), Aj (xkj ) 
+
+> 9:
+
+hij ← dij − dsafe using (9) ▷ CBF value  
+
+> 10:
+
+Compute Ji and Jj using (11b)-(11d)  
+
+> 11:
+
+Ai ← [Ai; −Ji], bi ← [bi; βij γh ij ] 
+
+> 12:
+
+Aj ← [Aj ; −Jj ], bj ← [bj ; (1 − βij )γh ij ] 
+
+> 13:
+
+end for  
+
+> 14:
+
+for all (i, o ) ∈ N × M do ▷ robot-obstacle safety  
+
+> 15:
+
+(a∗ 
+
+> i
+
+, a∗
+
+> o
+
+, d io ) ← GJK  Ai(xki ), Oo
+
+ 
+
+> 16:
+
+hio ← dio − dsafe using (9) ▷ CBF value  
+
+> 17:
+
+Compute Ji using (11b)-(11d)  
+
+> 18:
+
+Ai ← [Ai; −Ji], bi ← [bi; γh io ] 
+
+> 19:
+
+end for  
+
+> 20:
+
+for all i ∈ N do ▷ Solve CBF-QP (4)  
+
+> 21:
+
+uki ← min ui∈U i ∥ui − uki ∥2 
+
+> Wi
+
+s.t. A iui ≤ bi 
+
+> 22:
+
+xk+1  
+
+> i
+
+← Propagate (xki , uki , ∆t)using (6), (12a), or (15a)  
+
+> 23:
+
+end for  
+
+> 24:
+
+end for 
+
+A. Comparative study 
+
+We first compare our method with the supporting-hyperplane-CBF [7], designed for ellipsoidal robots. We consider six heterogeneous ellipsoidal robots uniformly dis-tributed on a circle of radius r0 = 10 m and indexed counter-clockwise from the purple robot on the x-axis (Fig. 2). Each robot’s goal is the initial position of its diametrically opposite robot. The robots have semi-axis lengths of (2 .52 , 1.26) ,
+
+(2 .59 , 0.56) , (1 .82 , 1.40) , (2 .66 , 1.54) , (2 .24 , 1.19) , and 
+
+(2 .10 , 0.42) m, respectively. All initial orientations are zero, with desired orientations of 40 , 90 , −25 , 10 , 0, −70 degrees, respectively. For both methods, we set kv,i = 1 .2, kω,i = 0 .8,and use W = diag(1 , 1, 5) for all robots. For [7], the auxiliary variable’s virtual-input weight (in the CBF-QP) and gain are 1 and kz, 0 = 10 , respectively. We simulate for 
+
+T = 8 s with ∆t = 5 ms. As shown in Fig. 2, the proposed GJK-CBF maintains positive pairwise separation for all time, whereas, under the parameters used here, the supporting-hyperplane-CBF results in inter-robot collisions, which might arise from inter-sample effects. The baseline nevertheless has lower computation time by avoiding explicit pairwise distance queries at each control loop. The trade-off is a higher-dimensional local QP due to auxiliary states and controls for the supporting hyperplanes of each pair. Our custom GJK implementation takes support functions as inputs and returns the witness pair, but is not optimized for computational efficiency. We anticipate that accelerated variants such as GJK++ [38] can further reduce the runtime of GJK-CBF. For the 3D comparison, we consider a 4 × 8 × 1 mbox-shaped robot navigating through a narrow vertical slit formed by two superellipsoidal obstacles (Fig. 1). The robot moves from p0 = [0 , 2.5, 0] ⊤ with an initial atti-tude of η0 = [10 ◦, 0, 0] ⊤ to pd = [20 , 2, 2.8] ⊤ with zero desired attitude. The obstacles are centered at (12 , −4, 2) 
+
+and (12 , 5, 2) with semi-axes (4 .5, 3.6, 7.2) and ρ = 3 . The proposed GJK-CBF uses the original geometries, whereas for the ellipsoid-only baseline [7], we approximate each body by its minimum-volume enclosing ellipsoid. We set kv = 3 ,
+
+kω = 0 .8, W = diag( I3, 3I3), T = 5 s, and ∆t = 1 ms for both methods. As shown in Fig. 1, conservative ellipsoidal approximations block direct passage through the slit, forcing a slight detour above the obstacles (Fig. 1-Top), whereas GJK-CBF uses the original convex bodies, allowing direct passage (Fig. 1-Bottom). 
+
+B. Multi-robot swap in 3D 
+
+We next consider four heterogeneous superellipsoidal robots exchanging diagonally opposite poses. Their ini-tial positions are [0 , 6, −1] ⊤, [0 , −6, 1] ⊤, [15 , −6, 1] ⊤,
+
+[15 , 6, −1] ⊤, with corresponding semi-axes (3 .6, 1.8, 1.3) ,
+
+(1 .2, 3.7, 0.4) , (3 .2, 2.0, 2.0) , (2 .8, 2.9, 1.5) ; shape parame-ters ρ = 2 , 3, 6, 4. All initial attitudes are zero, while the desired roll-pitch-yaw angles in degrees are (20 , 60 , −45) ,
+
+(90 , 25 , −10) , (0 , −70 , −30) , (−90 , 20 , 30) , respectively. We set kv = 1 .2, kω = 0 .8, and W = diag( I3, 10 I3). We sim-ulate for T = 6 s with ∆t = 10 ms. As shown in Fig. 3, all robots safely exchange poses while maintaining positive pairwise CBF values.    
+
+> Fig. 3: Top: Snapshots of four heterogeneous superellipsoidal robots ex-changing diagonally opposite poses using the decentralized GJK-CBF (18).
+> Bottom: The corresponding pairwise CBF values.
+
+C. 6-DOF UR5 manipulator 
+
+Finally, we apply GJK-CBF to a velocity-controlled UR5 manipulator modeled using the Robotics System Toolbox. We use four superellipsoids Eℓ, ℓ ∈ { 1, . . . , 4} with ρ = 4 
+
+to enclose the upper arm, forearm, and two wrist sections, each rigidly attached to its parent link with body-fixed frame 
+
+Bℓ. The state is q = [ q1, . . . , q6]⊤ ∈ R6, where qi is the i-th joint angle. The control input is now the joint velocity 
+
+u = ˙ q ∈ R6. The task is to move the end effector (EE) from the start point to the goal point, see Fig. 4-Top. A smooth 5th -order reference trajectory in joint space is generated as qref (t) = q0 + ( qd − q0)  10 τ 3 − 15 τ 4 + 6 τ 5
+
+with τ = t/T . The EE position and velocity reference trajectories, pref (t) and ˙pref (t), are obtained via forward kinematics. The nominal joint-velocity input is given by 
+
+u = J† 
+
+> v
+
+(Kp(pref − p) + ˙ pref ) +  I6 − J† 
+
+> v
+
+Jv
+
+ Kq (qref − q),where Jv (q) ∈ R3×6 is the translational component of the EE geometric Jacobian, and J† 
+
+> v
+
+= J⊤ 
+
+> v
+
+(Jv J⊤ 
+
+> v
+
++ λ2I3)−1 is its damped pseudoinverse, with Kp = 4 , Kq = 1 , λ = 0 .05 .For each link-obstacle pair (ℓ, o ), o ∈ { 1, 2}, the body-velocity Jacobian Jℓ,o given by (11c) is evaluated using the origin of the parent-link frame Bℓ, rather than the center of Eℓ, as the reference point. A separate Jacobian, JVℓ (q),is the parent-link geometric Jacobian and maps the joint velocity u to the body velocity Vℓ, i.e., Vℓ = JVℓ (q)u.Thus, the CBF derivative is computed using the chain rule as ˙hℓ,o = Jℓ,o Vℓ = Jℓ,o JVℓ (q)u. We set dsafe = 0 .03 m, 
+
+T = 15 s, ∆t = 50 ms, and impose the joint-velocity bounds 
+
+−1.5 ≤ ˙qi ≤ 1.5 rad/s for each joint. As shown in Fig. 4, without the safety filter, the nominal trajectory (blue) inter-sects both obstacles, whereas GJK-CBF modifies the joint velocities and guides the manipulator around the obstacles. start goal start goal           
+
+> x (m)
+> z (m)
+> reference trajectory actual trajectory
+> Fig. 4: Collision avoidance for a velocity-controlled UR5 manipulator. Top:
+> Side (left) and top (right) views of the motion from the start (green) to the goal (magenta). The blue and cyan curves denote the reference and filtered end-effector trajectories, respectively. Bottom: CBF values for the four links relative to superellipsoidal obstacles O1and O2.
+
+VI. C ONCLUSIONS AND FUTURE WORK 
+
+We present GJK-CBF, a general distance-based CBF for-mulation for collision avoidance between convex bodies, provided that at least one body in each pair is strictly convex. We show that GJK-CBF is continuously differen-tiable and its gradient can be computed solely from the witness pair, without using diffOpt. We validate our method through multi-robot position swapping in both 2D and 3D, a single robot passing through a vertical slit in 3D, and a UR5 manipulator application. Comparative studies with the supporting-hyperplane-CBF [7] show that our method is less conservative while maintaining collision-free motion. Future work will relax the strict-convexity assumption using generalized gradients and nonsmooth CBFs for overlapping and other nondifferentiable configurations and extend the framework to higher-relative-degree systems. VII. A CKNOWLEDGMENT 
+
+The authors used generative AI tools [39] to polish the grammar, clarify selected derivations, and refine code im-plementation. All research ideas and technical content were developed by the authors. REFERENCES [1] Lozano-Perez, “Spatial Planning: A Configuration Space Approach,” 
+
+IEEE Transactions on Computers , vol. C-32, no. 2, pp. 108–120, Feb. 1983. [Online]. Available: https://ieeexplore.ieee.org/document/ 1676196/ [2] M. De Berg, Computational geometry: algorithms and applications .Springer Science & Business Media, 2000. [3] S. M. LaValle, Planning Algorithms . Cambridge University Press, 2006. [4] J.-M. Lien, “Hybrid motion planning using minkowski sums,” Pro-ceedings of robotics: science and systems IV , 2008. [5] E. G. Gilbert, D. W. Johnson, and S. S. Keerthi, “A fast procedure for computing the distance between complex objects in three-dimensional space,” IEEE Journal on Robotics and Automation , vol. 4, no. 2, pp. 193–203, 1988. [6] G. Van Den Bergen, “Proximity queries and penetration depth com-putation on 3d game objects,” in Game Developers Conference , vol. 170, 2001, p. 209. [7] R. Funada, K. Nishimoto, T. Ibuki, and M. Sampei, “Collision avoid-ance for ellipsoidal rigid bodies with control barrier functions designed from rotating supporting hyperplanes,” IEEE Transactions on Control Systems Technology , vol. 33, no. 1, pp. 148–164, 2024. [8] P. Wieland and F. Allgöwer, “Constructive safety using control barrier functions,” IFAC Proceedings Volumes , vol. 40, no. 12, pp. 462–467, 2007. [9] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada, “Control barrier functions: Theory and applications,” in European Control Conference , 2019, pp. 3420–3431. [10] B. Dai, R. Khorrambakht, P. Krishnamurthy, V. Gonçalves, A. Tzes, and F. Khorrami, “Safe navigation and obstacle avoidance using differ-entiable optimization based control barrier functions,” IEEE Robotics and Automation Letters , vol. 8, no. 9, pp. 5376–5383, 2023. [11] A. Thirugnanam, J. Zeng, and K. Sreenath, “Control barrier func-tions for collision avoidance between strongly convex regions,” arXiv preprint arXiv:2306.13259 , 2023. [12] L. Fernandez, S. Sutjipto, V. H. Moreno, A. M. Tu, and M. G. Carmichael, “Differentiable obstacle avoidance framework for robot safety,” IEEE Robotics and Automation Letters , vol. 11, no. 4, pp. 5158–5165, 2026. [13] J. Usevitch and J. Sahleen, “Safety for time-varying parameterized sets using control barrier function methods,” in 2025 American Control Conference (ACC) , 2025, pp. 267–274. [14] Y.-H. Chen, S. Liu, W. Xiao, C. Belta, and M. Otte, “Exact signed-distance control barrier functions via minkowski operations for safe navigation among polytopes,” 2026. [Online]. Available: https://arxiv.org/abs/2608.02886 [15] B. Amos and J. Z. Kolter, “OptNet: Differentiable optimization as a layer in neural networks,” in International Conference on Machine Learning . PMLR, 2017, pp. 136–145. [16] H. Matias and D. Silvestre, “Safe navigation under uncertain obstacle dynamics using control barrier functions and constrained convex generators,” arXiv preprint arXiv:2601.07715 , 2026. [17] T. G. Molnar, “Navigating polytopes with safety: A control barrier function approach,” in 2025 IEEE Conference on Control Technology and Applications (CCTA) , 2025, pp. 179–184. [18] S. Wu, Y. Fang, N. Sun, B. Lu, X. Liang, and Y. Zhao, “Optimization-free smooth control barrier function for polygonal collision avoidance,” 
+
+IEEE Transactions on Cybernetics , 2025. [19] S. Jo, Y. Zhang, Y. Yang, and W. Luo, “Geometry-aware control barrier functions for collision avoidance via bernstein polynomial approximations,” arXiv preprint arXiv:2605.30696 , 2026. [20] H. Choset and J. Y. Lee, “Sensor-based construction of a retract-like structure for a planar rod robot,” IEEE Transactions on Robotics and Automation , vol. 17, no. 4, pp. 435–449, 2001. [21] J. Y. Lee and H. Choset, “Sensor-based planning for a rod-shaped robot in three dimensions: Piecewise retracts of r3 × s2,” The International Journal of Robotics Research , vol. 24, no. 5, pp. 343–383, 2005. [22] J. Schulman, Y. Duan, J. Ho, A. Lee, I. Awwal, H. Bradlow, J. Pan, S. Patil, K. Goldberg, and P. Abbeel, “Motion planning with sequential convex optimization and convex collision checking,” The International Journal of Robotics Research , vol. 33, no. 9, pp. 1251–1270, 2014. [23] A. Escande, S. Miossec, M. Benallegue, and A. Kheddar, “A strictly convex hull for computing proximity distances with continuous gra-dients,” IEEE Transactions on Robotics , vol. 30, no. 3, pp. 666–678, 2014. [24] A. H. Li, P. Culbertson, J. W. Burdick, and A. D. Ames, “Frogger: Fast robust grasp generation via the min-weight metric,” in 2023 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) .IEEE, 2023, pp. 6809–6816. [25] H. Zhao, L. Brunke, O. Lagerquist, S. Zhou, and A. P. Schoellig, “Sq-cbf: Signed distance functions for numerically stable superquadric-based safety filtering,” arXiv preprint arXiv:2602.11049 , 2026. [26] Z. Guo, Y. Chen, Y. Wei, and X. Nie, “An improved differentiable optimization-based control barrier function scheme to reactive motion planning for robots,” IEEE Internet of Things Journal , 2026. [27] W. Wang, T. Meng, K. Wang, and J. Lei, “Geometric control barrier function: Extensions on the lie group se(3),” in 2025 37th Chinese Control and Decision Conference (CCDC) , 2025, pp. 4773–4778. [28] Z. Li, S. Sastry, and R. Murray, A mathematical introduction to robotic manipulation . CRC press Boca Raton, FL, 1994. [29] J. Solà, J. Deray, and D. Atchuthan, “A micro lie theory for state estimation in robotics,” 2021. [Online]. Available: https: //arxiv.org/abs/1812.01537 [30] M. De Sa, P. Ong, and A. D. Ames, “From bundles to backstepping: Geometric control barrier functions for safety-critical control on manifolds,” in 2026 American Control Conference (ACC) , 2026, pp. 1928–1935. [31] R. Lin and M. Egerstedt, “Stochastic control barrier functions under state estimation: From euclidean space to lie groups,” arXiv preprint arXiv:2601.16198 , 2026. [32] W. Xiao and C. Belta, “High-order control barrier functions,” IEEE Transactions on Automatic Control , vol. 67, no. 7, pp. 3655–3662, 2022. [33] L. Montaut, Q. Le Lidec, A. Bambade, V. Petrik, J. Sivic, and J. Car-pentier, “Differentiable collision detection: a randomized smoothing approach,” in 2023 IEEE International Conference on Robotics and Automation (ICRA) . IEEE, 2023, pp. 3240–3246. [34] Y.-H. Chen, S. Ghori, A. Adil, E. Feron, and C. Belta, “Long-horizon geometry-aware navigation among polytopes via milp-mpc and minkowski-based cbfs,” 2026. [Online]. Available: https://arxiv.org/abs/2604.00162 [35] S. Zimmermann, M. Busenhart, S. Huber, R. Poranne, and S. Coros, “Differentiable collision avoidance using collision primitives,” in 2022 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, 2022, pp. 8086–8093. [36] A. Singletary, S. Kolathaya, and A. D. Ames, “Safety-critical kine-matic control of robotic systems,” IEEE Control Systems Letters ,vol. 6, pp. 139–144, 2022. [37] L. Wang, A. D. Ames, and M. Egerstedt, “Safety barrier certificates for collisions-free multirobot systems,” IEEE Transactions on Robotics ,vol. 33, no. 3, pp. 661–674, 2017. [38] L. Montaut, Q. Le Lidec, V. Petrik, J. Sivic, and J. Carpentier, “Gjk++: Leveraging acceleration methods for faster collision detection,” IEEE Transactions on Robotics , vol. 40, pp. 2564–2581, 2024. [39] OpenAI, “ChatGPT,” [Online]. Available: https://openai.com/chatgpt/, 2026.

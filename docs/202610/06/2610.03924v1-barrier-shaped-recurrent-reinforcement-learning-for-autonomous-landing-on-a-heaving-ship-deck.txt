@@ -1,0 +1,257 @@
+Title: Barrier-Shaped Recurrent Reinforcement Learning for Autonomous Landing on a Heaving Ship Deck
+
+URL Source: https://arxiv.org/pdf/2610.03924v1
+
+Published Time: Tue, 06 Oct 2026 00:11:09 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Barrier-Shaped Recurrent Reinforcement Learning for Autonomous Landing on a Heaving Ship Deck 
+
+Ritwik Shankar *,1 , Chiranjeev Prachand *,2 , Abhishek 1, and Soumya Ranjan Sahoo 2
+
+Abstract —This paper addresses autonomous landing of un-manned aerial vehicle (UAV) rotorcrafts on a heaving ship deck using a recurrent policy trained via asymmetric actor-critic reinforcement learning: the critic sees 6 s of future deck height during training, while the actor sees only what the onboard sensors provide in flight, a 17-dimensional state made of the vehicle’s position, velocity and attitude relative to the deck and outputs world-frame velocity and yaw-rate commands. Training is performed across 4096 parallel simulated environments, fol-lowed by fine-tuning in 16 environments with an onboard vision pipeline in the loop. A control-barrier-function (CBF) stopping margin on the deck-relative vertical state is incorporated at two stages: as a reward term during training, where it halves the median simulated contact speed relative to a policy trained without it, and as a runtime safety filter at deployment, evaluated at every control step to abort and retry the descent when the margin is violated. Because the autopilot’s disarm logic cannot detect the vehicle resting on a moving deck, proximity-based thrust cutoff at touchdown is commanded directly in the landing pipeline. The proposed approach is validated using a parallel-manipulator-platform-based deck emulator that reproduces the heaving motion of the ship deck (scaled to 0.70 m peak-to-peak, 
+
+7.5 s mean period) and a quadcopter UAV with an onboard camera. Across 31 motion-capture and 20 vision-based trials, the UAV landed every time, with median times to contact of 6.5 and 
+
+7.3 s ; 77% and 50% landed on the first attempt, with mean deck-relative speeds of 0.29 and 0.27 m /s, respectively, at the instant 
+
+> *
+
+These authors contributed equally. The authors are with the 1Department of Aerospace Engineering and the 
+
+> 2
+
+Department of Electrical Engineering, Indian Institute of Technology Kanpur, Kanpur, India. This research was supported by the IndiaAI Fellowship. 
+
+of thrust cutoff, which is the last speed under the policy’s control. Supplementary video: https://youtu.be/S5hDkrSZJt4 
+
+Index Terms —aerial systems, control barrier functions, failure detection and recovery, reinforcement learning, ship-deck landing 
+
+I. I NTRODUCTION 
+
+Autonomous landing of a vertical take-off and landing (VTOL) capable unmanned aerial vehicle (UAV) on a moving ship deck matters for maritime logistics and naval recovery. The vehicle must track a deck that translates and rotates, choose when to descend, and touch down within tight limits on relative velocity, attitude, and deck size. For ship-deck motions such as roll (about X), pitch (about Y ), sway (along Y ), and surge (along X), the vehicle can null the relative translation it currently observes, and it can decide to stop or continue the descent according to the tilt it observes at that moment. That observation is a sufficient statistic for landing. Early deck-landing systems accordingly focused on recovering the relative deck pose and controlling the vehicle’s angular and horizontal motion. Monocular and marker-based methods established this pipeline on laboratory motion platforms, simulated decks, and wave-perturbed small surface vessels [1]–[4]. These systems established the perception and feedback required for landing under observable angular and lateral deck motion. With ver-tical deck travel absent, the current relative pose remained sufficient for deciding the control response. TRAINING DEPLOYMENT (Jetson Orin Nano)      
+
+> Isaac Lab PX4-like controller · 200 Hz velocity PID → attitude → rate PID → allocation
+> Critic · training only Actor · deployed
+> PPO with barrier-shaped reward
+> asymmetric actor–critic with privileged information · 20 Hz privileged rewards updates · 20 Hz
+> Vision-based State estimator
+> Onboard camera · fractal ArUco
+> GRU actor CBF safety filter ArduPilot velocity control
+> motor PWM weights · 20 Hz · 20 Hz
+
+Fig. 1: Training and deployment pipeline of the proposed landing algorithm. arXiv:2610.03924v1 [eess.SY] 2 Oct 2026 Horizontal motion is a tracking problem; heave (along Z), on the other hand, is a timing problem because a poorly timed descent can bring the vehicle into contact with a rising or upward-accelerating deck at a high relative velocity. The quantity that determines contact is now the relative velocity at an instant that has not yet arrived, so the current relative pose no longer determines the correct action. A constant descent makes the difficulty concrete. Taking every sample of a measured ship-heave record [5] as an instant at which the vehicle could arrive, and descending at a constant 0.5 m /s,the rate an off-the-shelf autopilot uses to land, the relative speed at contact exceeds 0.5 m /s at half of them, because the deck is rising as often as it is falling. A landing attempt must therefore be timed against motion that has not yet occurred, and a descent must be abandoned once safe contact can no longer be achieved. The landing must also end by itself. An autopilot disarms only after the airframe stops moving, and a heaving deck keeps it moving, so the vehicle would sit on the deck with its motors still running and never disarm. The policy therefore cuts the thrust itself, once it is within 
+
+7 cm of the deck. Cutting at contact instead is possible, since the camera gives the relative height, but a vehicle that is still producing thrust when the gear meets a moving deck can slide or tip before it settles. Dropping the last few centimeters lets it arrive with enough weight on the gear to settle in place. This operational insight motivated the adoption of a proximity-based disarm logic. The policy steers the descent up to that instant, and the vehicle falls unpowered after it, so the speed the policy achieves and the speed at contact are two different numbers. Classical approaches decompose this task into estimation, motion prediction, descent planning, and safety logic. Pre-cision landing on a vertically oscillating platform has been achieved by tracking its height [6] and by coupling a UKF estimate of known multi-sinusoidal motion to time-optimal trajectory generation [7]. Such pipelines rest on a forecast of the ship’s motion, from Kalman estimators [8]–[10] to learned time-series models [11]–[13], coupled to a planned descent [14]. In maritime experiments, an FFT–Kalman ob-server and MPC reached the deck near zero roll and pitch with a forecast of about 1 s , treating vertical motion as negligible and scoring success on tilt alone [15]; a later system from the same group added onboard vision and landed on a rocking USV, reporting its hardware trials as roll and pitch [16]. Distributed MPC has selected a calm patch of water and a low-tilt touchdown time from a known wave model, in a two-dimensional simulation with a communicating vessel [17]. Prediction-driven implementations still require an explicit forecast, a hand-designed phase structure, and a tuned descent trigger. Reinforcement learning (RL) offers a route to coordinating the coupled tracking and timing objectives within a policy. Landing policies have progressed from visual touchdown and inclined surfaces to continuous tracking of horizontally moving pads [18]–[22]. End-to-end image-based landing with learned three-axis velocity commands has been demonstrated on a ground vehicle following a horizontal path at up to 
+
+1 m /s; the study identifies memory as a requirement for more complex platform motion [23]. Robust policies have also been trained for a sub-scale ship and wind disturbances [24]. That policy commands roll and pitch while a separate command executes the vertical landing, so heave stays outside the action space and the descent is not decided against deck motion. The closest learned heave systems broaden the motion and validation envelope. A policy that infers platform motion from two successive sparse visual observations and commands attitude and thrust was evaluated in 411 onboard trials on a Stewart platform and a wave-excited pool float [25]. The success criterion of Angelis et al. [25] allows 1.5 m /s of relative speed at contact. The two test platforms of Angelis et al. each exhibit one half of the problem: the Stewart platform moves 0.25 m but follows a single sine wave, and the pool float moves irregularly but only 0.13 m . The algorithm in our work does both at once, following recorded ship motion over 0.70 m 
+
+peak to peak, and a touchdown is scored against a 0.5 m /s
+
+bound on the relative speed. WaveLander [26] starts from the same premise as our work, learning when to descend, hold position, and retreat through a recurrent policy that commands a scalar vertical-velocity reference. The WaveLander policy is trained without privileged information; the policy in our work gives the critic future deck height that the actor never observes, so the descent decision is learned against motion that the policy itself cannot see. The WaveLander training model constrains the vehicle to one vertical prismatic joint and drives the deck with synthetic multi-sinusoidal motion plus correlated noise; our work considers ship-heave motion [5], which is not purely periodic in nature. In WaveLander, lateral tracking is a fixed controller; success is judged on attitude, and one deployment test is reported. In our work, the policy commands the lateral channels itself and is flown 51 times on a physically heaving deck emulator platform. The literature leaves three gaps. First, heave timing is sel-dom learned from instantaneous measurements of ship motion. Second, policies are trained above a simulator-side controller that only approximates the autopilot that will fly them; putting the real autopilot in the loop fixes the mismatch, but runs one vehicle at a time [27], which rules out the parallel training that these policies need. Third, learned maritime landing algorithms reach deployment without a runtime safety check on the descent they commit to [24]–[26]. This paper closes all three gaps. The deck position a few seconds ahead decides the landing. A vehicle in flight cannot know it, but the simulator does, because it replays a recorded sea state. Only the critic is given that future deck height, and only during training. The actor is recurrent, so it reads the state of the deck from what it has just seen and decides when to descend. No forecast window or peak-selection rule is prescribed. A feed-forward actor sees a single observation and cannot do this, so the privileged critic has nothing to teach it; feed-forward runs did not learn to land, and the two are not compared here. For the second gap, the policy is trained above a Torch implementation of the PX4 cascade [28], and it (a) (b) 
+
+Fig. 2: (a) Quadrotor used for the heave-landing experiments. (b) Deck-relative vertical quantities used by the CBF filter. commands world-frame velocity and yaw rate. The deployed autopilot takes those same four channels, so the interface does not change between simulation and flight. For the third gap, a control-barrier-function (CBF) [29] filter wraps the deployed policy in an outer loop and checks the vertical velocity it commands at every tick. The check reads the deck-relative vertical state and passes only while a feasible stopping margin remains. Once no margin remains, the filter overrides the command and aborts to hover, so a descent that has run out of stopping margin becomes a retry. To the best of our knowledge, this is the first learned ship-deck landing policy trained with privileged future deck motion and checked at run time by a control-barrier-function monitor on flight hardware. The barrier is used in its standard role, and the work makes no claim of a new safe-learning theory. This work combines these elements and demonstrates their use for landing a vehicle on a physically heaving deck. The main contributions of this work are as follows: 1) a recurrent landing policy for a heaving deck, trained with an asymmetric actor–critic, where the critic sees the next 6 s of deck motion and the actor only the deck-relative state available onboard, and which commands the autopilot through its own velocity interface; 2) a control-barrier-function filter around the deployed pol-icy that aborts and retries when the stopping margin is exhausted, with the same margin used as a training re-ward, which halves the median simulated contact speed against the same policy trained without it; 3) 51 hardware landings on a deck replaying measured ship heave at 0.70 m peak to peak, 31 under motion capture and 20 under onboard vision, all successful, with 97 % and 95 % of disarms inside 0.5 m /s; the disarm speed the policy controls and the contact speed the airframe absorbs are reported separately, and the unpowered fall between them is measured. The rest of the paper is organized as follows. Sec. II defines the landing task and describes the policy’s observation, action, architecture, and training. Sec. III develops the barrier on the deck-relative vertical state and the runtime check and retry it drives. Sec. IV describes the vehicle, the deck emulator, and the criteria by which a landing is judged. Sec . V presents the simulation benchmark of five controllers and the hardware study of 51 landings under motion capture and onboard vision. Sec. VI concludes and sets out the future work. II. H EAVE -L ANDING TASK AND POLICY 
+
+A. Task Definition 
+
+With world-frame states pu, vu for the UAV and pp, vp for the platform, the deck-relative state is prel = pu − pp and 
+
+vrel = vu − vp; the platform translates only in heave. Each episode starts with the UAV above the deck, offset horizontally and slightly perturbed. It must align with the deck center, hold a level attitude, choose when to descend, and reach first contact within the horizon at a low deck-relative vertical speed. No future deck motion is available at deployment, so the descent decision comes from the observation history alone, making the heave landing a partially observable finite-horizon problem. Touchdown and failure conditions follow the training setup. Fig. 1 summarizes the task, the training loop, and the deployment path. 
+
+B. Observation, Action, and Policy Architecture 
+
+At 20 Hz , the actor receives only quantities available from the onboard estimator and deck-relative pose pipeline: 
+
+o = prel , vrel , qrel , gb, ut−1
+
+ ∈ R17 , (1) Here prel , vrel and qrel are the vehicle’s position (3), linear velocity (3) and attitude quaternion (4) in the deck frame, gb
+
+is gravity in the body frame (3), and ut−1 is the previous command (4) in the units of eq. (2). None of the 17 chan-nels depends on a world-frame origin. The actor maps the observation history to the world-frame velocity and yaw-rate command 
+
+ut = [ vx, v y , v z , ˙ψ]T , (2) with |vx,y | ≤ 0.8 m /s, vz ∈ [−0.8, 1.0] m/s and | ˙ψ| ≤ 35 ◦/s. This velocity-setpoint interface uses the flight controller’s estimator and inner loops and remains unchanged between simulation and flight. A single observation in eq. (1) does not determine the deck’s future trajectory, so the actor is recurrent: two stacked Gated Recurrent Units (GRU) layers [30] of sizes [128 , 64] 
+
+feed a 32-unit Exponential Linear Unit (ELU) multilayer perceptron (MLP) and a four-dimensional action head. Its memory encodes the latent heave phase from the observation history. Training uses an asymmetric actor–critic [31]. Besides the 17 actor channels, the critic receives the deck-relative angular velocity (3), the next 6 s of deck height at 20 Hz (120), and the exact world-frame velocities of the UAV and deck. Its 146-dimensional input passes through a stacked GRU of sizes 
+
+[512 , 256] , a 128-unit ELU MLP, and a scalar value head. The critic therefore values a descent against the motion that follows, and recurrence lets the actor tie that signal to its own observation history. 
+
+C. Training Setup Recorded deck motion and data split: The environment replays five 1800 s heave records (D1H1–D1H5, abbreviated D1–D5) from the SCONE dataset [5] at 20 Hz . D1, D2, D4, and D5 are used for training; D3 is used only for validation and testing. Every reset samples a training record, a start index, and a deck-height bias in [0 .5, 2.5] m. Each record is centered and normalized to [−1, 1] , so scaling by 0.35 gives 0.70 m 
+
+commanded peak-to-peak heave. 
+
+Simulation and action execution: Episodes reset with the UAV at 3.5 −5.0 m and x, y ∈ [−1, 1] m about the deck, with small attitude and velocity perturbations, and the platform moves in every environment. Domain randomization covers mass, action delay, the position, velocity, attitude, and projected-gravity estimates, per-rotor thrust scale, motor lag, and velocity-loop gains. A batched Torch re-implementation of a PX4-like multicopter cascade executes each velocity setpoint rather than applying it as a force, running with the physics at 
+
+200 Hz beneath the 20 Hz policy, so training and deployment share the interface of eq. (2). 
+
+Policy optimization: Training uses PPO [32] in RSL-RL with 4096 parallel Isaac Lab environments, 48 steps per environment and update, six mini-batches, five epochs, clip 0.2, γ = 0 .99 and λ = 0 .95 . Training from scratch takes about 3 h on a desktop with an NVIDIA RTX 5090, at which point the good-touchdown rate has converged. The same weights are then fine-tuned in a 16-environment run, with the deployed vision pipeline in the loop, so the actor acts on the filtered estimates it receives in real time. 
+
+D. Reward and Episode Termination 
+
+At each policy step rt = ∆ t P 
+
+> i
+
+wiϕi with ∆t = 0 .05 s .Dense terms center the UAV over the deck and penalize tilt, yaw error, and aggressive commands; they regularize flight and are not specific to heave. Two terms set the landing behavior. The first charges violations of the barrier margin h of Sec. III, as a Huber penalty on max(0 , −h)/0.25 m , which pushes the policy towards descents that keep a stopping margin; Sec. V-A isolates its effect. The second is a sparse bonus at first contact 
+
+T , when the body contact force first exceeds 2 N . With s =max( −vpre rel ,z , 0) the pre-impact closing speed, ρ = ∥prel ,xy ∥2
+
+and ¯ψ = wrap( ψ), a good touchdown is 
+
+G = T ∧ { s ≤ 0.25 m /s, ρ ≤ 0.20 m ,
+
+|ϕ|, |θ| ≤ 12 ◦, | ¯ψ| ≤ 15 ◦}, (3) scored higher the further inside those bounds the vehicle lands, and the slower the deck moves. The 0.25 m /s in eq. (3) is the simulation limit; in flight the bound is 0.5 m /s. Terminations other than touchdown are heavily penalized. Hardware trials use the disarm criterion of Sec. IV. III. CBF S AFETY FILTER ON THE LEARNED POLICY 
+
+A learned policy can enter a descent from which it can no longer slow to the touchdown speed in the clearance that is left. The deployed actor is therefore wrapped in a control-barrier-function filter [29], [33] on the deck-relative vertical state. Let d = zu − zp be the separation between the vehicle center of gravity and the deck pose origin (marker frame), 
+
+dmin the required clearance (absorbing landing-gear length and the origin-to-surface offset), and vr = vu − vp the relative vertical velocity (Fig. 2(b)), with ˙d = vr and ˙vr = au − ap
+
+for vehicle and deck vertical accelerations au, ap. The policy commands a velocity setpoint vz in eq. (2); the filter does not model the autopilot’s velocity loop but treats its response au as the input and reads it from the onboard inertial measurement, so the barrier is checked against the acceleration the vehicle is actually producing. With vL the admissible touchdown speed and arel ,max a conservative bound on relative braking acceleration, the clearance needed to slow the closing speed to vL is 
+
+dstop (vr ) = (v− 
+
+> r
+
+)2 − v2
+
+> L
+
+2 arel ,max 
+
+, v− 
+
+> r
+
+= 12
+
+ vr − pv2 
+
+> r
+
++ ε, (4) where v− 
+
+> r
+
+≤ 0 is a smooth approximation of min( vr , 0) ; dstop 
+
+is negative once the closing speed is below vL, since contact at up to vL needs no braking clearance. The barrier and safe set are 
+
+h(d, v r ) = ( d − dmin ) − dstop (vr ), C = {h ≥ 0}. (5) Differentiating along the relative dynamics, with σ(vr ) =
+
+∂v − 
+
+> r
+
+/∂v r = 12
+
+ 1 − vr /pv2 
+
+> r
+
++ ε ∈ (0 , 1) , gives a form that is control affine in au,
+
+˙h = vr − β(vr ) ap
+
+| {z } 
+
+> Lfh
+
++ β(vr )
+
+| {z }  
+
+> Lgh
+
+au, β = − v− 
+
+> r
+
+σarel ,max 
+
+≥ 0. (6) 
+
+Lg h = β is strictly positive whenever the vehicle is closing and vanishes when it climbs, so braking harder than the deck always increases h and the constraint is well posed throughout the descent. Forward invariance of C is enforced through the linear class-K condition 
+
+Lf h + Lg h a u + γh ≥ 0 ⇐⇒ au ≥ ap − vr + γh β(vr ) (β > 0) ,
+
+(7) which for a closing vehicle ( v− 
+
+> r
+
+≈ vr , σ ≈ 1) reads au − ap ≥
+
+arel ,max (1 − γh/ |vr |): no braking is demanded deep inside C,and the full arel ,max on its boundary. Rather than clipping au
+
+as in the minimum-norm filter of [29], eq. (7) is used as an abort test on the measured au: a descent needing more braking than the vehicle is producing has already mistimed the deck. The flight code evaluates eq. (6) with σ ≡ 1 and v− 
+
+> r
+
+in place of vr in the first term, which coincides with it while closing and is conservative while climbing. 
+
+Runtime check and retry: At each 20 Hz tick the node evaluates h and ˙h + γh from the deck-relative estimate of Sec. IV and the accelerations, low-pass filtered at 5 Hz : IMU and measured deck acceleration under motion capture, the finite-differenced relative velocity under vision. If h ≤ 0 or 
+
+˙h + γh < 0 on three consecutive ticks, the node overrides all four channels, climbs to hover altitude, holds for 4 s , then re-enables the policy with the previous-action input and GRU hidden state cleared, so the retry starts without memory of the aborted approach. Parameters, tuned empirically: dmin =0.263 m , γ = 3 .6 s −1, vL = 0 .3 m /s, arel ,max = 0 .7 m /s2,
+
+ε = 10 −4.IV. E XPERIMENTAL SETUP 
+
+Hardware: Experiments were performed using a 3-DoF parallel manipulator acting as a deck emulator platform, with 
+
+±35 cm of heave travel, replaying the scaled heave motion of the test set specified in Sec. II-C. The aerial unmanned vehicle (Fig. 2(a)) is a 3.2 kg custom assembled quadrotor with Cube Orange+ as a Flight Control Unit (FCU) running ArduCopter autopilot firmware, with a downward-facing Logitech C922 camera and an NVIDIA Jetson Orin Nano that runs the vision-estimator, GRU actor and CBF filter onboard; deck-relative pose arrives at 20 Hz and the policy runs at 20 Hz . One policy inference takes 5.0±2.4 ms on the Orin Nano. Ground truth of states comes from a 100 Hz Qualisys motion-capture system. 
+
+State estimation: Under vision, the deck-relative state is estimated onboard. The downward-facing camera detects a fractal ArUco marker [34] on the deck at 20 Hz , and a Multiplicative Extended Kalman Filter (MEKF) [35] fuses the detections into the estimate 
+
+ˆx = ˆprel , ˆvrel , ˆqrel 
+
+, (8) The three parts of eq. (8), the deck-relative position, velocity, and attitude quaternion, fill the first ten channels of the observation in eq. (1). The body-frame gravity term comes from the autopilot’s attitude and the previous command from the node itself. The barrier of Sec. III reads d and vr from the same estimate. Under motion capture, ˆx is taken from the Qualisys system instead, so the policy and the filter receive the same quantities in both studies and only their source changes. 
+
+Metrics: A trial succeeds if the vehicle commits inside the deck footprint at a deck-relative vertical speed ≤ 0.5 m /s,for the reason given in Sec. I; a disarm meeting this bound is called good. Two speeds describe each landing, both the deck-relative vertical velocity vrel ,z read at a different instant. The disarm speed |vrel ,z (td)| is read at td, when the policy cuts thrust, which it does once the gear is within 7 cm of the deck. It is the last speed the policy sets, so the policy is judged on it. The contact speed |vrel ,z (tTD )| is read at first contact 
+
+tTD from 100 Hz motion capture, 0.1 to 0.2 s later, with the vehicle unpowered in between. It is what the airframe absorbs. Both are reported. V. R ESULTS 
+
+A. Benchmark and Ablation in Simulation 
+
+To benchmark the method before the hardware experiments, five controllers were compared at scale in the training sim-ulator: 1024 environments, about 10 500 touchdowns each, all observing the simulator’s state with the estimate noise of Sec. II-C. Fig. 3 plots the share of landings at or below each touchdown speed, read one policy step before first contact so that braking during the collision cannot mask it. CBF-RL (asym) is the complete method; RL (asym) is trained identically without the barrier term of Sec. II-D; RL (sym)’s critic no longer receives the 6 s deck forecast. Proportional Derivative (PD) tracks the deck-relative position and velocity and commits to a straight descent. Constant descends at good touchdown gate 
+
+> Touchdown speed (m/s)
+> 020 40 60 80 100
+> Landings at or below (%)  CBF-RL (asym) RL (asym) RL (sym) PD Constant 0.25 m/s
+
+Fig. 3: Simulation ablation study of various methodologies. 
+
+0.25 m /s, the touchdown speed the simulation training reward aims for. The barrier term shifts the whole distribution to lower speeds and halves the median, from 0.077 to 0.044 m /s. The deck forecast in the critic is what lifts the learned policies above the tuned controller: without it, the learned policy lands no better than PD. PD clears the 0.25 m /s gate in most landings but lands gently only half as often as CBF-RL. The constant descent, commanded at the target speed itself, exceeds it in 41 % of landings, because the deck’s own vertical speed adds to the commanded rate. The asymmetric CBF-RL curve lies above every other at every speed; it was therefore the policy taken to hardware. 
+
+B. RL Landing on the Heaving Deck 
+
+Fig. 4 shows two measured vision landings with the barrier active. In Fig. 4a the policy descends once and lands; it disarms at a deck-relative speed of 0.35 m /s and contacts at 0.46 m /s,
+
+0.16 s later. In Fig. 4b, the barrier finds the stopping margin exhausted on the first descent, returns the vehicle to hover, and the policy lands on the next descent, disarming at 0.26 m /s
+
+and contacting at 0.58 m /s after 0.22 s . The panels show the vehicle and deck altitudes, the barrier value h, and the deck-relative and deck vertical velocities, with the disarm trigger marked. Where the onboard estimate is drawn over motion capture, the two traces also show how closely the vision pipeline follows the true state through the descent. Fig. 5 shows the corresponding touchdown sequence. Fig. 6 reports the deck-relative speed at disarm and at first contact for both studies, in every case measured by motion capture. Every one of the 31 motion-capture and 20 vision estimated trials ended in a landing. Judged by the criterion of Sec. IV, 30 of the 31 motion-capture disarms and 19 of the 20 vision disarms are good (97 % and 95 %), and 48 % and 60 % lie inside the barrier’s 0.3 m /s. At the trigger the closing speed is 0.288 m /s (± 0.135) under motion capture and 0.269 m /s (± 0.145) under vision; by contact it has risen to 0.528 m /s (± 0.076) and 0.631 m /s (± 0.153) respectively. The velocity increases after the disarm. Fig. 7 shows how the velocity changes with respect to time after the disarm command is sent. For about the first 0.1 s the closing speed still falls, so the rotors are still braking the descent; the speed (a) single descent (b) barrier-triggered retry 
+
+Fig. 4: Vision-based RL landings on the heaving deck. 
+
+Fig. 5: Landing sequence, hover to touchdown. Top: external view. Bottom: onboard camera with marker detections. then grows into contact with a slope that steepens. The closing acceleration averages −0.3 m /s2 over the first half of the window and 2.5 m /s2 over the second, about a quarter of gravity, so the thrust holds briefly after the command and is only part-way through its decay when the UAV touches the deck. The response window lasts 0.190 s (± 0.064) for mocap landings and 0.223 s (± 0.081) for vision landings, and the vehicle drops 0.058 m (± 0.007) and 0.072 m (± 0.017) respectively through it with the rotors spinning down. The deck’s own speed changes by 0.02 m /s over so short an interval, so this fall distance sets the contact speed. The policy has authority only up to td, which is the cost of cutting thrust autonomously, and it is why the policy is judged at the trigger and contact is reported as the physical outcome. The three 
+
+Fig. 6: Deck-relative vertical velocity |vrel ,z | at disarm td and at first contact tTD .vision landings near 0.9 m /s in Fig. 6 show this directly: each disarmed below 0.1 m /s, then ran a window of 0.31 to 0.36 s 
+
+and fell 0.08 to 0.11 m before contact. Deck motion does not degrade the contact itself (Fig. 8). Landings are binned by the deck speed at the instant of contact, and the contact speed does not rise with it. The deck speed at contact sits at the 48th percentile of the deck’s own speed distribution over the preceding approach, so the policy does not hold out for a slow phase of the heave. It tracks continuously and contacts wherever it arrives. Table I reports how many descents each landing needed. A retry is counted when the barrier finds the descent unsafe, and the vehicle returns to hover before descending again. Under motion capture, 77% of landings reached the deck on the Fig. 7: Deck-relative closing speed from 0.5 s before to 0.5 s 
+
+after disarm, median and 10–90 % band over 31 motion-capture and 20 vision landings. The second dotted line marks the median first contact, 0.20 s after disarm; landed runs settle to zero. 
+
+Fig. 8: Deck-relative vertical speed at first contact, binned by deck speed at contact. TABLE I: Number of descents per landing.                  
+
+> Sensing Attempt 1 2345Mocap, n=31 24 (77%) 03 (10%) 2 (6%) 2 (6%) Vision, n=20 10 (50%) 10 (50%) 000
+
+first descent, and under vision, 50%. From the start of the landing procedure to first contact, the policy took a median of 6.5 s under motion capture and 7.3 s under vision. The policy commands from its first tick and needs no observation record before it can descend. Fig. 4b shows one such retry, with the barrier returning the vehicle to hover and the second descent reaching the deck. Every run in both studies ended in a landing, and retrying did not degrade the touchdown. Under motion capture, the landings that retried contacted the deck at a mean of 0.507 m /s and those which did not, at 0.558 m /s,a difference well inside the run-to-run spread. 
+
+Failure modes: To assess the sensing available to both the policy and the barrier, the onboard estimates from the 20 vision trials were compared with motion capture. The position errors (estimate minus motion capture) were −0.06 ± 0.12 m, 
+
+0.04 ± 0.10 m and 0.07 ± 0.03 m in x, y and z, respectively; the corresponding velocity errors were −0.02 ± 0.11 and 
+
+0.01 ±0.11 m/s horizontally and 0.15 ±0.22 m/s vertically. The vision-based vertical-velocity estimate lagged motion capture by about 0.49 s . Shifting the vision trace earlier in time, as an offline check, leaves a residual error of −0.01 ± 0.07 m/s and removes 91 % of the variance, confirming that the vertical error is delay rather than noise. Thus, at the cutoff trigger, the onboard estimator still reported the closing speed from approximately half a second earlier: across vision runs, it av-eraged 0.53 m /s against a simultaneous motion-capture mean of 0.27 m /s.A landing is scored as a failure when thrust is cut at 
+
+|vrel ,z | > 0.5 m /s. Although all 51 trials reached the deck, only 49 satisfied this cutoff-speed criterion; the two disarms above 0.5 m /s were 0.510 m /s under motion capture, just over the bound, and 0.543 m /s in a vision run whose velocity estimate had failed and read zero through the descent. A barrier-initiated return to hover is not considered a failure but is recorded separately as a retry. The delayed velocity also explains the higher retry rate un-der vision. In ten of the vision landings, the barrier intervened once during the descent, returned the vehicle to hover, and the policy then landed on a second descent. For each intervention, the barrier was re-evaluated with the motion-capture state at the same instant. The true margin was still positive every time, between 0.06 and 0.37 m , so every intervention came early. In two of the ten, the true margin went negative within the next 0.6 s , so the intervention anticipated a violation the deck was about to produce; in the other eight, it never did, and the intervention was caused by the lagged velocity estimate alone. A retry costs a few seconds, and no landing was lost, so the filter erred on the safe side. The barrier’s guarantee holds for the state it is given: with exact relative height and velocity and braking within arel ,max , the class-K condition keeps h ≥ 0. In flight, its inputs arrive late or fail, so a filter for deployment must also account for the age and validity of its estimate; that is left to future work. Vision-in-the-loop fine-tuning did little to close the sensing gap. Rendering the camera and running the detector limited that stage to 16 environments, and raising the count cut training throughput sharply, so the policy saw far fewer vision samples than state samples. Future work will move the whole pipeline into the loop, either through feature tracking that yields the relative pose directly, as in [25], or by parallelizing the marker detector across environments. VI. C ONCLUSION AND FUTURE WORK 
+
+This research proposed a method for ship-deck landing of a rotorcraft on a heaving deck with an asymmetric actor-critic whose critic sees the future deck and whose actor does not, and verified the learned descent through real-time hardware deployment with a stopping-distance barrier. On a deck emulator replaying measured ship heave at 0.70 m peak to peak, all 51 trials landed. Under motion capture, 30 of 31 cut thrust within 0.5 m /s of the deck, 77 % of them on the first descent. Under onboard vision, 19 of 20 did so, half of them on the first descent, the retries coming from a delayed velocity estimate rather than from the policy. Four directions follow from this work. The emulator repro-duces deck kinematics alone, so future work will add air-wake and wind over the deck, and will replay scaled six-degree-of-freedom sea states rather than heave in isolation. Deck travel bounds the motion that can be flown indoors, and taking the vision-estimated pipeline outdoors removes that bound and the cooperative marker together. The barrier covers the vertical channel under an assumed braking bound, and extending it to the lateral channels and to a bound identified in flight would widen the guarantee. Sec. V shows that the sensing, rather than policy, limits what the barrier can guarantee, so the estimator improvements described there are the first of these to pursue. REFERENCES [1] J. L. Sanchez-Lopez, J. Pestana, S. Saripalli, and P. Campoy, “An approach toward visual autonomous ship board landing of a VTOL UAV,” Journal of Intelligent & Robotic Systems , vol. 74, no. 1–2, p. 113–127, Oct. 2013. [Online]. Available: http://dx.doi.org/10.1007/ s10846-013-9926-3 [2] R. Polvara, S. Sharma, J. Wan, A. Manning, and R. Sutton, “Vision-based autonomous landing of a quadrotor on the perturbed deck of an unmanned surface vehicle,” Drones , vol. 2, no. 2, p. 15, Apr. 2018. [Online]. Available: http://dx.doi.org/10.3390/drones2020015 [3] A. Shastry, A. Datta, and I. Chopra, “Vision-based autonomous UAS landing on a stochastically moving platform,” in Proceedings of the Vertical Flight Society 77th Annual Forum & Technology Display , May 2021. [4] R. Shankar, C. Prachand, J. Singh, Abhishek, and K. S. Venkatesh, “Vision-based landing of UAV on simulated ship deck with roll, pitch and sway motions,” in Proceedings of the Vertical Flight Society 81st Annual Forum & Technology Display , Virginia Beach, VA, 2025. [5] A. Schwartz, “Systematic Characterization of the Naval Environment (SCONE) – Deck Motion Characterization,” Presentation, ASNE Launch and Recovery Symposium, Linthicum Heights, MD, http://www.navalengineers.org/Symposia/PastSymposia/ Launch-and-Recovery-2016/Program/Schwartz, 2016. [6] N. Xuan-Mung, S. K. Hong, N. P. Nguyen, L. N. N. T. Ha, and T.-L. Le, “Autonomous quadcopter precision landing onto a heaving platform: New method and experiment,” IEEE Access , vol. 8, pp. 167 192– 167 202, 2020. [7] B. Hu, L. Lu, and S. Mishra, “A control architecture for time-optimal landing of a quadrotor onto a moving platform,” Asian Journal of Control , vol. 20, no. 5, pp. 1701–1712, 2018. [8] M. Sidar and B. F. Doolin, “On the feasibility of real-time prediction of aircraft carrier motion at sea,” NASA Ames Research Center, Tech. Rep. NASA TM X-62454, 1975. [9] M. Triantafyllou, M. Bodson, and M. Athans, “Real time estimation of ship motions using Kalman filtering techniques,” IEEE Journal of Oceanic Engineering , vol. OE-8, no. 1, pp. 9–20, 1983. [10] M. Richter, K. Schneider, D. Walser, and O. Sawodny, “Real-time heave motion estimation using adaptive filtering techniques,” in 19th IFAC World Congress , 2014, pp. 10 119–10 125. [11] J. Keijzer, “Predicting ship heave motions: Ship heave motion prediction using LSTM neural networks without wave excitation information,” Master’s thesis, Utrecht University, 2022. [12] X. Geng, Y. Li, and Q. Sun, “A novel short-term ship motion prediction algorithm based on EMD and adaptive PSO–LSTM with the sliding window approach,” Journal of Marine Science and Engineering , vol. 11, no. 3, p. 466, 2023. [13] Y. Yang, T. Peng, S. Liao, and J. Li, “Real-time prediction of ship motions based on the reservoir computing model,” Journal of Ocean Engineering and Science , 2025. [14] C. M. Hendrick, D. J. Nicholson, E. R. Jaques, J. F. Horn, J. W. Langelaan, and A. J. Sydney, “Scaled experiments in flight control design for autonomous landing in high sea states,” in AIAA AVIATION 2022 Forum , Jun. 2022, AIAA Paper 2022-3280. [15] P. M. Gupta, ´ E. Pairet, T. Nascimento, and M. Saska, “Landing a UAV in harsh winds and turbulent open waters,” IEEE Robotics and Automation Letters , vol. 8, no. 2, pp. 744–751, 2023. [16] O. Proch´ azka, F. Nov´ ak, T. B´ aˇ ca, P. M. Gupta, R. Pˇ eniˇ cka, and M. Saska, “Model predictive control-based trajectory generation for agile landing of unmanned aerial vehicle on a moving boat,” Ocean Engineering , vol. 313, p. 119164, 2024. [17] J. Stephenson, N. T. Duncan, and M. Greeff, “Distributed model pre-dictive control for cooperative multirotor landing on uncrewed surface vessel in waves,” in 2024 International Conference on Unmanned Aircraft Systems (ICUAS) , 2024, pp. 645–651. [18] R. Polvara, M. Patacchiola, S. Sharma, J. Wan, A. Manning, R. Sutton, and A. Cangelosi, “Toward end-to-end control for UAV autonomous landing via deep reinforcement learning,” in 2018 International Confer-ence on Unmanned Aircraft Systems (ICUAS) , 2018, pp. 115–123. [19] A. Rodriguez-Ramos, C. Sampedro, H. Bavle, P. de la Puente, and P. Campoy, “A deep reinforcement learning strategy for UAV au-tonomous landing on a moving platform,” Journal of Intelligent & Robotic Systems , vol. 93, no. 1–2, pp. 351–366, 2019. [20] J. Xie, X. Peng, H. Wang, W. Niu, and X. Zheng, “UAV autonomous tracking and landing based on deep reinforcement learning strategy,” 
+
+Sensors , vol. 20, no. 19, p. 5630, 2020. [21] J. E. Kooi and R. Babuˇ ska, “Inclined quadrotor landing using deep reinforcement learning,” in 2021 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , 2021, pp. 9841–9847. [22] P. Goldschmid and A. Ahmad, “Reinforcement learning based au-tonomous multi-rotor landing on moving platforms,” Autonomous Robots , vol. 48, no. 4–5, p. 13, 2024. [23] P. Ladosz, M. Mammadov, H. Shin, W. Shin, and H. Oh, “Autonomous landing on a moving platform using vision-based deep reinforcement learning,” IEEE Robotics and Automation Letters , vol. 9, no. 5, pp. 4575–4582, 2024. [24] V. Saj, B. Lee, D. Kalathil, and M. Benedict, “Robust reinforcement learning control for vision-based ship landing of VTOL-UAVs,” Journal of the American Helicopter Society , vol. 70, no. 2, p. 022004, 2025. [25] D. Angelis, L. Bauersfeld, D. Scaramuzza, and E. Boukas, “Vision-based agile landing on turbulent waters,” IEEE Robotics and Automation Letters , 2026, accepted August 2026. [26] C.-K. Li, I. L. Sit, M. F. Siu, K. Y. Kui, H. W. Lin, P. Wang, and L. Shi, “WaveLander: A generalizable hierarchical control framework for UAV landing on wave-disturbed platforms via reinforcement learning,” https://arxiv.org/abs/2607.01281, 2026. [27] M. Jacinto, J. Pinto, J. Patrikar, J. Keller, R. Cunha, S. Scherer, and A. Pascoal, “Pegasus Simulator: An Isaac Sim framework for multiple aerial vehicles simulation,” in 2024 International Conference on Unmanned Aircraft Systems (ICUAS) , 2024, pp. 917–922. [28] L. Meier, D. Honegger, and M. Pollefeys, “PX4: A node-based mul-tithreaded open source robotics framework for deeply embedded plat-forms,” in 2015 IEEE International Conference on Robotics and Au-tomation (ICRA) , 2015, pp. 6235–6240. [29] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, “Control barrier function based quadratic programs for safety critical systems,” IEEE Transactions on Automatic Control , vol. 62, no. 8, pp. 3861–3876, 2017. [30] K. Cho, B. van Merri¨ enboer, C ¸ . G¨ ulc ¸ehre et al. , “Learning phrase representations using RNN encoder-decoder for statistical machine trans-lation,” in Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP) , 2014, pp. 1724–1734. [31] L. Pinto, M. Andrychowicz, P. Welinder, W. Zaremba, and P. Abbeel, “Asymmetric actor critic for image-based robot learning,” in Robotics: Science and Systems (RSS) , 2018. [32] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, “Prox-imal policy optimization algorithms,” arXiv preprint arXiv:1707.06347 ,2017. [33] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada, “Control barrier functions: Theory and applications,” in 2019 18th European Control Conference (ECC) , 2019, pp. 3420–3431. [34] F. J. Romero-Ramirez, R. Mu˜ noz-Salinas, and R. Medina-Carnicer, “Fractal markers: A new approach for long-range marker pose estimation under occlusion,” IEEE Access , vol. 7, pp. 169 908–169 919, 2019. [35] R. C. Leishman and T. W. McLain, “A multiplicative extended Kalman filter for relative rotorcraft navigation,” Brigham Young University Faculty Publications , 2013.
