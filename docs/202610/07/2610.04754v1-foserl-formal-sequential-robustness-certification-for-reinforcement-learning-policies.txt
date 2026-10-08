@@ -1,0 +1,1905 @@
+Title: FoSeRL: Formal Sequential Robustness Certification for Reinforcement Learning Policies
+
+URL Source: https://arxiv.org/pdf/2610.04754v1
+
+Published Time: Tue, 06 Oct 2026 01:20:34 GMT
+
+Number of Pages: 39
+
+Markdown Content:
+# FoSeRL: Formal Sequential Robustness Certification for Reinforcement Learning Policies 
+
+## Sara Taheri 1 Deep Kumar Ganguly 2 Jan Křetínský 2,3 Majid Zamani 1,4
+
+> 1
+
+LMU Munich, Germany 2TUM, Munich, Germany 3Masaryk University, Brno, Czech Republic 4CU Boulder, USA 
+
+Abstract 
+
+Even a few action perturbations can substantially degrade the performance of a deployed decision policy. Cer-tifying the resulting return loss is challenging in stochastic environments, where returns vary even without an attack. We introduce FoSeRL, a framework for certifying deployed RL policies against precommitted, tempo-rally sparse action attacks. The deployed policy is unchanged, with no smoothing or retraining. Certification requires a resettable simulator supporting shared randomness and independent one-step successor queries, but no analytical dynamics model. FoSeRL certifies that an attacked episode loses no more than a prescribed amount of return relative to the same episode unattacked, with at least a target probability and at a user-specified con-fidence level. Both runs share the initial state and randomness, so the measured loss reflects the attack, not the episode; carrying the running return gap as a state coordinate makes it the terminal value, reducing trajectory-level certification to terminal safety. Time-dependent barrier conditions on the augmented state bound the terminal failure probability: satisfied exactly, they certify every admissible precommitted attack; learned from sampled trajectories and verified on held-out data, they certify the same guarantee under a specified attack-episode setting. Across six stochastic continuous-control environments and three RL policy families (TD3, SAC, and PPO), FoSeRL certifies non-trivial cardinality–magnitude robustness frontiers, achieves substantially larger certified budgets than policy smoothing, and reveals marked robustness differences among policies with comparable nominal performance. 
+
+## 1 Introduction 
+
+Reinforcement learning (RL) policies have demonstrated control of physical systems, including tokamak plasmas (Degrave et al., 2022), stratospheric balloons (Bellemare et al., 2020), and racing drones (Kaufmann et al., 2023). Once such a policy is deployed, its decisions do not reach the plant directly: each command travels through communication links and actuation software before an actuator executes it. Every stage of that path is a place where an adversary with modest resources can intervene, as end-to-end attacks on production automotive control systems have shown (Koscher et al., 2010; Checkoway et al., 2011). The executed action can therefore differ from the command computed by the policy, even though the deployed policy itself remains unchanged. Thus, we study deployment-time perturbations of executed actions, with the decision policy held fixed. The effect of such perturbations depends on their magnitude and, just as much, on their timing. On five Atari games, Lin et al. (2017) found that perturbing roughly a quarter of the time steps reduced return about as much as perturbing every step. The reason is that the closed loop is a dynamical system: a perturbed action changes the state from which all later decisions are made, so its effect persists after the perturbation itself has ended. An adversary with a limited budget can therefore concentrate it where the loop is most sensitive instead of spreading it uniformly, and the same holds when the perturbation is injected into the executed action rather than the observation (Lee et al., 2020). Two quantities govern what such an adversary can do: the number of perturbed time steps, 𝐾 , and a bound 𝑏 on the size of each perturbation. Certifying a deployed policy therefore means controlling their cumulative effect on return. In a stochastic environment, the nominal return already varies from episode to episode, so the baseline against which loss is measured becomes part of the certification problem. Comparing an attacked run to the policy’s average return would charge that variation to the adversary. We therefore compare each attacked execution with the run the same episode would have produced unattacked, using the same initial state and the same environment randomness, and measure the loss between the two. The attack is then the only difference between them, while the randomness that shapes how an attack unfolds is preserved rather than averaged away. Our objective is to identify the attack budgets under which this loss stays within a prescribed tolerance with a target probability. 
+
+1arXiv:2610.04754v1 [cs.LG] 3 Oct 2026 𝑡   
+
+> state
+> attack attack Nominal Attacked
+> shared initial condition and episode randomness
+> 𝑡
+> return gap
+> 𝛼
+> Beyond tolerance Within tolerance final degradation
+> accumulated discounted reward difference
+
+Figure 1: Matched nominal and attacked ex-ecutions share episode randomness; their accu-mulated return gap becomes the terminal degra-dation certified by FoSeRL. 
+
+Contributions. We introduce FoSeRL, a post-hoc framework for cer-tifying fixed deployed policies against temporally sparse action pertur-bations. Our contributions are threefold. (i) We formulate sequential ro-bustness under joint cardinality–magnitude budgets and define a paired return-degradation criterion using synchronously coupled nominal and attacked executions, isolating attack-induced loss from episode variabil-ity. (ii) We lift the cumulative return gap to a terminal quantity of an augmented stochastic system and derive time-dependent barrier condi-tions for its tail reliability (Fig. 1). (iii) We learn neural barrier certifi-cates from sampled rollouts and verify them using finite-sample suc-cessor bounds and episode-level conformal calibration, yielding high-confidence operational certificates under a declared attack–episode law. FoSeRL leaves the deployed policy unchanged and requires no analyti-cal dynamics model. Across six stochastic continuous-control environ-ments and TD3, SAC, and PPO policies, it yields non-trivial robustness frontiers and substantially larger certified budgets than the baseline. 
+
+Related work. Temporally sparse attacks are well established empirically (Lin et al., 2017; Sun et al., 2020), including on the action channel (Lee et al., 2020), and defences against them harden a policy by retraining (Pinto et al., 2017; Tessler et al., 2019; Liang et al., 2022) without emitting a certificate. Certified robustness for RL does emit one, but of a different shape. Smoothing-based methods certify actions or cumulative reward under norm-bounded perturbations (Kumar et al., 2022; Wu et al., 2022a; Mu et al., 2024); certified state-action bounds support robust action selection (Everett et al., 2021); and CAROL learns a policy jointly with a model-based robustness cer-tificate (Yang et al., 2024). Each bounds perturbations under a norm ball, typically guarantees an expected return, and certifies a smoothed, retrained, or robust-argmax surrogate rather than the policy as deployed. Stochastic and neural barrier certificates supply the machinery we build on (Prajna et al., 2007; Steinhardt and Tedrake, 2012; Abate et al., 2021; Anand and Zamani, 2023; Luo and Ma, 2021), but bound state-safety events rather than adversarial performance loss; the framework closest to ours certifies a supervised learner against data poisoning by modeling training as a stochastic dynamical system (Taheri and Zamani, 2026), and has no time axis for an attacker to exploit. Attacks in the literature are budgeted along two axes: how often the adversary strikes and how hard, but existing certificates fix one or the other: they either bound perturbations at every step or count corruptions without bounding their size. The cardinality–magnitude trade-off therefore appears throughout the 
+
+attack literature and in no prior certificate . FoSeRL is the first to certify it, and the first to do so for the policy exactly as deployed, against perturbations of its executed actions, as a tail bound on paired degradation. Table 4 in Appendix F places each method on these axes. 
+
+## 2 Problem Formulation 
+
+All proofs and a summary of notation are provided in the appendix. We consider a finite-horizon Markov decision process M = (S , A, 𝑃, 𝑟, 𝛾, 𝜇 0,𝑇 ), where S ⊆ R𝑛 𝑠 and A ⊆ R𝑛 𝑎 are the state and action spaces, A is closed and convex, 𝑃 (· | 𝑥, 𝑢 ) is the transition kernel, 𝑟 : S × A → R is measurable, 𝛾 ∈ ( 0, 1], and 𝑥 (0) ∼ 𝜇 0. We use 
+
+𝑇 ∈ N, T := {0, . . . ,𝑇 }, and T′ := {0, . . . ,𝑇 − 1}. Fix a deployed decision policy 𝜋 , held unchanged throughout certification, and let 𝑢 (𝑡 ) ∈ A denote its realized action. Its execution is specified in Assumption 2; no restriction on internal policy randomization is imposed. The state contains all variables required for the closed-loop Markov property, and conditional on the current state and executed action, the successor has law 𝑃 (· | 𝑥 (𝑡 ), 𝑢 (𝑡 )) . For a nominal state–action trajectory 𝜉 , define 𝐽 (𝜋 ; 𝜉 ) := Í𝑡 ∈T′ 𝛾 𝑡 𝑟 (𝑥 (𝑡 ), 𝑢 (𝑡 )) and 𝐽 (𝜋 ) := E[𝐽 (𝜋 ; 𝜉 )] . All certification statements condition on the deployed policy; randomness used to train it is not resampled during execution. 
+
+Assumption 1 (Bounded rewards) . The reward satisfies |𝑟 (𝑥, 𝑢 )| ≤ 𝑟 max for all (𝑥, 𝑢 ) ∈ S × A . Hence every realized discounted return lies in [− 𝑆 max , 𝑆 max ], where 𝑆 max :=𝑟 max 
+
+Í𝑡 ∈T′ 𝛾 𝑡 .We next formalize the deployment-time adversary acting on the policy’s executed actions. 
+
+Definition 1 (Oblivious sequential attack) . Fix 𝐾 ∈ T, 𝑏 ≥ 0, and 𝑝 ∈ { 1, 2, ∞} . An attack scenario is 𝜐 = (T atk , Δ),where Tatk ⊆ T′ contains the attacked time indices and Δ = {Δ𝑡 }𝑡 ∈ T atk the corresponding perturbations Δ𝑡 ∈ R𝑛 𝑎 .Both are fixed before the initial state and episode randomness are realized. We set Δ𝑡 = 0 for 𝑡 ∉ Tatk . The admissible class Aadv (𝐾, 𝑏 ) consists of all such scenarios with |T atk | ≤ 𝐾 and ∥Δ𝑡 ∥𝑝 ≤𝑏 for every 𝑡 ∈ T atk .
+
+2To compare an attack with the nominal execution of the same episode, we make all fresh closed-loop randomness explicit. 
+
+Assumption 2 (Execution randomness representation) . There exist measurable execution maps 𝜋 : S × W → A and 𝐹 : S × A × W → S , and an i.i.d. sequence 𝑤 (𝑡 ) ∼ 𝑃 𝑤 , independent of 𝑥 (0). Each 𝑤 (𝑡 ) collects all fresh one-step policy and transition randomness under the declared joint law. The fixed policy generates 𝑢 (𝑡 ) =
+
+𝜋 (𝑥 (𝑡 ), 𝑤 (𝑡 )) , and, given the current state and executed action ¯ 𝑢 (𝑡 ), 𝐹 (𝑥 (𝑡 ), ¯𝑢 (𝑡 ), 𝑤 (𝑡 )) has law 𝑃 (· | 𝑥 (𝑡 ), ¯𝑢 (𝑡 )) .A policy without internal randomization ignores the corresponding inputs; persistent cross-step dependence is represented in the state. The next definition uses this representation to construct matched nominal and attacked executions. 
+
+Definition 2 (Paired degradation via synchronous coupling) . Fix 𝜐 ∈ A adv (𝐾, 𝑏 ) and let 𝜔 := (𝑥 (0), {𝑤 (𝑡 )} 𝑡 ∈T′ ) ∼ 
+
+P𝜔 denote the episode randomness. Both branches share 𝑥 (0) and the complete random-input sequence. With 
+
+ΠA denoting Euclidean projection onto A, set 𝑢 0 (𝑡 ) := 𝜋 (𝑥 0 (𝑡 ), 𝑤 (𝑡 )) and ¯ 𝑢 𝑎 (𝑡 ;𝜐 ) := ΠA
+
+ 𝜋 (𝑥 𝑎 (𝑡 ), 𝑤 (𝑡 )) + Δ𝑡 
+
+.At each step, transition and reward use the same realized action. The magnitude budget applies to Δ𝑡 be-fore projection; admissibility details are given in Appendix B.1. For 𝑡 ∈ T′, 𝑥 0 (𝑡 +1) = 𝐹 (𝑥 0 (𝑡 ), 𝑢 0 (𝑡 ), 𝑤 (𝑡 )) 
+
+and 𝑥 𝑎 (𝑡 +1) = 𝐹 (𝑥 𝑎 (𝑡 ), ¯𝑢 𝑎 (𝑡 ;𝜐 ), 𝑤 (𝑡 )) , with 𝑥 0 (0) = 𝑥 𝑎 (0) = 𝑥 (0). Let 𝑅 nom (𝜔 ) := Í𝑡 ∈T′ 𝛾 𝑡 𝑟 (𝑥 0 (𝑡 ), 𝑢 0 (𝑡 )) and 
+
+𝑅 att (𝜐, 𝜔 ) :=Í𝑡 ∈T′ 𝛾 𝑡 𝑟 (𝑥 𝑎 (𝑡 ), ¯𝑢 𝑎 (𝑡 ;𝜐 )) . The paired trajectory-level degradation is 
+
+𝐷 traj (𝜐, 𝜔 ) := 𝑅 nom (𝜔 ) − 𝑅 att (𝜐, 𝜔 ). (1) The coupling is part of the specification: although E𝜔 [𝐷 traj (𝜐, 𝜔 )] = 𝐽 (𝜋 ) − E𝜔 [𝑅 att (𝜐, 𝜔 )] depends only on the trajectory marginals, the law of 𝐷 traj generally does not. Under the synchronous coupling, 𝐾 = 0 or 𝑏 = 0 gives 
+
+𝐷 traj ≡ 0 pathwise. The representation (𝜋, 𝐹, 𝑃 𝑤 ) and its shared-randomness semantics are fixed before synthesis and verification; Appendix B.2 gives details showing that the marginals alone are insufficient. We can now state the desired robustness criterion. 
+
+Definition 3 (Certified performance) . Fix an attack budget (𝐾, 𝑏 ), 𝛼 ≥ 0, and 𝜌 ∈ ( 0, 1]. The fixed policy 𝜋 is 
+
+(𝛼, 𝜌 )-certified performant under Aadv (𝐾, 𝑏 ) if its paired degradation does not exceed 𝛼 with probability at least 
+
+𝜌 for every admissible attack: 
+
+P𝜔 
+
+ 𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼  ≥ 𝜌, ∀𝜐 ∈ A adv (𝐾, 𝑏 ). (2) The probability is over 𝜔 , conditional on the fixed policy and execution representation; attacks are quantified universally, with no attack distribution. We finally quantify the certified perturbation tolerance at a fixed cardinality budget. 
+
+Problem 1 (Sequential robustness certification) . Given the fixed policy 𝜋 , prescribed levels 𝛼 ≥ 0 and 𝜌 ∈ ( 0, 1],and a cardinality budget 𝐾 , determine the supremal attack magnitude for which 𝜋 remains (𝛼, 𝜌 )-certified per-formant under Aadv (𝐾, 𝑏 ). We denote this value by 𝑏 ∗ 
+
+> cert
+
+(𝐾 ) ∈ [ 0, +∞] . As 𝐾 varies, 𝐾 ↦ → 𝑏 ∗ 
+
+> cert
+
+(𝐾 ) defines the 
+
+cardinality–magnitude robustness frontier .
+
+## 3 Methodology 
+
+The criterion in Definition 3 is trajectory-level and not directly a state-space safety property. We therefore augment the synchronously coupled nominal and attacked dynamics with their cumulative discounted return gap, making the certified degradation a terminal-state quantity. This recasts sequential robustness certification as a finite-horizon terminal safety problem amenable to stochastic barrier certificates. 
+
+Definition 4 (Augmented dt-SDS) . Fix an attack budget (𝐾, 𝑏 ) and the corresponding class Aadv (𝐾, 𝑏 ) of Def-inition 1. The augmented discrete-time stochastic dynamical system is 𝔖 := (X , X0, Aadv (𝐾, 𝑏 ), W, 𝑃 𝑤 , 𝑓 ,𝑇 ),where X := S × S × [− 2𝑆 max , 2𝑆 max ], X0 := {( 𝑥, 𝑥, 0) : 𝑥 ∈ supp (𝜇 0)} , and ˆ 𝑥 (𝑡 ) := (𝑥 0 (𝑡 ), 𝑥 𝑎 (𝑡 ), 𝑧 (𝑡 )) , initialized at ˆ𝑥 (0) = (𝑥 (0), 𝑥 (0), 0) with 𝑥 (0) ∼ 𝜇 0. For each fixed 𝜐 ∈ A adv (𝐾, 𝑏 ), let 𝑢 0 (𝑡 ) :=𝜋 (𝑥 0 (𝑡 ), 𝑤 (𝑡 )) , let ¯ 𝑢 𝑎 (𝑡 ;𝜐 ) be as in Definition 2, and let X𝜐 𝑡 ⊆ X denote the support of the augmented-state distribution at time 𝑡 under 𝜐 . Whenever 
+
+𝑓 ( ˆ𝑥, 𝜐, 𝑤, 𝑡 ) is evaluated, the actions below are recomputed from the supplied 𝑤 , consistently with Definition 2. The augmented dynamics are ˆ𝑥 (𝑡 +1) = 𝑓 ( ˆ𝑥 (𝑡 ), 𝜐, 𝑤 (𝑡 ), 𝑡 ) :=
+
+
+
+𝐹  𝑥 0 (𝑡 ), 𝑢 0 (𝑡 ), 𝑤 (𝑡 )
+
+𝐹 (𝑥 𝑎 (𝑡 ), ¯𝑢 𝑎 (𝑡 ;𝜐 ), 𝑤 (𝑡 )) 
+
+𝑧 (𝑡 ) + 𝛾 𝑡 𝑟 (𝑥 0 (𝑡 ), 𝑢 0 (𝑡 )) − 𝑟 (𝑥 𝑎 (𝑡 ), ¯𝑢 𝑎 (𝑡 ;𝜐 )) 
+
+, 𝑡 ∈ T′. (3) 
+
+> 3
+
+Each evaluation of 𝑓 ( ˆ𝑥, 𝜐, 𝑤, 𝑡 ) recomputes both actions and the return-gap increment using its supplied 𝑤 ; suc-cessor draws therefore reuse neither cached actions nor cached gap increments from the source episode. Hence 
+
+𝑧 (𝑡 +1) may remain random conditional on ( ˆ𝑥 (𝑡 ), 𝜐, 𝑡 ). Since each admissible attack is precommitted, 𝜐 parame-terizes the augmented dynamics and need not be included in the state. The identity 𝑧 (𝑇 ) =𝐷 traj (𝜐, 𝜔 ) yields the following terminal safety specification. 
+
+Definition 5 (Terminal safety specification) . For the augmented dt-SDS 𝔖 of Definition 4 and 𝛼 ≥ 0, define 
+
+X𝛼 𝑠 := { ˆ𝑥 ∈ X : 𝑧 ≤ 𝛼 } and X𝛼 𝑢 := X \ X 𝛼 𝑠 = { ˆ𝑥 ∈ X : 𝑧 > 𝛼 }. For 𝜌 ∈ ( 0, 1], let Ψ𝛼,𝜌 := (X 0, X𝛼 𝑠 , X𝛼 𝑢 ,𝑇 , 𝜌 ). We say 𝔖 
+
+satisfies Ψ𝛼,𝜌 if P𝜔 ( ˆ𝑥 (𝑇 ) ∈ X 𝛼 𝑠 ) ≥ 𝜌 for every 𝜐 ∈ A adv (𝐾, 𝑏 ).This specification is equivalent to Definition 3 and imposes no intermediate safety constraint. We next derive sufficient time-dependent barrier conditions, uniformly over Aadv (𝐾, 𝑏 ).
+
+Definition 6 (Barrier certificate) . Consider the augmented dt-SDS 𝔖 in Definition 4 with attack class Aadv (𝐾, 𝑏 )
+
+and terminal specification Ψ𝛼,𝜌 of Definition 5. A measurable function 𝐵 : X × T → R≥0 is a barrier certificate 
+
+for 𝔖 with respect to Ψ𝛼,𝜌 if there exist 𝑏 1, 𝑏 2, 𝑏 3 ∈ R>0 and 𝜅 ∈ ( 0, 1] such that the following conditions hold for every 𝜐 ∈ A adv (𝐾, 𝑏 ), where G𝑇 (𝜅 ) :=Í𝑇 −1 
+
+> 𝑗 =0
+
+𝜅 𝑗 :
+
+𝐵 ( ˆ𝑥, 0) ≤ 𝑏 1, ∀ ˆ𝑥 ∈ X 0,𝐵 ( ˆ𝑥,𝑇 ) ≥ 𝑏 2, ∀ ˆ𝑥 ∈ X 𝛼 𝑢 ,
+
+E𝑤 ∼𝑃 𝑤 [𝐵 (𝑓 ( ˆ𝑥, 𝜐, 𝑤, 𝑡 ), 𝑡 +1)] ≤ 𝜅𝐵 ( ˆ𝑥, 𝑡 ) + 𝑏 3, ∀ ˆ𝑥 ∈ X 𝜐 𝑡 , ∀ 𝑡 ∈ T′,𝑏 1𝜅 𝑇 + 𝑏 3 G𝑇 (𝜅 ) ≤ 𝑏 2 (1 − 𝜌 ).
+
+(4) The four conditions bound the initial value, separate terminal-unsafe states, control the expected one-step drift along states reachable under each admissible attack, and calibrate the resulting bound to 𝜌 . Together they bound terminal failure uniformly over Aadv . Because the same attack-independent barrier must accommodate all pre-committed attack plans, these sufficient conditions can be conservative at states shared across different plans. Their conservatism is discussed in Appendix B.4. 
+
+Theorem 1 (Ideal sequential robustness guarantee) . Fix 𝐾 ∈ T, 𝑏, 𝛼 ≥ 0, and 𝜌 ∈ ( 0, 1). Under Assumptions 1 and 2, consider the augmented dt-SDS 𝔖 of Definition 4 with terminal safety specification Ψ𝛼,𝜌 of Definition 5. Suppose 𝐵 is a barrier certificate in the sense of Definition 6, with parameters 𝑏 1, 𝑏 2, 𝑏 3, and 𝜅 . Then 𝔖 satisfies Ψ𝛼,𝜌 ; equivalently, the fixed policy 𝜋 is (𝛼, 𝜌 )-certified performant under Aadv (𝐾, 𝑏 ) in the sense of Definition 3. Consequently, 𝑏 belongs to the feasible set defining 𝑏 ∗ 
+
+> cert
+
+(𝐾 ) in Problem 1. More precisely, for every 𝜐 ∈ A adv (𝐾, 𝑏 ),
+
+P𝜔 
+
+ 𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼  ≥ 1 − 𝑏 1𝜅 𝑇 + 𝑏 3 G𝑇 (𝜅 )
+
+𝑏 2
+
+≥ 𝜌. (5) Theorem 1 requires the barrier inequalities to hold uniformly over the specified reachable states and admissible attacks. The finite-sample procedure below instead certifies operational reliability under a declared attack law and does not establish feasibility for the universal objective in Problem 1. 
+
+## 4 Data-Driven Sequential Robustness Certification 
+
+We assume access to synchronously coupled rollouts and repeatable one-step queries from reachable augmented state–attack–time tuples. Each query restores both branches before action generation and draws a fresh complete 
+
+𝑤 ∼ 𝑃 𝑤 , shared within the pair and independent of the source episode. Thus, policy and transition randomness are regenerated, and the reward-gap coordinate is updated from the same realized actions. No analytical dy-namics model is required. We next specify the attack–episode laws used for candidate construction and formal verification. 
+
+Definition 7 (Attack–episode laws) . For an attack budget (𝐾, 𝑏 ), let U𝐾,𝑏 be a prescribed probability law sup-ported on Aadv (𝐾, 𝑏 ). We model the sampled attack and episode randomness as independent, consistently with the oblivious threat model, and define the operational law Q𝐾,𝑏 :=U𝐾,𝑏 ⊗ P𝜔 . For synthesis at a design magnitude 
+
+𝑏 cnd ∈ R≥0, we allow a separate law Usyn  
+
+> 𝐾,𝑏 cnd
+
+supported on Aadv (𝐾, 𝑏 cnd ) and define Qsyn  
+
+> 𝐾,𝑏 cnd
+
+:=Usyn  
+
+> 𝐾,𝑏 cnd
+
+⊗ P𝜔 .The synthesis law is used only to construct the candidate barrier; the formal data-driven guarantee is stated under 
+
+Q𝐾,𝑏 . For the fixed policy, tolerance, horizon, and coupling, define 𝑅 op (𝐾, 𝑏 ; U𝐾,𝑏 ) := P(𝜐,𝜔 )∼ Q𝐾,𝑏 
+
+ 𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼 .The operational target is 𝑅 op ≥ 𝜌 for a tested specification, rather than the universal per-attack requirement of 
+
+> 4
+
+Problem 1. We reserve 𝑏 op cert for an accepted tested magnitude under this operational criterion, distinct from the universal radius 𝑏 ∗ 
+
+> cert
+
+(𝐾 ). Henceforth, we consider 𝐾 > 0, 𝑏 > 0, 0 ≤ 𝛼 < 2𝑆 max , and 𝜌 ∈ ( 0, 1); other cases are summarized in Appendix B.5. 
+
+4.1 Certificate Synthesis 
+
+We synthesize a candidate for the conditions of Definition 6 by jointly learning a neural barrier and its associated constants from coupled trajectories. The synthesis specification consists of a cardinality budget 𝐾 ∈ T, a design magnitude 𝑏 cnd ∈ R≥0, a degradation tolerance 𝛼 ∈ R≥0, and a target reliability 𝜌 ∈ ( 0, 1). We choose a synthesis-only reserve 𝜂 syn ∈ ( 0, 1 − 𝜌 ) and set 𝜌 syn :=𝜌 + 𝜂 syn . This reserve provides optimization headroom only: it has no formal role, and the certification target remains 𝜌 . Let ℎ𝜙 be a scalar neural network with parameters 𝜙 . For a prescribed 𝐵 max ∈ R>0, we parameterize 𝐵 𝜙 ( ˆ𝑥, 𝑡 ) :=𝐵 max sigmoid (ℎ𝜙 ( ˆ𝑥, 𝑡 )) , which ensures 𝐵 𝜙 ( ˆ𝑥, 𝑡 ) ∈ ( 0, 𝐵 max ) for every ( ˆ𝑥, 𝑡 ) ∈ X × T.
+
+Synthesis data. We draw 𝑁 𝑠 independent scenarios (𝜐 𝑖 , 𝜔 𝑖 ) i.i.d.
+
+∼ Qsyn  
+
+> 𝐾,𝑏 cnd
+
+, 𝑖 ∈ [ 𝑁 𝑠 ], and generate the corre-sponding trajectories ˆ 𝑥 𝑖 (0: 𝑇 ) according to Definition 4. Let 𝑑 𝑖 := 𝐷 traj (𝜐 𝑖 , 𝜔 𝑖 ), I𝑠 := {𝑖 ∈ [ 𝑁 𝑠 ] | 𝑑 𝑖 ≤ 𝛼 }, and 
+
+I𝑢 := {𝑖 ∈ [ 𝑁 𝑠 ] | 𝑑 𝑖 > 𝛼 }. We organize their initial states, state–attack–time tuples, and terminal safe–unsafe partition as indexed collections that retain repeated observations: 
+
+𝐼 :=   ˆ𝑥 𝑖 (0)  
+
+> 𝑖 ∈ [ 𝑁 𝑠 ]
+
+, 𝑋 :=   ˆ𝑥 𝑖 (𝑡 ), 𝜐 𝑖 , 𝑡     
+
+> 𝑖 ∈ [ 𝑁 𝑠 ],𝑡 ∈T′
+
+, 𝑆 :=   ˆ𝑥 𝑖 (𝑇 )  
+
+> 𝑖 ∈ I 𝑠
+
+, 𝑈 :=   ˆ𝑥 𝑖 (𝑇 )  
+
+> 𝑖 ∈ I 𝑢
+
+. (6) Since 𝑧 𝑖 (𝑇 ) = 𝐷 traj (𝜐 𝑖 , 𝜔 𝑖 ), every element of 𝐼 lies in X0, while the elements of 𝑆 and 𝑈 lie in X𝛼 𝑠 and X𝛼 𝑢 , re-spectively. Thus, 𝑆 and 𝑈 collect sampled terminal safe and unsafe states; 𝑈 enters the synthesis loss, while 𝑆 
+
+is retained for supplementary analysis. Additional synthesis-pool conventions are given in Appendix D.4. To approximate the expectation in the third condition of Definition 6, for each indexed tuple ( ˆ𝑥 𝑖 (𝑡 ), 𝜐 𝑖 , 𝑡 ), 𝑖 ∈ [ 𝑁 𝑠 ],
+
+𝑡 ∈ T′, we draw 𝑀 𝑠 fresh conditionally i.i.d. random inputs 𝑤 𝑖𝑡 𝑗 ∼ 𝑃 𝑤 , 𝑗 ∈ [ 𝑀 𝑠 ], independently of the source episode. For each tuple, define ¯ 𝐸 𝑖𝑡 :=𝑀 −1
+
+> 𝑠
+
+Í𝑀 𝑠  
+
+> 𝑗 =1
+
+𝐵 𝜙 (𝑓 ( ˆ𝑥 𝑖 (𝑡 ), 𝜐 𝑖 , 𝑤 𝑖𝑡 𝑗 , 𝑡 ), 𝑡 +1) and replace the exact expectation dur-ing synthesis by ¯ 𝐸 𝑖𝑡 + 𝜖 , where 𝜖 ∈ R≥0 is a prescribed synthesis margin. This margin tightens the sampled drift condition during synthesis only and carries no formal confidence guarantee. 
+
+Synthesis objective. We combine the sampled barrier conditions in a weighted training loss. For prescribed weights 𝑐 𝜌 , 𝑐 𝐼 , 𝑐 𝑈 , 𝑐 𝑓 ∈ R>0, we jointly optimize 𝜙 , 𝑏 1, 𝑏 2, 𝑏 3 ∈ R>0, and 𝜅 ∈ ( 0, 1], subject to 𝑏 2 < 𝐵 max , by minimizing 
+
+L/ 𝑏 2, where 
+
+L = 𝑐 𝜌 ReLU 
+
+
+
+𝑏 1𝜅 𝑇 + 𝑏 3 G𝑇 (𝜅 ) − 𝑏 2 (1 − 𝜌 syn )
+
+
+
++ 𝑐 𝐼 ∑︁   
+
+> 𝑖 ∈ [ 𝑁 𝑠 ]
+
+ReLU  𝐵 𝜙 ( ˆ𝑥 𝑖 (0), 0) − 𝑏 1
+
+
+
++ 𝑐 𝑈 ∑︁  
+
+> 𝑖 ∈ I 𝑢
+
+ReLU  𝑏 2 −𝐵 𝜙 ( ˆ𝑥 𝑖 (𝑇 ),𝑇 ) + 𝑐 𝑓 ∑︁   
+
+> 𝑖 ∈ [ 𝑁 𝑠 ]
+
+∑︁ 𝑡 ∈T′
+
+ReLU   ¯𝐸 𝑖𝑡 +𝜖 −𝜅𝐵 𝜙 ( ˆ𝑥 𝑖 (𝑡 ), 𝑡 ) − 𝑏 3
+
+ .
+
+(7) The four terms penalize violations of the reliability, initial, unsafe-terminal, and sampled drift conditions, re-spectively. After training, the candidate 𝐵 𝜙 ∗ and constants 𝑏 ∗
+
+> 1
+
+, 𝑏 ∗
+
+> 2
+
+, 𝑏 ∗
+
+> 3
+
+, 𝜅 ∗ are fixed before independent verification. Synthesis constructs a candidate only; its formal validity is established by the verification stage. 
+
+4.2 Certificate Verification 
+
+Verification converts the frozen synthesis output into a finite-sample robustness guarantee under the operational law Q𝐾,𝑏 of Definition 7. Fix a verification specification 𝐾 ∈ T, 𝑏, 𝛼 ∈ R≥0, and 𝜌 ∈ ( 0, 1), and write 𝐵 ∗ 
+
+> 𝜙
+
+:=𝐵 𝜙 ∗ with 
+
+𝑏 ∗
+
+> 1
+
+, 𝑏 ∗
+
+> 2
+
+, 𝑏 ∗
+
+> 3
+
+, 𝜅 ∗ from Sec. 4.1. The candidate and all verification-design choices are fixed before calibration; fresh calibration data are drawn independently of data used for candidate construction or selection. All probability statements below condition on these pre-calibration choices. We first express the barrier conditions as signed residuals. 
+
+Definition 8 (Barrier residuals) . For the frozen candidate and verification specification, define Z1 := X0 ×Aadv (𝐾, 𝑏 ) × { 0}, Z2 := X𝛼 𝑢 × A adv (𝐾, 𝑏 ) × { 𝑇 }, and Z3 := {( ˆ𝑥, 𝜐, 𝑡 ) : 𝜐 ∈ A adv (𝐾, 𝑏 ), 𝑡 ∈ T′, ˆ𝑥 ∈ X 𝜐 𝑡 }, where 
+
+X𝜐 𝑡 is defined in Definition 4. For 𝑗 ∈ { 1, 2, 3}, set 𝑞 𝑗 = 0 outside Z𝑗 . Positive residuals indicate violations of the corresponding conditions in Definition 6: 
+
+𝑞 1 ( ˆ𝑥, 𝜐, 𝑡 ) := 𝐵 ∗ 
+
+> 𝜙
+
+( ˆ𝑥, 0) − 𝑏 ∗
+
+> 1
+
+, ∀ ( ˆ𝑥, 𝜐, 𝑡 ) ∈ Z 1, (8) 
+
+𝑞 2 ( ˆ𝑥, 𝜐, 𝑡 ) := 𝑏 ∗ 
+
+> 2
+
+− 𝐵 ∗ 
+
+> 𝜙
+
+( ˆ𝑥,𝑇 ), ∀ ( ˆ𝑥, 𝜐, 𝑡 ) ∈ Z 2, (9) 
+
+𝑞 3 ( ˆ𝑥, 𝜐, 𝑡 ) := E𝑤 ∼𝑃 𝑤 
+
+𝐵 ∗ 
+
+> 𝜙
+
+(𝑓 ( ˆ𝑥, 𝜐, 𝑤, 𝑡 ), 𝑡 +1)  − 𝜅 ∗𝐵 ∗ 
+
+> 𝜙
+
+( ˆ𝑥, 𝑡 ) − 𝑏 ∗
+
+> 3
+
+, ∀ ( ˆ𝑥, 𝜐, 𝑡 ) ∈ Z 3, (10) 
+
+𝑞 4 := 𝑏 ∗ 
+
+> 1
+
+(𝜅 ∗)𝑇 + 𝑏 ∗ 
+
+> 3
+
+G𝑇 (𝜅 ∗) − 𝑏 ∗ 
+
+> 2
+
+(1 − 𝜌 ). (11) 
+
+5The initial and terminal residuals are directly evaluable, so ¯ 𝑞 1 := 𝑞 1 and ¯ 𝑞 2 := 𝑞 2. The drift residual 𝑞 3 contains an expectation under the stochastic dynamics. Fix 𝑀 ∈ N and 𝜖 𝑀 ∈ R>0 before calibration. At each queried 
+
+( ˆ𝑥, 𝜐, 𝑡 ) ∈ Z 3, draw 𝑤 1, . . . , 𝑤 𝑀 i.i.d.
+
+∼ 𝑃 𝑤 using fresh random inputs independent of the complete episode that supplies the tuple. Define 
+
+𝐸 ∗ 
+
+> 𝑀
+
+( ˆ𝑥, 𝜐, 𝑡 ) := 1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑚 =1
+
+𝐵 ∗ 
+
+> 𝜙
+
+(𝑓 ( ˆ𝑥, 𝜐, 𝑤 𝑚 , 𝑡 ), 𝑡 +1) + 𝜖 𝑀 , (12) ¯𝑞 3 ( ˆ𝑥, 𝜐, 𝑡 ) := 𝐸 ∗ 
+
+> 𝑀
+
+( ˆ𝑥, 𝜐, 𝑡 ) − 𝜅 ∗𝐵 ∗ 
+
+> 𝜙
+
+( ˆ𝑥, 𝑡 ) − 𝑏 ∗
+
+> 3
+
+, ( ˆ𝑥, 𝜐, 𝑡 ) ∈ Z 3, (13) with ¯ 𝑞 3 := 0 outside Z3. Unlike the synthesis margin, 𝜖 𝑀 has a formal finite-sample role through the following bound. 
+
+Lemma 1 (Supermartingale residual bound) . Fix 𝛽 0 ∈ ( 0, 1), 𝜖 𝑀 ∈ R>0, and ( ˆ𝑥, 𝜐, 𝑡 ) ∈ Z 3. Suppose 𝐵 ∗ 
+
+> 𝜙
+
+( ˆ𝑥 ′, 𝑡 ′) ∈ (0, 𝐵 max ) for every ( ˆ𝑥 ′, 𝑡 ′) ∈ X × T, and the successor random inputs used in equation 12 are conditionally i.i.d. from 
+
+𝑃 𝑤 at the fixed tuple. Then, with probability at least 1 − 𝛽 0 over the successor batch, 𝑞 3 ( ˆ𝑥, 𝜐, 𝑡 ) ≤ ¯𝑞 3 ( ˆ𝑥, 𝜐, 𝑡 ), provided 
+
+𝑀 ≥
+
+l 𝐵 2max 
+
+2𝜖 2
+
+> 𝑀
+
+ln 1
+
+𝛽 0
+
+m
+
+. (14) 
+
+Conformal calibration. We calibrate violations at the episode level, so no independence between time steps within one episode is required. 
+
+Definition 9 (Episode-level verification score) . Fix 𝑁 ∈ N and let Dcal = ( ¯𝜁 𝑖 )𝑁 𝑖 =1 contain independent copies of ¯𝜁 = (𝜐, 𝜔,𝑊 ), where (𝜐, 𝜔 ) ∼ Q𝐾,𝑏 generates the augmented trajectory of Definition 4. For each episode, 𝑊 
+
+contains the fresh successor batches used in equation 12 at all 𝑡 ∈ T′, drawn independently of the complete scenario (𝜐, 𝜔 ). Write ¯ 𝑞 1,𝑖 := ¯𝑞 1 ( ˆ𝑥 𝑖 (0), 𝜐 𝑖 , 0) and ¯ 𝑞 2,𝑖 := ¯𝑞 2 ( ˆ𝑥 𝑖 (𝑇 ), 𝜐 𝑖 ,𝑇 ). The episode score combines the initial and drift residuals while retaining terminal separation as a hard condition:                   
+
+> 𝑆 𝑖 :=
+> (max ¯𝑞 1,𝑖 ,max
+> 𝑡 ∈T′¯𝑞 3(ˆ𝑥 𝑖 (𝑡 ), 𝜐 𝑖 , 𝑡 ),¯𝑞 2,𝑖 ≤0,
+> +∞ ,¯𝑞 2,𝑖 >0.(15)
+
+Thus an unsafe-terminal separation violation receives an infinite score and cannot be repaired by a finite cali-bration margin; all scores, including infinite ones, are retained. 
+
+Lemma 2 (Conformal calibration) . Fix 𝛽 ∈ ( 0, 1] and let 𝑆 (1) ≤ · · · ≤ 𝑆 (𝑁 ) be the order statistics of the scores in Definition 9. For each 𝑘 ∈ [ 𝑁 ], let ¯𝑣 𝑘 be the smallest 𝑣 ∈ [ 0, 1] satisfying the binomial-tail condition below. Conditional on the pre-calibration choices, with probability at least 1−𝛽 over Dcal , the score of a fresh independent episode exceeds 
+
+𝑆 (𝑘 ) with probability at most ¯𝑣 𝑘 , simultaneously for all 𝑘 ∈ [ 𝑁 ]. The statement permits ties and infinite scores: 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑗 =𝑘
+
+𝑁 𝑗 
+
+
+
+(1 − 𝑣 ) 𝑗 𝑣 𝑁 − 𝑗 ≤ 𝛽 𝑁 . (16) 
+
+Calibration and acceptance. Let Kfin :={𝑘 ∈ [ 𝑁 ] : 𝑆 (𝑘 ) < +∞} and, for each finite rank, set 𝑟 𝑘 :=max {0, 𝑆 (𝑘 ) }.The margin 𝑟 𝑘 relaxes the initial and drift bounds to 𝑏 ∗ 
+
+> 1
+
++ 𝑟 𝑘 and 𝑏 ∗ 
+
+> 3
+
++ 𝑟 𝑘 , while retaining 𝑏 ∗
+
+> 2
+
+. Lemma 2 bounds the out-of-sample probability of violating these empirical episode conditions by ¯ 𝑣 𝑘 . Together with Lemma 1, the first-exact-violation argument transfers this to the exact adjusted conditions with penalty ¯ 𝑣 𝑘 /( 1 − 𝛽 0), without a union bound over time; the good-prefix barrier argument then bounds terminal failure. When Kfin ≠ ∅, select the rank that maximizes the resulting end-to-end reliability lower bound: 
+
+𝑘 ∗ ∈ arg max  
+
+> 𝑘 ∈ K fin
+
+n
+
+1 − (𝑏 ∗ 
+
+> 1
+
++ 𝑟 𝑘 )( 𝜅 ∗)𝑇 + ( 𝑏 ∗ 
+
+> 3
+
++ 𝑟 𝑘 )G 𝑇 (𝜅 ∗)
+
+𝑏 ∗
+
+> 2
+
+− ¯𝑣 𝑘 
+
+1 − 𝛽 0
+
+o
+
+. (17) Set 𝑟 ∗ := 𝑟 𝑘 ∗ , e𝑏 ∗ 
+
+> 1
+
+:= 𝑏 ∗ 
+
+> 1
+
++ 𝑟 ∗, and e𝑏 ∗ 
+
+> 3
+
+:= 𝑏 ∗ 
+
+> 3
+
++ 𝑟 ∗. Simultaneous validity over all ranks permits this data-dependent selection without an additional confidence penalty. The final verification residual is ¯𝑞 4 := e𝑏 ∗ 
+
+> 1
+
+(𝜅 ∗)𝑇 + e𝑏 ∗ 
+
+> 3
+
+G𝑇 (𝜅 ∗) − 𝑏 ∗
+
+> 2
+
+
+
+1 − 𝜌 − ¯𝑣 𝑘 ∗
+
+1 − 𝛽 0
+
+
+
+. (18) We accept exactly when ¯ 𝑞 4 ≤ 0. If Kfin =∅, we set ¯ 𝑞 4 :=+∞ and verification is inconclusive. 
+
+> 6
+
+Theorem 2 (FoSeRL certificate) . Fix 𝐾 ∈ T, 𝑏, 𝛼 ∈ R≥0, 𝜌 ∈ ( 0, 1), 𝛽 ∈ ( 0, 1], and 𝛽 0 ∈ ( 0, 1). Under Assumptions 1 and 2, consider the augmented system of Definition 4 with operational law Q𝐾,𝑏 from Definition 7. Let 𝐵 ∗ 
+
+> 𝜙
+
+: X × T →(0, 𝐵 max ) be a measurable frozen candidate with 𝑏 ∗
+
+> 1
+
+, 𝑏 ∗
+
+> 2
+
+, 𝑏 ∗ 
+
+> 3
+
+∈ R>0, 𝜅 ∗ ∈ ( 0, 1], and 𝑏 ∗ 
+
+> 2
+
+< 𝐵 max . Choose 𝑁 , 𝑀 ∈ N and 
+
+𝜖 𝑀 ∈ R>0 satisfying equation 14, and fix the candidate, constants, operational law, and all verification-design choices before drawing Dcal as in Definition 9, using fresh i.i.d data. Construct ¯𝑞 4 by equation 17–equation 18, with ¯𝑞 4 :=+∞ 
+
+if no finite rank exists. Then, conditional on all pre-calibration choices, acceptance certifies the operational target with confidence at least 1 − 𝛽 over calibration: 
+
+PDcal 
+
+ ¯𝑞 4 ≤ 0 =⇒ P(𝜐,𝜔 )∼ Q𝐾,𝑏 
+
+ 𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼  ≥ 𝜌  ≥ 1 − 𝛽. (19) Algorithm 1 summarizes the workflow: synthesize and freeze a candidate, calibrate on independent episodes, and accept when ¯ 𝑞 4 ≤ 0; otherwise, verification is inconclusive and does not establish non-robustness. Confidence is per frozen specification; adaptive and collection-level reporting are addressed in Appendix B.7. The rationale for using a barrier witness rather than direct terminal-event certification is discussed in Sec. 6 and Appendix E.4. 
+
+## 5 Experiments                                                                  
+
+> Algorithm 1: FoSeRL certification Input: fixed policy 𝜋 ;design magnitude 𝑏 cnd ;tested specification
+> (𝐾, 𝑏, 𝛼, 𝜌 ); synthesis law Qsyn
+> 𝐾,𝑏 cnd ; operational law Q𝐾,𝑏 ; sample sizes
+> (𝑁 𝑠 , 𝑀 𝑠 , 𝑁 , 𝑀 ); confidence parameters (𝛽, 𝛽 0).
+> 1. Certificate synthesis. Draw 𝑁 𝑠 coupled episodes from Qsyn
+> 𝐾,𝑏 cnd and the required 𝑀 𝑠 successor samples. Train 𝐵 𝜙 and (𝑏 1, 𝑏 2, 𝑏 3, 𝜅 )via equa-tion 7, then freeze the candidate.
+> 2. Certificate verification. With the supplied 𝑀 , before drawing cali-bration data, fix 𝜖 𝑀 satisfying equation 14, together with all remaining verification-design choices. Draw 𝑁 independent calibration episodes under Q𝐾,𝑏 and use fresh successor batches at the queried tuples, with successor randomness independent of the source episodes. Compute the scores 𝑆 𝑖 and (𝑟 𝑘 ,¯𝑣 𝑘 ), select 𝑘 ∗by equation 17, and construct ¯𝑞 4using equation 18.
+> Return.
+> If no finite rank exists or ¯𝑞 4>0, return inconclusive ; o.w. certify
+> P(𝜐,𝜔 )∼ Q𝐾,𝑏 (𝐷 traj ≤𝛼 ) ≥ 𝜌 with confidence at least 1−𝛽 .
+
+We instantiate the two-stage procedure in Algo-rithm 1 on six continuous-control environments: Inverted Pendulum (IP), Adaptive Cruise Control (ACC), Unicycle, Hopper, HalfCheetah, and Ant. The first three are custom control tasks, with IP and ACC following classical settings (Åström and Furuta, 2000; Ames et al., 2014); Hopper, HalfCheetah, and Ant use Gymnasium/MuJoCo (Towers et al., 2024; Todorov et al., 2012). Across these environments, we cer-tify frozen policies trained with TD3 (Fujimoto et al., 2018), SAC (Haarnoja et al., 2018), and PPO (Schul-man et al., 2017). Each policy is trained before certi-fication and remains fixed throughout synthesis and verification. Complete environment and policy set-tings, attack generators and norm budgets, horizons, attack grids, and framework parameters are summarized in Table 2 in Appendix D.5. 
+
+Results. We evaluate FoSeRL on all six case studies using Algorithm 1. For each tested (𝐾, 𝑏, 𝛼 ) spec-ification, the candidate barrier is synthesized and frozen before independent verification on fresh cali-bration episodes. All formal results target 𝜌 = 0.90 with 𝛽 = 0.001, and each reported point car-ries a separate per-specification confidence guarantee. Figure 2 first provides a high-level view of what an accepted FoSeRL budget means in closed-loop behavior. In the auxiliary 𝑇 = 500 Ant visual-ization, SAC and PPO are shown under the paired nominal execution, their accepted FoSeRL budgets, and larger uncertified attacks, all at 𝐾 /𝑇 = 10%. In the shown accepted-budget rollouts, 𝑧 (𝑇 )/ 𝛼 =
+
+𝐷 traj /𝛼 < 1, whereas the larger uncertified attacks finish above the terminal tolerance and visibly collapse. 
+
+Figure 2: Illustrative Ant rollouts for SAC and PPO in a separate 𝑇 =500 experiment. Each row shows a nominal rollout, an accepted FoSeRL budget, and a larger uncertified attack at 𝐾 /𝑇 =10% .The lower trace shows the running gap 𝑧 (𝑡 )/ 𝛼 ; at 𝑇 , 𝑧 (𝑇 ) = 𝐷 traj , and 1 marks the terminal tolerance. Videos for this and additional case studies are available at this link. 
+
+This experiment is used only for quali-tative visualization; the quantitative Ant frontiers and comparisons reported be-low use the main 𝑇 = 1000 campaign. We report 𝛼 % :=100 𝛼 /𝑆 env , where 𝑆 env >
+
+0 is a fixed environment-level return scale; synthesis and verification use the corresponding raw threshold 𝛼 . Com-plete benchmark, policy, attack, and cer-tification settings are reported in Ta-ble 2, with additional environment de-tails in Appendix D.3. Across environ-ments and policy families, FoSeRL yields non-trivial cardinality–magnitude ro-bustness frontiers. As shown in Fig. 3, larger degradation tolerances expand the certified magnitude budget, 
+
+7Figure 3: Certified degradation tolerance versus attack budget across different settings. Larger tolerances expand the certified budget, whereas denser temporal attacks generally contract the robustness frontier. Markers denote individually verified specifications and connect-ing lines are visual guides only. ( 𝜌 = 0.90, 𝛽 = 0.001) 
+
+Figure 4: Certified versus empirical attack-budget profiles across degradation tolerances. Solid curves show FoSeRL-certified budgets and dashed curves show the corresponding empirical design references at matched 𝐾 /𝑇 values. The empirical–certified gap varies across environments and policies. ( 𝜌 = 0.90, 𝛽 = 0.001) 
+
+while denser attacks contract it. For example, at 𝛼 % = 5%, the Unicycle–TD3 budget decreases from about 1 .0at 𝐾 /𝑇 = 5% to about 0 .3 at 𝐾 /𝑇 = 30%; for Ant–SAC at 𝛼 % = 20%, it decreases from roughly 0 .7 to 0 .23. Thus, robustness to isolated perturbations does not directly translate to robustness under more frequent attacks. Figure 4 shows that the certified frontiers generally preserve the structure of their empirical design references, but with a setting-dependent gap: some regimes remain close, whereas others lose a substantial fraction of the empirical budget after independent verification. Hence the verification conservatism is not a fixed penalty, but depends on the policy, attack density, and degradation tolerance. Curves connect individually verified specifica-tions and do not certify interpolation. Representative certificates are reported in Table 1, with complete profiles in Appendix D.7. Table 1: Representative formal certificates at selected (𝐾 /𝑇 , 𝛼 %) settings. Direct certification, policy smoothing (PS), and FoSeRL are compared by 
+
+𝑏 cert , 𝜌 cert , and runtime (RT, seconds). Direct uses the corresponding bench-mark attack and norm specification, whereas PS is evaluated under its na-tive ℓ2 perturbation setting. All results use 𝜌 = 0.90 and 𝛽 = 0.001. FoSeRL remains non-trivial where PS fails (Failures are denoted by “–”).                                                                                                                                                   
+
+> Env. Policy K/T𝜶 %Direct PS FoSeRL
+> 𝑏 cert 𝜌 cert RT 𝑏 cert 𝜌 cert RT 𝑏 cert 𝜌 cert RT IP SAC 8% 5% 40.92 14.1 0.0132 0.9 11.2 3.00 0.92 10.5 SAC 13.5% 1% 0.82 0.91 8.6 –0.9 –0.65 0.92 12.2 SAC 20% 5% 2.84 0.91 9.2 0.0083 0.9 11.2 2.50 0.92 15.5 Hopper TD3 10% 2.5% 1.57 0.91 28.9 0.0014 0.9 357.3 1.32 0.93 96.4 SAC 10% 2.5% 1.31 0.94 48.5 0.0023 0.9 438.4 1.12 0.94 119.6 PPO 10% 2.5% 1.29 0.93 31.1 –0.9 –1.17 0.93 54.3 HCH TD3 30% 20% 0.63 0.92 32.1 0.0003 0.9 345.3 0.45 0.92 139.5 SAC 30% 20% 0.26 0.94 47.7 0.0013 0.9 321.3 0.22 0.94 134.1 PPO 30% 20% 0.92 0.96 33.4 –0.9 –0.91 0.92 145 Ant TD3 20% 20% 0.63 0.92 62.1 –––0.49 0.91 94.7 SAC 20% 20% 0.39 0.9 81.1 –––0.31 0.91 138.6 PPO 20% 20% 0.55 0.91 52.9 –––0.44 0.90 95.6
+
+In addition, Table 1 compares FoSeRL with direct terminal-event certification and pol-icy smoothing (PS) (Kumar et al., 2022; Mu et al., 2024). Direct certification uses exactly the same benchmark attack and norm specification as FoSeRL and can yield larger scalar budgets by bypassing the suf-ficient barrier conditions, without requir-ing barrier synthesis or conditional suc-cessor queries. Nevertheless, FoSeRL re-tains roughly 71–99% of the direct cer-tified budget in the representative set-tings, while additionally returning a state– time barrier witness and residual diag-nostics that expose how the certificate is limited along the closed-loop evolu-tion. No existing external formal baseline matches all elements of our setting simul-taneously (detailed comparison provided in Appendix F). We therefore adapt PS, the closest formal alternative, to the same action channel, paired degra-dation event, and reliability and confidence targets, while retaining its native ℓ2 perturbation geometry. The comparison should therefore be interpreted as an aligned external baseline rather than a fully matched threat-model comparison. Under this alignment, FoSeRL certifies orders-of-magnitude larger nonzero budgets in the comparable settings, while PS is unable to certify a nonzero budget in several cases. Detailed protocols, applica-bility conditions, and complete results are given in Appendix D.8. 
+
+86 Discussion 
+
+FoSeRL provides post-hoc guarantees for the cumulative performance loss of an unchanged policy under tempo-rally sparse action attacks. Its paired-state construction makes return degradation a terminal quantity, connect-ing sequential robustness to stochastic barrier analysis and independent finite-sample verification. Experiments across six continuous-control environments and three RL policy families demonstrate non-trivial cardinality– magnitude robustness profiles and larger certified budgets than the evaluated smoothing baseline at the reported settings. 
+
+Robustness at the episode level. The joint budget (𝐾, 𝑏 ) distinguishes how many actions can be perturbed from the strength of each perturbation, while cumulative degradation captures consequences that persist after the attack ends. Pairing each attacked execution with its nominal counterpart under shared initial conditions and random inputs provides a consistent reference for this loss. It avoids variability introduced by an independently randomized comparison without removing stochastic variation in the attack’s consequences, and gives exactly zero degradation when no attack occurs. The resulting tail criterion addresses excessive episode-level loss, rather than only average performance or instantaneous action changes. Coupling is therefore part of the robustness specification itself, not merely a device for improving estimation. 
+
+Policy- and environment-agnostic certification. FoSeRL separates certification from how the policy is ob-tained. Under the stated execution and sampling assumptions, its argument does not depend on a particular RL algorithm, policy architecture, policy differentiability, or analytical family of dynamics. Learned and analytically specified policies, including deployment-time randomization, fit the same formulation. Relative to the robust-training, policy-smoothing, and model-based approaches reviewed in Appendix F, its distinguishing feature is that certification requires neither a robustness-specific policy modification nor a separately learned dynamics surrogate. Instead, coupled rollouts and fresh conditional successors support certification of the policy as de-ployed . This makes the framework applicable when the original training pipeline is unavailable and complemen-tary to robust policy learning: a policy can be assessed regardless of whether robustness was considered during its training. 
+
+The value of a dynamical certificate. Direct terminal testing and FoSeRL address the same operational event but provide different certifying objects. A one-sided binomial bound on independent paired episodes can certify the terminal probability without barrier synthesis or successor queries. FoSeRL additionally provides a state– time witness linking initial conditions, expected one-step evolution, and terminal separation. Its residuals and reliability decomposition identify which certificate conditions and sampled episode phases limit witness quality, supporting targeted refinement. These are diagnostics, not certified conditional failure probabilities at arbitrary states. Direct testing can yield tighter budgets at lower cost by bypassing the sufficient barrier conditions. The trade-off is therefore scalar tightness and computation versus dynamical structure, not formal versus empirical validity. Appendix E.4 develops this distinction. 
+
+Formal assurance from finite samples. Separating synthesis from verification allows flexible neural candi-date construction while grounding validity in an independent statistical test. Successor approximation uncer-tainty and out-of-sample violations are incorporated into the end-to-end guarantee, rather than inferred from training loss or empirical success rates. Episode-level calibration accommodates temporal dependence within each trajectory, and the empirical-to-exact transfer avoids an additional union-bound penalty over time. Uni-form satisfaction of the ideal barrier conditions covers every admissible precommitted attack; the data-driven procedure certifies the declared attack–episode law (Theorem 2). This is a trade-off in attack coverage that en-ables certification from finite generative data without global verification of the closed-loop inequalities, while retaining a formal guarantee at the prescribed confidence level. 
+
+Extensibility and future directions. The common pipeline across different dynamics, horizons, action di-mensions, and policy families supports FoSeRL’s portability. Its modular design offers complementary improve-ments: better witness synthesis can reduce representational conservatism, while additional successor samples trade computation for smaller approximation margins. New specifications can be added incrementally using fresh calibration and the confidence-control protocols of Appendix B.7, without predeclaring the entire future experimental family. Alongside richer synthesis and more efficient verification, a natural extension is certificate-aware policy improvement, using witness diagnostics to guide refinement while independently re-certifying each updated policy. 
+
+> 9
+
+Ethics Statement 
+
+Our work provides a formal framework for assessing the robustness of deployed decision policies against adver-sarial action perturbations. Although such analyses could, in principle, be misused to identify vulnerable operat-ing regimes, we believe that exposing and quantifying these vulnerabilities is important for the safe deployment of learned control policies. The societal benefits of advancing robustness certification therefore outweigh the po-tential risks, and we do not anticipate any immediate misuse arising from the methods or experiments presented in this work. No human-subject or personal data are used. 
+
+Reproducibility Statement 
+
+We have taken considerable care to ensure the reproducibility of our results. The complete assumptions, proofs, and certification procedure are provided in the main paper and appendix. Detailed descriptions of the environ-ments, policies, attack models and norm budgets, certificate architectures, and synthesis and verification sample budgets are reported in Sec. 5 and Appendix D. Qualitative rollout videos for the reported case studies are pro-vided through the link in Fig. 2. The complete codebase, along with the configuration files for every experiment, is available at this link. 
+
+AI Use Statement 
+
+This paper was entirely written by the authors. Large language models (LLMs), were used solely for final-stage language editing and polishing, without contributing to the scientific content or experimental results. 
+
+## References 
+
+Alessandro Abate, Daniele Ahmed, Alec Edwards, Mirco Giacobbe, and Andrea Peruffo. FOSSIL: A software tool for the formal synthesis of Lyapunov functions and barrier certificates using neural networks. In International Conference on Hybrid Systems: Computation and Control (HSCC) , pages 24:1–24:11, 2021. Aaron D. Ames, Jessy W. Grizzle, and Paulo Tabuada. Control barrier function based quadratic programs with application to adaptive cruise control. In IEEE Conference on Decision and Control (CDC) , pages 6271–6278, 2014. Mahathi Anand and Majid Zamani. Formally verified neural network control barrier certificates for unknown systems. IFAC-PapersOnLine , 56(2):2431–2436, 2023. Karl J. Åström and Katsuhisa Furuta. Swinging up a pendulum by energy control. Automatica , 36(2):287–295, 2000. Marc G. Bellemare, Salvatore Candido, Pablo Samuel Castro, Jun Gong, Marlos C. Machado, Subhodeep Moitra, Sameera S. Ponda, and Ziyu Wang. Autonomous navigation of stratospheric balloons using reinforcement learning. Nature , 588(7836):77–82, 2020. Stephen Checkoway, Damon McCoy, Brian Kantor, Danny Anderson, Hovav Shacham, Stefan Savage, Karl Koscher, Alexei Czeskis, Franziska Roesner, and Tadayoshi Kohno. Comprehensive experimental analyses of automotive attack surfaces. In USENIX Security Symposium , 2011. Jinglin Chen and Nan Jiang. Information-theoretic considerations in batch reinforcement learning. In Interna-tional Conference on Machine Learning (ICML) , 2019. Jonas Degrave, Federico Felici, Jonas Buchli, Michael Neunert, Brendan Tracey, Francesco Carpanese, Timo Ewalds, Roland Hafner, Abbas Abdolmaleki, Diego de las Casas, et al. Magnetic control of tokamak plasmas through deep reinforcement learning. Nature , 602(7897):414–419, 2022. Michael Everett, Björn Lütjens, and Jonathan P. How. Certifiable robustness to adversarial state uncertainty in deep reinforcement learning. IEEE Transactions on Neural Networks and Learning Systems , 2021. Scott Fujimoto, Herke van Hoof, and David Meger. Addressing function approximation error in actor-critic methods. In International Conference on Machine Learning (ICML) , pages 1587–1596, 2018. 
+
+> 10
+
+Scott Fujimoto, David Meger, and Doina Precup. Off-policy deep reinforcement learning without exploration. In 
+
+International Conference on Machine Learning (ICML) , 2019. Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, and Sergey Levine. Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor. In International Conference on Machine Learning (ICML) ,pages 1861–1870, 2018. Sandy Huang, Nicolas Papernot, Ian Goodfellow, Yan Duan, and Pieter Abbeel. Adversarial attacks on neural network policies. arXiv preprint arXiv:1702.02284 , 2017. ICLR Workshop. Garud N. Iyengar. Robust dynamic programming. Mathematics of Operations Research , 30(2):257–280, 2005. Elia Kaufmann, Leonard Bauersfeld, Antonio Loquercio, Matthias Müller, Vladlen Koltun, and Davide Scara-muzza. Champion-level drone racing using deep reinforcement learning. Nature , 620(7976):982–987, 2023. Rahul Kidambi, Aravind Rajeswaran, Praneeth Netrapalli, and Thorsten Joachims. MOReL: Model-based offline reinforcement learning. In Advances in Neural Information Processing Systems (NeurIPS) , 2020. Karl Koscher, Alexei Czeskis, Franziska Roesner, Shwetak Patel, Tadayoshi Kohno, Stephen Checkoway, Damon McCoy, Brian Kantor, Danny Anderson, Hovav Shacham, and Stefan Savage. Experimental security analysis of a modern automobile. In IEEE Symposium on Security and Privacy (S&P) , pages 447–462, 2010. Aounon Kumar, Alexander Levine, and Soheil Feizi. Policy smoothing for provably robust reinforcement learning. In International Conference on Learning Representations (ICLR) , 2022. Aviral Kumar, Aurick Zhou, George Tucker, and Sergey Levine. Conservative Q-learning for offline reinforcement learning. In Advances in Neural Information Processing Systems (NeurIPS) , 2020. Romain Laroche, Paul Trichelair, and Rémi Tachet des Combes. Safe policy improvement with baseline boot-strapping. In International Conference on Machine Learning (ICML) , 2019. Xian Yeow Lee, Sambit Ghadai, Kai Liang Tan, Chinmay Hegde, and Soumik Sarkar. Spatiotemporally constrained action space attacks on deep reinforcement learning agents. In AAAI Conference on Artificial Intelligence ,volume 34, pages 4577–4584, 2020. Axel Legay, Benoît Delahaye, and Saddek Bensalem. Statistical model checking: An overview. In International Conference on Runtime Verification (RV) , volume 6418 of LNCS , pages 122–135, 2010. Sergey Levine, Aviral Kumar, George Tucker, and Justin Fu. Offline reinforcement learning: Tutorial, review, and perspectives on open problems. arXiv preprint arXiv:2005.01643 , 2020. No archival venue; arXiv is the canonical form. Yongyuan Liang, Yanchao Sun, Ruijie Zheng, and Furong Huang. Efficient adversarial training without attack-ing: Worst-case-aware robust reinforcement learning. In Advances in Neural Information Processing Systems (NeurIPS) , pages 22547–22561, 2022. Yen-Chen Lin, Zhang-Wei Hong, Yuan-Hong Liao, Meng-Li Shih, Ming-Yu Liu, and Min Sun. Tactics of adversarial attack on deep reinforcement learning agents. In International Joint Conference on Artificial Intelligence (IJCAI) ,pages 3756–3762, 2017. Yuping Luo and Tengyu Ma. Learning barrier certificates: Towards safe reinforcement learning with zero training-time violations. In Advances in Neural Information Processing Systems (NeurIPS) , pages 25621–25632, 2021. Ronghui Mu, Leandro Soriano Marcolino, Tianle Zhang, Yanghao Zhang, Xiaowei Huang, and Wenjie Ruan. Reward certification for policy smoothed reinforcement learning. In AAAI Conference on Artificial Intel-ligence , volume 38, pages 21429–21437, 2024. doi: 10.1609/aaai.v38i19.30139. Merged from duplicate key mu2024certified. Arnab Nilim and Laurent El Ghaoui. Robust control of Markov decision processes with uncertain transition matrices. Operations Research , 53(5):780–798, 2005. 
+
+> 11
+
+Tuomas Oikarinen, Wang Zhang, Alexandre Megretski, Luca Daniel, and Tsui-Wei Weng. Robust deep rein-forcement learning through adversarial loss. In Advances in Neural Information Processing Systems (NeurIPS) ,2021. Lerrel Pinto, James Davidson, Rahul Sukthankar, and Abhinav Gupta. Robust adversarial reinforcement learning. In International Conference on Machine Learning (ICML) , pages 2817–2826, 2017. Stephen Prajna, Ali Jadbabaie, and George J. Pappas. A framework for worst-case and stochastic safety verifica-tion using barrier certificates. IEEE Transactions on Automatic Control , 52(8):1415–1428, 2007. Doina Precup, Richard S. Sutton, and Satinder Singh. Eligibility traces for off-policy policy evaluation. In Inter-national Conference on Machine Learning (ICML) , 2000. John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017. Jacob Steinhardt and Russ Tedrake. Finite-time regional verification of stochastic non-linear systems. The Inter-national Journal of Robotics Research , 31(7):901–923, 2012. Jianwen Sun, Tianwei Zhang, Xiaofei Xie, Lei Ma, Yan Zheng, Kangjie Chen, and Yang Liu. Stealthy and effi-cient adversarial attacks against deep reinforcement learning. In AAAI Conference on Artificial Intelligence ,volume 34, 2020. Sara Taheri and Majid Zamani. Probabilistic robustness certificates against adversarial attacks. In International Conference on Machine Learning (ICML) , volume 306 of Proceedings of Machine Learning Research , 2026. URL 
+
+https://openreview.net/forum?id=itrFag3Z9v .Chen Tessler, Yonathan Efroni, and Shie Mannor. Action robust reinforcement learning and applications in continuous control. In International Conference on Machine Learning (ICML) , pages 6215–6224, 2019. Philip S. Thomas, Georgios Theocharous, and Mohammad Ghavamzadeh. High-confidence off-policy evaluation. In AAAI Conference on Artificial Intelligence , 2015. Philip S. Thomas, Bruno Castro da Silva, Andrew G. Barto, Stephen Giguere, Yuriy Brun, and Emma Brunskill. Preventing undesirable behavior of intelligent machines. Science , 366(6468):999–1004, 2019. Emanuel Todorov, Tom Erez, and Yuval Tassa. MuJoCo: A physics engine for model-based control. In IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 5026–5033, 2012. doi: 10.1109/IROS. 2012.6386109. Mark Towers, Ariel Kwiatkowski, Jordan Terry, John U. Balis, Gianluca De Cola, Tristan Deleu, Manuel Goulão, Andreas Kallinteris, Markus Krimmel, Arjun KG, et al. Gymnasium: A standard interface for reinforcement learning environments. arXiv preprint arXiv:2407.17032 , 2024. Fan Wu, Linyi Li, Zijian Huang, Yevgeniy Vorobeychik, Ding Zhao, and Bo Li. CROP: Certifying robust policies for reinforcement learning through functional smoothing. In International Conference on Learning Representations (ICLR) , 2022a. Fan Wu, Linyi Li, Chejian Xu, Huan Zhang, Bhavya Kailkhura, Krishnaram Kenthapadi, Ding Zhao, and Bo Li. COPA: Certifying robust policies for offline reinforcement learning against poisoning attacks. In International Conference on Learning Representations (ICLR) , 2022b. Chenxi Yang, Greg Anderson, and Swarat Chaudhuri. Certifiably robust reinforcement learning through model-based abstract interpretation. In IEEE Conference on Secure and Trustworthy Machine Learning (SaTML) , 2024. Tianhe Yu, Garrett Thomas, Lantao Yu, Stefano Ermon, James Zou, Sergey Levine, Chelsea Finn, and Tengyu Ma. MOPO: Model-based offline policy optimization. In Advances in Neural Information Processing Systems (NeurIPS) , 2020. Huan Zhang, Hongge Chen, Chaowei Xiao, Bo Li, Mingyan Liu, Duane Boning, and Cho-Jui Hsieh. Robust deep reinforcement learning against adversarial perturbations on state observations. In Advances in Neural Information Processing Systems (NeurIPS) , 2020. 
+
+> 12
+
+Huan Zhang, Hongge Chen, Duane Boning, and Cho-Jui Hsieh. Robust reinforcement learning on state obser-vations with learned optimal adversary. In International Conference on Learning Representations (ICLR) , 2021. 
+
+> 13
+
+## Appendix Overview 
+
+A Notation 14 
+
+B Additional Formulation and Verification Details 15 B.1 Attack admissibility and action projection . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 B.2 Coupling semantics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 B.3 Monotonicity of the ideal robustness frontier . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 B.5 Analytical boundary cases and zero tolerance . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16 B.4 Conservatism of the barrier witness . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16 B.6 Verification planning and sample cost . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16 B.7 Tested specifications and collection-level confidence . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17 
+
+C Proofs 17 C.1 Augmented-state identity . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17 C.2 Proof of Theorem 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 C.3 Proof of Lemma 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 C.4 Proof of Lemma 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 C.5 Proof of Theorem 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21 
+
+D Additional Experimental Details and Results 23 D.1 Benchmark formulation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 D.2 Policy families . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 D.3 Case studies . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 D.4 Certificate parameterization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 D.5 Fixed experimental settings . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 D.6 Certificate construction and reporting workflow . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 D.7 Complete FoSeRL certification results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 D.8 Comparison with Policy Smoothing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 
+
+E Additional Discussion 33 E.1 From training-time robustness to long-horizon certification . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34 E.2 Episode-level calibration and statistical validity . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34 E.3 Reliability, confidence, and violation levels . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34 E.4 Barrier witnesses versus direct terminal certification . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34 E.5 Generality, simulator access, and attack coverage . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35 E.6 Reading robustness frontiers and selecting specifications . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35 E.7 Performance robustness versus pathwise safety . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35 E.8 Certificate refinement and policy improvement . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36 E.9 Limitations and outlook . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36 
+
+F Positioning, Baseline Selection, and Extended Comparisons 36 
+
+## A Notation 
+
+We denote the sets of real, nonnegative real, and strictly positive real numbers by R, R≥0, and R>0, respectively. The set of positive integers is denoted by N, and we define N0 := {0} ∪ N. For integers 𝑎, 𝑏 ∈ N0 with 𝑎 ≤ 𝑏 , we write N𝑎 :𝑏 :={𝑎, 𝑎 +1, . . . , 𝑏 }, and for 𝑁 ∈ N we use [𝑁 ] :={1, . . . , 𝑁 }. We define the time-index sets T := {0, . . . ,𝑇 }
+
+and T′ := {0, . . . ,𝑇 − 1}. For a scalar 𝑥 ∈ R, |𝑥 | and ⌈𝑥 ⌉ denote its absolute value and ceiling, respectively. The 
+
+𝑑 -dimensional Euclidean space is denoted by R𝑑 , and for 𝑥 ∈ R𝑑 and 𝑝 ∈ [ 1, ∞] , ∥𝑥 ∥𝑝 denotes the ℓ𝑝 norm, with 
+
+∥𝑥 ∥∞ :=max 𝑖 ∈[ 𝑑 ] |𝑥 𝑖 |. For a finite set 𝐴 , |𝐴 | denotes its cardinality. For a probability measure 𝜇 , supp (𝜇 ) denotes its support, while E[·] and P(·) denote expectation and probability with respect to the underlying probability space; conditional quantities are written in the standard form E[· | ·] and P(· | ·) . The product of probability measures is denoted by ⊗, and 𝑋 𝑖 i.i.d.
+
+∼ 𝑃 indicates that the random variables 𝑋 𝑖 are independent and identically distributed according to 𝑃 . For an event E, 1E denotes its indicator. We use ReLU (𝑥 ) := max {0, 𝑥 } and sigmoid (𝑥 ) :=
+
+(1 + 𝑒 −𝑥 )−1.
+
+14 B Additional Formulation Details 
+
+This section supplements Secs. 2–4 with attack admissibility, coupling semantics, ideal-frontier monotonicity, and boundary cases of the certification framework. 
+
+B.1 Attack admissibility and action projection 
+
+The class Aadv (𝐾, 𝑏 ) in Definition 1 constrains the precommitted schedule and perturbation vectors, not the state-dependent command after projection. Along the attacked branch, the executed action is ¯ 𝑢 𝑎 (𝑡 ;𝜐 ) =
+
+ΠA (𝜋 (𝑥 𝑎 (𝑡 ), 𝑤 (𝑡 )) + Δ𝑡 ), where Δ𝑡 = 0 outside Tatk . Thus an admissible attack is specified before the episode begins, while the executed action remains in A for every realized state. We do not test attack membership by requiring 𝜋 (𝑥 𝑎 (𝑡 ), 𝑤 (𝑡 )) + Δ𝑡 ∈ A along the realized trajectory: such a membership test would depend on that trajectory rather than only on (T atk , Δ). Instead, projection is part of the attacked closed-loop dynamics, and the budget 𝑏 always refers to ∥Δ𝑡 ∥𝑝 before projection. The norm used in a projection bound must be specified. For a closed convex action set, Euclidean projection is nonexpansive in the Euclidean norm. For each realized 
+
+𝑢 = 𝜋 (𝑥, 𝑤 ) ∈ A ,
+
+∥ΠA (𝑢 + 𝛿 ) − 𝑢 ∥2 = ∥ΠA (𝑢 + 𝛿 ) − ΠA (𝑢 )∥ 2 ≤ ∥ 𝛿 ∥2. (20) For a box action set, projection is coordinatewise clipping and |[ ΠA (𝑢 + 𝛿 )] 𝑗 − 𝑢 𝑗 | ≤ | 𝛿 𝑗 | for every coordinate 𝑗 .Consequently, the same displacement bound holds in each of the ℓ1, ℓ2, and ℓ∞ norms for boxes. We do not assert this all-norm property for arbitrary closed convex sets. The attack class and its certification criterion remain defined by the pre-projection budget and the specified projected dynamics. 
+
+B.2 Coupling semantics 
+
+The tail criterion in Definition 3 depends on the joint coupling of the nominal and attacked executions, not only on their trajectory marginals. To make this distinction explicit, fix an attack 𝜐 and let C be any coupling with the prescribed nominal and attacked marginals. Linearity of expectation gives 
+
+EC [𝑅 nom − 𝑅 att ] = 𝐽 (𝜋 ) − E𝜔 [𝑅 att (𝜐, 𝜔 )] . (21) Thus the mean degradation is coupling-invariant, whereas PC (𝑅 nom − 𝑅 att ≤𝛼 ) generally is not. A coupling must therefore be fixed to define the paired tail event. Definition 2 uses the synchronous coupling induced by the declared execution representation (𝜋, 𝐹, 𝑃 𝑤 ). Both branches share 𝑥 (0) and the complete random-input sequence, including deployment-time policy randomization, while evaluating the policy at their own states. Hence the certification statement is relative to this fixed shared-randomness semantics, chosen before synthesis and verification; the marginal transition kernel and policy action law alone do not determine the paired tail distribution. The synchronous coupling also gives an exact nominal anchor. If 𝐾 = 0 or 𝑏 = 0 and 𝑥 0 (𝑡 ) = 𝑥 𝑎 (𝑡 ), the shared 
+
+𝑤 (𝑡 ) produces the same policy action in both branches. Projection leaves that admissible action unchanged, and the same 𝐹 and 𝑤 (𝑡 ) then produce equal next states and rewards. Induction from the common initial state yields 
+
+𝐷 traj (𝜐, 𝜔 ) ≡ 0 for every 𝜔 . This is an analytical property of the declared coupling, not an empirical calibration result. The need to specify the coupling cannot be removed by specifying only the marginals. For example, take 𝑇 = 2, 
+
+𝛾 = 1, 𝑥 (0) = 0, 𝜋 = 0, S = {0, 1}, A = [0, 1], 𝑟 (𝑥, 𝑢 ) = 𝑥 , and fair Bernoulli noise 𝑤 . Let 𝐹 1 (𝑥, 𝑢, 𝑤 ) = 𝑤 , while 
+
+𝐹 2 (𝑥, 𝑢, 𝑤 ) =𝑤 for 𝑢 < 1/2 and 𝐹 2 (𝑥, 𝑢, 𝑤 ) = 1 − 𝑤 otherwise. Both realize the same Bernoulli transition kernel. A time-zero perturbation from zero to one gives 𝐷 traj = 0 under 𝐹 1 but 𝐷 traj = 2𝑤 (0) − 1 under 𝐹 2. At 𝛼 = 0, the corresponding paired reliabilities are one and one-half despite identical trajectory marginals. 
+
+B.3 Monotonicity of the ideal robustness frontier 
+
+Fix the policy, horizon, attack norm, coupling, and the pair (𝛼, 𝜌 ). The attack classes are nested: 
+
+Aadv (𝐾, 𝑏 ) ⊆ A adv (𝐾, 𝑏 ′), 0 ≤ 𝑏 ≤ 𝑏 ′, (22) 
+
+Aadv (𝐾, 𝑏 ) ⊆ A adv (𝐾 ′, 𝑏 ), 0 ≤ 𝐾 ≤ 𝐾 ′ ≤ 𝑇 . (23) 
+
+> 15
+
+Since Definition 3 quantifies over every admissible attack, satisfaction for a larger class implies satisfaction for each contained class. Let B𝐾 := {𝑏 ∈ R≥0 : equation 2 holds } denote the set of magnitudes satisfying the ideal criterion. By 22, this set is downward closed: if 𝑏 ′ ∈ B 𝐾 , then 𝑏 ∈ B 𝐾 for every 0 ≤ 𝑏 ≤ 𝑏 ′. It is nonempty because the zero-attack property implies 0 ∈ B 𝐾 . Moreover, 23 gives B𝐾 ′ ⊆ B 𝐾 when 𝐾 ≤ 𝐾 ′, and therefore 
+
+𝑏 ∗ 
+
+> cert
+
+(𝐾 ′) ≤ 𝑏 ∗ 
+
+> cert
+
+(𝐾 ) for 𝐾 ≤ 𝐾 ′. (24) This monotonicity concerns the ideal per-attack objective and does not require a sampled-prefix construction. The distributional guarantee of Theorem 2 has a different scope. Under Q𝐾,𝑏 = U𝐾,𝑏 ⊗ P𝜔 , changing 𝐾 or 𝑏 may change the attack sampling law; set inclusion alone therefore does not imply monotonicity of the distributional success probability. In particular, a certificate at one (𝐾, 𝑏 ) does not automatically certify other budgets under different operational laws. This is a distinction between the ideal and distributional criteria, not merely a finite-sample effect. 
+
+B.4 Conservatism of the barrier witness 
+
+The conditions of Definition 6 are sufficient but not necessary. Conservatism arises both from requiring one common barrier across admissible attacks and from the pointwise initial-set bound. 
+
+Common witness across attacks. Let 𝑇 = 2, 𝐾 = 𝑏 = 𝛾 = 1, S = A = [− 1, 1], 𝑥 (0) = 0, and 𝜋 = 0. Take 
+
+𝐹 (𝑥, 𝑢, 𝑤 ) = 𝑤 with fair 𝑤 ∈ {− 1, 1} and 𝑟 (𝑥, 𝑢 ) = −( 𝑢 2 + 𝑥𝑢 )/ 2, and set 𝛼 = 𝜌 = 1/2. A time-zero perturbation 𝑢 
+
+gives 𝐷 traj =𝑢 2/2 ≤ 1/2. A time-one perturbation gives (𝑢 2 + 𝑠𝑢 )/ 2 at 𝑥 (1) =𝑠 ∈ {− 1, 1}; for each precommitted 𝑢 ,at most one sign exceeds 1 /2. Thus every admissible precommitted attack satisfies the target. At the shared time-one states (𝑠, 𝑠, 0), however, a common barrier must also accommodate the respective attacks 
+
+𝑢 =𝑠 , which give terminal gap one. Hence 𝜅𝐵 (( 𝑠, 𝑠, 0), 1) + 𝑏 3 ≥ 𝑏 2 for both signs, and the initial drift inequality implies 𝑏 1𝜅 2 +𝑏 3 (1+𝜅 ) ≥ 𝑏 2. The resulting ideal barrier bound is nonpositive even though the universal robustness property holds. This is conservatism of the common witness, not a counterexample to Theorem 1. 
+
+Pointwise initial condition. The proof of Theorem 1 only requires E𝑥 ∼𝜇 0 [𝐵 (( 𝑥, 𝑥, 0), 0)] ≤ 𝑏 1. Definition 6 instead imposes the stronger pointwise condition 𝐵 ( ˆ𝑥, 0) ≤ 𝑏 1 on X0. We retain this form because the verifier directly calibrates the corresponding residual 𝑞 1; no separate empirical test of the initial expectation is introduced. 
+
+Unit reliability. For 𝑇 ≥ 1 and 𝑏 1, 𝑏 3 ∈ R>0, 𝑏 1𝜅 𝑇 + 𝑏 3 G𝑇 (𝜅 ) > 0. Hence the sufficient bound in Theorem 1 cannot certify 𝜌 =1, even when the underlying robustness property holds. This limitation concerns the certificate conditions, not the property itself. 
+
+B.5 Analytical boundary cases and zero tolerance 
+
+Some specifications are resolved analytically before invoking the data-driven procedure. If 𝐾 = 0 or 𝑏 = 0, syn-chronous coupling gives 𝐷 traj (𝜐, 𝜔 ) ≡ 0 pathwise, so Definition 3 holds for every 𝛼 ≥ 0 and 𝜌 ≤ 1. If 𝛼 ≥ 2𝑆 max ,bounded rewards imply 𝐷 traj (𝜐, 𝜔 ) ≤ 2𝑆 max ≤ 𝛼 for every admissible attack and episode. These are analytical certificates, not finite-sample acceptances. 
+
+Zero-tolerance boundary. Assume 𝑆 max > 0 and that 𝐵 is continuous in 𝑧 . At 𝛼 =0, global terminal separation for all 𝑧 > 0 implies 𝐵 (( 𝑥, 𝑥, 0),𝑇 ) ≥ 𝑏 2 by continuity. Under zero attack, the actual terminal state has this form; hence the ideal recursion cannot yield a positive reliability bound through such a globally separating continuous candidate. The analytical zero-attack certificate above bypasses this restriction. The data-driven theorem instead controls violations under the operational episode law and does not require global terminal separation. 
+
+B.6 Verification planning and sample cost 
+
+For one fixed tested specification, formal verification uses 𝑁 paired calibration episodes and 𝑁𝑇 𝑀 augmented successor queries when all 𝑇 time indices require Monte Carlo successor evaluation; each augmented query ad-vances both branches. A complete synthesis pass uses 𝑁 𝑠 𝑇 𝑀 𝑠 successor queries, with additional cost if successor batches are regenerated during optimization. For a fixed 𝑀 , the choice 𝜖 𝑀 =𝐵 max √︁ log (1/𝛽 0)/( 2𝑀 ) saturates the sufficient condition in equation 14. The con-formal calibration also imposes a finite-𝑁 statistical floor. Since the smallest rank bound is ¯ 𝑣 𝑁 = 1 − ( 𝛽 /𝑁 )1/𝑁 ,
+
+> 16
+
+define 𝑐 stat ,min := [1 − ( 𝛽 /𝑁 )1/𝑁 ]/( 1 − 𝛽 0). Because the normalized barrier contribution is strictly positive, ac-ceptance requires 𝑐 stat ,min < 1 − 𝜌 . This condition can be checked before calibration and expensive successor sampling; failure means that 𝑁 must be increased or no certificate can be obtained with that verification design. For a planned positive dynamical contribution 𝑑 , the stronger planning condition is 𝑐 stat ,min ≤ 1 − 𝜌 − 𝑑 .Avoiding a union bound over the horizon does not eliminate horizon dependence. For rank 𝑘 , the calibration margin contributes 𝑟 𝑘 [( 𝜅 ∗)𝑇 + G 𝑇 (𝜅 ∗)]/ 𝑏 ∗ 
+
+> 2
+
+to the normalized barrier term, reducing to (𝑇 + 1)𝑟 𝑘 /𝑏 ∗ 
+
+> 2
+
+when 𝜅 ∗ = 1. 
+
+B.7 Scope across tested specifications and collection-level confidence 
+
+Theorem 2 gives a separate confidence statement for each frozen tested specification, including its policy, cou-pling, attack budget, tolerance, operational law, candidate, and sampling design. New specifications may there-fore be added incrementally using fresh calibration data; the complete future experimental family need not be fixed in advance. Simultaneous validity over conformal ranks within one specification does not imply simultaneous validity across different specifications. Consequently, a displayed collection of individually certified points carries no automatic family-wise guarantee, interpolation guarantee, or downward-closure claim when the operational law changes. Likewise, selecting the largest accepted budget after repeated formal tests does not preserve the same nominal confidence for that selected output. For a single selected-budget claim at a stated confidence, candidate selection may use design or previous search data, but the selected specification must then be frozen and assessed using fresh final calibration data. Repeating that final test until acceptance requires additional confidence control. For a simultaneous claim over a finite predeclared collection of 𝐽 specifications, fix all candidates and designs before calibration and choose 𝛽 𝑗 > 0 with Í𝐽 𝑗 =1 𝛽 𝑗 ≤ 𝛽 total . Applying Theorem 2 to specification 𝑗 with 𝛽 =
+
+𝛽 𝑗 and taking a union bound yields probability at least 1 − 𝛽 total that every accepted specification satisfies its own operational target. Independence across specifications is not required, provided each test satisfies its own calibration conditions. The entire future family also need not be predeclared. For sequential testing, one may fix a summable allocation such as 𝛽 𝑗 = 𝛽 total /[ 𝑗 ( 𝑗 + 1)] . Before attempt 𝑗 , freeze its specification using only previously available infor-mation and draw fresh calibration and successor samples conditionally independently of that information. The conditional false-acceptance probability at attempt 𝑗 is then at most 𝛽 𝑗 ; summing these bounds gives the same 1 − 𝛽 total collection-level guarantee over all attempts, including under stopping. Failed attempts still consume their assigned confidence budget. These stronger protocols do not retrospectively apply to runs performed at other confidence levels and do not certify untested or interpolated budgets. 
+
+## C Proofs 
+
+This appendix establishes the theoretical results used in the main text. We first establish the augmented-state identity and prove the ideal sequential robustness guarantee. We then prove the two statistical ingredients of the primary data-driven verification method: the finite-sample supermartingale approximation and the conformal calibration guarantee. These results are combined directly with the stochastic barrier argument in the proof of the final data-driven FoSeRL certificate. 
+
+C.1 Augmented-state identity 
+
+By Definition 4, the third component of the augmented state satisfies 𝑧 (0) = 0 and, for each 𝑡 ∈ T′,
+
+𝑧 (𝑡 + 1) − 𝑧 (𝑡 ) = 𝛾 𝑡 𝑟 (𝑥 0 (𝑡 ), 𝑢 0 (𝑡 )) − 𝑟 (𝑥 𝑎 (𝑡 ), ¯𝑢 𝑎 (𝑡 ;𝜐 ))  . (25) Summing 25 over 𝑡 = 0, . . . ,𝑇 − 1 gives 
+
+𝑧 (𝑇 ) = 
+
+> 𝑇 −1
+
+∑︁ 
+
+> 𝑡 =0
+
+𝛾 𝑡 𝑟 (𝑥 0 (𝑡 ), 𝑢 0 (𝑡 )) − 𝑟 (𝑥 𝑎 (𝑡 ), ¯𝑢 𝑎 (𝑡 ;𝜐 )) 
+
+= 𝑅 nom (𝜔 ) − 𝑅 att (𝜐, 𝜔 ) = 𝐷 traj (𝜐, 𝜔 ).
+
+(26) 
+
+> 17
+
+Hence the terminal augmented coordinate is exactly the paired trajectory-level degradation. For completeness, fix any 𝜐 ∈ A adv (𝐾, 𝑏 ). Since the nominal branch depends only on 𝜔 and the fixed policy 𝜋 ,
+
+E𝜔 [𝑅 nom (𝜔 )] = 𝐽 (𝜋 ). (27) Taking expectation in 26 over 𝜔 therefore gives 
+
+E𝜔 
+
+𝐷 traj (𝜐, 𝜔 ) = 𝐽 (𝜋 ) − E𝜔 [𝑅 att (𝜐, 𝜔 )] , (28) which is the mean identity stated after Definition 2. 
+
+C.2 Proof of Theorem 1 
+
+Proof. Let 𝐵 satisfy Definition 6 with constants 𝑏 1, 𝑏 2, 𝑏 3 ∈ R>0 and 𝜅 ∈ ( 0, 1]. Fix an arbitrary 𝜐 ∈ A adv (𝐾, 𝑏 ).All probabilities and expectations below are over the episode randomness 𝜔 , conditional on the fixed policy and execution representation. Define 𝐵 𝑡 := 𝐵 ( ˆ𝑥 (𝑡 ), 𝑡 ) and the filtration 
+
+F𝑡 := 𝜎  𝑥 (0), 𝑤 (0), . . . , 𝑤 (𝑡 − 1), 𝑡 ∈ T. (29) For fixed 𝜐 , the augmented state ˆ 𝑥 (𝑡 ) and hence 𝐵 𝑡 are F𝑡 -measurable. Because ˆ 𝑥 (0) ∈ X 0 almost surely, the initial barrier condition gives 
+
+E𝜔 [𝐵 0] ≤ 𝑏 1. (30) Since ˆ 𝑥 (𝑡 ) ∈ X 𝜐 𝑡 almost surely and 𝑤 (𝑡 ) is independent of F𝑡 with law 𝑃 𝑤 by Assumption 2, the third condition in Definition 6 and the tower property give 
+
+E𝜔 [𝐵 𝑡 +1] = E𝜔 [E𝜔 [𝐵 𝑡 +1 | F 𝑡 ]] ≤ 𝜅 E𝜔 [𝐵 𝑡 ] + 𝑏 3, 𝑡 ∈ T′. (31) The conditional barrier inequality implies that the process 𝜅 𝑇 −𝑡 𝐵 𝑡 + 𝑏 3
+
+Í𝑇 −𝑡 −1 
+
+> 𝑗 =0
+
+𝜅 𝑗 , 𝑡 ∈ T, is a nonnegative super-martingale with respect to {F 𝑡 }𝑡 ∈T, where an empty sum is zero. Iterating 31 and using 30 yields 
+
+E𝜔 [𝐵 𝑇 ] ≤ 𝑏 1𝜅 𝑇 + 𝑏 3 G𝑇 (𝜅 ). (32) By 26, the terminal unsafe event is 
+
+ ˆ𝑥 (𝑇 ) ∈ X 𝛼 𝑢 = 𝐷 traj (𝜐, 𝜔 ) > 𝛼 . (33) On this event the terminal separation condition gives 𝐵 𝑇 ≥ 𝑏 2. Since 𝐵 𝑇 ≥ 0, Markov’s inequality and 32 imply 
+
+P𝜔 
+
+ 𝐷 traj (𝜐, 𝜔 ) > 𝛼  ≤ 𝑏 1𝜅 𝑇 + 𝑏 3 G𝑇 (𝜅 )
+
+𝑏 2
+
+. (34) Taking complements gives 
+
+P𝜔 
+
+ 𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼  ≥ 1 − 𝑏 1𝜅 𝑇 + 𝑏 3 G𝑇 (𝜅 )
+
+𝑏 2
+
+. (35) Finally, the scalar condition in Definition 6 implies 1 − 𝑏 1𝜅 𝑇 + 𝑏 3 G𝑇 (𝜅 )
+
+𝑏 2
+
+≥ 𝜌. (36) Because 𝜐 was arbitrary, the bound holds for every 𝜐 ∈ A adv (𝐾, 𝑏 ), proving 5 and completing the proof. □
+
+C.3 Proof of Lemma 1 
+
+Proof. Fix ( ˆ𝑥, 𝜐, 𝑡 ) ∈ Z 3. The candidate and verification choices are fixed; the only randomness considered here is that of the fresh successor samples. Let 𝑌 𝑚 := 𝐵 ∗ 
+
+> 𝜙
+
+(𝑓 ( ˆ𝑥, 𝜐, 𝑤 𝑚 , 𝑡 ), 𝑡 + 1), b𝜇 𝑀 := 𝑀 −1 Í𝑀 𝑚 =1 𝑌 𝑚 , and 𝜇 := E𝑤 [𝑌 𝑚 |
+
+ˆ𝑥, 𝜐 ]. By the assumed output bound, 𝑌 𝑚 ∈ ( 0, 𝐵 max ) almost surely, and 𝑌 1, . . . , 𝑌 𝑀 are conditionally i.i.d. given 
+
+( ˆ𝑥, 𝜐, 𝑡 ). Define the approximation event 𝐸 Approx := {𝑞 3 ( ˆ𝑥, 𝜐, 𝑡 ) ≤ ¯𝑞 3 ( ˆ𝑥, 𝜐, 𝑡 )} . At the fixed tuple, 𝐸 ∗ 
+
+> 𝑀
+
+= b𝜇 𝑀 + 𝜖 𝑀 
+
+> 18
+
+by equation 12, while the other terms in 𝑞 3 and ¯ 𝑞 3 coincide. Therefore, ¬𝐸 Approx is exactly the event 𝜇 − b𝜇 𝑀 > 𝜖 𝑀 .Applying the one-sided Hoeffding inequality to the conditionally i.i.d. variables 𝑌 𝑚 ∈ ( 0, 𝐵 max ), and then using 14, gives 
+
+P𝑊 
+
+ ¬𝐸 Approx ˆ𝑥, 𝜐, 𝑡  = P𝑊 (𝜇 − b𝜇 𝑀 > 𝜖 𝑀 | ˆ𝑥, 𝜐, 𝑡 )≤ exp 
+
+
+
+− 2𝑀 (𝜖 𝑀 )2
+
+(𝐵 max )2
+
+
+
+≤ 𝛽 0. (37) Taking complements therefore yields 
+
+P𝑊 
+
+ 𝐸 Approx ˆ𝑥, 𝜐, 𝑡  = P𝑊 (𝑞 3 ( ˆ𝑥, 𝜐, 𝑡 ) ≤ ¯𝑞 3 ( ˆ𝑥, 𝜐, 𝑡 ) | ˆ𝑥, 𝜐, 𝑡 ) ≥ 1 − 𝛽 0. (38) Hence the corrected empirical supermartingale residual upper-bounds the exact supermartingale residual at the fixed state–attack–time tuple with the confidence stated in Lemma 1. □
+
+C.4 Proof of Lemma 2 
+
+Proof. Condition on the synthesis data and on all quantities fixed before calibration. Under this conditioning, the score construction in 15 is fixed, and the calibration scores 𝑆 1, . . . , 𝑆 𝑁 are i.i.d. with the same distribution as the score 𝑆 ( ¯𝜁 ) of a fresh independent augmented episode ¯𝜁 . Let 
+
+𝐹 (𝑠 ) := P ¯𝜁 
+
+ 𝑆 ( ¯𝜁 ) ≤ 𝑠  , 𝑠 ∈ R := R ∪ {+∞} , (39) denote the population distribution function of the score. The score distribution may contain atoms, including an atom at +∞ induced by hard unsafe-terminal violations; no continuity or tie-breaking assumption is required. For each rank 𝑘 ∈ [ 𝑁 ], define the conditional exceedance probability associated with the 𝑘 -th order statistic by 
+
+𝑉 𝑘 (D cal ) := P ¯𝜁 
+
+ 𝑆 ( ¯𝜁 ) > 𝑆 (𝑘 ) Dcal 
+
+ = 1 − 𝐹  𝑆 (𝑘 )
+
+ . (40) We first control 𝑉 𝑘 for a fixed rank 𝑘 and a fixed 𝑣 ∈ [ 0, 1). Define the population (1 − 𝑣 )-quantile 
+
+𝑐 𝑣 := inf 
+
+n
+
+𝑠 ∈ R : 𝐹 (𝑠 ) ≥ 1 − 𝑣 
+
+o
+
+, (41) and let 
+
+𝑝 − 
+
+> 𝑣
+
+:= P ¯𝜁 
+
+ 𝑆 ( ¯𝜁 ) < 𝑐 𝑣 
+
+ . (42) By the definition of 𝑐 𝑣 , for every 𝑠 < 𝑐 𝑣 ,
+
+𝐹 (𝑠 ) < 1 − 𝑣. (43) Therefore, by continuity of probability from below, 
+
+𝑝 − 
+
+> 𝑣
+
+= P ¯𝜁 
+
+ 𝑆 ( ¯𝜁 ) < 𝑐 𝑣 
+
+ = sup 
+
+> 𝑠 <𝑐 𝑣
+
+𝐹 (𝑠 ) ≤ 1 − 𝑣. (44) Suppose now that 𝑉 𝑘 (D cal ) > 𝑣 . By 40, this implies 
+
+𝐹  𝑆 (𝑘 )
+
+ < 1 − 𝑣. (45) By the definition of 𝑐 𝑣 in 41, 45 implies 
+
+𝑆 (𝑘 ) < 𝑐 𝑣 . (46) Hence at least 𝑘 of the 𝑁 calibration scores are strictly smaller than 𝑐 𝑣 . Defining 
+
+𝑁 𝑣 :=
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+1{𝑆 𝑖 <𝑐 𝑣 }, (47) we therefore have the event inclusion 
+
+{𝑉 𝑘 (D cal ) > 𝑣 } ⊆ { 𝑁 𝑣 ≥ 𝑘 } . (48) 
+
+> 19
+
+Since 𝑐 𝑣 depends only on the fixed population score distribution, the indicators in 47 are i.i.d. Bernoulli random variables with success probability 𝑝 − 
+
+> 𝑣
+
+. Therefore, 
+
+𝑁 𝑣 ∼ Binomial  𝑁 , 𝑝 −
+
+> 𝑣
+
+ . (49) Using 48, the binomial law in 49, the bound 𝑝 − 
+
+> 𝑣
+
+≤ 1 − 𝑣 from 44, and monotonicity of the binomial upper tail in its success probability, we obtain 
+
+PDcal (𝑉 𝑘 (D cal ) > 𝑣 ) ≤ PDcal (𝑁 𝑣 ≥ 𝑘 )
+
+=
+
+> 𝑁
+
+∑︁ 
+
+> 𝑗 =𝑘
+
+𝑁 𝑗 
+
+
+
+(𝑝 − 
+
+> 𝑣
+
+) 𝑗 (1 − 𝑝 − 
+
+> 𝑣
+
+)𝑁 − 𝑗 
+
+≤
+
+> 𝑁
+
+∑︁ 
+
+> 𝑗 =𝑘
+
+𝑁 𝑗 
+
+
+
+(1 − 𝑣 ) 𝑗 𝑣 𝑁 − 𝑗 .
+
+(50) We now set 𝑣 = ¯𝑣 𝑘 , where ¯ 𝑣 𝑘 is defined by 16. By construction, 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑗 =𝑘
+
+𝑁 𝑗 
+
+
+
+(1 − ¯𝑣 𝑘 ) 𝑗 ¯𝑣 𝑁 − 𝑗 𝑘 ≤ 𝛽 𝑁 . (51) Combining 50 and 51 gives, for every fixed 𝑘 ∈ [ 𝑁 ],
+
+PDcal (𝑉 𝑘 (D cal ) > ¯𝑣 𝑘 ) ≤ 𝛽 𝑁 . (52) Define the rank-wise validity events 
+
+𝐸 𝑘 := {𝑉 𝑘 (D cal ) ≤ ¯𝑣 𝑘 } , 𝑘 ∈ [ 𝑁 ]. (53) Equation 52 implies 
+
+PDcal (¬ 𝐸 𝑘 ) ≤ 𝛽 𝑁 , 𝑘 ∈ [ 𝑁 ]. (54) Applying a union bound over all 𝑁 ranks yields 
+
+PDcal 
+
+> 𝑁
+
+Ù
+
+> 𝑘 =1
+
+𝐸 𝑘 
+
+!
+
+= 1 − PDcal 
+
+> 𝑁
+
+Ø
+
+> 𝑘 =1
+
+¬𝐸 𝑘 
+
+!
+
+≥ 1 −
+
+> 𝑁
+
+∑︁ 
+
+> 𝑘 =1
+
+PDcal (¬ 𝐸 𝑘 )≥ 1 − 𝛽. 
+
+(55) Using the definition of 𝑉 𝑘 in 40, the event in 55 is exactly 
+
+n
+
+∀𝑘 ∈ [ 𝑁 ] : P ¯𝜁 
+
+ 𝑆 ( ¯𝜁 ) > 𝑆 (𝑘 ) Dcal 
+
+ ≤ ¯𝑣 𝑘 
+
+o
+
+. (56) Combining equation 55 and equation 56 yields 
+
+PDcal 
+
+h
+
+∀𝑘 ∈ [ 𝑁 ] : P ¯𝜁 
+
+ 𝑆 ( ¯𝜁 ) > 𝑆 (𝑘 ) | D cal 
+
+ ≤ ¯𝑣 𝑘 
+
+i
+
+≥ 1 − 𝛽. (57) This proves Lemma 2. In particular, the guarantee holds simultaneously for all ranks on the same calibration-validity event. Therefore, a rank may subsequently be selected as a function of the calibration data, including through 17, without introducing any additional confidence penalty. □
+
+20 C.5 Proof of Theorem 2 
+
+Proof. Condition on all pre-calibration choices, including the data used for construction or selection. Under this conditioning, the candidate, constants, operational law, and verification design are fixed, and the calibration episodes are independent copies drawn as in Definition 9. Define the simultaneous conformal-validity event 
+
+𝐸 Conf :=
+
+n
+
+∀𝑘 ∈ [ 𝑁 ] : P ¯𝜁 
+
+ 𝑆 ( ¯𝜁 ) > 𝑆 (𝑘 ) Dcal 
+
+ ≤ ¯𝑣 𝑘 
+
+o
+
+. (58) By Lemma 2, 
+
+PDcal (𝐸 Conf ) ≥ 1 − 𝛽. (59) Because the bounds in 58 hold simultaneously for every rank 𝑘 ∈ [ 𝑁 ], the data-dependent selection of 𝑘 ∗ in 17 does not incur an additional confidence penalty. Fix an arbitrary realization of Dcal belonging to 𝐸 Conf for which ¯𝑞 4 ≤ 0. By the empty-rank convention in Sec. 4.2, this implies Kfin ≠ ∅. Hence 𝑘 ∗, 𝑟 ∗, e𝑏 ∗
+
+> 1
+
+, e𝑏 ∗
+
+> 3
+
+, and ¯ 𝑣 𝑘 ∗ are well defined and fixed for the remainder of the argument. All probabilities below involving a fresh episode are evaluated for this fixed calibration realization; we suppress this conditioning for notational simplicity. For a fresh augmented episode ¯𝜁 = (𝜐, 𝜔,𝑊 ), define the selected empirical barrier event 
+
+𝐸 𝑀, ∗ :=
+
+
+
+¯𝑞 1 ( ˆ𝑥 (0), 𝜐, 0) ≤ 𝑟 ∗, ¯𝑞 2 ( ˆ𝑥 (𝑇 ), 𝜐,𝑇 ) ≤ 0, max   
+
+> 𝑡 ∈T′
+
+¯𝑞 3 ( ˆ𝑥 (𝑡 ), 𝜐, 𝑡 ) ≤ 𝑟 ∗
+
+
+
+. (60) Since 𝑘 ∗ ∈ K fin ,
+
+𝑆 (𝑘 ∗ ) < +∞ , 𝑟 ∗ = max 0, 𝑆 (𝑘 ∗ ) . (61) If ¬𝐸 𝑀, ∗ occurs, then either ¯ 𝑞 2 ( ˆ𝑥 (𝑇 ), 𝜐,𝑇 ) > 0, in which case 𝑆 ( ¯𝜁 ) = +∞ , or one of the calibrated residuals exceeds 
+
+𝑟 ∗. In the latter case, 
+
+𝑆 ( ¯𝜁 ) > 𝑟 ∗ ≥ 𝑆 (𝑘 ∗ ) . (62) Therefore, 
+
+¬𝐸 𝑀, ∗ ⊆ 𝑆 ( ¯𝜁 ) > 𝑆 (𝑘 ∗ ) . (63) Since the fixed calibration realization belongs to 𝐸 Conf , equations 58 and 63 imply 
+
+𝑉 𝑀, ∗ := P ¯𝜁 
+
+ ¬𝐸 𝑀, ∗
+
+ ≤ ¯𝑣 𝑘 ∗ . (64) We next transfer this empirical violation probability to the exact state-dependent barrier conditions. For the corresponding episode 𝜁 = (𝜐, 𝜔 ) ∼ Q𝐾,𝑏 , define the exact adjusted barrier event 
+
+𝐸 Barrier ,∗ := {𝑞 1 ( ˆ𝑥 (0), 𝜐, 0) ≤ 𝑟 ∗, 𝑞 2 ( ˆ𝑥 (𝑇 ), 𝜐,𝑇 ) ≤ 0, 𝑞 3 ( ˆ𝑥 (𝑡 ), 𝜐, 𝑡 ) ≤ 𝑟 ∗ ∀𝑡 ∈ T′ } . (65) Thus, on 𝐸 Barrier ,∗, the initial and supermartingale conditions hold with the adjusted constants 
+
+e𝑏 ∗ 
+
+> 1
+
+= 𝑏 ∗ 
+
+> 1
+
++ 𝑟 ∗, e𝑏 ∗ 
+
+> 3
+
+= 𝑏 ∗ 
+
+> 3
+
++ 𝑟 ∗, (66) while the unsafe-terminal condition retains the original threshold 𝑏 ∗
+
+> 2
+
+. Let 
+
+𝑉 ∗ := PQ𝐾,𝑏 
+
+ ¬𝐸 Barrier ,∗
+
+ . (67) If 𝑉 ∗ = 0, the empirical-to-exact risk bound established below is immediate. Assume therefore that 𝑉 ∗ > 0. On an episode in ¬𝐸 Barrier ,∗, let 𝐸 Det ,∗ denote the event that the finite-𝑀 test detects at least one exact adjusted barrier violation. If 𝑞 1 ( ˆ𝑥 (0), 𝜐, 0) > 𝑟 ∗ or 𝑞 2 ( ˆ𝑥 (𝑇 ), 𝜐,𝑇 ) > 0, the violation is detected deterministically because ¯𝑞 1 = 𝑞 1, ¯𝑞 2 = 𝑞 2. (68) Otherwise, an exact supermartingale violation must occur. On this remaining event, define the first such time by 
+
+𝜏 := min {𝑡 ∈ T′ : 𝑞 3 ( ˆ𝑥 (𝑡 ), 𝜐, 𝑡 ) > 𝑟 ∗ } . (69) Conditional on the complete episode 𝜁 , the index 𝜏 and the tuple ( ˆ𝑥 (𝜏 ), 𝜐, 𝜏 ) are fixed, whereas the successor batch associated with that tuple is fresh and conditionally i.i.d. By Lemma 1, 
+
+P𝑊 (𝑞 3 ( ˆ𝑥 (𝜏 ), 𝜐, 𝜏 ) ≤ ¯𝑞 3 ( ˆ𝑥 (𝜏 ), 𝜐, 𝜏 ) | 𝜁 ) ≥ 1 − 𝛽 0. (70) 
+
+> 21
+
+Since the exact residual at time 𝜏 already satisfies 𝑞 3 ( ˆ𝑥 (𝜏 ), 𝜐, 𝜏 ) > 𝑟 ∗, the event in 70 implies ¯𝑞 3 ( ˆ𝑥 (𝜏 ), 𝜐, 𝜏 ) > 𝑟 ∗, (71) and therefore produces an empirical violation. Consequently, whether the exact violation occurs in 𝑞 1, 𝑞 2, or 𝑞 3,its conditional probability of being detected is at least 1 − 𝛽 0. Hence 
+
+P ¯𝜁 
+
+ 𝐸 Det ,∗ ¬𝐸 Barrier ,∗
+
+ ≥ 1 − 𝛽 0. (72) Moreover, every detected exact violation is also an empirical violation, so 
+
+𝐸 Det ,∗ ∩ ¬ 𝐸 Barrier ,∗ ⊆ ¬ 𝐸 𝑀, ∗. (73) Using 72 and 73, 
+
+𝑉 𝑀, ∗ ≥ P ¯𝜁 
+
+ 𝐸 Det ,∗ ∩ ¬ 𝐸 Barrier ,∗
+
+ , (74) 
+
+= P ¯𝜁 
+
+ 𝐸 Det ,∗ ¬𝐸 Barrier ,∗
+
+ 𝑉 ∗, (75) 
+
+≥ ( 1 − 𝛽 0)𝑉 ∗. (76) Combining 64 and 76 yields 
+
+𝑉 ∗ ≤ 𝑉 𝑀, ∗
+
+1 − 𝛽 0
+
+≤ ¯𝑣 𝑘 ∗
+
+1 − 𝛽 0
+
+. (77) The argument uses only the first exact supermartingale violation after conditioning on the complete episode. Lemma 1 is therefore invoked once per exact violating episode, and no union bound over the horizon is required. It remains to relate satisfaction of the exact adjusted barrier conditions to the trajectory-level degradation event. Define the trajectory-safety event 
+
+𝐸 Safe := 𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼 , (78) and let 
+
+𝐵 𝑡 := 𝐵 ∗ 
+
+> 𝜙
+
+( ˆ𝑥 (𝑡 ), 𝑡 ). (79) With 
+
+F𝑡 := 𝜎  𝜐, 𝑥 (0), 𝑤 (0), . . . , 𝑤 (𝑡 − 1), 𝑡 ∈ T, (80) define the good-prefix events 
+
+𝐺 0 := {𝑞 1 ( ˆ𝑥 (0), 𝜐, 0) ≤ 𝑟 ∗ } , 𝐺 𝑡 +1 := 𝐺 𝑡 ∩ { 𝑞 3 ( ˆ𝑥 (𝑡 ), 𝜐, 𝑡 ) ≤ 𝑟 ∗ } , 𝑡 ∈ T′. (81) By Assumption 2 and the product law in Definition 7, 𝑤 (𝑡 ) is independent of F𝑡 with law 𝑃 𝑤 . Thus the expectation in equation 10 satisfies, along the trajectory, 
+
+E[𝐵 𝑡 +1 | F 𝑡 ] = E𝑤 ∼𝑃 𝑤 
+
+h
+
+𝐵 ∗ 
+
+> 𝜙
+
+(𝑓 ( ˆ𝑥 (𝑡 ), 𝜐, 𝑤, 𝑡 ), 𝑡 + 1)
+
+i
+
+. (82) On 𝐺 𝑡 +1, the exact adjusted supermartingale condition therefore gives 
+
+E[𝐵 𝑡 +1 | F 𝑡 ] ≤ 𝜅 ∗𝐵 𝑡 + e𝑏 ∗ 
+
+> 3
+
+. (83) Moreover, 𝐺 𝑡 +1 is F𝑡 -measurable, 𝐺 𝑡 +1 ⊆𝐺 𝑡 , and 𝐵 𝑡 ≥ 0. Thus, by the tower property, 
+
+E𝐵 𝑡 +11𝐺 𝑡 +1
+
+ = E1𝐺 𝑡 +1 E[𝐵 𝑡 +1 | F 𝑡 ]
+
+≤ 𝜅 ∗E𝐵 𝑡 1𝐺 𝑡 +1
+
+ + e𝑏 ∗
+
+> 3
+
+P(𝐺 𝑡 +1)≤ 𝜅 ∗E𝐵 𝑡 1𝐺 𝑡 
+
+ + e𝑏 ∗ 
+
+> 3
+
+.
+
+(84) On 𝐺 0, the adjusted initial condition gives 
+
+𝐵 0 ≤ 𝑏 ∗ 
+
+> 1
+
++ 𝑟 ∗ = e𝑏 ∗ 
+
+> 1
+
+. (85) Iterating 84 from 85 yields 
+
+E𝐵 𝑇 1𝐺 𝑇 
+
+ ≤ e𝑏 ∗ 
+
+> 1
+
+(𝜅 ∗)𝑇 + e𝑏 ∗ 
+
+> 3
+
+G𝑇 (𝜅 ∗). (86) 
+
+22 On ¬𝐸 Safe ∩𝐸 Barrier ,∗, all good-prefix conditions hold. In addition, ¬𝐸 Safe implies ˆ 𝑥 (𝑇 ) ∈ X 𝛼 𝑢 . Since 𝑞 2 ( ˆ𝑥 (𝑇 ), 𝜐,𝑇 ) ≤ 
+
+0 on 𝐸 Barrier ,∗, the unsafe-terminal residual 9 gives 
+
+𝐵 𝑇 ≥ 𝑏 ∗ 
+
+> 2
+
+. (87) Consequently, 
+
+𝑏 ∗
+
+> 2
+
+PQ𝐾,𝑏 
+
+ ¬𝐸 Safe ∩ 𝐸 Barrier ,∗
+
+ ≤ E𝐵 𝑇 1{¬ 𝐸 Safe ∩𝐸 Barrier ,∗ }
+
+
+
+≤ E𝐵 𝑇 1𝐺 𝑇 
+
+
+
+≤ e𝑏 ∗ 
+
+> 1
+
+(𝜅 ∗)𝑇 + e𝑏 ∗ 
+
+> 3
+
+G𝑇 (𝜅 ∗).
+
+(88) Define 
+
+𝛿 ∗ 
+
+> 𝐵
+
+:=
+
+e𝑏 ∗ 
+
+> 1
+
+(𝜅 ∗)𝑇 + e𝑏 ∗ 
+
+> 3
+
+G𝑇 (𝜅 ∗)
+
+𝑏 ∗
+
+> 2
+
+. (89) Then 88 implies 
+
+PQ𝐾,𝑏 
+
+ ¬𝐸 Safe ∩ 𝐸 Barrier ,∗
+
+ ≤ 𝛿 ∗ 
+
+> 𝐵
+
+. (90) We now decompose trajectory-level failure according to whether the exact adjusted barrier conditions hold. Using 77 and 90, 
+
+PQ𝐾,𝑏 (¬ 𝐸 Safe ) = PQ𝐾,𝑏 
+
+ ¬𝐸 Safe ∩ 𝐸 Barrier ,∗
+
+
+
++ PQ𝐾,𝑏 
+
+ ¬𝐸 Safe ∩ ¬ 𝐸 Barrier ,∗
+
+
+
+≤ 𝛿 ∗ 
+
+> 𝐵
+
++ 𝑉 ∗
+
+≤
+
+e𝑏 ∗ 
+
+> 1
+
+(𝜅 ∗)𝑇 + e𝑏 ∗ 
+
+> 3
+
+G𝑇 (𝜅 ∗)
+
+𝑏 ∗
+
+> 2
+
++ ¯𝑣 𝑘 ∗
+
+1 − 𝛽 0
+
+.
+
+(91) By the definition of ¯ 𝑞 4 in 18 and the fact that 𝑏 ∗ 
+
+> 2
+
+> 0, the condition ¯ 𝑞 4 ≤ 0 is equivalent to 
+
+e𝑏 ∗ 
+
+> 1
+
+(𝜅 ∗)𝑇 + e𝑏 ∗ 
+
+> 3
+
+G𝑇 (𝜅 ∗)
+
+𝑏 ∗
+
+> 2
+
++ ¯𝑣 𝑘 ∗
+
+1 − 𝛽 0
+
+≤ 1 − 𝜌. (92) Combining 91 and 92 therefore gives ¯𝑞 4 ≤ 0 =⇒ P(𝜐,𝜔 )∼ Q𝐾,𝑏 (¬ 𝐸 Safe ) ≤ 1 − 𝜌. (93) Taking complements, ¯𝑞 4 ≤ 0 =⇒ P(𝜐,𝜔 )∼ Q𝐾,𝑏 (𝐸 Safe ) ≥ 𝜌. (94) Since 𝐸 Safe = {𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼 }, this is equivalent to ¯𝑞 4 ≤ 0 =⇒ P(𝜐,𝜔 )∼ Q𝐾,𝑏 
+
+ 𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼  ≥ 𝜌. (95) We have established 95 for every calibration realization belonging to 𝐸 Conf . Since 59 gives PDcal (𝐸 Conf ) ≥ 1 − 𝛽 ,it follows that 
+
+PDcal 
+
+ ¯𝑞 4 ≤ 0 =⇒ P(𝜐,𝜔 )∼ Q𝐾,𝑏 
+
+ 𝐷 traj (𝜐, 𝜔 ) ≤ 𝛼  ≥ 𝜌  ≥ 1 − 𝛽. (96) Equation 96 is exactly 19, completing the proof. □
+
+## D Additional Experimental Details and Results 
+
+This appendix gives the complete experimental specification underlying Sec. 5. We first state the benchmark instantiation used in our experiments, then summarize the policy families and the six case studies, describe the certificate parameterization, and finally collect all fixed experimental settings in a single table. Numerical robustness results are reported separately so that benchmark definitions are not mixed with the outcomes of a particular certification run. The complete codebase, experiment configurations, and per-specification results, including the learned certificate parameters, are available at this link. 
+
+23 D.1 Benchmark formulation 
+
+Each case study instantiates the finite-horizon stochastic closed-loop process of Sec. 2. For every tested environment–policy pair, nominal and attacked trajectories start from the same initial state and use the shared episode-randomness semantics of Definition 2. The operational attack law is instantiated separately for each benchmark using the attack method, attacked action channel, and norm budget reported in Table 2. Each real-ized attack is fixed before the episode, perturbs exactly 𝐾 decision times, and satisfies the corresponding per-step norm bound. Thus, 𝐾 controls temporal sparsity, whereas 𝑏 controls the perturbation magnitude. Because the horizons differ across tasks, we report temporal attack density as 𝐾 /𝑇 in addition to the absolute cardinality 𝐾 . The final grids are chosen so that comparable attack densities are represented across environments. The formal event always uses the raw paired-degradation threshold 𝐷 traj ≤ 𝛼 . For cross-task presentation we additionally report 
+
+𝛼 % := 100 𝛼 𝑆 env 
+
+, 𝛼 = 𝛼 %
+
+100 𝑆 env , (97) where 𝑆 env > 0 is a fixed environment-level return scale. The same 𝑆 env is used for every policy compared within one environment. Hence 𝛼 % is neither a success probability nor a policy-specific percentage drop from that policy’s nominal return; it is only a common reporting scale for the raw terminal-degradation threshold. The values used in the current experiments are reported in Table 2. The operating law also fixes the source of episode randomness. In the custom control tasks, the random input enters the declared stochastic state update. For the current Hopper, HalfCheetah, and Ant campaigns, the envi-ronmental randomness follows the corresponding native reset semantics, with no artificial per-step actuation or process noise. Formal verification approximates the conditional successor expectations using fresh Monte Carlo successor batches, with the corresponding sample counts reported in Table 2. 
+
+D.2 Policy families 
+
+The formulation of Sec. 2 is agnostic to how the fixed deployed policy is obtained: 𝜋 may be a learned policy or an analytically designed decision rule, provided its deployment-time execution satisfies Assumption 2. The main empirical study focuses on learned RL policies. Specifically, we evaluate frozen policies trained with TD3 (Fujimoto et al., 2018), SAC (Haarnoja et al., 2018), and PPO (Schulman et al., 2017). The exact policy coverage, actor architectures, and deployment conventions are collected in Table 2, while the resulting complete robustness profiles are shown in Fig. 6. Each checkpoint is trained before certification and then held fixed throughout attack generation, paired rollout generation, bar-rier synthesis, calibration, and formal verification. Thus the training algorithm does not alter the certification problem: the certified object is the deployed policy itself, including its chosen deployment-time randomization mode. For the three custom tasks, we additionally retain analytic reference policies: swing-up with local LQR stabi-lization for the inverted pendulum, headway regulation for ACC, and waypoint/pure-pursuit feedback for the unicycle. These are supplementary instances of the same fixed-policy formulation, not competing certification methods. All main-text empirical results report RL policies only. 
+
+D.3 Case studies 
+
+D.3.1 Inverted pendulum 
+
+The inverted-pendulum task captures nonlinear swing-up and stabilization under bounded torque and stochastic angular-velocity disturbances. With physical state 𝑥 = (𝜃, 𝜔 ), the implementation uses the benchmark semi-implicit discretization with Δ𝑡 = 0.05 and an additive Gaussian term on the angular-velocity update. The RL policy observes (cos 𝜃, sin 𝜃, 𝜔 ) and acts through a scalar torque in [− 2, 2]. The initial state is sampled near the downward configuration, 𝜃 0 ∈ 𝜋 ± 0.1 and 𝜔 0 ∈ [− 0.1, 0.1]. The per-step reward penalizes wrapped-angle error, angular velocity, and control effort, 
+
+𝑟 𝑡 = −  ¯𝜃 2 
+
+> 𝑡
+
++ 0.1𝜔 2 
+
+> 𝑡
+
++ 10 −3𝑢 2
+
+> 𝑡
+
+, ¯𝜃 := wrap (𝜃 ). (98) This task is deliberately nonlinear over the full angular domain: a bounded action perturbation applied during swing-up can affect the subsequent closed-loop transient long after the attacked time step. 
+
+> 24
+
+D.3.2 Adaptive cruise control 
+
+ACC models longitudinal car following with state 𝑥 = (𝑑, 𝑣 𝐸 , 𝑣 𝐿 ), consisting of inter-vehicle distance, ego speed, and lead speed. With Δ𝑡 = 0.1, 
+
+𝑣 𝐿 𝑡 +1 = 𝑣 𝐿 𝑡 + Δ𝑡 𝑎 𝐿 𝑡 + 𝜎𝜉 𝑡 , (99) 
+
+𝑣 𝐸 𝑡 +1 = 𝑣 𝐸 𝑡 + Δ𝑡 𝑢 𝑡 , (100) 
+
+𝑑 𝑡 +1 = 𝑑 𝑡 + Δ𝑡 (𝑣 𝐿 𝑡 − 𝑣 𝐸 𝑡 ), (101) where the lead-vehicle stochastic input is shared between the nominal and attacked branches. The ego action is bounded in [− 3, 2] and the state is clipped to the declared speed/headway box. Initial speeds satisfy 𝑣 𝐸 (0) =
+
+𝑣 𝐿 (0) ∼ U [ 20 , 25 ] with the initial headway placed at the desired constant-time-headway reference. Writing 
+
+𝑒 = 𝑑 − ( 5 + 1.4𝑣 𝐸 ) and ¤𝑒 = 𝑣 𝐿 − 𝑣 𝐸 , the reward is 
+
+𝑟 𝑡 = −( 𝑒 /10 )2 − 0.1( ¤ 𝑒 /5)2 − 0.02 (𝑢 /3)2. (102) The case study combines a physically interpretable stochastic disturbance with a direct action-space attack on the throttle/brake command. 
+
+D.3.3 Unicycle waypoint tracking 
+
+The unicycle task represents planar goal-directed motion with physical state 𝑥 = (𝑝 𝑥 , 𝑝 𝑦 , 𝜃 ) and two control channels, forward speed and turn rate. The discrete-time model is 
+
+𝑝 𝑥,𝑡 +1 = 𝑝 𝑥,𝑡 + Δ𝑡 𝑣 𝑡 cos 𝜃 𝑡 , (103) 
+
+𝑝 𝑦,𝑡 +1 = 𝑝 𝑦,𝑡 + Δ𝑡 𝑣 𝑡 sin 𝜃 𝑡 , (104) 
+
+𝜃 𝑡 +1 = wrap (𝜃 𝑡 + Δ𝑡 𝜔 𝑡 + 𝜎𝜉 𝑡 ), (105) with Δ𝑡 = 0.1 and stochastic heading evolution. The action satisfies 𝑣 ∈ [ 0, 1] and 𝜔 ∈ [− 1.5, 1.5]. Initial positions are sampled from an annulus of radius [2, 4] around the goal with a random initial heading. The reward combines squared distance-to-goal with normalized forward-speed and turn-rate penalties. Because the attacked channels have heterogeneous physical units, the fixed channel scaling used to map the scalar budget 𝑏 
+
+to (𝑣, 𝜔 ) perturbations is part of the experimental specification. 
+
+D.3.4 Hopper-v5 
+
+Hopper-v5 is a MuJoCo planar locomotion task with intermittent ground contact (Towers et al., 2024; Todorov et al., 2012). Its generalized dynamics can be written schematically as 
+
+𝑀 (𝑞 ) ¥ 𝑞 + 𝐶 (𝑞, ¤𝑞 ) ¤ 𝑞 + 𝑔 (𝑞 ) = 𝐵𝑢 + 𝐽 (𝑞 )⊤𝜆, (106) where the simulator resolves the contact forces 𝜆 . The deployed policy observes the standard 11-dimensional observation and controls three bounded joint-torque channels. The retained runs use the native Hopper-v5 reset randomness with reset-noise scale 0 .005, and no artificial per-step transition or actuation noise is added. The default unhealthy-state termination is retained. This task tests certification under hybrid contact transitions, where a sparse action perturbation can change both the accumulated return and the subsequent contact sequence. 
+
+D.3.5 HalfCheetah-v5 
+
+HalfCheetah-v5 is a higher-dimensional planar MuJoCo locomotion task with six coupled torque inputs (Towers et al., 2024; Todorov et al., 2012). As in Hopper, its multibody dynamics include state-dependent inertial coupling and ground-contact forces. The policy uses the standard 17-dimensional observation and actions are clipped to 
+
+[− 1, 1]6. The retained campaign uses the native HalfCheetah-v5 reset randomness (reset-noise scale 0 .1) and no artificial per-step actuation or process noise. Small action perturbations can shift the phase and coordination of the learned gait over the finite horizon, which makes the paired return degradation sensitive to both attack magnitude and attack timing. 
+
+> 25
+
+D.3.6 Ant-v5 
+
+Ant-v5 is a three-dimensional quadrupedal MuJoCo locomotion task with eight actuated joints (Towers et al., 2024; Todorov et al., 2012). The current policy interface uses the standard 105-dimensional Ant-v5 observation and an 8-dimensional action in [− 1, 1]8. The default simulator control interval is 0 .05 s, the retained horizon is 
+
+𝑇 = 1000, and the environment uses the native Ant reset/health semantics of the final run. The reward combines forward motion and healthy-state reward with control and contact penalties. The task provides the highest-dimensional locomotion setting in the current suite and therefore probes the scalability of the learned certificate beyond the planar MuJoCo systems. 
+
+D.4 Certificate parameterization 
+
+All experiments use the bounded neural barrier parameterization introduced in Sec. 4.1. The barrier is a scalar structured MLP on features of the augmented nominal–attacked state, degradation coordinate, and time, with a sigmoid output bounded by 𝐵 max . Its learned constants 𝑏 ∗
+
+> 1
+
+, 𝑏 ∗
+
+> 2
+
+, 𝑏 ∗ 
+
+> 3
+
+and 𝜅 ∗ retain the meanings in Definition 6: they summarize the initial-set bound, terminal separation, stochastic one-step drift, and multiplicative propagation factor. The accumulated finite-horizon contribution uses G𝑇 (𝜅 ) =Í𝑇 −1 
+
+> 𝑗 =0
+
+𝜅 𝑗 as in Definition 6, rather than replacing the geometric sum by the looser factor 𝑇 .The hidden layers use SiLU activations in all retained certificates. This is an optimization choice, not a theoretical restriction. During synthesis, the conditional drift term is estimated using empirical averages over 𝑀 𝑠 fresh successor samples. Formal verification likewise uses empirical averages over 𝑀 fresh successor samples together with the finite-sample correction of Lemma 1. The values of 𝑁 𝑠 , 𝑀 𝑠 , 𝑁 , and 𝑀 used in each case study are collected in Table 2. For the synthesis sets in equation 6, if 𝑈 =∅, its loss contribution is defined as zero. This provides no evidence of robustness, since the resulting candidate remains subject to independent verification. The safe pool 𝑆 is retained for supplementary analysis and does not enter the loss in equation 7. If auxiliary unsafe examples are used during synthesis, their full augmented trajectories are retained so that intermediate state–attack–time tuples may also contribute to the sampled drift condition; such data affect candidate construction only and do not themselves establish a formal guarantee. 
+
+D.5 Fixed experimental settings 
+
+Table 2 provides the complete experimental specification for the six retained case studies, including environment and policy settings, attack methods and norm budgets, attack and degradation-tolerance grids, normalization constants, certificate parameterization, and synthesis/verification sample budgets. Unless stated otherwise, all formal FoSeRL experiments use target reliability 𝜌 = 0.90 and confidence parameters 𝛽 = 𝛽 0 = 0.001. 
+
+Computational setup. All FoSeRL experiments reported in this paper were run on a workstation with an Intel Xeon w5-3433 CPU, 128 GB DDR5-4400 RAM, and an NVIDIA RTX 4500 Ada Generation GPU with 24 GB GDDR6 ECC memory. Reported runtimes are wall-clock certification times and exclude policy training. 
+
+D.6 Certificate construction and reporting workflow 
+
+This subsection summarizes how each tested attack specification is converted into a reported FoSeRL certificate. The formal definitions and guarantees are given in Sec. 4.2; here we describe the experimental workflow used to produce the robustness profiles in Fig. 6. 
+
+From a tested specification to a certified point. Fix an environment–policy pair and a specification 
+
+(𝐾, 𝑏, 𝛼, 𝜌 ). Candidate construction first learns the bounded time-dependent barrier 𝐵 𝜙 ∗ and the associated con-stants 𝑏 ∗
+
+> 1
+
+, 𝑏 ∗
+
+> 2
+
+, 𝑏 ∗ 
+
+> 3
+
+and 𝜅 ∗ using the synthesis procedure of Sec. 4.1. The candidate and all verification-design choices are then frozen. Independent calibration episodes are drawn under the operational law Q𝐾,𝑏 , and each episode is assigned the score 𝑆 𝑖 of Definition 9. For every finite conformal rank 𝑘 , the score determines the residual allowance 𝑟 𝑘 = max {0, 𝑆 (𝑘 ) } and the corresponding out-of-sample violation bound ¯ 𝑣 𝑘 from equation 16. The selected rank 𝑘 ∗ is the one maximizing the resulting end-to-end reliability lower bound, as in equation 17. 
+
+> 26
+
+Table 2: Complete experimental specification for the six FoSeRL case studies. For each environment, we report the environment and policy configuration, attack specification, degradation-tolerance grid, certificate architecture, and synthesis/verification sample budgets. 𝑁 𝑠 and 𝑀 𝑠 denote the synthesis episodes and successor samples, while 𝑁 and 𝑀 denote the corresponding formal-verification sample counts. All formal runs target 𝜌 = 0.90 with 
+
+𝛽 = 𝛽 0 = 0.001. 
+
+Parameter Inv. Pend. ACC Unicycle Hopper HalfCheetah Ant 
+
+Model Custom Custom Custom Gym v5 Gym v5 Gym v5 
+
+𝑛 obs 3 3 3 11 17 105 
+
+𝑛 𝑥 2 3 3 12 18 29 
+
+𝑛 𝑎 1 1 2 3 6 8
+
+Δ𝑡 0.05 0.10 0.10 0.008 0.05 0.05 
+
+𝑇 200 300 500 1000 500 1000 
+
+𝛾 0.99 0.99 0.99 0.99 0.99 0.99 Task const. 𝜃 wrapped, |𝜔 | ≤ 8
+
+𝑔 = 10 , 𝑚 = ℓ = 1
+
+𝑑 ∈ [ 0, 60 ], 𝑣 𝐸 , 𝑣 𝐿 ∈ [ 0, 40 ]
+
+𝑑 0 = 5, ℎ = 1.4
+
+(𝑝 𝑥 , 𝑝 𝑦 ) ∈ [− 5, 5]2
+
+goal (0, 0) Native v5 Native v5 Native v5 Randomness 𝜔 noise Lead-process noise Heading noise Reset Reset Reset Noise scale 𝜎 = 0.01 𝜎 = 0.30 𝜎 = 0.05 0.005 0.1 0.1Initial law 𝜃 0 ∈ 𝜋 ± 0.1
+
+𝜔 0 ∈ [− 0.1, 0.1] 𝑣 𝐸 (0) = 𝑣 𝐿 (0) ∼ U [ 20 , 25 ] annulus [2, 4]
+
+random 𝜃 0
+
+Native Native Native 
+
+> Environment
+
+A [− 2, 2] [− 3, 2] 𝑣 ∈ [ 0, 1]
+
+𝜔 ∈ [− 1.5, 1.5] [− 1, 1]3 [− 1, 1]6 [− 1, 1]8
+
+Policy TD3, SAC, PPO TD3, SAC, PPO TD3, SAC, PPO TD3, SAC, PPO TD3, SAC, PPO TD3, SAC, PPO Analytic ref. Swing-up + LQR Headway LQR Pure pursuit – – –Actor 3 → 64 → 64 → 1 3 → 64 → 64 → 1 3 → 64 → 64 → 2 11 → 64 → 64 → 3 17 → 64 → 64 → 6 105 → 256 → 256 → 8Activation ReLU ReLU ReLU ReLU ReLU ReLU 
+
+> Policy
+
+Output Bounded Bounded Bounded Bounded tanh / bounded tanh / bounded Channel Torque Ego accel. (𝑣, 𝜔 ) 3 actuators 6 actuators 8 actuators Attack method PGD / Uniform PGD PGD LAS / Uniform PGD / Uniform DE / Uniform Norm budget ℓ∞ ℓ2 ℓ∞ ℓ2 ℓ∞ ℓ∞
+
+𝛼 % {0.5, 1, 2.5, 5} {0.5, 1, 2.5, 5} {0.5, 1, 2.5, 5} {0.5, 1, 2.5, 5} {5, 10 , 15 , 20 } {5, 10 , 15 , 20 }
+
+> Threat Model
+
+𝑆 env 453.340 6.229 22.921 174.525 682.400 336.554 Certificate MLP MLP MLP MLP MLP MLP Input dim. 12 18 21 39 57 92 Widths 48 , 48 48 , 48 48 , 48 64 , 64 96 , 96 , 64 128 , 128 , 96 Output dim. 1 1 1 1 1 1Activation SiLU SiLU SiLU SiLU SiLU SiLU 
+
+> Synthesis
+
+(𝑁 𝑠 , 𝑀 𝑠 ) (1024 , 8) (1024 , 8) (1024 , 8) (1000 , 10 ) (1000 , 10 ) (2000 , 40 )
+
+𝜌 0.90 0.90 0.90 0.90 0.90 0.90 
+
+𝛽 0.001 0.001 0.001 0.001 0.001 0.001 
+
+𝛽 0 0.001 0.001 0.001 0.001 0.001 0.001 
+
+𝑁 2000 1395–2000 1566–2000 2000 2000 3000 
+
+> Verification
+
+𝑀 49,152 49,152 49,152 30,000 50,000 20,000 
+
+27 Reliability decomposition. For reporting and diagnosis, we separate the reliability bound into three terms: Base : = 𝑏 ∗ 
+
+> 1
+
+(𝜅 ∗)𝑇 + 𝑏 ∗ 
+
+> 3
+
+G𝑇 (𝜅 ∗)
+
+𝑏 ∗
+
+> 2
+
+,
+
+Margin 𝑘 := 𝑟 𝑘 
+
+(𝜅 ∗)𝑇 + G 𝑇 (𝜅 ∗)
+
+𝑏 ∗
+
+> 2
+
+,
+
+Bridge 𝑘 := ¯𝑣 𝑘 
+
+1 − 𝛽 0
+
+.
+
+(107) The corresponding certified reliability at rank 𝑘 is 
+
+𝜌 cert (𝑘 ) = 1 −
+
+
+
+Base + Margin 𝑘 + Bridge 𝑘 
+
+
+
+. (108) Hence 𝑘 ∗ equivalently maximizes 𝜌 cert (𝑘 ) over the finite ranks, and the tested magnitude 𝑏 is accepted exactly when 𝜌 cert (𝑘 ∗) ≥ 𝜌 , which is equivalent to the acceptance condition ¯ 𝑞 4 ≤ 0 in equation 18. Base is the contribution of the frozen barrier itself, Margin is the propagated calibration slack, and Bridge accounts for violations of the exact adjusted barrier conditions that remain after finite-sample calibration. These are components of a certified lower bound, not empirical terminal-failure frequencies. 
+
+Finite-successor correction. When the conditional expectation in the drift condition is estimated from 𝑀 
+
+fresh successors, the correction 𝜖 𝑀 is chosen to satisfy Lemma 1; the tight Hoeffding choice at fixed 𝑀 is 𝜖 𝑀 =
+
+𝐵 max √︁ log (1/𝛽 0)/( 2𝑀 ). This correction enters the empirical drift residual and therefore affects the calibration scores and the selected Margin. It is not subtracted again from 𝜌 cert .
+
+From certified points to robustness profiles. For each fixed (𝐾, 𝛼 ), attack magnitudes are explored over the prescribed experimental grid. The quantity 𝑏 emp is used only as a pre-verification design reference for candidate construction and search; it is not a formal certificate. A tested magnitude 𝑏 contributes to the certified frontier only after the frozen candidate passes the independent verification procedure above. Thus, the reported 𝑏 op cert is an accepted tested magnitude under the operational criterion of Sec. 4, not an interpolated robustness radius. Repeating this procedure across the tested values of 𝛼 and 𝐾 produces the paired empirical and certified profiles in Fig. 6. Each displayed certified point has its own per-specification confidence statement from Theorem 2; connecting lines are visual guides only and do not certify intermediate budgets or imply simultaneous validity across the displayed collection. Adaptive or collection-level reporting follows the confidence-control procedures in Appendix B.7. 
+
+Practical certificate design. The decomposition in equation 108 provides a direct way to diagnose a weak certificate. A large Base points to the synthesized witness itself: the propagated initial and drift contributions are large relative to terminal separation. A large Margin indicates that the calibration scores require substantial residual slack. A large Bridge indicates limited episode-level statistical resolution. These effects should be treated separately rather than increasing every synthesis and verification budget indiscriminately. Long horizons require particular care because both the learned drift term and the calibrated residual slack prop-agate through G𝑇 (𝜅 ). When 𝜅 = 1, G𝑇 (𝜅 ) = 𝑇 , so even a small residual allowance can become dominant for large 𝑇 . For long-horizon problems, selecting or fixing 𝜅 < 1 during candidate design can substantially reduce this propagation: G𝑇 (𝜅 ) is then bounded by (1 − 𝜅 )−1 and 𝜅 𝑇 decays with the horizon. This is nevertheless a design trade-off rather than a rule that smaller 𝜅 is always better, since decreasing 𝜅 also tightens the one-step drift condition and may increase 𝑏 ∗ 
+
+> 3
+
+or the resulting residuals. Any such choice must be made before independent calibration and then kept fixed during verification. The verification sample sizes play different roles. Increasing the number of calibration episodes 𝑁 improves the resolution of the conformal violation bound and can reduce Bridge, whereas increasing the successor count 
+
+𝑀 reduces 𝜖 𝑀 and can improve the drift residuals that determine Margin. The barrier output bound 𝐵 max also enters this trade-off through the finite-successor requirement: an unnecessarily large 𝐵 max increases the required successor budget, while a value that is too small can restrict the witness class. In practice, certificate refinement is therefore most efficient when the limiting contribution in equation 108 is identified first and the corresponding synthesis or verification component is improved. 
+
+> 28
+
+D.7 Complete FoSeRL certification results 
+
+Figure 6 reports the complete robustness profiles for all retained RL-policy settings. Each environment–policy specification is shown as a paired set of panels: the upper panel reports the formally certified FoSeRL fron-tier, while the lower panel shows the corresponding empirical pre-verification reference. Within each panel, curves correspond to the tested temporal attack densities 𝐾 /𝑇 , the horizontal axis gives the attack magni-tude 𝑏 , and the vertical axis gives the normalized degradation tolerance 𝛼 %. All formal FoSeRL results use the target reliability 𝜌 = 0.90 and per-specification confidence parameter 𝛽 = 0.001. Across environments and policy families, relaxing the degradation tolerance generally permits larger attack magnitudes, whereas increasing the temporal attack density typically contracts the admissible budget. The empirical and certi-fied profiles exhibit the same broad structure, but the gap between them varies substantially across settings. 
+
+Figure 5: FoSeRL certified-budget retention 𝑏 cert /𝑏 emp across tempo-ral attack-density bins. Points denote individual reported specifications and the blue line connects bin medians. 
+
+The aggregate view in Fig. 5 shows that this retention remains broadly stable across the low-to-high density regimes, with a larger reduction appearing in the very-high-density bin. In some cases the formal frontier closely tracks the empirical reference, while in others verification produces a visibly more conservative budget. This varia-tion reflects the cost of converting a design-stage empiri-cal frontier into an independently verified certificate and also shows that the conservatism of the certification stage is environment– and policy-dependent rather than uniform across tasks. Each marker corresponds to an individually tested specification; connecting lines are included only as visual guides and do not imply certification of intermediate or untested budgets. 
+
+D.8 Comparison with policy smoothing 
+
+Figure 7: Fraction of reported settings with a nonzero certified bud-get for FoSeRL and policy smoothing (PS), grouped by environment– policy pair. 
+
+Table 3 reports the detailed external-baseline comparison, while Fig. 7 summarizes how often each method returns a nonzero certificate across the reported specifications. Since no existing formal method matches our complete setting, we align policy smoothing (PS) with FoSeRL on the ac-tion channel, paired degradation event, and reliability/con-fidence targets, while retaining the native ℓ2 perturbation geometry of the smoothing certificate. The PS guarantee is worst-case over the corresponding ℓ2 perturbation set and therefore does not depend on a particular attack optimizer; uniform precommitted perturbations are used only for the associated empirical rollout calculations. Full benchmark-specific attack and norm specifications are given in Table 2, and the broader positioning of PS relative to FoSeRL is dis-cussed in Appendix F. Comparable PS certificates are obtained for Inverted Pendulum, Hopper, and HalfCheetah. ACC is excluded because the available smoothing-noise channel does not coincide with the attacked ego-control channel, while Unicycle does not meet the required nominal-reliability condition at the tested tolerance. For Ant, PS yields no nonzero certified budget at the tested settings. Across the comparable cases, FoSeRL consistently certifies substantially larger budgets, including several specifications for which PS certifies only the zero budget. 
+
+29 Figure 6: Complete empirical and certified robustness profiles for all retained RL-policy experiments. Each environment–policy setting is shown as a paired panel: the upper plot gives the FoSeRL-certified frontier and the lower plot the corresponding empirical pre-verification reference. Curves represent the tested temporal attack densities 𝐾 /𝑇 ; the horizontal axis is the attack magnitude 𝑏 , and the vertical axis is the normalized degradation tolerance 𝛼 %. Formal FoSeRL certificates target reliability 𝜌 = 0.90 with per-specification confidence parameter 
+
+𝛽 = 0.001. Across settings, larger degradation tolerances generally support larger attack budgets, while denser temporal attacks tend to reduce the admissible magnitude. The gap between the empirical and certified fron-tiers varies across environments and policies, revealing setting-dependent verification conservatism. Markers denote individually tested specifications; connecting lines are visual guides only and do not certify interpolation or untested budgets. 
+
+> 30
+
+Table 3: Detailed FoSeRL–policy-smoothing (PS) comparison on aligned environment–policy settings. For each setting, we report the search limit 𝑏 max , attack cardinality 𝐾 and density 𝐾 /𝑇 , normalized degradation tolerance 𝛼 %, empirical design reference 𝑏 emp , and the certified budgets returned by FoSeRL and PS. The normalized gap is 𝑏 FoSeRL cert − 𝑏 PS cert /𝑏 max . A zero PS entry indicates that no nonzero budget was certified at that specification. 
+
+Environment Policy bmax K K/T 𝜶 % bemp bcert Norm. gap FoSeRL PS 
+
+Inverted Pendulum (𝑇 = 200) SAC 47 3.5% 5% 4.00 4.00 0.0198 0.9951 16 8% 2.5% 2.60 2.00 0.0129 0.4968 16 8% 5% 3.47 3.00 0.0132 0.7467 27 13.5% 1% 1.02 0.65 0.0000 0.1625 27 13.5% 2.5% 1.84 1.50 0.0101 0.3725 27 13.5% 5% 3.47 3.00 0.0101 0.7475 40 20% 2.5% 1.72 1.50 0.0081 0.3730 40 20% 5% 2.80 2.50 0.0083 0.6229 Hopper (𝑇 = 1000) SAC 250 5% 1% 1.40 1.00 0.0000 0.5000 50 5% 5% 1.84 1.64 0.0032 0.8184 100 10% 1% 0.99 0.75 0.0000 0.3750 100 10% 5% 1.84 1.51 0.0023 0.7539 200 20% 1% 0.79 0.42 0.0000 0.2100 200 20% 5% 1.84 1.22 0.0016 0.6092 300 30% 1% 0.51 0.20 0.0000 0.1000 300 30% 5% 1.05 1.02 0.0013 0.5094 TD3 2.5 50 5% 1% 1.11 0.92 0.0000 0.3680 50 5% 2.5% 1.92 1.64 0.0020 0.6552 50 5% 5% 2.44 2.00 0.0032 0.7987 100 10% 1% 0.95 0.60 0.0000 0.2400 100 10% 2.5% 1.82 1.32 0.0014 0.5274 100 10% 5% 1.97 1.83 0.0023 0.7311 200 20% 1% 0.95 0.00 0.0000 0.0000 200 20% 2.5% 1.54 1.10 0.0010 0.4396 200 20% 5% 1.62 1.50 0.0016 0.5994 300 30% 1% 0.91 0.00 0.0000 0.0000 300 30% 2.5% 0.91 0.87 0.0008 0.3477 300 30% 5% 1.46 1.07 0.0013 0.4275 HalfCheetah (𝑇 = 500) SAC 125 5% 5% 0.54 0.31 0.0000 0.3100 25 5% 10% 0.68 0.48 0.0024 0.4776 25 5% 20% 0.82 0.72 0.0032 0.7168 50 10% 5% 0.44 0.20 0.0000 0.2000 50 10% 10% 0.68 0.35 0.0017 0.3483 50 10% 20% 0.68 0.60 0.0023 0.5977 100 20% 5% 0.22 0.19 0.0000 0.1900 100 20% 10% 0.34 0.25 0.0012 0.2488 100 20% 20% 0.58 0.46 0.0016 0.4584 150 30% 5% 0.17 0.13 0.0000 0.1300 150 30% 10% 0.21 0.14 0.0010 0.1390 150 30% 20% 0.32 0.22 0.0013 0.2187 TD3 1.5 25 5% 15% 1.16 0.95 0.0000 0.6333 25 5% 20% 1.16 1.00 0.0007 0.6662 50 10% 15% 0.71 0.65 0.0000 0.4333 50 10% 20% 0.85 0.75 0.0005 0.4997 100 20% 15% 0.52 0.49 0.0000 0.3267 100 20% 20% 0.71 0.63 0.0004 0.4197 150 30% 15% 0.44 0.35 0.0000 0.2333 150 30% 20% 0.62 0.45 0.0003 0.2998 
+
+Qualitative comparison. The quantitative separation in Table 3 is also visible in representative closed-loop rollouts. Figures 8 and 9 show nominal executions, executions at FoSeRL-certified budgets, and attacks beyond those certified budgets for Inverted Pendulum, Hopper, and HalfCheetah. At the reported FoSeRL budgets, the illustrated degradation traces remain below the prescribed terminal tolerance, whereas the larger uncertified per-turbations produce substantially greater degradation and, in the Hopper example, early collapse. The correspond-ing PS certificates remain confined to much smaller perturbation magnitudes, consistent with the quantitative comparison above. 
+
+31 Figure 8: Inverted pendulum (SAC), at 𝐾 = 27 (top block) and 𝐾 = 40 (bottom), 𝛼 = 2.5% of 𝑆 env , 𝜌 target = 0.90, 
+
+𝛽 = 10 −3. Each block shows the nominal rollout, the rollout at FoSeRL’s certified budget, and a rollout beyond it, with the attacked pole in colour against the nominal in grey. The budget bar contrasts the two certificates; note the scopes differ, smoothing being worst-case over ∥𝛿 ∥2 ≤ 𝑏 √𝑛 𝑎 𝐾 and FoSeRL distributional under the declared attack law. 𝐷 /𝛼 is signed, so a marginally negative value ( −0.07, top middle) indicates an attack realisation that slightly helped that episode. The third panel of each block is one of the 20% ( 𝐾 = 27) and 34% ( 𝐾 = 40) of episodes that breach beyond the certified budget; breaching outside the certified region is the certificate behaving as specified. 
+
+Scope of the comparison. These visualizations should be interpreted together with the differing certificate scopes. Policy smoothing provides a worst-case guarantee over its corresponding ℓ2 perturbation set, whereas the data-driven FoSeRL certificate is distributional under the declared attack law. The beyond-certificate panels are deliberately selected from episodes that violate the degradation tolerance outside the certified region; they illustrate the behavior beyond the guarantee rather than a failure of the certificate.                                 
+
+> 32 (a) Hopper-v5 (TD3), 𝐾 =50 of 𝑇 =1000, 𝛼 =2.5%; certified 𝑏 =1.64 at 𝜌 cert =0.972, against a smoothing budget of 2 .0×10 −3.
+> (b) HalfCheetah-v5 (SAC), 𝐾 =50 of 𝑇 =500, 𝛼 =10%; certified 𝑏 =0.35 at 𝜌 cert =0.913, against a smoothing budget of 1.7×10 −3.
+
+Figure 9: Certified and uncertified regimes on MuJoCo locomotion, the setting in which neither Kumar et al. (2022) nor Mu et al. (2024) report results. Panels show the nominal rollout, the rollout at FoSeRL’s certified budget, and a rollout beyond it, with the running degradation 𝐷 /𝛼 beneath each. Because the two branches share the noise realisation but diverge after the first perturbation, their termination times differ: in a the nominal episode terminates at 𝑡 = 980 while the attacked one at the certified budget survives to the horizon, and beyond the budget it collapses at 𝑡 = 186. Third panels are drawn from the 20% (Hopper) and 29% (HalfCheetah) of episodes that breach outside the certified region. 
+
+## E Additional Discussion 
+
+This section expands on Sec. 6, explaining the long-horizon verification design, the information supplied by the barrier witness, and the interpretation and refinement of the resulting certificates. Technical boundary cases and 
+
+> 33
+
+sampling requirements are collected in Appendix B; literature positioning and external-baseline selection are discussed separately in Appendix F. 
+
+E.1 From training-time robustness to long-horizon certification 
+
+The framework of Taheri and Zamani (2026) models stochastic training as a dynamical system and certifies the accuracy of its terminal parameters under data perturbations, already incorporating a training horizon and a time-dependent barrier. FoSeRL changes both the intervention and the certified object: the policy is already fixed, perturbations affect its executed actions, and performance is measured by the accumulated loss relative to a matched nominal episode. The paired-state construction and return-gap coordinate make this sequential objective a terminal safety property, while the separate cardinality and magnitude budgets capture the temporal allocation of attack resources. Long horizons also require controlling the accumulation of local drift allowances. With the earlier linear term 𝑏 3𝑇 , a verification correction 𝜂 3 contributes 𝜂 3𝑇 /𝑏 2 to the failure bound; for example, 
+
+𝜂 3/𝑏 2 = 10 −3 already contributes one at 𝑇 = 1000, exceeding the failure allowance 1 − 𝜌 = 0.1. FoSeRL retains the geometric accumulation G𝑇 (𝜅 ) and calibrates the residual allowance using the final reliability bound. For 
+
+𝜅 < 1, G𝑇 (𝜅 ) ≤ min {𝑇 , (1 − 𝜅 )−1 }, avoiding unnecessary linear accumulation without removing the horizon dependence of the problem (Appendix B.6). Nor can 𝑇 simply be replaced by 𝐾 : an altered state can affect later decisions and rewards after the last attacked action. 
+
+E.2 Episode-level calibration and statistical validity 
+
+FoSeRL calibrates complete episodes rather than treating their dependent transitions as independent observa-tions. The score in Definition 9 aggregates initial and drift residuals while retaining terminal separation as a hard condition. All calibration episodes remain in the sample, including those assigned infinite scores because of unsafe-terminal separation violations. No parametric score distribution is required; validity instead relies on independent episodes and fresh conditional successor samples. Calibration balances the propagated residual margin against the probability of episode-level condition violations. Simultaneous validity over ranks permits selecting this balance from the calibration data without an additional rank-selection penalty. The finite-successor bound then connects the sampled drift residuals to their exact counterparts: conditional on a violating episode, its first exact drift violation is detected with probability at least 1 − 𝛽 0. This yields the transfer penalty ¯ 𝑣 𝑘 ∗ /( 1 − 𝛽 0)
+
+without a union bound over time. Combined with the good-prefix barrier argument, these steps establish the end-to-end operational guarantee of Theorem 2, rather than only marginal coverage of a score. 
+
+E.3 Reliability, confidence, and violation levels 
+
+The target 𝜌 concerns a fresh attack–episode draw: it is the required probability of satisfying 𝐷 traj ≤ 𝛼 under Q𝐾,𝑏 .The reported 𝜌 cert is the lower bound in equation 108, and acceptance requires 𝜌 cert ≥ 𝜌 . In contrast, 𝛽 controls uncertainty over calibration data: conditional on the frozen specification, Theorem 2 bounds false acceptance by 
+
+𝛽 . The auxiliary 𝛽 0 controls the one-sided successor approximation at a fixed state–attack–time tuple through Lemma 1. Its effect is incorporated into the transfer penalty, not deducted again from the outer confidence, which remains 1 − 𝛽 . Finally, ¯ 𝑣 𝑘 ∗ bounds out-of-sample violations of the selected empirical episode conditions; it is nei-ther an empirical failure frequency nor the terminal-degradation risk itself. The latter also includes the dynamical contribution, as made explicit by the Base–Margin–Bridge decomposition in equation 107–equation 108. 
+
+E.4 Barrier witnesses versus direct terminal certification 
+
+FoSeRL provides a dynamical witness in addition to a scalar robustness guarantee. Direct terminal certi-fication applies a one-sided binomial bound to independent observations of the same paired terminal event under the same operational specification. It is a useful formal reference when the required output is only the terminal probability, and can yield larger certified budgets with less computation because it does not require barrier syn-thesis or conditional successor queries. FoSeRL’s additional contribution is the structured certificate supporting that probability and the analysis it enables. 
+
+State–time structure. The witness 𝐵 𝜙 ∗ ( ˆ𝑥, 𝑡 ) links initial conditions, expected one-step evolution, and terminal separation through the conditions of Definition 6. These relations make the dynamics part of the certification argument, rather than reducing each episode solely to a terminal success indicator. The same structure underlies 
+
+> 34
+
+the ideal uniform guarantee and its finite-sample operational counterpart, with their respective scopes stated in Theorems 1 and 2. 
+
+Condition-specific diagnosis and refinement. The residuals in Definition 8 distinguish initial-value, terminal-separation, and drift violations, including the sampled phases at which drift conditions are difficult to satisfy. The reliability decomposition further separates the frozen witness contribution from calibration slack and episode-level violations. This provides concrete directions for refinement: concentrated late-horizon drift vi-olations can motivate targeted synthesis data or time-dependent features, whereas poor terminal separation calls for improving the terminal witness. The scalar binomial certificate alone does not provide this condition-based decomposition. These diagnostics concern the witness, not certified conditional failure probabilities at arbitrary states. In Table 1, FoSeRL retains approximately 71–99% of Direct’s certified magnitude across the representative settings while additionally returning this state–time witness. Thus, the comparison is not between formal and empirical validity: both methods provide formal operational guarantees. It is a trade-off between scalar budget tightness and computation on one side, and a dynamically structured certificate with targeted diagnostic value on the other. When the purpose includes understanding and refining the certifying conditions, the barrier provides information beyond the terminal bound itself. 
+
+E.5 Generality, simulator access, and attack coverage 
+
+FoSeRL separates policy evaluation from policy construction. Under the stated execution and sampling assump-tions, its verification argument does not require a particular learning algorithm, policy architecture, differentiable controller, or analytical dynamics family. The deployed policy remains unchanged, including its chosen random-ization mode; the learned barrier is an auxiliary witness, not a replacement controller. This generality uses a concrete interface: synchronously coupled rollouts and repeatable conditional successor queries, with fresh complete one-step randomness regenerated as specified in Sec. 4. The resulting guarantee concerns the execu-tion process being sampled. The distinction from offline RL and evaluation from single-branch logs is discussed in Appendix F. The operational attack law need not be uniform. It may emphasize difficult precommitted plans or design-selected mixtures, provided it is fixed before calibration and attacks remain independent of the initial state and episode randomness as required by Definition 7. Theorem 2 certifies reliability under this law; uniform coverage of all admissible precommitted attacks instead follows from the ideal barrier conditions. State-adaptive adversaries require an extension of the present attack model. 
+
+E.6 Reading robustness frontiers and selecting specifications 
+
+The robustness profiles expose how attack frequency and magnitude interact with the allowed return loss. Their interpretation retains the declared policy execution, attack channel and norm, horizon, coupling, and statistical target. The PS comparison in Appendix D.8 also retains the distinction between operational and worst-case attack coverage. Normalization by 𝑆 env supplies a common reporting scale within an environment, not a percentage of each policy’s nominal return or a universal ranking across tasks. The empirical design budget supports candi-date construction, whereas an accepted operational budget is supported by independent verification. Neither is asserted to be the optimal robustness radius. The ideal frontier has the nesting properties of Appendix B.3; opera-tional certificates do not automatically inherit them when changing the budget changes the attack law. Connect-ing lines therefore do not certify interpolation or untested specifications. New specifications can nevertheless be added incrementally without predeclaring the entire future experiment family. Each frozen specification receives its own audit; selecting a budget after exploration requires fresh final calibration or appropriate selection-aware confidence control. Appendix B.7 gives the finite-collection and sequential protocols, including accounting for repeated tests and stopping. 
+
+E.7 Performance robustness versus pathwise safety 
+
+Paired degradation complements nominal performance by measuring the loss relative to the same episode with-out an attack. Shared randomness does not force equal actions or states after a perturbation: each branch follows its own closed-loop evolution, preserving the attack’s subsequent consequences. The running gap can increase or recover because individual reward differences can have either sign. Accordingly, crossing the tolerance before 
+
+𝑇 is not itself terminal failure, and the maximum in the verification score aggregates residuals rather than return 
+
+> 35
+
+loss. This formulation certifies cumulative performance without imposing an additional pathwise constraint. Collision avoidance or all-time state safety can be studied alongside it, but requires an explicit safety event and corresponding verification conditions. A safety-violation indicator in the augmented state offers one route for such an extension. 
+
+E.8 Certificate refinement and policy improvement 
+
+Separating construction from verification allows the witness to improve without changing the meaning of ac-ceptance. Richer features, alternative bounded architectures, and targeted synthesis data may improve candidate quality; the synthesis law may emphasize difficult cases rather than match the operational law. Each candi-date and verification design must then be frozen before fresh independent calibration. The decomposition in Appendix D.6 also supports targeted resource allocation. The episode count 𝑁 controls calibration resolution, whereas the successor count 𝑀 controls the approximation correction. The choice of 𝜅 balances geometric prop-agation against the strictness of the local drift inequality. These are distinct design levers, not interchangeable ways to improve a certificate (Appendix B.6). Beyond witness refinement, residual diagnostics offer a direction for certificate-informed policy improvement, with each updated policy treated as a new target and independently re-certified. 
+
+E.9 Limitations and outlook 
+
+FoSeRL’s simulation-based interface supports broad applicability but requires repeated coupled rollouts and con-ditional successor queries. Long horizons and expensive policy or simulator evaluations can therefore increase computational cost, as quantified in Appendix B.6. The reported case studies use the original execution pro-cess without surrogate-assisted synthesis. For larger-scale applications, lightweight surrogates could reduce candidate-construction cost by generating synthesis rollouts. The candidate would still be frozen and formally verified using fresh paired episodes and conditional successors from the original execution process. Provided the verification assumptions and confidence protocol are retained, surrogate accuracy would affect candidate quality and certifiability, not the stated validity of an accepted certificate. Such acceleration would concern synthe-sis; formal verification would retain its original-process sampling requirements. The sufficient barrier conditions also trade some budget tightness for a state–time witness; their conservatism is discussed in Appendix B.4. These computational and tightness considerations accompany the additional certificate structure, while policy and en-vironment generality hold within the execution, sampling, and attack-coverage scope specified in Appendix E.5. The separation between synthesis and verification provides a route to improving efficiency and witness quality while retaining independent formal validation. 
+
+## F Positioning, Baseline Selection, and Extended Comparisons 
+
+Here we specify what FoSeRL certifies and how that object relates to existing guarantees. We first place the relevant literature on the axes that distinguish certified quantities from one another, and separate the methods that share our problem formulation from those that solve a different one (Sec. F). We then state the criteria a method must meet to serve as a quantitative baseline here, apply them, and explain why exactly one external method qualifies (Sec. F.2). Finally, we record the regime in which that baseline has previously been evaluated, which differs from the higher-dimensional, longer-horizon settings considered in our experiments (Sec. F.3). 
+
+F.1 Positioning 
+
+Here we illustrate, using Table 4 the exact characterization of our problem and what it certifies. 
+
+Relation to offline reinforcement learning. FoSeRL shares surface features with offline RL (Levine et al., 2020): the policy is fixed and no improvement is performed. The statistical problem differs, however. Offline RL evaluates or improves a target policy from trajectories logged by a potentially different behaviour policy, which makes distribution shift, importance weighting, and coverage its central concerns (Precup et al., 2000; Chen and Jiang, 2019). We instead assume generative access and collect fresh coupled executions of the certified policy under the declared attack law, so no off-policy correction or concentrability assumption enters the analysis. The gap is sharper for the paired objective. A single-branch nominal log does not contain the attacked counterfactual under the same realization of the episode randomness, and for deterministic policies trajectory-wise importance                                                                                                                                                                                                              
+
+> 36 Method Formal Channel Budget Fixed  𝜋
+> Level Form Paired Resolved
+> Attacks on deployed policies
+> FGSM on policies (Huang et al., 2017) ✗obs ℓ𝑝 ✓ep —✗✗
+> Strategically-timed (Lin et al., 2017) ✗obs (𝐾, 𝑏 )✓ep —✗✗
+> Critical-point (Sun et al., 2020) ✗obs (𝐾, 𝑏 )✓ep —✗✗
+> MAS action attack (Lee et al., 2020) ✗act (𝐾, 𝑏 )✓ep —✗✗
+> Robust training: hardens a policy, certifies none
+> RARL (Pinto et al., 2017) ✗dyn set ✗ep —✗✗
+> NR-/PR-MDP (Tessler et al., 2019) ✗act ℓ𝑝 ✗ep —✗✗
+> SA-MDP (Zhang et al., 2020) ◦obs ℓ𝑝 ✗ep mean ✗✗
+> ATLA (Zhang et al., 2021) ✗obs ℓ𝑝 ✗ep —✗✗
+> WocaR (Liang et al., 2022) ◦obs ℓ𝑝 ✗ep mean ✗✗
+> RADIAL (Oikarinen et al., 2021) ◦obs ℓ𝑝 ✗st wc ✗✗
+> Certified robustness for RL
+> CARRL (Everett et al., 2021) ✓obs ℓ𝑝 ✗st wc ✗✓
+> Policy smoothing (Kumar et al., 2022) ✓obs ℓ2✗ep mean ✗✗
+> CROP (Wu et al., 2022a) ✓obs ℓ2✗ep mean ✗✗
+> COPA (Wu et al., 2022b) ✓data ℓ0✗ep wc ✗✗
+> ReCePS (Mu et al., 2024) ✓act ℓ𝑝 ✗ep mean ✗✗
+> CAROL (Yang et al., 2024) ✓obs ℓ𝑝 ✗ep wc ✗✗
+> Guarantees without an adversary model
+> Robust MDPs (Iyengar, 2005; Nilim and El Ghaoui, 2005) ✓kern set ✗ep wc ✗✓
+> Offline RL / OPE (Levine et al., 2020) ✗——✓ep mean ✗✗
+> HCOPE (Thomas et al., 2015) ✓——✓ep mean ✗✗
+> Statistical model checking (Legay et al., 2010) ✓——✓ep tail ✗✗
+> Barrier certificates
+> Stochastic barriers (Prajna et al., 2007; Steinhardt and Tedrake, 2012) ✓——✓ep tail ✗✓
+> Neural synthesis (Abate et al., 2021; Anand and Zamani, 2023) ✓——✓ep tail ✗✓
+> CRABS (Luo and Ma, 2021) ✓dyn set ✗ep wc ✗✓
+> Static robustness certification (parent framework)
+> Poisoning certificates (Taheri and Zamani, 2026) ✓data ℓ𝑝 ✓—tail ✓✗
+> FoSeRL (this paper) ✓act (K,b)✓ep tail ✓✓
+
+Table 4: Related work, and where FoSeRL differs. Formal : a mathematical guarantee rather than an empiri-cal rate ( ◦: formal bounds used internally, empirical robustness reported). Channel : what the adversary per-turbs — act =executed actions, obs =observations, data =training data, dyn =dynamics/disturbance, kern =transition kernel. Budget : geometry of the attack set — (𝐾, 𝑏 )=cardinality and magnitude, ℓ𝑝 =norm ball at every step, 
+
+ℓ0=count only, set =uncertainty set. Fixed 𝜋 : the guaranteed object is the deployed policy itself, not a smoothed, retrained, robust-argmax or aggregated surrogate. Level : ep =whole episode, st =per state. Form : tail =Pr [· ≤ 
+
+𝛼 ] ≥ 𝜌 , mean =expected return, wc =worst case. Paired : degradation measured against the same episode/model unattacked. Resolved : the output is a function of state (and time), not a scalar. To the best of our knowledge, the cardinality–magnitude budget appears in the attack literature but in no prior certificate . For FoSeRL, this denotes a state–time witness and diagnostics, not certified conditional reliability at each state. sampling degenerates once the attacked execution leaves the support of the nominal behaviour. Recovering the paired quantity from logs alone would therefore require the realized randomness together with a simulator, or a learned model able to generate the counterfactual branch. In this respect FoSeRL is closer to high-confidence policy evaluation (Thomas et al., 2015; 2019), though it returns a state- and time-dependent certificate for a degradation tail event rather than a scalar bound on policy value. One connection does carry over. Because the barrier is synthesized and calibrated from sampled coupled trajectories, pointwise readings of it outside regions the operational data represent are extrapolation, echoing the support concerns of offline RL (Fujimoto et al., 2019). This does not affect the distributional certificate, which concerns fresh draws from the declared law, but it bounds how the barrier should be read away from that coverage. Pessimistic regularization (Kumar et al., 2020; Yu et al., 2020), learned-model routes to certification from deployment logs (Yu et al., 2020; Kidambi et al., 2020), and certificate-aware policy improvement in the spirit of safe policy improvement (Laroche et al., 2019) are natural directions, and lie outside the present scope. 
+
+F.2 Why policy smoothing is the only external baseline 
+
+A method qualifies as a quantitative baseline for FoSeRL only if it certifies the same object under the same threat :(i) a formal guarantee rather than an empirical robustness rate; (ii) on the per-trajectory event {𝐷 traj ≤ 𝛼 } rather 
+
+37 Table 5: Related formal robustness and certification frameworks, compared against FoSeRL. All three provide formal (high-probability) guarantees; they differ in what is certified and under which perturbation model. Meth-ods with a different problem formulation are listed for completeness but are not used as quantitative baselines.                                       
+
+> Method Problem formulation and certified property Attack model and main assumptions Comparable to FoSeRL? Per-state policy smooth-ing Per-decision robustness of the policy map: certifies action agreement at individual ob-servations, with no statement about accumu-lated trajectory degradation
+> ℓ2ball applied per observation; each visited state certified independently, with fresh sam-pling at every point and no coupling across timesteps No Gaussian policy smooth-ing Sequential robustness under actuator-channel perturbation: certifies the same event as FoSeRL, 𝑃 (𝐷 traj ≤𝛼 ) ≥ 𝜌
+> Worst case over all ∥𝛿 ∥2≤𝑏 √𝑛 𝑎 𝐾 via a Neyman–Pearson shift bound, paired by a union bound. Requires noise N ( 0, 𝜎 2𝐼 )
+> shared by both branches and entering the
+> same channel as the attack; 𝜏 grid fixed on design data Yes ReCePS Robustness of expected return: certifies a lower bound on E[𝐽 ]rather than a per-trajectory event Observation-space ℓ2ball of radius 𝐵 ; guar-antee holds on the mean, not per trajectory. Smoothed policy evaluated at inference No
+
+than on an expectation or a per-state property; (iii) under perturbations of the executed action with a cardinality budget; and (iv) for the policy as deployed. Applying these four criteria to the literature of Table 4 leaves exactly one method. 
+
+Gaussian policy smoothing (comparable). When the smoothing noise occupies the same channel the attack perturbs, the attacked branch is the nominal closed loop driven by shifted noise, and a Neyman–Pearson shift bound certifies the same terminal event we do. It is therefore our external baseline. Its guarantee is in one respect 
+
+stronger than ours: it holds worst-case over every 𝛿 with ∥𝛿 ∥2 ≤ 𝑏 √𝑛 𝑎 𝐾 , a set strictly containing our attack class, whereas our data-driven certificate holds under the declared attack law. The comparison is accordingly a budget– scope trade, and the certified budgets differ by 140 ×–1575 × in the comparable cells. 
+
+Direct terminal-event certification (internal reference). Direct applies a one-sided Clopper–Pearson bound to the paired terminal event under the same operational specification as FoSeRL. It provides a formal scalar reference without barrier synthesis or conditional successor queries. Appendix E.4 explains the additional state–time witness and condition-specific diagnostics supplied by FoSeRL. 
+
+Methods excluded, and why. Per-state smoothing certifies action agreement at individual observations and makes no statement about accumulated degradation, so no budget of ours maps onto it. ReCePS bounds E[𝐽 ]
+
+rather than a per-trajectory event and states its guarantee in observation space; a comparison would require transplanting 𝐵 = 𝑏 √𝑛 𝑎 𝐾 onto the action channel, and our reimplementation yields smoothed-return evaluations but no certified bound. COPA certifies against training-data poisoning, a different attack phase entirely. Robust-training methods (RARL, NR-/PR-MDP, ATLA, WocaR, RADIAL) harden a policy but emit no certificate for a given one, and change the policy in the process, violating (i) and (iv). Robust MDPs synthesise a policy under kernel ambiguity rather than auditing a fixed one. Stochastic and neural barrier certificates supply our machinery but bound state-safety events, not adversarial performance loss. Reporting numbers from any of these against ours would compare different certified quantities, not different certification methods. 
+
+Fairness of the smoothing comparison. Two conditions bound where the baseline applies, and both are properties of the environment rather than of our implementation. The noise must occupy the attack’s channel, which fails on ACC, where the process noise acts on the lead vehicle’s speed while the attack perturbs the ego control. And the nominal return distribution must place sufficient mass in an 𝛼 -wide window, since at 𝑏 = 0the paired bound collapses to that mass; this is an infinite-data ceiling, not a sample-size artefact, and it is why Unicycle ( 𝑆 env /𝜎 = 6.45, against 217 on the pendulum) cannot be certified by this baseline at any 𝑛 . We also verified that the baseline is not sample-starved: with 𝛽 split over the 𝜏 grid, the Clopper–Pearson cap on 𝜌 (𝑏 =0)
+
+alone manufactures failures below 𝑛 ≈ 2048, so every smoothing number reported here uses 𝑛 = 4096, where that cap is 0 .994 against a 0 .90 target. 
+
+38 Table 6: Formal comparison with the one method addressing the same problem formulation as FoSeRL. All quan-tities are formally certified rather than empirically estimated, at 𝜌 target = 0.90 and confidence 1 − 𝛽 = 0.999 (𝛽 = 𝛽 0 = 10 −3). FoSeRL gives a distributional guarantee; smoothing gives a worst-case guarantee over the ℓ2
+
+ball ∥𝛿 ∥2 ≤ 𝑏 √𝑛 𝑎 𝐾 . One representative cell per environment; the last column is the certified budget ratio over the reported nonzero-PS rows in Table 3                                        
+
+> FoSeRL Smoothing Environment 𝐾 𝛼 %𝑇 𝑏 cert 𝜌 cert 𝑏 cert 𝜌 cert Ratio Pendulum (SAC) 27 2.5% 200 1.50.9174 1.01 ×10 −20.9000 148 .5–301 .2×
+> Hopper (TD3) 50 2.5% 1000 1.64 0.9724 2.00 ×10 −30.9000 512 .5–1100 ×
+> HalfCheetah (SAC) 50 10% 500 0.35 0.9132 1.70 ×10 −30.9000 140–1575 ×
+
+F.3 Evaluation regime: where smoothing has been tested, and where it has not 
+
+The smoothing line of work has been evaluated primarily on low-dimensional classic-control and Atari bench-marks. Kumar et al. (2022) report Cartpole, Mountain Car, Pong, and Freeway, using DQN for the discrete tasks and DDPG for Mountain Car; Mu et al. (2024) follow a similar evaluation regime on Cartpole, Mountain Car, and Freeway. The only continuous-action environment in these evaluations is Mountain Car, with a single ac-tuated dimension. Neither work reports results on MuJoCo locomotion. This distinction becomes important as the action dimension and attack cardinality increase. Under the aligned smoothing construction used here, the trajectory-level perturbation radius scales as 𝑏 √𝑛 𝑎 𝐾 , so larger 𝑛 𝑎 and 𝐾 make the resulting certified per-step budget increasingly restrictive. Our Hopper and HalfCheetah experiments therefore evaluate the baseline in a substantially higher-dimensional and longer-horizon regime than the settings considered in the original smoothing evaluations. Representative quantitative and qualitative comparisons in these regimes are reported in Appendix D.8. 
+
+39

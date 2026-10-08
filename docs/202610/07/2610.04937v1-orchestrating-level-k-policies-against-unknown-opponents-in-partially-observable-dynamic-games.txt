@@ -1,0 +1,441 @@
+Title: Orchestrating Level-K Policies Against Unknown Opponents in Partially-Observable Dynamic Games
+
+URL Source: https://arxiv.org/pdf/2610.04937v1
+
+Published Time: Tue, 06 Oct 2026 01:21:36 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Orchestrating Level-K Policies Against Unknown Opponents in Partially-Observable Dynamic Games 
+
+Addison Kalanther 1, Sanika Bharvirkar 1, Daniel Bostwick 1, Chinmay Maheshwari 2, and Shankar Sastry 1
+
+Abstract — Level-K reasoning generates a hierarchy of policies specialized to opponents with different reasoning levels. When an opponent’s level is unknown, a common deployment rule estimates that level and selects the corresponding response. In a dynamic, partially-observed game, this selection is repeated, with each choice shaping subsequent states and observations. The response associated with the most likely opponent level need not maximize expected return from the current history. We formulate this deployment problem as dynamic orchestration of a fixed, pretrained policy library in a partially observable Markov game. We compare classification-based orchestrators (CBOs) trained using offline data or on-policy data aggregation with a reinforcement-learning-based orchestrator (RLBO) trained to maximize expected discounted return. In pursuit–evasion experiments, on-policy training improves classification and return, yet RLBO achieves higher return than the on-policy and offline CBOs. Given a pretrained library, RLBO also reaches performance comparable to a policy trained directly over the pursuers’ action space with fewer training timesteps. These findings support treating a hierarchy of level-K policies as a resource for orchestration, not a prescription for deployment. 
+
+I. I NTRODUCTION 
+
+Autonomous agents in adversarial settings need to reason about how their opponents make decisions. This raises a basic question: how should an agent model an opponent’s reasoning? One approach is bounded rationality, which recog-nizes that decision makers operate with limited information, computational resources, and time [1], [2]. Level-k reasoning represents strategic reasoning through a hierarchy of responses to less sophisticated opponents [3], [4]. Together with the related cognitive hierarchy model [5], it offers a structured alternative to assuming equilibrium play and can explain behavior observed in strategic decision experiments. These models have attracted attention in control and robotics, including autonomous driving, pursuit-evasion, and vehicle coordination [6]–[11]. In the standard level-k con-struction, a level-0 policy specifies baseline behavior, and a level-(k + 1) policy is computed as a best response to a level-k opponent. For dynamic games, these responses specify behavior over an evolving interaction. Computing them offline produces a library of policies specialized to different opponent reasoning levels. This hierarchy specifies how responses are constructed; deciding how to use them during deployment is a separate problem.        
+
+> 1A. Kalanther, S. Bharvirkar, D. Bostwick, and S. Sastry are with EECS, University of California, Berkeley, CA, USA
+
+{addikala, sbharvirkar, daniel.k.bostwick}@berkeley.edu, sastry@coe.berkeley.edu  
+
+> 2C. Maheshwari is with ECE, Johns Hopkins University, Baltimore, MD, USA
+
+chinmay_maheshwari@jhu.edu 
+
+This distinction becomes important when the opponent’s reasoning level is unknown. A policy optimized against one level may perform poorly against another. In a dynamic game, an agent must act while learning about its opponent, and its actions change the physical state and can affect subsequent observations. Deployment therefore involves repeated policy choices during a partially-observed interaction. One approach maintains a belief over the opponent’s reasoning level using interaction history and plans future actions under that belief. Li et al. combine Bayesian inference with predictive control [7], while Tian et al. use a partially-observable decision formulation and belief-space search to reason about latent human states [8]. Although precomputed opponent models and value functions can support such methods, online belief propagation and multi-step action optimization can remain computationally demanding as the state space and planning horizon grow. Selecting from a pretrained response library offers a complementary way to reuse offline computation during deployment. Another approach estimates the opponent’s level online and deploys the corresponding response. Guan et al. use maximum likelihood estimation to adapt the agent’s reasoning level during pursuit-evasion [10]. Ho et al. study a related Bayesian rule that samples an opponent level from a belief distribution and responds one level higher [12]. The pairing of an opponent level with its response thus becomes a rule for deployment. Ho et al. also note that a best response to a distribution over opponent levels can fall outside the level-k
+
+hierarchy. Using this pairing during deployment raises two issues. First, when several opponent levels remain possible, the response paired with the most likely level need not yield the highest expected return. Classification accuracy also ignores how costly different estimation errors are. Second, switching policies mid-trajectory can produce states and histories unlike those encountered during an expert’s training. An approximately-learned best response may then be a poor choice, even when the opponent’s level is correctly identified. We study this deployment problem as the orchestration of a fixed library of bounded-rational policies. Related ideas include reward-trained expert gating for opponent modeling [13] and Bayesian policy reuse [14]. Our focus is an orchestrator that can select and switch among separately trained level-k responses at each time step of a partially observed encounter. We seek to use the hierarchy as a resource for decision making, allowing policy selection to be learned without enforcing the original level-to-response pairing. This leads to the following question: arXiv:2610.04937v1 [cs.MA] 4 Oct 2026 How should an agent select and switch among pre-trained level-k responses as a partially-observable game evolves, to maximize its expected return against an opponent of unknown reasoning level? We formulate this problem in a partially-observable Markov decision process and compare classification-based orchestra-tion with reward-maximizing orchestration using the same fixed response library. The classification methods use either offline data or on-policy, DAgger-style data aggregation [15]; the reward-based method learns policy selection through reinforcement learning. In our pursuit-evasion experiments, reward-based orchestra-tion achieves higher expected return than both classification-based methods. Training the classifier on histories generated by its own policy choices improves identification and return, but does not close the performance gap. Although the learned responses are specialized to different evaders, reward-based orchestration frequently selects a response other than the one paired with the evader’s true level. Given a pretrained response library, orchestration also reaches performance comparable to a policy trained directly over the pursuers’ action space, with fewer additional training timesteps. These results support treating the level-k hierarchy as a resource for orchestration, not a prescription for deployment. II. P ROBLEM FORMULATION 
+
+We study the problem of dynamically selecting among a fixed library of bounded-rational policies when interacting with an opponent whose level of rationality is unknown. We formulate this problem as a two-player partially-observable Markov game (POMG). Throughout, we refer to the decision-making agent as the hero and its opponent as the adversary .Each player may represent an individual agent or a team of agents acting under a shared objective. 
+
+A. Game Model 
+
+We consider a two-player POMG defined by the tuple 
+
+M = ⟨S , A, ¯A, O, ¯O, P, Z, ¯Z, R, ¯R, ρ, γ ⟩. Here, S is the state space; A and ¯A are the action spaces of the hero and 
+
+adversary , respectively; and O and ¯O are their respective observation spaces. The transition kernel P : S × A × ¯A → 
+
+∆( S) governs the evolution of the system. The observation kernels Z : S → ∆( O) and ¯Z : S → ∆( ¯O) specify the observations available to each player. We assume their observations are conditionally independent given the state. The reward functions R, ¯R : S × A × ¯A → R specify the respective objectives of the two players. Finally, ρ ∈ ∆( S)
+
+is the initial state distribution, and γ ∈ [0 , 1) is a shared discount factor. At each time step t, the system evolves according to st+1 ∼ P (· | st, a t, ¯at), where st ∈ S is the state and at ∈ A and ¯at ∈ ¯A are the actions of the hero and adversary, respectively. The players receive observations 
+
+ot ∼ Z (· | st), ¯ot ∼ ¯Z(· | st).
+
+Since the state is not necessarily observable, each player selects actions based on its local history. Let ht =(o0, a 0, . . . , a t−1, o t) and ¯ht = (¯ o0, ¯a0, . . . , ¯at−1, ¯ot) denote the histories of the hero and adversary, respectively. Their corresponding history spaces are denoted by H and ¯H.Let Π and ¯Π denote the sets of history-dependent policies of the hero and adversary. A policy π ∈ Π specifies a distribution 
+
+π(· | ht) ∈ ∆( A), and similarly, ¯π ∈ ¯Π specifies ¯π(· | ¯ht) ∈
+
+∆( ¯A). For a given policy pair (π, ¯π), the interaction induces a trajectory distribution p(τ | π, ¯π). For any finite trajectory prefix τ0: T , including the terminal state sT +1 , this distribution factorizes as p(τ0: T | π, ¯π) = ρ(s0) QTt=0 
+
+h
+
+Z(ot | st) ¯Z(¯ ot |
+
+st) · π(at | ht)¯ π(¯ at | ¯ht)P(st+1 | st, a t, ¯at)
+
+i
+
+.
+
+The expected discounted returns of the two players are de-fined as J(π, ¯π) = Eπ, ¯π [P∞ 
+
+> t=0
+
+γtR(st, a t, ¯at)] , ¯J(π, ¯π) = 
+
+Eπ, ¯π
+
+P ∞ 
+
+> t=0
+
+γt ¯R(st, a t, ¯at) .
+
+Each player seeks to maximize these objectives. 
+
+B. Bounded-Rational Policy Libraries 
+
+We construct the policy libraries of the hero and adversary using level-k reasoning, a model of bounded rationality in which agents iteratively best respond to opponents with lower levels of strategic reasoning. We begin with a prescribed level-0 policy for the adversary ¯π0 ∈ ¯Π, which represents baseline behavior that do not explicitly account for the hero’s strategy. For each level k ≥ 1, the corresponding policies are recursively defined as 
+
+πk ∈ arg max  
+
+> π∈Π
+
+J(π, ¯πk−1), ¯πk ∈ arg max  
+
+> ¯π∈¯Π
+
+¯J(πk−1, ¯π).
+
+Thus, a level-k policy of either player is constructed as a best response to a level-(k − 1) policy of its opponent. Let K denote the maximum rationality level considered for the adversary. We construct the following policy libraries: 
+
+T := {π1, π 2, . . . , π K+1 }, ¯T := {¯π0, ¯π1, . . . , ¯πK }.
+
+By construction, each hero policy πk+1 is a best response to the corresponding adversary policy ¯πk.In practice, these policies may be approximately computed using reinforcement learning. Throughout this work, we as-sume that the policy libraries are generated offline and remain fixed during deployment. Our objective is to investigate how the hero should dynamically select among these policies when the adversary’s rationality level is unknown. 
+
+C. Orchestration Under Unknown Opponent Rationality 
+
+We study the deployment of a fixed library of pretrained level-k policies, T = {π1, . . . , π K+1 }. Each policy πk+1 
+
+is trained as a best response to the adversary policy ¯πk.At the beginning of an episode, the adversary’s level L
+
+is sampled from a known prior W ∈ ∆( {0, . . . , K }). The adversary follows ¯πL throughout the episode, while L remains unobserved by the hero. At each history ht, the hero selects an expert to supply its next action. This choice can be revised at the next time step. Because the chosen actions affect the physical state and subsequent observations, deployment requires a sequence of expert choices throughout the evolving game. Formally, an orchestrator is a history-dependent mapping 
+
+μ : H → ∆( {1, . . . , K + 1 }). At time t, the hero samples It ∼ μ(· | ht) and executes at ∼ πIt (· | ht). The resulting hero policy is 
+
+πμ(a | h) = 
+
+> K+1
+
+X
+
+> i=1
+
+μ(i | h)πi(a | h). (1) The expert policies remain fixed; only their selection is controlled by the orchestrator. Let M denote the admissible class of history-dependent orchestrators. We seek 
+
+max 
+
+> μ∈M
+> K
+
+X
+
+> k=0
+
+W(k)J(πμ, ¯πk), (2) where J(πμ, ¯πk) is the hero’s expected discounted return against ¯πk. The prior averages performance over the opponent levels that may be drawn at the start of an episode, while history-dependent selection allows adaptation within the episode. A common deployment principle estimates the opponent’s level and selects the response one level higher [10]. An idealized Bayesian version of this rule uses the posterior 
+
+bt(k) := P(L = k | ht) to select 
+
+ˆkt ∈ arg max  
+
+> k∈{ 0,...,K }
+
+bt(k), It = ˆkt + 1 , (3) with ties resolved by a fixed rule. In practice, a learned classifier can supply the level estimate. This strategy is a particular orchestrator that links expert selection directly to opponent identification. Two limitations motivate evaluating this pairing against return-based selection. 
+
+(C1) Misalignment between opponent identification and return: When several levels remain plausible, an expert that is best against the most likely level may perform poorly against the others. A different expert choice can therefore yield higher expected return, even when the posterior is exact. Moreover, classification accuracy counts all incorrect level estimates equally, although their consequences for return can differ. Thus, accurate opponent inference and effective response selection are distinct objectives. 
+
+(C2) Distribution shift under dynamic orchestration: 
+
+Switching among experts can produce histories that differ from those generated by their original policy pairings. Even an exact best response given the initial state distribution need not provide an optimal continuation at histories outside the support of its original interaction distribution. For approxi-mately learned experts, limited training coverage can also lead to poor performance at histories reached during orchestration. Consequently, the paired expert may be a poor choice even when the opponent’s level is correctly identified. A related shift can affect the opponent classifier: when trained on fixed policy-pair trajectories, it may encounter different histories during deployment. Its predictions influence expert selection and hence the distribution of histories on which subsequent predictions are made. Our formulation does not require opponent identification as an intermediate objective. The level-k hierarchy specifies the available responses, while the orchestrator determines how they are deployed. We compare classification-based and reward-trained orchestrators using the same fixed library, with expected discounted return as the common performance criterion. III. O RCHESTRATION STRATEGIES 
+
+We investigate two approaches to dynamic orchestration of pretrained level-k policies. The first follows a classification-based approach, in which the adversary’s rationality level is estimated from the interaction history and the correspond-ing best-response policy is deployed. The second employs reinforcement learning to directly optimize the selection of pretrained policies based on their cumulative reward. For classification-based orchestration, we additionally in-vestigate two training procedures to examine the effects of distribution shift between classifier training and deployment. 
+
+A. Classification-Based Orchestration 
+
+Classification-based orchestration (CBO) estimates the adversary’s rationality level and deploys the corresponding pretrained best-response policy. Let qψ : H → ∆( {0, . . . , K }) denote an opponent classifier parameterized by ψ, where qψ (k | ht) represents the estimated probability that the adversary has rationality level k, given the hero’s interaction history ht.At each time step, the classifier estimates the adversary’s level according to 
+
+ˆkt ∈ arg max  
+
+> k∈{ 0,...,K }
+
+qψ (k | ht). (4) The classification-based orchestrator then selects the corre-sponding best-response policy μqψ (i | ht) = 1{i = ˆkt + 1 },
+
+where ties in (4) are resolved using a fixed rule. We consider classifiers trained by minimizing the cross-entropy loss. Given a dataset D of interaction histories and their corresponding adversary levels, the classifier parameters are obtained by solving 
+
+min  
+
+> ψ
+
+LD (ψ) := −E(h,k )∼D [log qψ (k | h)] . (5) We investigate two procedures for constructing the training dataset: offline data collection using fixed policy pairs and on-policy data aggregation under the classification-based orchestrator. 
+
+1) Offline Classification (CBO-Off): We first consider an offline classifier trained on trajectories generated by fixed pairs of hero and adversary policies. At the beginning of each training episode, a policy pair 
+
+(πi, ¯πk) ∈ T × ¯T is sampled from a prescribed distribution 
+
+doff . Both policies remain fixed throughout the episode, and the resulting interaction histories are labeled with the adversary’s rationality level k.For a given time step t, the resulting joint distribution of histories and adversary levels is 
+
+dt 
+
+> off
+
+(h, k ) = 
+
+> K+1
+
+X
+
+> i=1
+
+doff (i, k ) · p(ht = h | πi, ¯πk). (6) Unless otherwise specified, we sample policy pairs uni-formly. The collected history-label pairs form the offline dataset Doff , which is used to train the classifier according to (5). Although the resulting classifier observes interactions involving different policy pairs, each training trajectory is generated using a fixed hero policy. During deployment, however, the classifier’s predictions determine which policies are executed. Consequently, the resulting distribution of interaction histories may differ from that in offline training. This motivates our second classification strategy, which adapts the training data to the distribution induced by the classification-based orchestrator itself. 
+
+2) On-Policy Classification (CBO-On): To reduce the distribution shift between classifier training and deployment, we consider an iterative, DAgger-style dataset aggregation procedure [16]. Rather than collecting trajectories using fixed hero policies, we deploy the classification-based orchestrator induced by the current classifier and collect histories generated by its own policy-selection decisions. Specifically, let qψn denote the classifier at iteration n, and let μqψn denote its corresponding orchestrator. We sample an adversary level L ∼ W and generate a trajectory by deploying 
+
+μqψn against ¯πL.The resulting histories are labeled with the adversary’s true rationality level and aggregated into a training dataset: 
+
+Dn+1 = Buffer C
+
+
+
+Dn ∪ { (ht, L )}Tn
+
+> t=0
+
+
+
+, (7) where Tn denotes the final time step of the collected episode and Buffer C is a first-in-first-out buffer of capacity C.The classifier is subsequently updated by minimizing the cross-entropy loss over the aggregated dataset. The complete training procedure is summarized in Algorithm 1. By repeatedly collecting data under the current orchestrator, this procedure exposes the classifier to histories induced by its own policy-selection decisions. This reduces reliance on the fixed-policy interaction distribution used for offline classification. Nevertheless, both classification strategies optimize the same opponent-identification objective. Even when the clas-sifier accurately estimates the opponent’s rationality level, selecting the corresponding pretrained best response need not maximize the hero’s expected return. Moreover, on-policy classifier adaptation does not directly address the distribution shifts encountered by the pretrained expert policies themselves. 
+
+B. Reinforcement-Learning-Based Orchestration 
+
+Classification-based orchestration uses opponent identifica-tion as an intermediate step for selecting pretrained policies. We alternatively consider learning an orchestrator that directly optimizes the hero’s expected discounted return. Let μϕ : H → ∆( {1, . . . , K + 1 }) denote a history-dependent orchestrator parameterized by ϕ. At each time step t, the orchestrator selects an expert according to It ∼
+
+μϕ(· | ht).
+
+Require: Policy libraries T , ¯T ; opponent distribution W;buffer capacity C; training iterations NDAgger ; training epochs E.
+
+Ensure: Trained classifier qψ . 
+
+> 1:
+
+Initialize classifier parameters ψ and buffer D ← ∅ . 
+
+> 2:
+
+for n = 1 , . . . , N DAgger do  
+
+> 3:
+
+Sample adversary level L ∼ W . 
+
+> 4:
+
+Initialize a new episode against ¯πL. 
+
+> 5:
+
+while episode has not terminated do  
+
+> 6:
+
+Observe hero history ht. 
+
+> 7:
+
+Estimate opponent level: 
+
+ˆkt ∈ arg max  
+
+> k
+
+qψ (k | ht). 
+
+> 8:
+
+Select expert It = ˆkt + 1 . 
+
+> 9:
+
+Execute at ∼ πIt (· | ht). 
+
+> 10:
+
+Append (ht, L ) to D, evicting the oldest entries if |D| > C . 
+
+> 11:
+
+end while  
+
+> 12:
+
+for e = 1 , . . . , E do  
+
+> 13:
+
+Sample minibatches (h, k ) ∼ D . 
+
+> 14:
+
+Update ψ by gradient descent on − log qψ (k | h). 
+
+> 15:
+
+end for  
+
+> 16:
+
+end for  
+
+> 17:
+
+return qψ .Fig. 1: On-policy opponent classifier training using DAgger-style dataset aggregation. The selected expert subsequently determines the hero’s action: at ∼ πIt (· | ht). As defined in (1), the resulting hero policy is πμϕ (a | h) = PK+1  
+
+> i=1
+
+μϕ(i | h)πi(a | h).
+
+We optimize the orchestrator parameters by maximizing the expected discounted return over the distribution of adversary levels: 
+
+max 
+
+> ϕK
+
+X
+
+> k=0
+
+W(k)J(πμϕ , ¯πk). (8) This objective corresponds to the general orchestration problem introduced in (2), restricted to the parameterized orchestrator class {μϕ}.We formulate this optimization as a reinforcement learning problem in which the orchestrator’s action space consists of the available pretrained experts. During training, an adversary level is sampled from 
+
+W at the beginning of each episode and remains fixed throughout the interaction. The orchestrator observes the hero’s interaction history, selects an expert, and receives the rewards resulting from the interaction. The pretrained expert policies remain fixed, and only the orchestrator parameters are updated. Unlike classification-based orchestration, this approach does not explicitly optimize opponent-identification accuracy. Instead, the orchestrator learns policy-selection decisions from their effects on cumulative reward. Training the orchestrator on trajectories generated by its own policy-selection decisions also exposes it to the Fig. 2: Partially observable pursuit–evasion environment. Pink stars denote possible evader origin and destination locations. The HLP, LLP, and EDR are shown by a blue diamond, blue triangle, and red triangle, respectively. Shaded regions denote their fields of view. Gray, orange, yellow, and green cells correspond to obstacle Types I–IV. interaction distributions induced by dynamic switching. Thus, reinforcement-learning-based orchestration (RLBO) provides an alternative mechanism for addressing opponent uncertainty and adapting policy selection to the consequences of previously deployed experts. IV. C ASE STUDY ON PURSUIT -E VASION GAMES 
+
+We evaluate the orchestrators of Section II-C in a partially-observable pursuit-evasion game involving a team of two pursuers (the hero) and one evader (the adversary). We design the environment to capture features central to the study of this orchestration problem. The evader’s reasoning level must be inferred through interaction and obstacles make visibility intermittent, so policy selection affects both pursuer and evader state, as well as the information available for later decisions. 
+
+A. Environment and Information Structure 
+
+The pursuer team consists of two heterogeneous agents: a 
+
+High-Level Pursuer (HLP) and a Low-Level Pursuer (LLP). The HLP operates above the buildings and is equipped with a downward-facing camera, providing a relatively large field of view. The LLP operates at the same altitude as the evader (EDR) and is equipped with a forward-facing camera. Its field of view is smaller, but it can observe regions that are occluded from the HLP. The LLP is also the pursuer capable of intercepting the EDR. The two pursuers communicate throughout the episode. In particular, they share their positions, headings, and any available information about the current or previously observed location of the EDR. Hence, although sensing is decentralized, we model the HLP and LLP as a single pursuer team with a shared observation history and objective. We model the environment as a two-dimensional grid 
+
+G = [ N ] × [N ]. Obstacles impose both motion and visibility constraints. Let GI , GII , GIII , GIV ⊆ G denote the four obstacle classes. Their accessibility and visibility properties are:  
+
+> •
+
+Type I: inaccessible and non-viewable to all agents;  
+
+> •
+
+Type II: accessible and viewable only to the EDR;  
+
+> •
+
+Type III: accessible only to the EDR and viewable by the LLP and EDR;  
+
+> •
+
+Type IV: accessible and viewable by the LLP and EDR. As such, the feasible position sets of the three agents are 
+
+GHLP = G, GLLP = G \ (GI ∪ G II ∪ G III ) , GEDR = G \G I .
+
+At time t, let ptHLP , ptLLP , and ptEDR denote the posi-tions of the HLP, LLP, and EDR, respectively. The LLP and EDR additionally have orientations ϕtLLP , ϕ tEDR ∈{0◦, 90 ◦, 180 ◦, 270 ◦}. The orientation of the HLP is omitted because its camera is downward-facing. Each agent has a time-varying field of view, denoted by 
+
+FtHLP , FtLLP , and FtEDR . These are determined by the agent positions, orientations, sensing ranges, and obstacle-induced occlusions. A grid cell is visible to an agent only if the line segment connecting the agent to the cell is not intersected by an obstacle that blocks visibility for that agent. This produces the occluded sensing regions illustrated in Figure 2. 
+
+B. POMG Instantiation 
+
+We instantiate the POMG introduced in Section II by treating the pursuer team as the hero and the EDR as the adversary. The joint pursuer policy and evader policy are denoted by π = ( πHLP , π LLP ) , ¯π = πEDR . At each timestep, the pursuer team and evader chooses their desired positions and headings, which serves as their actions. Each agent is subsequently moved toward its selected target using an A* path planner, constrained by a set speed. The pursuer observation contains the positions and sens-ing regions of both pursuers together with the evader state whenever the evader is visible to either pursuer: 
+
+ot = {F tHLP , FtLLP , p tHLP , p tLLP , ϕ tLLP , (ptEDR , ϕ tEDR )
+
+1{ptEDR ∈ F tHLP ∪ F tLLP }} .
+
+Let g denote the EDR’s origin–destination pair: 
+
+g : (gorigin , g destination ) ∈ G × G . Unlike the pursuer team, the EDR observes g. Its observation is ¯ot =
+
+{F tEDR , p tEDR , ϕ tEDR , g, ∪j∈{ HLP ,LLP }(ptj , ϕ tj )1{ptj ∈FtEDR }} .
+
+The pursuer team seeks to intercept the evader before it reaches its destination, while the evader seeks to reach its destination without being intercepted. 
+
+a) Reward and termination: The reward for both agents is a sparse terminal reward, capture, 1[ptLLP = ptEDR ], for the pursuer team and reaching the destination, 1[ptEDR =
+
+gdestination ], for the evader. The episode terminates either when the evader reaches its destination, is captured by LLP, or max steps has been exceeded. This partially observable environment is useful for study-ing dynamic policy orchestration because different expert-selection decisions can produce different physical states and observation histories. Hence, an expert that is effective when deployed from the initial-state distribution need not remain the best continuation policy after an arbitrary sequence of previously deployed experts. 
+
+C. Bounded-Rational Policy Library 
+
+We construct the pursuer and evader policy libraries according to the level-k framework described in Section II-B. Starting from prescribed level-0 policies, successive policies are trained as approximate best responses to the preceding opponent level using PPO [17]. This produces the libraries 
+
+T = {π1, . . . , π K+1 }, ¯T = {¯π0, . . . , ¯πK }.
+
+At test time, the evader level L ∼ W is sampled at the start of an episode and remains fixed throughout the episode. The pursuer team does not observe L and must select among pretrained experts πi ∈ T using its interaction history. 
+
+D. Orchestration Methods and Baselines 
+
+We compare the classification-based and reinforcement-learning-based orchestration methods introduced in Section II-C, CBO-Off, CBO-On, and RLBO, together with two additional baselines. 
+
+a) Primitive Action Policy (PAP): To determine whether restricting the pursuer to the pretrained expert library sac-rifices substantial performance, we train a primitive action policy directly against the distribution over evader levels. The policy satisfies πPAP (· | h) ∈ ∆( A), and is trained to maximize PKk=0 W(k)J(πPAP , ¯πk). PAP therefore provides an unconstrained primitive-action RL baseline against which the performance of expert orchestration can be compared. 
+
+b) Time-Delayed Oracle (TDO).: Finally, we introduce a time-delayed oracle to study whether revealing the true op-ponent level is sufficient to make its corresponding pretrained best response effective after an arbitrary interaction prefix. Let L denote the true evader level and let ICBO  
+
+> t
+
+denote the expert selected by a chosen classification-based orchestrator. For a delay d, the TDO selects 
+
+ITDO  
+
+> t
+
+=
+
+(
+
+ICBO  
+
+> t
+
+, t < d, L + 1 , t ≥ d. (9) The resulting primitive action is sampled according to at ∼
+
+πITDO  
+
+> t
+
+(· | ht).
+
+When d = 0 , the true evader level is known from the beginning of the episode and the corresponding pretrained best response is deployed throughout. Increasing d allows the system to evolve under another orchestrator before revealing the true evader level. Comparing performance across values of 
+
+d therefore tests whether the originally paired best-response expert remains an effective continuation policy after histories generated by other experts. 
+
+E. Analysis 
+
+We evaluate the orchestration methods along three dimen-sions. First, we compare their overall performance and training efficiency. Second, we investigate why classification-based orchestration underperforms, separating errors due to classifier distribution shift from the more fundamental limitation of selecting the pretrained best response associated with the inferred opponent level. Finally, we verify that the level-k
+
+policy library contains specialized and behaviorally distinct policies, so that policy orchestration is meaningful in the considered environment. 
+
+Fig. 3: Expected discounted return across orchestration strategies. 
+
+1) Experimental Setup: Before presenting results, we summarize our experimental configuration. All experiments use the 25 × 25 pursuit-evasion environment described in Section V, with episodes capped at 100 timesteps and discount factor γ = 0 .99 . We construct the bounded-rational policy library with K=8 using Algorithm 1: each level is obtained by perturbing the previous one within an L2 ball of radius 
+
+ηpursuer = ηevader = 0 .05 before training against it, the level-0 evader mixture is taken over N =10 weights between πA∗
+
+and πrandom , and each of the resulting 17 best-response stages (9 pursuer, 8 evader) is trained independently for 2.0 × 10 7
+
+environment steps with PPO. PAP, RLBO’s meta-controller, and both CBOs are then trained under a matched budget of 4.0 × 10 7 environment steps, collected in batches of 250 parallel environments over 100 steps per iteration. All level-k,PAP, and RLBO policies share an LSTM actor-critic with hidden size 64 and a [64 , 32 , 16] ReLU head, optimized with Adam (lr = 3 × 10 −4) under standard PPO hyperparameters (λGAE = 0 .95 , clip ϵ = 0 .2, entropy coefficient 5 × 10 −3,value coefficient 0.5, 10 epochs per update, sub-batch size 
+
+50 ,000 ); RLBO’s meta-controller differs only in using a categorical head over the K+1=9 pretrained pursuer levels in place of PAP’s continuous action space. CBO-On’s classifier shares the same [64 , 32 , 16] ReLU architecture and is trained via DAgger over a FIFO buffer of 200 ,000 labeled transitions, with 5 supervised epochs per rollout batch, to the same 
+
+4.0 × 10 7-step budget; CBO-Off instead trains once over a fixed dataset collected from all (K+1) × K policy pairs (500 environments × 100 steps each), for 50 epochs. 
+
+2) Overall Performance: Figure 3 compares the expected discounted return of RLBO, the offline classification-based orchestrator (CBO-Off), the on-policy classification-based orchestrator (CBO-On), and random expert selection. RLBO achieves the highest return among the orchestration methods, outperforming CBO-On by 11 .2% and CBO-Off by 19 .8%. CBO-On also improves substantially over CBO-Off, suggest-ing that adapting the classifier to histories generated by its own policy-selection decisions is beneficial. We compare RLBO with the primitive-action policy (PAP), which learns directly over the underlying action space rather than selecting among pretrained experts. As shown in Figure 4, Fig. 4: Expected discounted return as a function of orches-tration training timesteps. 
+
+Fig. 5: Opponent-level classification accuracy as a function of trajectory timestep. RLBO reaches comparable final performance while requiring 
+
+60 % fewer training timesteps during orchestration training. Although Fig. 4 omits the sample cost of training level-k policies, the comparison is appropriate, as both methods optimize over the same level-k population, so the recursive computation cost is shared. This suggests that the pretrained level-k policies provide a useful behavioral prior, allowing the orchestrator to search over a structured set of high-level behaviors rather than learning the underlying pursuit strategy entirely from scratch. 
+
+3) Diagnosing Classification-Based Orchestration: We first examine whether the performance gap between CBO-Off and CBO-On can be explained by classifier distribution shift. Figure 5 reports opponent-level classification accuracy as a function of trajectory length. CBO-On consistently achieves higher accuracy than CBO-Off. Moreover, its accuracy generally increases as additional interaction history becomes available, whereas the accuracy of the offline classifier begins to decrease after approximately five timesteps. The difference is consistent with the distribution mismatch induced by dynamic policy selection. The offline classifier is trained on histories generated by fixed policy pairs, whereas CBO-On is trained on histories generated by its own policy-selection decisions. The improved classification accuracy of CBO-On, together with its improved return in Figure 3, shows that correcting this mismatch improves classification-based orchestration. 
+
+Fig. 6: Frequency with which RLBO selects the expert originally trained as a best response to the true opponent level. The dashed line denotes uniform random expert selection. However, improved opponent identification does not close the performance gap with RLBO. We therefore ask whether the remaining gap comes from a more fundamental assump-tion of CBO: that identifying the opponent level should be followed by deploying the pretrained policy originally constructed as its best response, a challenge recognized by 
+
+(C1) .Figure 6 reports how frequently RLBO selects the expert paired with the true opponent level. Despite achieving the highest orchestration return, RLBO selects this paired expert only intermittently and, at later timesteps, at a rate comparable to or below uniform random selection. This observation does not by itself imply that the pretrained best-response policies are ineffective. Each expert is trained as a best response when deployed from the initial-state distribution. Dynamic orchestration, however, may bring the system to histories and states outside the distribution seen in original expert training. The expert paired with the true opponent level therefore need not provide the best continuation behavior from such histories, a challenge recognized by (C2) .We test this hypothesis using the Time-Delayed Oracle (TDO). For the first d timesteps, the system evolves according to a non-oracle orchestration strategy. At timestep d, the true opponent level is revealed and the corresponding pretrained best-response expert is deployed for the remainder of the episode. Figure 7 shows that TDO performance deteriorates rapidly as the reveal time d increases. For sufficiently large delays, even perfect knowledge of the opponent level followed by its paired best response performs below RLBO. Together, Figures 6 and 7 suggest that the limitation of classification-based orchestration is not solely opponent misclassification. The correspondence between an opponent level and its pretrained best response is defined with respect to deployment from the initial-state distribution. After a history generated by other experts, this correspondence may no longer identify the expert with the highest continuation value. RLBO avoids imposing this level-to-expert mapping and instead learns expert-selection decisions directly from their effect on cumulative reward. Fig. 7: Expected discounted return of the Time-Delayed Oracle as a function of the opponent-level reveal time. 
+
+Fig. 8: Pursuer win rates for different pursuer–evader policy pairs. 
+
+4) Expert Specialization and Diversity: Finally, we verify that the performance differences above are not an artifact of an uninformative expert library. We first examine the pairwise performance of the level-k policies when deployed from the beginning of an episode. Figure 8 shows substantial variation across pursuer–evader policy pairs. In particular, the experts constructed as approximate best responses achieve higher win rates against their corresponding opponent policies than the alternative experts, with an average improvement of 32%. Thus, the level-k construction produces meaningful special-ization: the identity of the deployed pursuer policy matters when responding to a fixed evader policy. We quantify behavioral diversity through the pairwise total variation distance (TVD) between the pursuer policies’ action distributions. For histories encountered under RLBO, CBO-On, CBO-Off, and random orchestration, we find the mean pairwise TVD is 0.55 with a standard deviation of 0.024 ,indicating that the experts induce different action distributions on the histories encountered during orchestration. Together, the win-rate and TVD analyses show that the policy library contains specialized and distinct experts. The performance advantage of RLBO therefore arises in a setting where selecting among experts is consequential, rather than from a library of similar, interchangeable policies. V. C ONCLUSION 
+
+We study bounded-rational policy orchestration in partially-observable games. We present classification-based orches-tration (CBO) and analyze its conceptual challenges with distribution shifts. We then propose reinforcement-learning-based orchestration (RLBO) to overcome such challenges in the tested setting. We formulate a pursuit-evasion case study to empirically study their differences. We show RLBO outperforms CBO due to these challenges. While performant, RLBO is more difficult to train. Thus, future work will explore efficient orchestration and performance bounds. REFERENCES [1] H. A. Simon, “A behavioral model of rational choice,” The Quarterly Journal of Economics , vol. 69, no. 1, pp. 99–118, 1955. [2] ——, Models of Bounded Rationality: Empirically Grounded Economic Reason . MIT Press, 1997, vol. 3. [3] D. O. Stahl and P. W. Wilson, “On players’ models of other players: Theory and experimental evidence,” Games and Economic Behavior ,vol. 10, no. 1, pp. 218–254, 1995. [4] R. Nagel, “Unraveling in guessing games: An experimental study,” The American Economic Review , vol. 85, no. 5, pp. 1313–1326, 1995. [5] C. F. Camerer, T.-H. Ho, and J.-K. Chong, “A cognitive hierarchy model of games,” The Quarterly Journal of Economics , vol. 119, no. 3, pp. 861–898, 2004. [6] N. Li, D. W. Oyler, M. Zhang, Y. Yildiz, I. Kolmanovsky, and A. R. Girard, “Game theoretic modeling of driver and vehicle interactions for verification and validation of autonomous vehicle control systems,” 
+
+IEEE Transactions on Control Systems Technology , vol. 26, no. 5, pp. 1782–1797, 2018. [7] S. Li, N. Li, A. Girard, and I. Kolmanovsky, “Decision making in dynamic and interactive environments based on cognitive hierarchy theory, bayesian inference, and predictive control,” in 2019 IEEE 58th Conference on Decision and Control (CDC) . IEEE, 2019, pp. 2181– 2187. [8] R. Tian, L. Sun, M. Tomizuka, and D. Isele, “Anytime game-theoretic planning with active reasoning about humans’ latent states for human-centered robots,” in 2021 IEEE International Conference on Robotics and Automation (ICRA) . IEEE, 2021, pp. 4509–4515. [9] N.-M. T. Kokolakis, A. Kanellopoulos, and K. G. Vamvoudakis, “Bounded rational unmanned aerial vehicle coordination for adversarial target tracking,” in 2020 American Control Conference (ACC) . IEEE, 2020, pp. 2508–2513. [10] Y. Guan, D. Maity, C. M. Kroninger, and P. Tsiotras, “Bounded-rational pursuit-evasion games,” in 2021 American Control Conference (ACC) .IEEE, 2021, pp. 3216–3221. [11] N.-M. T. Kokolakis and K. G. Vamvoudakis, “Bounded rational dubins vehicle coordination for target tracking using reinforcement learning,” 
+
+Automatica , vol. 149, p. 110732, 2023. [12] T.-H. Ho, S.-E. Park, and X. Su, “A bayesian level-k model in n-person games,” Management Science , vol. 67, no. 3, pp. 1622–1638, 2021. [13] H. He, J. Boyd-Graber, K. Kwok, and H. Daumé, III, “Opponent modeling in deep reinforcement learning,” in Proceedings of the 33rd International Conference on Machine Learning , ser. Proceedings of Machine Learning Research, vol. 48. PMLR, 2016, pp. 1804–1813. [Online]. Available: https://proceedings.mlr.press/v48/he16.html [14] B. Rosman, M. Hawasly, and S. Ramamoorthy, “Bayesian policy reuse,” Machine Learning , vol. 104, no. 1, pp. 99–127, 2016. [Online]. Available: https://doi.org/10.1007/s10994-016-5547-y [15] S. Ross, G. Gordon, and D. Bagnell, “A reduction of imitation learning and structured prediction to no-regret online learning,” in 
+
+Proceedings of the Fourteenth International Conference on Artificial Intelligence and Statistics , ser. Proceedings of Machine Learning Research, vol. 15. PMLR, 2011, pp. 627–635. [Online]. Available: https://proceedings.mlr.press/v15/ross11a.html [16] ——, “A reduction of imitation learning and structured prediction to no-regret online learning,” in Proceedings of the Fourteenth International Conference on Artificial Intelligence and Statistics (AISTATS) , ser. Proceedings of Machine Learning Research, vol. 15. Fort Lauderdale, FL, USA: PMLR, 2011, pp. 627–635. [Online]. Available: https://proceedings.mlr.press/v15/ross11a.html [17] J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, “Prox-imal policy optimization algorithms,” arXiv preprint arXiv:1707.06347 ,2017.

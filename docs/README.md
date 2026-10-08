@@ -6,84 +6,83 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-10-06
-- 运行时间：2026-10-07 00:00:06 UTC
+- 最新运行日期：2026-10-07
+- 运行时间：2026-10-08 00:05:30 UTC
 - 运行状态：成功
 - 本次总论文数：21
 - 精读区：8
 - 速读区：13
 
 ### 今日简报（AI）
-1）今天扫完21篇论文，精读8篇、速读13篇，安全强化学习与安全控制成为最亮主线。
-2）最值得看两篇9.0精读：
-- 详情：[/202610/06/README](/202610/06/README)
+2026-10-07 日报精选 21 篇，精读 8 篇、速读 13 篇，重点聚焦安全采样控制与动态避障。最值得看的是两篇 9.0 分工作：Exact-Safe MPPI 用非光滑控制障碍函数提升采样安全性，SC3BF 用移位碰撞锥实现动态障碍避让。普通读者可优先从这两篇入手，再结合 7.0 分的多智能体流策略与安全 MPC 速读扩展视野。
+- 详情：[/202610/07/README](/202610/07/README)
 
 ### 精读区论文标签
-1. [DODGER: Safety-Guided Reinforcement Learning for Robot Navigation Among Dynamic Obstacles](/202610/06/2609.38873v2-dodger-safety-guided-reinforcement-learning-for-robot-navigation-among-dynamic-obstacles)  
+1. [Exact-Safe MPPI: Safety-Aware Sampling with Nonsmooth Control Barrier Functions](/202610/07/2610.07369v1-exact-safe-mppi-safety-aware-sampling-with-nonsmooth-control-barrier-functions)  
    标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：基于控制屏障函数的强化学习安全导航
-2. [Barrier-Shaped Recurrent Reinforcement Learning for Autonomous Landing on a Heaving Ship Deck](/202610/06/2610.03924v1-barrier-shaped-recurrent-reinforcement-learning-for-autonomous-landing-on-a-heaving-ship-deck)  
+   evidence：基于控制屏障函数的二次规划实现安全MPPI规划与控制
+2. [SC3BF: Shifted Collision Cone Control Barrier Function for Dynamic Obstacle Avoidance](/202610/07/2610.08332v1-sc3bf-shifted-collision-cone-control-barrier-function-for-dynamic-obstacle-avoidance)  
    标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：结合控制屏障函数停靠裕度的循环强化学习无人机着舰
-3. [GJK-CBF: Control Barrier Functions for Convex Rigid Body Collision Avoidance on SE(3)](/202610/06/2610.04910v1-gjk-cbf-control-barrier-functions-for-convex-rigid-body-collision-avoidance-on-se3)  
+   evidence：用于动态避障的平移碰撞锥控制屏障函数
+3. [LBA-CBF: Rapidly Adaptive Safety Filters via Parallel Dynamics Inference](/202610/07/2610.08765v1-lba-cbf-rapidly-adaptive-safety-filters-via-parallel-dynamics-inference)  
    标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：控制屏障函数用于碰撞避免
-4. [Backup Control Barrier Functions with Memory for Online Set Expansion](/202610/06/2610.05381v1-backup-control-barrier-functions-with-memory-for-online-set-expansion)  
-   标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：用于安全集的备份控制屏障函数
-5. [Neural Barriers: An Online Certifiable Learning-enhanced Adaptive High Order Safety Critical Control](/202610/06/2610.05542v1-neural-barriers-an-online-certifiable-learning-enhanced-adaptive-high-order-safety-critical-control)  
-   标签：评分：9.0/10、query:safe-rl-cbf
-   evidence：面向飞行器的可认证自适应控制屏障函数
-6. [Feedback Dominance Analysis for Pursuit-Evasion Games on Graphs](/202610/06/2610.06186v1-feedback-dominance-analysis-for-pursuit-evasion-games-on-graphs)  
-   标签：评分：9.0/10、query:multi-agent
-   evidence：追逃博弈的支配区域分析
-7. [Filter-Aware Fine-Tuning for Safe Humanoid Whole-Body Tracking](/202610/06/2610.02341v1-filter-aware-fine-tuning-for-safe-humanoid-whole-body-tracking)  
+   evidence：自适应控制屏障函数安全滤波器
+4. [Safe Leader-Follower Density Control via Higher-Order Mean-Field Control Barrier Functions](/202610/07/2610.04733v1-safe-leader-follower-density-control-via-higher-order-mean-field-control-barrier-functions)  
    标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：面向强化学习跟踪策略的控制屏障函数安全滤波器
-8. [A Unified Dynamics Framework for Reinforcement Learning and Classical Control of a Six-DOF Pipeline-Tracking ROV in NVIDIA Isaac Sim](/202610/06/2610.04949v1-a-unified-dynamics-framework-for-reinforcement-learning-and-classical-control-of-a-six-dof-pipeline-tracking-rov-in-nvidia-isaac-sim)  
-   标签：评分：8.0/10、query:ocean-robot
-   evidence：六自由度ROV的强化学习与经典控制
+   evidence：用于安全滤波器的高阶平均场控制屏障函数
+5. [Safe Ergodic Control for Multi-Robot Systems via Quadratic Programming](/202610/07/2610.05258v1-safe-ergodic-control-for-multi-robot-systems-via-quadratic-programming)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：在二次规划中使用时变控制屏障函数约束的安全控制
+6. [Reachability-Aware Diffusion Policy Optimization](/202610/07/2610.05969v1-reachability-aware-diffusion-policy-optimization)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：结合可达性与成本预算的安全强化学习
+7. [Model Predictive Control for Safety-Critical Systems Using Taylor's Theorem with Lagrange Remainder](/202610/07/2610.06976v1-model-predictive-control-for-safety-critical-systems-using-taylors-theorem-with-lagrange-remainder)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：基于控制屏障函数的安全关键MPC
+8. [Micro Neural Policies for Safe Real-Time Robotic Control](/202610/07/2610.08541v1-micro-neural-policies-for-safe-real-time-robotic-control)  
+   标签：评分：8.0/10、query:safe-rl-cbf
+   evidence：嵌入式设备上的安全实时神经策略控制
 
 ### 速读区论文标签
-1. [Accelerated Safe Gradient Flow](/202610/06/2610.02433v1-accelerated-safe-gradient-flow)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：二阶控制屏障函数二次规划
-2. [Safe Receding-Horizon Control of Fixed-Wing Aircraft Using Constrained Approximate Dynamic Programming](/202610/06/2610.06284v1-safe-receding-horizon-control-of-fixed-wing-aircraft-using-constrained-approximate-dynamic-programming)  
-   标签：评分：8.0/10、query:safe-rl-cbf
-   evidence：面向固定翼飞机的复合软最小值控制屏障函数安全滚动时域控制
-3. [Fully Decentralized and Safety-Aware Multi-Agent Reinforcement Learning for Control on Networks](/202610/06/2609.36292v1-fully-decentralized-and-safety-aware-multi-agent-reinforcement-learning-for-control-on-networks)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：安全的全分布式多智能体强化学习控制
-4. [Multifunctional Locomotion Control of Multi-Jointed BURs with Swimming and gait Capabilities](/202610/06/2609.37086v1-multifunctional-locomotion-control-of-multi-jointed-burs-with-swimming-and-gait-capabilities)  
-   标签：评分：7.0/10、query:ocean-robot
-   evidence：仿生水下机器人的多模态运动控制
-5. [Cascaded consensus splitting for multi-branch contingency games](/202610/06/2609.37612v1-cascaded-consensus-splitting-for-multi-branch-contingency-games)  
+1. [Flowing Faster to Coordinate: One-Step Online Multi-Agent Flow Policies](/202610/07/2610.01882v1-flowing-faster-to-coordinate-one-step-online-multi-agent-flow-policies)  
    标签：评分：7.0/10、query:multi-agent
-   evidence：多智能体应急博弈与意图不确定性
-6. [Non-Holonomic Gradient Play: Leafwise Nash Equilibria, Stability, and Deception](/202610/06/2609.38051v1-non-holonomic-gradient-play-leafwise-nash-equilibria-stability-and-deception)  
-   标签：评分：7.0/10、query:multi-agent
-   evidence：多智能体博弈学习动力学与纳什均衡
-7. [Communication-aware Synthesis of Safe Controllers for Discrete-Time Linear Multi-Agent Systems with Distributed k-Hop Observation](/202610/06/2610.00925v1-communication-aware-synthesis-of-safe-controllers-for-discrete-time-linear-multi-agent-systems-with-distributed-k-hop-observation)  
+   evidence：一步在线多智能体强化学习流策略
+2. [Reachability-Guided Sequential Quadratic Programming-Guarded Model Predictive Path Integral for Safe Nonlinear Predictive Control](/202610/07/2610.04406v1-reachability-guided-sequential-quadratic-programming-guarded-model-predictive-path-integral-for-safe-nonlinear-predictive-control)  
    标签：评分：7.0/10、query:safe-rl-cbf
-   evidence：多智能体系统通信感知安全控制器综合
-8. [Test-time Multi-agent Coordination by Decomposed Value Gradient Flow](/202610/06/2610.02554v1-test-time-multi-agent-coordination-by-decomposed-value-gradient-flow)  
+   evidence：可达性引导的安全非线性预测控制
+3. [Approximate Feedback Nash Equilibria in Constrained Differential Games via Model Predictive Control with Upper Bound Guarantees](/202610/07/2610.04614v1-approximate-feedback-nash-equilibria-in-constrained-differential-games-via-model-predictive-control-with-upper-bound-guarantees)  
    标签：评分：7.0/10、query:multi-agent
-   evidence：离线多智能体强化学习协调
-9. [Risk-Aware Input-Constrained Safe Intercept Guidance Against Multiple Moving Defenders](/202610/06/2610.03681v1-risk-aware-input-constrained-safe-intercept-guidance-against-multiple-moving-defenders)  
+   evidence：约束微分博弈中的近似反馈纳什均衡求解
+4. [FoSeRL: Formal Sequential Robustness Certification for Reinforcement Learning Policies](/202610/07/2610.04754v1-foserl-formal-sequential-robustness-certification-for-reinforcement-learning-policies)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：认证强化学习策略的鲁棒性
+5. [Orchestrating Level-$K$ Policies Against Unknown Opponents in Partially-Observable Dynamic Games](/202610/07/2610.04937v1-orchestrating-level-k-policies-against-unknown-opponents-in-partially-observable-dynamic-games)  
    标签：评分：7.0/10、query:multi-agent
-   evidence：针对多防御者的风险感知安全拦截制导
-10. [MAS-OPD: On-Policy Distillation for Multi-agent Systems](/202610/06/2609.34234v1-mas-opd-on-policy-distillation-for-multi-agent-systems)  
+   evidence：动态博弈中针对未知对手的Level-K策略编排
+6. [End-to-End Safe Social Navigation via Multi-Task Reinforcement Learning and Probabilistic Perception](/202610/07/2610.05733v1-end-to-end-safe-social-navigation-via-multi-task-reinforcement-learning-and-probabilistic-perception)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：自主导航安全控制
+7. [End-to-End Safe Social Navigation via Multi-Task Reinforcement Learning and Probabilistic Perception](/202610/07/2610.05733v2-end-to-end-safe-social-navigation-via-multi-task-reinforcement-learning-and-probabilistic-perception)  
+   标签：评分：7.0/10、query:safe-rl-cbf
+   evidence：面向自主系统的端到端安全强化学习导航
+8. [Regularized policy gradient with learned mixtures of Gaussians for games with continuous actions](/202610/07/2609.36787v1-regularized-policy-gradient-with-learned-mixtures-of-gaussians-for-games-with-continuous-actions)  
    标签：评分：6.0/10、query:multi-agent
-   evidence：用同策略蒸馏联合后训练多智能体系统
-11. [Cooperative Multi-Agent Vision-Language-Action Models via Reinforced Fine Tuning](/202610/06/2609.36588v1-cooperative-multi-agent-vision-language-action-models-via-reinforced-fine-tuning)  
-   标签：评分：6.0/10、query:multi-agent
-   evidence：协作式多智能体的强化微调
-12. [Video2SwimFish: An Automated Pipeline for Reconstructing Controllable Fish Models and Biological Locomotion from Real Fish Videos](/202610/06/2609.38966v1-video2swimfish-an-automated-pipeline-for-reconstructing-controllable-fish-models-and-biological-locomotion-from-real-fish-videos)  
+   evidence：面向连续动作对抗博弈的可扩展策略梯度算法
+9. [Social-WM: Safety-Aware Latent World Models for Robot Social Navigation](/202610/07/2609.40177v2-social-wm-safety-aware-latent-world-models-for-robot-social-navigation)  
    标签：评分：6.0/10、query:ocean-robot
-   evidence：水下具身智能，从视频重建可控鱼模型与运动
-13. [After Cooperation Is Learned: Gradient Routing and Optimizer-Dependent Maintenance in Multi-Agent Reinforcement Learning](/202610/06/2610.01630v1-after-cooperation-is-learned-gradient-routing-and-optimizer-dependent-maintenance-in-multi-agent-reinforcement-learning)  
-   标签：评分：6.0/10、query:multi-agent
-   evidence：合作式多智能体强化学习策略维持
+   evidence：面向机器人社交导航的安全感知隐世界模型
+10. [Reliability-aware short-term roll prediction for unmanned surface vehicles via multi-task learning and adaptive centralization](/202610/07/2610.00996v1-reliability-aware-short-term-roll-prediction-for-unmanned-surface-vehicles-via-multi-task-learning-and-adaptive-centralization)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：面向航行安全的无人艇横摇预测
+11. [SonarVoxNet: Diver Detection in 3D Bounding Box using 3D Sonar](/202610/07/2610.01644v1-sonarvoxnet-diver-detection-in-3d-bounding-box-using-3d-sonar)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：面向自主水下航行器的三维声呐潜水员检测
+12. [Finite-Data Safety Informativity Under Dynamic Asymmetric Actuation](/202610/07/2610.01820v1-finite-data-safety-informativity-under-dynamic-asymmetric-actuation)  
+   标签：评分：6.0/10、query:safe-rl-cbf
+   evidence：模型不确定性下的有限数据安全证书
+13. [Towards Physical Underwater Robotic Assistance for Scuba Diver Movement in Confined Spaces](/202610/07/2610.01906v1-towards-physical-underwater-robotic-assistance-for-scuba-diver-movement-in-confined-spaces)  
+   标签：评分：6.0/10、query:ocean-robot
+   evidence：辅助潜水员运动的水下可穿戴机器人
 
 
 <div class="dpr-home-promo-card">

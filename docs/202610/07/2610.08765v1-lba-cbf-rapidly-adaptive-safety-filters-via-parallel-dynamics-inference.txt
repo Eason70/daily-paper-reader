@@ -1,0 +1,711 @@
+Title: LBA-CBF: Rapidly Adaptive Safety Filters via Parallel Dynamics Inference
+
+URL Source: https://arxiv.org/pdf/2610.08765v1
+
+Published Time: Wed, 07 Oct 2026 01:59:55 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# LBA-CBF : Rapidly Adaptive Safety Filters via Parallel Dynamics Inference 
+
+Maitham F. AL-Sunni Timeea-Andreea Radu Hassan Almubarak Henry Z. Liao Michael Görner Francesco Maurelli John M. Dolan 
+
+Abstract — Control barrier functions (CBFs) certify com-mands through an assumed dynamics model, so an abrupt, un-measured regime change can undermine the certificate exactly when safety matters most. We present Look-Back Adaptive Control Barrier Functions ( LBA-CBF ), which rank a finite bank of candidate dynamics by recent prediction error over a short look-back window and enforce the high-order CBF condition against every model within a tolerance of the best, spanning best-fit adaptation to full-bank robust filtering. The dynamics may depend nonlinearly on the unknown parameters, and no switching model or continuously parameterized estimator is required. We prove that any feasible filtered input satisfies the true CBF condition whenever a safety-representative candidate is retained. In quadrotor simulation with abrupt wind reversals and an unknown payload, LBA-CBF is safe and reaches the goal from all random initial conditions, matching an oracle, while adaptive and robust baselines achieve 0–88% success. Banks of up to 250 , 000 models run inside the control loop, and Crazyflie 2.1 and F1TENTH experiments demonstrate adaptation to wind, payload release, and varying tire–road friction. Code, videos, and project details are available at: https://lla-control.github.io 
+
+I. I NTRODUCTION 
+
+A control safety filter is only as trustworthy as the dynamics model used inside its barrier condition. Control barrier functions (CBF) [1] keep the state inside a safe set with minimal deviation from a nominal controller, but certify each input through the predicted evolution of the barrier under an assumed dynamics model. An abrupt, unmeasured change of dynamics regime , such as an unknown payload, a sudden wind gust, or a change in tire–road friction, therefore undermines the filter exactly when safety matters most. Two main remedies exist. Robust CBFs certify the barrier against a fixed worst-case uncertainty set [2], which can be conservative in a way that online data cannot reduce. Adaptive and learning-based CBFs reduce this conservatism by estimating unknown parameters or model errors online, but abrupt regime changes must be absorbed through an esti-mation transient. Robust adaptive CBFs combine adaptation 
+
+M. F. AL-Sunni is with the Department of Electrical & Computer Engineering, Carnegie Mellon University, Pittsburgh, PA, USA. Email: 
+
+malsunni@andrew.cmu.edu 
+
+T. Radu, M. Görner, and F. Maurelli are with the School of Computer Science & Engineering, Constructor University, Bremen, Germany. Email: 
+
+{tradu,migoerner,fmaurelli}@constructor.university 
+
+H. Almubarak is with the Control & Instrumentation Engineering De-partment, King Fahd University of Petroleum and Minerals, Dhahran, Saudi Arabia. Email: halmubarak@kfupm.edu.sa 
+
+H. Z. Liao and J. M. Dolan are with the Robotics Institute, Carnegie Mellon University, Pittsburgh, PA, USA. Email: 
+
+{hzl,jdolan}@andrew.cmu.edu Safe Controller Look-Back Rapid Adaptation  
+
+> Robot
+> Pass the plausible set Parallel Rollouts Actual Robot
+> Sim
+> Simulation Environments Windowed Error
+> One-step Predictions
+> Parallel Physics Stepping
+> Predict Last Step
+> Nominal controller
+> Constraints hold for every plausible model Apply the safe input
+> Safety Filter
+> MoCap
+> or
+> Onboard Sensors
+> Projection
+> Safe inputs Unsafe inputs
+> Control History State History
+> Actual State Evolution
+
+Fig. 1: Overview of the LBA-CBF framework. The look-back stage ranks candidate models by recent prediction error and retains a prediction-plausible set, while the look-ahead computes a control input satisfying the CBF constraints for every retained model. 
+
+with set-based uncertainty descriptions [3], but under the standard constant-parameter formulation the admissible pa-rameter set contracts as measurements accumulate and does not re-expand when the dynamics change. Safety certification thus remains tied either to a fixed uncertainty description or to the transient of a continuously updated estimate. We propose Look-Back Adaptive Control Barrier Func-tions ( LBA-CBF ), whose architecture is illustrated in Fig. 1. Rather than committing the safety filter to a single contin-uously evolving estimate, LBA-CBF maintains a finite bank of candidate dynamics models and, at every control step, evaluates them in parallel by their prediction error over a look-back window of length W . The best-fitting model can be used directly for rapid adaptation, while a prediction-plausible set retains models whose recent errors lie within a tolerance of the minimum and enforces the CBF condition for all retained models. After W new transitions, pre-change observations no longer contribute to the residual, so the filter adapts to changes without a switching model. 
+
+A. Related Work 1) Robust and adaptive safety: CBFs have been ex-tended to high-relative-degree and discrete-time safety con-straints [4, 5]. Under model uncertainty, robust CBFs certify safety against a prescribed uncertainty set [2], while adaptive arXiv:2610.08765v1 [cs.RO] 6 Oct 2026 CBFs reduce conservatism through online parameter adapta-tion [6]. Robust adaptive CBFs (RaCBFs) combine adapta-tion with set-membership identification [3], with extensions to high-relative-degree constraints [7]. Alternatively, safety can be embedded into an adaptive controller by augmenting the parametrically uncertain dynamics with barrier states [8]. More recent approaches accommodate time-varying uncer-tainty: robust CBFs in [9] admit time-varying parameters that enter the dynamics nonlinearly and use set-membership es-timation to reduce conservatism, while [10] combines finite-time estimation of time-varying parameters with RaCBFs under a structured parameterization and bounded parameter variation. Disturbance-observer [11] and L1 [12] approaches instead estimate and compensate model mismatch through observer or adaptive dynamics. In contrast, LBA-CBF does not require a continuously parameterized estimator or an affine-in-parameter uncertainty model: it ranks a finite bank of candidate dynamics directly from recent prediction error and certifies the barrier against the dynamics hypotheses retained by the moving look-back window. 
+
+2) Switched dynamics and regime change: CBF meth-ods for hybrid and switched systems construct mode-dependent safety conditions under a specified hybrid struc-ture [13], while learning-based approaches have estimated mode-specific barrier residuals for switching systems [14]. In contrast, LBA-CBF treats the active dynamics regime as latent and infers it from recent state–action transitions without requiring known guards or a transition model. 
+
+3) Multiple-model methods: Adaptation through a finite bank of candidate dynamics is a classical multiple-model control idea [15]. More recently, multiple-model reasoning has appeared in safety-critical control: [16] combines CBF constraints with MPC for jump Markov linear systems under uncertain mode estimates, while [17] uses a supervisory multi-observer bank to estimate unknown parameters within an adaptive safety controller. Most closely related to our inference mechanism, the look-back bank of [18, 19] ranks candidate vehicle models over a short window and selects the best-fitting model for adaptive racing model predictive control (MPC). LBA-CBF instead uses the windowed predic-tion residual for safety certification, retaining the best-fitting dynamics or a prediction-plausible subset and enforcing the high-order CBF (HOCBF) against them. 
+
+B. Contributions 
+
+The main contributions of this work are:  
+
+> •
+
+Look-back adaptive safety filtering. LBA-CBF ranks a finite bank of candidate dynamics by recent prediction error and enforces the CBF condition against the best-fitting models. The parameters may enter the dynamics nonlinearly, including through the input gain, and no switching model or continuously parameterized estima-tor is required.  
+
+> •
+
+Safety guarantee and adaptive-to-robust filtering. 
+
+Every feasible LBA-CBF input satisfies the CBF condi-tion of the true dynamics whenever the retained set con-tains a safety-representative model. A finite tolerance that guarantees this exists whenever the bank contains such a model, and the same tolerance spans best-fit adaptation and full-bank robust filtering.  
+
+> •
+
+Real-time implementation and robotic validation. 
+
+A parallel JAX implementation runs banks of up to 
+
+250 , 000 models inside the control loop. In quadrotor simulation, LBA-CBF is safe and reaches the goal from all random initial conditions, outperforming adaptive and robust baselines. Experiments on a Crazyflie 2.1 and an F1TENTH race car demonstrate adaptation to wind, a swinging payload with an abrupt release, and varying tire–road friction. II. P ROBLEM FORMULATION 
+
+A. Robotic systems with changing dynamics regimes 
+
+Consider the discrete-time robotic system 
+
+xk+1 = F (xk, uk; θk) := f (xk; θk) + g(xk; θk)uk (1) where k ∈ Z≥0, xk ∈ X ⊆ Rn, uk ∈ U ⊆ Rm, and 
+
+θk ∈ Θ ⊆ Rp denote the time index, state, control input, and unobserved dynamics parameter, respectively. We assume that Θ and U are compact. 
+
+θk parametrizes F to represent the active dynamics regime of the robot. Such regimes arise from changes in payload, contact, terrain friction, or aerodynamic loading. We do not assume that the active regime is directly observed or that its evolution follows a known switching law. Moreover, 
+
+F (x, u; θ) need not be affine in the unknown parameter θ.Safety of the robot is represented by the path constraint 
+
+h : X → R, which defines the safe set 
+
+S := {x ∈ X : h(x) ≥ 0} (2) A controller is safe if every closed-loop trajectory from an admissible initial condition satisfies h(xk) ≥ 0 for all 
+
+k ∈ Z≥0, i.e., it renders S controlled invariant. 
+
+B. Discrete-time high-order control barrier functions 
+
+We use discrete-time HOCBFs to construct the safety filter, making the dependence on the dynamics parameter explicit, since the filter will evaluate this condition under different candidate models. We say that h has relative degree r ≥ 1 for (1) if the input first affects the safety function after r steps, i.e., h(xk+ℓ) is independent of the applied inputs for ℓ < r and depends on 
+
+uk for ℓ = r.
+
+Definition 1 (Discrete-time HOCBF [4, 20, 21]) . Let 
+
+α1, . . . , α r ∈ (0 , 1] . For a parameter ϑ ∈ Θ, define 
+
+ψ0(x; ϑ) := h(x) and, for q = 1 , . . . , r ,
+
+ψq (x, u; ϑ) := ψq−1
+
+ F (x, u; ϑ); ϑ − (1 − αq ) ψq−1(x; ϑ).
+
+(3) 
+
+By the relative-degree property the right-hand side is inde-pendent of u for q ≤ r − 1, so ψ1, . . . , ψ r−1 are functions of the state alone and we write ψq (x; ϑ); ψr is the first term in which the input appears. The order-r HOCBF condition at time k is 
+
+ψr (xk, u; ϑ) ≥ 0. (4) If (4) is enforced at every step and ψq (x0; ϑ) ≥ 0 for q =0, . . . , r − 1, then the safe set is forward invariant [5]. 
+
+For r = 1 , (4) reduces to the relative-degree-one discrete-time CBF condition h (F (xk, u; ϑ)) − (1 − α1)h(xk) ≥ 0.
+
+Problem. Given the uncertain system (1), the safe set S, a nominal controller unom  
+
+> k
+
+= πnom (xk) and recent observed state–action transitions, our objective is to construct a real-time safety filter that minimally modifies unom  
+
+> k
+
+while ac-counting for the unobserved and potentially changing dy-namics regime θk.III. LBA-CBF : R APIDLY ADAPTIVE SAFETY FILTERS 
+
+The proposed LBA-CBF framework consists of three stages. First, a finite bank of candidate dynamics models is constructed over the operating regimes. Second, a look-back module evaluates how well each candidate explains the most recent transitions and retains a set of prediction-plausible models. Third, the safety filter enforces the CBF condition against every retained model and returns the admissible input closest to the nominal command. 
+
+A. Finite dynamics model bank 
+
+Let ΘB := {θ1, . . . , θM } ⊆ Θ be a finite bank of candidate parameter values. Each θj induces a candidate transition map, yielding the finite family of dynamics models 
+
+B := F (x, u; θj ) Mj=1 = F j (x, u) Mj=1 . (5) The bank may be constructed from physically meaningful pa-rameter ranges, system-identification results, expert-designed operating modes, simulation-based domain randomization, or other finite collections of candidate dynamics. In our experiments, we use structured grids over prescribed param-eter ranges because they provide simple and reproducible coverage of the operating regimes. However, the LBA-CBF 
+
+construction itself requires only a finite candidate bank and is not tied to a particular sampling strategy. 
+
+B. Look-back model plausibility 
+
+At every control step, the bank produces one-step predic-tions in parallel from the measured previous transition: the pair (xk−1, uk−1) is broadcast to all M candidate models and stepped in one batched evaluation, 
+
+Bk = F j (xk−1, uk−1) Mj=1 =
+
+nexjk
+
+oMj=1 
+
+, (6) where Bk is the bank evaluated at step k and exjk is the pre-diction of candidate j. Once xk is measured, each candidate is scored by its quadratic one-step prediction error 
+
+ejk := xk − exjk
+
+> 2Λk
+
+= ( xk − exjk)⊤Λk(xk − exjk). (7) Here Λk is diagonal with positive entries and weights each state by its recent innovation scale, so that dimensions with different units contribute comparably; Λk = I recovers the unweighted residual. The look-back module aggregates these scores over the most recent W transitions through the windowed prediction loss 
+
+Ejk := Ek(θj ) = 
+
+> k
+
+X 
+
+> i=k−W+1
+
+eji , (8) which is maintained recursively as Ejk = Ejk−1 + ejk − ejk−W .This recursive structure allows each candidate’s score to be updated in constant time per step and the look-back module in O(M ) per step, independent of the window length (for 
+
+k ≤ W , the sum accumulates without subtraction). The window length W ∈ Z≥1 controls the tradeoff between responsiveness to changes in the active regime and noise rejection. A longer window accumulates prediction er-rors over more transitions and therefore produces a smoother residual landscape but reacts more slowly to a change in the active dynamics. A shorter window, on the other hand, responds more rapidly to regime changes, at the cost of greater sensitivity to measurement and process noise. A natural regime estimate is the empirical-risk minimizer 
+
+bjk ∈ argmin  
+
+> j∈{ 1,...,M }
+
+Ejk , with bθk := θbjk . (9) For safety filtering, however, collapsing the residual land-scape to a single minimizer can be overly optimistic. Over a finite look-back window, multiple candidate models may ex-plain the observed transitions almost equally well and hence the recent data may not support a unique regime selection. More importantly, the residual criterion measures predictive consistency with past transitions, whereas safety depends on the CBF evolution induced by the candidate dynamics. Consequently, the minimum-residual model need not be the model most relevant to the current safety constraint. Therefore, we retain the model ambiguity that remains unresolved by the recent data rather than committing to a single candidate. Let 
+
+Emin  
+
+> k
+
+:= min   
+
+> j∈{ 1,...,M }
+
+Ejk . (10) Then, for a tolerance ηk ≥ 0, we define the prediction-plausible set 
+
+Jk(ηk) := 
+
+n
+
+j ∈ { 1, . . . , M } : Ejk ≤ E min  
+
+> k
+
++ ηk
+
+o
+
+. (11) 
+
+C. Multi-model LBA-CBF safety filter 
+
+For each candidate model j, define its model-dependent CBF value at time k by 
+
+Hjk (u) := ψr
+
+ xk, u; θj  , (12) where ψr is generated according to Definition 1. Thus, 
+
+Hjk (u) ≥ 0 is precisely the CBF condition that would be imposed if θj were the active dynamics regime. The LBA-CBF safety filter enforces the model-dependent CBF condition for every candidate in the plausible set: 
+
+u⋆k ∈ argmin 
+
+> u∈U
+
+12 ∥u − unom  
+
+> k
+
+∥22 , (13) s.t. Hjk (u) ≥ 0, ∀j ∈ J k(ηk).When the model-dependent CBF constraints are affine in u,(13) reduces to a quadratic program (QP); more generally, the same construction defines a constrained safety-filter op-timization. We define the corresponding feasible control set 
+
+ULBA  
+
+> k
+
+(ηk) := 
+
+n
+
+u ∈ U : Hjk (u) ≥ 0, ∀j ∈ J k(ηk)
+
+o
+
+. (14) 
+
+Remark 1 (Adaptive-to-robust continuum) . If 0 ≤ η1 
+
+> k
+
+≤ η2
+
+> k
+
+,then Jk(η1
+
+> k
+
+) ⊆ Jk(η2
+
+> k
+
+) and consequently ULBA  
+
+> k
+
+(η2
+
+> k
+
+) ⊆ULBA  
+
+> k
+
+(η1
+
+> k
+
+): increasing ηk only adds model-dependent CBF constraints and weakly shrinks the admissible control set. Letting Emax  
+
+> k
+
+:= max j∈{ 1,...,M } Ejk , the extreme ηk = 0 
+
+recovers a best-fit, minimum-residual safety filter, while any 
+
+ηk ≥ Emax  
+
+> k
+
+− E min  
+
+> k
+
+yields Jk(ηk) = {1, . . . , M }, i.e., the CBF condition is enforced over the entire model bank. The tolerance ηk therefore interpolates between single-model adaptation and full-bank robust filtering. 
+
+Both stages of a control step parallelize across models: the M prediction losses are independent across candidates, as are the model-dependent CBF evaluations over Jk(ηk).We exploit this with vectorized JAX [22], which runs on CPU or GPU and keeps large banks inside the control loop. 
+
+D. Safety guarantee 
+
+The prediction-plausible set determines which candidates the filter accounts for, but prediction error alone does not connect a candidate to the true safety constraint, so we introduce a bank-adequacy condition in the barrier domain. Define the CBF value of the true current dynamics as 
+
+Htrue  
+
+> k
+
+(u) := ψr (xk, u; θk) . (15) 
+
+Assumption 1 (Safety-representative bank) . For every time 
+
+k, the candidate bank contains at least one model F jsk whose CBF prediction is no more optimistic than that of the true current dynamics. Specifically, 
+
+Hjsk 
+
+> k
+
+(u) ≤ Htrue  
+
+> k
+
+(u), ∀u ∈ U (16) Assumption 1 does not require θk to lie in the bank, only a candidate whose barrier prediction is conservative. 
+
+Lemma 1 (Safety transfer) . Suppose Assumption 1 holds at time k, the safety-representative candidate satisfies jsk ∈Jk(ηk), and the safety-filter problem (13) is feasible. Then its solution u⋆k satisfies the CBF condition for the true current dynamics: Htrue  
+
+> k
+
+(u⋆k) ≥ 0
+
+Proof. Since jsk ∈ Jk(ηk), the constraints of (13) give 
+
+Hjsk 
+
+> k
+
+(u⋆k) ≥ 0, so by Assumption 1, Htrue  
+
+> k
+
+(u⋆k) ≥
+
+Hjsk 
+
+> k
+
+(u⋆k) ≥ 0. ■
+
+Lemma 1 reduces satisfaction of the true CBF condi-tion to inclusion of a safety-representative candidate in the prediction-plausible set. We next establish that a sufficiently large tolerance always exists under Assumption 1. 
+
+Lemma 2 (Existence of a sufficient plausible-set tolerance) .
+
+Let F jsk be a safety-representative candidate satisfying As-sumption 1, and define ηsk := Ejsk 
+
+> k
+
+− E min  
+
+> k
+
+Then, 
+
+0 ≤ ηsk ≤ E max  
+
+> k
+
+− E min  
+
+> k
+
+(17) 
+
+and every satisfying ηk ≥ ηsk guarantees jsk ∈ J k(ηk).Proof. Since Emin  
+
+> k
+
+is the minimum loss over the bank, ηsk =
+
+Ejsk 
+
+> k
+
+−E min  
+
+> k
+
+≥ 0. Furthermore, Ejsk 
+
+> k
+
+≤ E max  
+
+> k
+
+, which gives (17). Thus, for any ηk ≥ ηsk, Ejsk 
+
+> k
+
+= Emin  
+
+> k
+
++ηsk ≤ E min  
+
+> k
+
++ηk Hence, by (11), jsk ∈ J k(ηk). ■
+
+Remark 2 (Selection of ηk). Lemma 2 establishes the exis-tence of a tolerance sufficient to retain a safety-representative model, but it does not prescribe an online value for that toler-ance, i.e. jsk and hence ηsk are not known to the controller. In this work, ηk is therefore treated as a design parameter and selected empirically. Smaller values retain fewer dynamics hypotheses and generally yield a less restrictive safety filter, whereas larger values retain more unresolved model ambi-guity and impose a larger collection of safety constraints. It is worth noting that (17) provides a conservative certi-fied endpoint. In particular, any 
+
+ηk ≥ E max  
+
+> k
+
+− E min  
+
+> k
+
+(18) 
+
+necessarily satisfies ηk ≥ ηsk under Assumption 1 and recovers the full-bank robust safety filter. 
+
+The recursion of Definition 1 is defined for a fixed parameter, whereas the active regime θk varies with k. For 
+
+r = 1 this is immaterial, since ψ0 = h does not depend on the parameter. For r ≥ 2 the intermediate functions 
+
+ψ1, . . . , ψ r−1 are parameter-dependent, and propagating their sign across a regime change requires the following condition. 
+
+Assumption 2 (Regime-change compatibility) . For every 
+
+k ∈ Z≥0 and every q = 1 , . . . , r − 1, ψq (xk+1 ; θk) ≥ 0
+
+implies ψq (xk+1 ; θk+1 ) ≥ 0.
+
+Assumption 2 constrains only the transition between con-secutive regimes: it requires that the change from θk to θk+1 
+
+does not by itself render an intermediate barrier function negative at the state reached. It is vacuous for r = 1 .
+
+Theorem 1 (Conditional closed-loop safety of LBA-CBF ).
+
+Let ψq (x0; θ0) ≥ 0 for q = 0 , . . . , r − 1. Suppose that for every k ∈ Z≥0, Assumption 1 and Assumption 2 hold, the selected tolerance satisfies ηk ≥ ηsk, and the safety-filter problem (13) is feasible. Then the true order-r CBF condition is satisfied at every time step: 
+
+Htrue  
+
+> k
+
+(u⋆k) ≥ 0, ∀k ∈ Z≥0 (19) 
+
+Consequently, the safe set S is rendered forward invariant. Proof. For any time k, ηk ≥ ηsk and Lemma 2 imply 
+
+jsk ∈ J k(ηk). Since the safety-filter problem (13) is feasible, Lemma 1 then gives Htrue  
+
+> k
+
+(u⋆k) ≥ 0. For the forward-invariance conclusion, suppose ψq (xk; θk) ≥ 0 for q =0, . . . , r − 1. Applying (3) to Htrue  
+
+> k
+
+(u⋆k) ≥ 0 and descending the chain gives ψq (xk+1 ; θk) ≥ 0 for q = 0 , . . . , r − 1,since αq ∈ (0 , 1] . Assumption 2 carries this to the incoming regime, ψq (xk+1 ; θk+1 ) ≥ 0 for q = 1 , . . . , r − 1, while 
+
+ψ0 = h is parameter-free. The induction therefore closes and h(xk) ≥ 0 for all k. ■IV. E XPERIMENTAL VALIDATION 
+
+We evaluate LBA-CBF in one simulation study and two hardware studies; a video of the full hardware runs is on the project’s website . The simulation compares LBA-CBF 
+
+with four adaptive and robust CBF baselines, together with a fixed-model nominal CBF and an oracle given the true parameters, from identical initial conditions on a task whose payload scales the input, and ablates the look-back win-dow W and the bank size M . On hardware, LBA-CBF 
+
+is compared with the same filter using a fixed model, so that adaptation is the only difference. On a Crazyflie 2.1 quadrotor, it filters a linear quadratic regulator (LQR) under fan-induced wind and under a swinging payload that is then cut loose. On an F1TENTH race car [23], we experiment with slippery plastic and rubber tires where the proposed work identifies the model of a CBF-constrained MPC. The car’s tire parameters enter the Fiala model nonlinearly, so no linear-in-parameter adaptive/robust CBF [3, 6] applies. 
+
+A. Quadrotor: Simulation Experiments 1) Task, dynamics, and filter: The vehicle must descend from a start band to a goal at (0 , −2.7) m through five windy gates (Fig. 3), each includes obstacles of radius 0.32 m leav-ing a 0.84 m corridor. The corridors alternate between x =
+
+−0.3 and x = +0 .3 m on the rows y ∈ { 2, 1, 0, −1, −2} m,so the vehicle must move laterally between gates while all obstacles are constrained. The 26 initial conditions are drawn uniformly at random over x0 ∈ [−2, 2] m and y0 ∈
+
+[2 .50 , 2.85] m , with an initial descent of 0.4 m /s that reaches the first gate while every estimator is still converging from 
+
+ˆθ = 0; runs last 40 s at dt = 0 .02 s . The nominal LQR regulates straight to the goal, so all obstacle avoidance comes from the safety filter. The vehicle is the planar quadrotor 
+
+m ˙vx = ( u0 + u1) sin θ + wx − cdx vx|vx|,m ˙vy = ( u0 + u1) cos θ − mg + wy − cdy vy |vy |, (20) 
+
+J ¨θ = ℓ 
+
+> 2
+
+(u1 − u0),
+
+with ˙x = vx, ˙y = vy , rotor thrusts (u0, u 1), pitch θ
+
+(distinct from the parameter vector θ), mass m, gravitational acceleration g, rotor separation ℓ, and moment of inertia J.Four horizontal bands, bounded at y = 1 .2, 0, and −1.2 m ,carry a lateral wind wx = ±0.07 N whose sign alternates between bands, so each of the three band crossings is an instantaneous, unannounced reversal of the disturbance— the regime change of Subsection II-A. Outside a calm pocket of radius 0.3 m at the goal, where wind and drag vanish, the drag coefficients are cdx = cdy = 0 .10 , and everywhere an unknown payload raises the mass by ∆m =30% , so that m becomes m(1 + ∆ m) in (20) and θ =(wx, w y , c dx , c dy , ∆m). The payload therefore scales the control-input term of (1), nonlinearly in θ; the hardware bank lumps it into (wx, w y ), whereas here it is modeled explicitly. Each safety constraint is enforced by a second-order CBF on the collective thrust. Because at θ ≈ 0 the two thrusts enter that condition only through their sum, leaving no lateral 1 5 10 20 40 80 160       
+
+> lookback window W[steps]
+> 51
+> 52
+> 53
+> 54
+> 55
+> 56
+> 57
+> bank size  M
+> (A) ablation on hyperparameters
+> 0.016 0.04 0.1 0.252
+> mean of error
+> 10 210 4
+> bank size M
+> 10 2
+> 10 3
+> 10 4
+> control loop freq. [Hz]
+> 50 Hz control loop
+> (B) compute
+
+Fig. 2: Ablation over bank size M and window W . (A) One-step prediction error (star indicates minimum). (B) Control rate vs. M .
+
+authority, we add a fourth-order CBF on the differential thrust, whose tilt bends the straight nominal reference around obstacles. Both are enforced at 50 Hz . The QP is solved by sequential least-squares quadratic programming. Fixed-gain CBFs do not guarantee feasibility under input limits; when the solver fails, which in every case we examined occurred because no admissible input satisfied all conditions, the implementation applies the nominal command. The bank is a 15 × 3 × 6 × 6 × 7 grid over θ plus the zero model, M = 11 341 , spanning wx, w y ∈ [−0.33 , 0.33] N 
+
+(4.7× the true wind), cdx , c dy ∈ [0 , 0.55] , and ∆m ∈
+
+[0 , 0.72] ; no grid value coincides with the true wind, drag, or 
+
+∆m, although the wind axes contain the true wy = 0 . We use 
+
+W = 5 (0.1 s ) and enforce the barrier against every model whose windowed residual lies within η of the lowest, as in Subsection III-C: η = 0 certifies the best-fitting model, while 
+
+η = 0 .01 and η = 0 .05 retain sets of tens of candidates out of M, whose size varies from step to step, widening whenever the recent data separates the bank less sharply. Unless stated otherwise, LBA-CBF refers to η = 0 .
+
+2) Baselines and metrics: We evaluate three adaptive CBF filters and one robust CBF filter, alongside fixed-model and oracle references. The disturbance-observer CBF (DOB-CBF) [11] low-pass filters the nominal model’s planar force residual at bandwidth 33 s −1. The L1 adaptive CBF (L1-AC) [12] estimates the same force using a predictor-based L1 adaptation law and a 33 rad /s low-pass filter. The high-order robust adaptive CBF (HO-RaCBF) [7] updates the force estimate by gradient descent within a priori bounds 
+
+|wx|, |wy | ≤ 0.315 N , with a robustness margin that contracts with excitation. All three adaptive baselines drive the same two-channel filter as LBA-CBF , retaining both the second-order thrust condition and the fourth-order tilt condition. The robust CBF (R-CBF) [2] applies worst-case robustification to the second-order thrust condition using bounds on wind and drag. The fixed-model Nominal CBF assumes θ = 0,whereas the Oracle receives the true θk at every step. The three adaptive baselines use additive planar-force uncertainty models, which support their observer constructions and the linear-in-parameter formulation of HO-RaCBF. These imple-mentations do not explicitly identify the payload-dependent input gain. In contrast, LBA-CBF ’s model bank includes the payload parameter, allowing its predictions to account for changes in control effectiveness. The experiment thus eval-uates the complete adaptation designs under simultaneous wind variation and payload mismatch. −2 0 2
+
+−202
+
+> y [m]
+
+(A) Oracle CBF (truth) 
+
+−2 0 2
+
+−202
+
+(B) LBA-CBF (η = 0 .01) 
+
+−2 0 2
+
+−202
+
+(C) HO-RaCBF 
+
+−2 0 2
+
+−202
+
+(D) L1-AC + CBF 
+
+−2 0 2
+
+x [m] 
+
+−202
+
+> y [m]
+
+(E) DOB-CBF 
+
+−2 0 2
+
+x [m] 
+
+−202
+
+(F) R-CBF   
+
+> leaves arena at t < 0.35 s
+
+−2 0 2
+
+x [m] 
+
+−202
+
+(G) Nominal CBF Oracle CBF (truth) 
+
+> LBA-CBF
+> HO-RaCBF
+> L1-AC + CBF DOB-CBF R-CBF Nominal CBF obstacle wind direction goal starts
+
+Fig. 3: Quadrotor simulation: all 26 trajectories per method, ordered as in Table I. The vehicle descends from the grey squares to the goal (star) through five gates of paired obstacles (grey discs, whose edge is h = 0 ); the wind blows along the red arrows, +x in the shaded bands and −x in the white ones. (A) Oracle, (B) LBA-CBF , (C) HO-RaCBF, (D) L1-AC, (E) DOB-CBF, (F) R-CBF, (G) Nominal CBF. TABLE I: Quadrotor simulation, 26 random initial conditions per method. A success is both safe and reached. ∆U is averaged over the 13 starts on which every method with a nonzero success rate succeeded; n/a otherwise. η is the plausible-set tolerance.                                               
+
+> Method Safe [%] Reached [%] Success [%] ∆U
+> Oracle CBF (truth) 100 100 100 47 .2
+> LBA-CBF (η= 0 )100 100 100 42 .6
+> LBA-CBF (η= 0 .01 )100 100 100 32 .7
+> LBA-CBF (η= 0 .05 )100 100 100 31 .6
+> HO-RaCBF 88 100 88 395 .2
+> L1-AC + CBF 69 92 62 61 .1
+> DOB-CBF 62 100 62 73 .4
+> R-CBF 100 00n/a Nominal CBF 46 00n/a
+
+A run is safe if h ≥ 0 for all ten obstacles, and reached if its terminal position lies within 0.2 m of the goal. A success 
+
+requires both safety and reaching the goal. The cumulative intervention is ∆U = P 
+
+> k
+
+∥uk − unom  
+
+> k
+
+∥2.Because this quantity accumulates along each method’s tra-jectory, we compare it on the common subset of 13 initial conditions for which every method with nonzero success rate completed the task safely. 
+
+3) Results: Table I and Fig. 3 summarize all the runs. 
+
+LBA-CBF succeeds from every initial condition, matching the Oracle, while L1-AC and DOB-CBF each succeed from 
+
+62% : collisions in 8 and 10 runs, plus two L1-AC runs that stall, safely, in the start band. HO-RaCBF succeeds from 
+
+88% but bows wide of the obstacles (Fig. 3(C)), at 9× the intervention of LBA-CBF . All observed adaptive-baseline collisions were preceded by CBF infeasibility near an ob-stacle and application of the nominal fallback command. 
+
+TABLE II: Effect of the plausible-set tolerance η: median closest approach to any obstacle over the all runs, each row flown from the same course and start.            
+
+> Method Closest distance to an obstacle [ cm ]Oracle CBF (truth) 15 .2
+> LBA-CBF (η= 0 )16 .7
+> LBA-CBF (η= 0 .01 )21 .0
+> LBA-CBF (η= 0 .05 )26 .7
+
+Neither R-CBF nor the Nominal CBF ever reaches the goal, and R-CBF is safe on every run only because it climbs out of the arena within 0.35 s and never returns (Fig. 3(F)). On the paired set, the intervention of LBA-CBF is comparable to the Oracle’s ( 42 .6 vs. 47 .2), while DOB-CBF needs 1.7×
+
+as much and L1-AC 1.4×.
+
+Effect of η. Because the tolerances succeed on nearly every start, success rate cannot separate them, but the safety margin can. We fly the oracle and LBA-CBF on the original course and on randomly drawn courses that keep the five gates but shift each corridor laterally by 0.15 –0.45 m and each gate row by up to 0.10 m , each with its own 26 random starts (Table II). The margin grows with η: η = 0 .01 keeps a larger clearance than η = 0 on 81% of paired runs, and η = 0 .05 
+
+than η = 0 .01 on 94% , confirming increasing robustness. 
+
+Ablation. Fig. 2 varies W and M at η = 0 .01 , using the same initial conditions and process noise of 0.01 m /s per step on (vx, v y ). The smallest bank ( M = 5 ) has persistently high prediction error. Expanding the bank to include ∆m
+
+(M = 25 ) reduces the error, while additional parameter axes provide little improvement for W ≥ 5. The window length 0.0 0.2                                    
+
+> x[m]
+> −0.10.00.10.2
+> y [m]
+> (A) Exp. 1: hover, wind
+> 0.00.5
+> x[m]
+> −0.4
+> −0.20.00.20.4
+> (B) Exp. 2: fly to goal, wind
+> 0.00.2
+> x[m]
+> −0.2
+> −0.10.00.10.2
+> (C) Exp. 3: hover, payload
+> 010 20 30
+> t[s]
+> 0.00 0.05
+> h [m 2]
+> 0510
+> t[s]
+> 0.00.2010 20 30
+> t[s]
+> 0.000 0.025 0.050
+> LBA-CBF
+> Nominal CBF obstacle
+> h= 0 wind direction target start run end Fig. 4: Crazyflie 2.1: LBA-CBF vs. Nominal CBF. (A) hover and (B) flight to a goal, both in wind; (C) hover with a swinging payload.
+> Top: xy trajectories, obstacle (grey disc), wind (red arrows), target (star). Bottom: barrier value h(t);h < 0is a violation.
+> Fig. 5: Crazyflie 2.1 hardware setups for Experiments 1–3.
+
+balances noise sensitivity and adaptation speed. At W =1, the ranking depends on a single noisy transition; longer windows retain pre-change data for longer. 
+
+Compute. On a CPU (Apple M1 Pro, JAX), the bank update takes 0.95 ms at the deployed M = 11 , 341 and 
+
+6.9 ms at M = 78 , 125 —1.1 kHz and 145 Hz .
+
+B. Quadrotor: Hardware Experiments 
+
+We deploy LBA-CBF on a Crazyflie 2.1 [24] tracked by a motion-capture system. An LQR running at 50 Hz 
+
+produces the nominal horizontal accelerations unom , which the safety filter modifies so that the vehicle avoids a circular obstacle (Fig. 5). The filter uses (20) in the horizontal plane around an upright cylinder: no gravity term, no drag, and the commanded horizontal accelerations in place of the rotor thrusts. The unknown parameters are the planar external forces θ = ( wx, w y ), used for both wind and payload. The bank is a uniform 500 × 500 grid over (wx, w y ),
+
+M = 250 , 000 , spanning [−0.2, 0.2] 2 N in Experiments 1 and 2 and [−0.1, 0.1] 2 N in Experiment 3, where the payload produces smaller forces; a grid covers the unknown wind and payload intensities uniformly, with a look-back window 
+
+W = 3 throughout. In all experiments, we set η = 0,selecting the best-fit endpoint of LBA-CBF , which keeps a smaller set of barrier constraints, allowing us to isolate the look-back adaptation mechanism while minimizing the online optimization cost. 
+
+Experiment 1 (hover under wind). The vehicle hovers beside the obstacle while the fan pushes it toward the unsafe set; see Fig. 4(A). With the Nominal CBF, the vehicle hovered for only approximately 8 s before crashing into the obstacle. With LBA-CBF , it hovered for more than twice as long with the fan running, and h remained at or above zero. 
+
+Experiment 2 (flight to a goal under wind). The vehicle flies past the obstacle to a goal while the fan pushes it toward the obstacle; see Fig. 4(B). Across eight rep-etitions, LBA-CBF kept h ≥ 0 throughout, whereas the Nominal CBF crossed h = 0 in six of the eight runs shown. 
+
+Experiment 3 (hover with a swinging payload). A mass hangs from the vehicle on a rope; see Fig. 4(C). Because the payload swings, the disturbance never settles, so the filter must follow a continuously changing regime rather than converge to one. After confirming that LBA-CBF maintained safety in this condition, we cut the rope in flight, imposing a second, abrupt change of the dynamics. The same test was not possible with the Nominal CBF, which had already violated the constraint with the payload attached. 
+
+C. Safe Extreme Driving: Hardware Experiments 
+
+We deploy LBA-CBF on an F1TENTH autonomous rac-ing platform as the model used inside a CBF-constrained MPC, and compare it with the same controller using a fixed nominal model identified on rubber tires. As in [19], the vehicle follows a single-track dynamic bicycle model with Fiala tire forces [25], parameterized by the front and rear cornering stiffnesses and friction coefficients, θ =[Cf , C r , μ f , μ r ]⊤. The bank contains 10 000 models over 
+
+Cf ∈ [175 , 325] N /rad , Cr ∈ [150 , 300] N /rad , and 
+
+μf , μ r ∈ [0 .1, 1.1] , and is evaluated in JAX with η = 0 .The same bank is used for both tire conditions, while the nominal model remains fixed. The MPC is implemented in acados [26] with horizon P = 20 and dt = 0.04 s ,and runs at 25 Hz . We report model quality as the P -step prediction error: the deviation between the state obtained by propagating a model over the MPC horizon under the applied inputs and the measured state. 
+
+Experiment 1 (plastic tires, adaptive drifting) : With 
+
+LBA-CBF , the car is able to stabilize over 6 laps even with consistent tire slippage with minimal conservatism (Fig. 6). The nominal model is overconservative in its optimization, causing it to deviate significantly from the track and crash. 
+
+Fig. 6: Experiment 1: nominal-model tracking (top left), LBA-CBF 
+
+tracking (top right), and LBA-CBF ’s friction estimates and P -step prediction error (bottom). 
+
+In both experiments the friction estimates for LBA-CBF 
+
+converge, and the LBA-CBF model achieves substantially lower prediction error than the nominal model Fig. 6, Fig. 7. 
+
+Experiment 2 (rubber tires, inconsistent acceleration) :With LBA-CBF , the car is able to stabilize over 5 laps with minimal conservatism despite some tire slippage and inter-mittent acceleration and deceleration (Fig. 7). The nominal model is again overconservative, and significant departure from the reference trajectory causes a crash. 
+
+Fig. 7: Experiment 2: nominal-model tracking (top left), LBA-CBF 
+
+tracking (top right), and LBA-CBF ’s friction estimates and P -step prediction error (bottom). 
+
+V. C ONCLUSIONS 
+
+We introduced LBA-CBF , a safety filter that uses recent prediction error to decide which dynamics hypotheses the barrier must be certified against: a finite bank is ranked over a look-back window, and a single tolerance spans best-fit adaptation and full-bank robust filtering. In simulation and on Crazyflie 2.1 and F1TENTH hardware, it adapts at control rate to abrupt wind reversals, an unmodeled payload, and changes of tire, where fixed-model, robust, and continuously adapting filters become unsafe or overly conservative. The guarantee remains conditional on bank adequacy and on filter feasibility; constructive conditions for these, and online adaptation of the tolerance, are left to future work. REFERENCES 
+
+[1] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, “Control barrier function based quadratic programs for safety critical systems,” IEEE Transactions on Automatic Control , vol. 62, no. 8, pp. 3861–3876, 2017. [2] M. Jankovic, “Robust control barrier functions for constrained stabilization of nonlinear systems,” Automatica , vol. 96, pp. 359–367, 2018. [3] B. T. Lopez, J.-J. E. Slotine, and J. P. How, “Robust adaptive control barrier functions: An adaptive and data-driven approach to safety,” IEEE Control Systems Letters , vol. 5, no. 3, pp. 1031–1036, 2021. [4] W. Xiao and C. Belta, “Control barrier functions for systems with high relative degree,” in 2019 IEEE 58th Conference on Decision and Control (CDC) ,2019, pp. 474–479. [5] Y. Xiong, D.-H. Zhai, M. Tavakoli, and Y. Xia, “Discrete-time control barrier function: High-order case and adaptive case,” IEEE Transactions on Cybernetics , vol. 53, no. 5, pp. 3231–3239, 2022. [6] A. J. Taylor and A. D. Ames, “Adaptive safety with control barrier functions,” in 2020 American Control Conference (ACC) , 2020, pp. 1399–1405. [7] M. H. Cohen and C. Belta, “High order robust adaptive control barrier functions and exponentially stabilizing adaptive control lyapunov functions,” in 2022 American Control Conference (ACC) , 2022, pp. 2233–2238. [8] M. F. AL-Sunni, H. Almubarak, and J. M. Dolan, “Safety embedded adaptive control using barrier states,” in 2025 American Control Conference (ACC) ,2025, pp. 303–308. [9] T. Pati and S. Z. Yong, “Robust control barrier functions for uncertain parameter-varying control affine systems with set-membership parameter estimation,” IEEE Transactions on Automatic Control , vol. 70, no. 11, pp. 7564–7571, 2025. [10] E. L. Diget, Y. Kim, and C. Sloth, “Safety critical control of a system with element-wise estimation of unknown time-varying parameters,” International Journal of Robust and Nonlinear Control , vol. 36, no. 1, pp. 274–285, 2026. [11] Y. Wang and X. Xu, “Disturbance observer-based robust control barrier func-tions,” in 2023 American Control Conference (ACC) , 2023, pp. 3681–3687. [12] Q. Nguyen and K. Sreenath, “L1 adaptive control barrier functions for nonlinear underactuated systems,” in 2022 American Control Conference (ACC) , 2022, pp. 721–728. [13] S. Yang, M. Black, G. Fainekos, B. Hoxha, H. Okamoto, and R. Mangharam, “Safe control synthesis for hybrid systems through local control barrier functions,” in 2024 American Control Conference (ACC) , 2024, pp. 344–351. [14] M. Aali and J. Liu, “Learning piecewise residuals of control barrier functions for safety of switching systems using multi-output gaussian processes,” in 
+
+2024 European Control Conference (ECC) , 2024, pp. 1942–1947. [15] K. Narendra and J. Balakrishnan, “Adaptive control using multiple models,” 
+
+IEEE Transactions on Automatic Control , vol. 42, no. 2, pp. 171–187, 1997. [16] Z. Laouar, Q. H. Ho, R. Mazouz, T. Becker, and Z. N. Sunberg, “Feasibility-guided safety-aware model predictive control for jump markov linear sys-tems,” in 2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , 2024, pp. 12 718–12 725. [17] T. Li, L. Long, and C. Huang, “Supervisory adaptive safety control for uncertain nonlinear systems,” Journal of the Franklin Institute , vol. 361, no. 9, p. 106 882, 2024. [18] M. F. AL-Sunni, H. Almubarak, K. Horng, and J. M. Dolan, “LLA-MPC: Fast adaptive control for autonomous racing,” in 2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , 2025, pp. 1969–1976. [19] H. Z. Liao, M. F. AL-Sunni, and J. M. Dolan, “LLA-MPC on embedded hardware: Rapid adaptive control with thousands of parallel models,” arXiv preprint arXiv:2610.03616 , 2026. [20] A. Agrawal and K. Sreenath, “Discrete control barrier functions for safety-critical control of discrete systems with application to bipedal robot naviga-tion,” in Proceedings of Robotics: Science and Systems , 2017. [21] J. Zeng, B. Zhang, and K. Sreenath, “Safety-critical model predictive control with discrete-time control barrier function,” in 2021 American Control Conference (ACC) , 2021, pp. 3882–3889. [22] J. Bradbury et al., JAX: Composable transformations of Python+NumPy programs , version 0.3.13, 2018. [23] M. O’Kelly, H. Zheng, D. Karthik, and R. Mangharam, “F1tenth: An open-source evaluation environment for continuous control and reinforcement learning,” in Proceedings of the NeurIPS 2019 Competition and Demonstra-tion Track , 2020, pp. 77–89. [24] W. Giernacki, M. Skwierczy´ nski, W. Witwicki, P. Wro´ nski, and P. Kozierski, “Crazyflie 2.0 quadrotor as a platform for research and education in robotics and control engineering,” in 2017 22nd International Conference on Methods and Models in Automation and Robotics (MMAR) , 2017, pp. 37–42. [25] V. Zhang, S. M. Thornton, and J. C. Gerdes, “Tire modeling to enable model predictive control of automated vehicles from standstill to the limits of handling,” in Proceedings of the 14th international symposium on advanced vehicle control, Nagoya, Japan , 2018, pp. 14–18. [26] R. Verschueren et al., “Acados—a modular open-source framework for fast embedded optimal control,” Mathematical Programming Computation ,vol. 14, no. 1, pp. 147–183, 2022.

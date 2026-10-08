@@ -1,0 +1,1226 @@
+Title: Regularized policy gradient with learned mixtures of Gaussians for games with continuous actions
+
+URL Source: https://arxiv.org/pdf/2609.36787v1
+
+Published Time: Wed, 30 Sep 2026 01:18:54 GMT
+
+Number of Pages: 31
+
+Markdown Content:
+Preprint. Under review. 
+
+# REGULARIZED POLICY GRADIENT WITH LEARNED MIXTURES OF GAUSSIANS FOR GAMES WITH CONTINUOUS ACTIONS 
+
+Ondˇ rej Kub´ ıˇ cek 
+
+Czech Technical University in Prague Carnegie Mellon University 
+
+kubicon3@fel.cvut.cz 
+
+Viliam Lis´ y
+
+Czech Technical University in Prague Artificial Intelligence Center 
+
+viliam.lisy@fel.cvut.cz 
+
+Tuomas Sandholm 
+
+Carnegie Mellon University Strategy Robot, Inc. Strategic Machine, Inc. Optimized Markets, Inc. 
+
+sandholm@cs.cmu.edu 
+
+# ABSTRACT 
+
+Most successes of superhuman game-playing algorithms are in games with dis-crete actions, yet in auctions, robotics, sports, or trading, actions are nearly contin-uous. Prior techniques either rely on expert-designed discretizations or are sample inefficient. We present a scalable policy-gradient algorithm for large sequential games with continuous or mixed discrete and continuous actions. It combines 
+
+magnetic mirror descent with a mixture of Gaussians reparametrization, trained via self-play. We show that it approximates equilibrium in games where gradient descent fails. In sequential games, it outperforms neural fictitious self-play and matches or outperforms the final strategies of policy space response oracles with 3.5–5.5 × fewer samples. In heads-up no-limit Texas hold’em, it performs on par with Slumbot. 
+
+# 1 INTRODUCTION 
+
+Games can model many situations where multiple agents are trying to achieve possibly different goals over a long horizon. Many successes in this domain focus on games with discrete action spaces, like Chess, Go, or Stratego (Silver et al., 2018; Schrittwieser et al., 2020; Perolat et al., 2022; Sokota et al., 2025; Zhang & Sandholm, 2026). However, some domains, like robotics or economics, use continuous or nearly-continuous actions (Todorov et al., 2012; Haarnoja et al., 2018; Vickrey, 1961; Zheng et al., 2022). In single-player and cooperative multi-player reinforcement learning, many studies have demon-strated the effectiveness of policy-gradient algorithms, even for continuous action problems (Lilli-crap et al., 2016; Haarnoja et al., 2018; Yu et al., 2022). However, these works often rely on the fact that, in those environments, an optimal pure (i.e., deterministic) strategy exists. It is well known that adversarial games with hidden information or simultaneous moves lack pure optimal strategies and instead require mixing among several actions to prevent the player from becoming predictable (Von Neumann & Morgenstern, 1947; Blackwell & Girshick, 1979; Roberson, 2006). Moreover, mixing can be beneficial even in fully observable physical systems. Consider a penalty kick in foot-ball or a tennis serve; players need to commit to their decision before observing what their opponent does. If players commit to the same movement all the time, they will become highly exploitable. Only recent developments in regularized policy-gradient algorithms have demonstrated how to con-verge to mixed strategies using scalable neural policy representations, without resorting to imprac-tical and costly policy averaging (Perolat et al., 2021; Sokota et al., 2023). These algorithms then 1arXiv:2609.36787v1 [cs.MA] 29 Sep 2026 Preprint. Under review. achieved superhuman performance in very large games, such as Stratego (Perolat et al., 2022; Sokota et al., 2025) and Generals.io (Straka et al., 2026), relying on their discrete action spaces. The common approach to continuous action spaces is to discretize and then solve the resulting dis-cretized game (Kroer & Sandholm, 2015; Tavakoli et al., 2018; Tang & Agrawal, 2020). However, this disregards the relationships among discrete actions, and the algorithm must learn them from gameplay. Moreover, the solution quality depends on the chosen discretization, which often re-quires expert knowledge (Kroer & Sandholm, 2015). Alternatively, some approaches are directly applicable to continuous action spaces, but they either cannot sufficiently model mixed equilib-ria (Schulman et al., 2017), are not easily extended to large sequential games (Hsieh et al., 2019; Domingo-Enrich et al., 2020; Martin & Sandholm, 2023; 2025), or are sample inefficient because they train an ensemble of strategies (Heinrich & Silver, 2016; Lanctot et al., 2017). In this work, we introduce Magnetic Mixture Policy Optimization, an algorithm for approximating Nash equilibria in large sequential zero-sum games with continuous actions. It parametrizes the strategy for each decision by a mixture of Gaussians. The training jointly learns the means and standard deviations of several Gaussians, as well as the distribution over them. Recent advancements in regularized policy gradients for games were necessary to enable this method, because the mixture strategy over the fixed Gaussian distributions is itself a matrix game, where standard policy-gradient algorithms may not converge. We show that the regularization can be extended even to training the Gaussian parameters, and that it converges in games, where standard gradient descent does not. We evaluate our method across several games of varying size and type. Our method is applicable to games that mix discrete and continuous actions, as we show in several Poker games, where we treat bets as continuous actions. We also demonstrate that this method is scalable to large games by applying it in full-size heads-up no-limit Texas hold’em. We show that, using our method in self-play on a single GPU, we trained a strategy that is on par with latest Slumbot, an improved version of the winner of the 2018 annual computer poker competition. 
+
+# 2 BACKGROUND 
+
+In this work we consider two-player zero-sum games represented by a triplet (A1, A2, u ), Ai ⊆ RNi
+
+is a compact non-empty action space of the player i ∈ { 1, 2} and u : A1 × A 2 → R is a continuous payoff function of player i, that is bounded and Borel measurable. We will use u1 = u and u2 = −u
+
+In the game both players choose simultaneously ai ∈ A i. Player 1 is trying to select an action such that it maximizes the payoff, whereas Player 2 is minimizing it. 
+
+P(Ai) is a Borel probability measure in ai, which we call a mixed strategy. The expected payoff is then 
+
+Ui(π1, π 2) = Eπ1⊗π2 [ui] = 
+
+Z
+
+> A1
+
+Z
+
+> A2
+
+ui(a, b ) dπ 2(a) dπ 1(b), (π1, π 2) ∈ P (A1) × P (A2)
+
+Best response to a strategy π−i is defined as πBR i = arg max πi∈P (Ai) Ui(πi, π −i). We use the traditional game-theory notation of −i denotes the other player than i. Since Ui is affine, there exists a pure strategy that is a best response. Nash equilibrium is a strategy pair π∗ = ( π∗ 
+
+> 1
+
+, π ∗ 
+
+> 2
+
+), such that it is a saddle point of U1, where neither can improve by unilaterally deviating from its strategy 
+
+U1(π1, π ∗ 
+
+> 2
+
+) ≤ U1(π∗ 
+
+> 1
+
+, π ∗ 
+
+> 2
+
+) ≤ U1(π∗ 
+
+> 1
+
+, π 2) ∀π1 ∈ P (A1), π 2 ∈ P (A2)
+
+We also use NashConv E, sometimes called exploitability, to compare different baselines, and it serves as a distance from Nash equilibrium 
+
+E(π) = max 
+
+> π′
+> 1
+
+U1(π′
+
+> 1
+
+, π 2) − min 
+
+> π′
+> 2
+
+U1(π1, π ′
+
+> 2
+
+)
+
+# 3 MAGNETIC MIXTURE POLICY OPTIMIZATION 
+
+Gradient descent-style algorithms in continuous action games often serve to find a pure (determin-istic) strategy. As such, most of those algorithms are limited to settings with pure Nash equilibria. 2Preprint. Under review. A common approach to finding these mixed equilibria is to discretize the action spaces of both players and then compute a mixed strategy in the resulting matrix game. However, this approach will always have an unavoidable worst-case discretization error. Moreover, in an online setting with function approximators, the finer abstraction increases both the number of required samples and the overall model size. In this work, we focus on a discretization that is optimized during training. Some prior work on 
+
+generative adversarial networks has already used discretization, with K pure actions in the action space (Hsieh et al., 2019; Domingo-Enrich et al., 2020). Then they optimized the value of those pure actions using gradient descent on the exact payoff gradient and also the distribution over them. However, these techniques were not extended into sequential settings. We propose using a Gaussian distribution instead of pure actions, allowing us to easily estimate the gradient and apply entropy regularization. Moreover, in section 3.2, we show that when we add secondary KL-divergence loss term, it enables convergence even in some games where standard gradient descent fails. 3.1 CATEGORICAL HEAD 
+
+First, let us assume that oracle provides K actions ak, and the task is only to find a distribution over those. We do not impose constraints on the parametrization of the actions, except that each pair of actions has a uniquely defined expected value. This then results in a matrix game, where each player has K actions, and the utility given to the players is the expected value when the action is played. The standard gradient descent methods are known to cycle around the equilibrium point and, as such, may not converge in the last iterate. Several techniques have been developed that converge to the Nash equilibrium in the last iterate (Korpelevich, 1976; Popov, 1980; Daskalakis et al., 2018). In this work, we focus on KL-regularization-based methods, such as regularized Nash dynamics (RNaD) 
+
+and magnetic mirror descent (MMD) , as they relate to our use of KL-regularization in Gaussian reparametrization (Perolat et al., 2021; Sokota et al., 2023). Consider a strategy πi of player i, which is a categorical distribution over the pure actions aki . With the magnet regularization, the goal of each player is to find a solution to the following optimization problem 
+
+π′ 
+
+> i
+
+= arg max 
+
+> πi
+> K
+
+X
+
+> k=1
+
+πi(aki )qi(aki ) − ηD KL (πi, π Mi ) (1) 
+
+qi(aki ) is a value player i receives after playing action aki , and πMi is a magnet strategy, which can be arbitrary in the game. It has been proven by prior work that this regularized objective has a unique fixed point for fixed magnet regularization η and strategy πMi , which is a quantal response equilibrium (Sokota et al., 2023). It has also been shown that periodically updating the πMi or annealing η results in convergence to the Nash equilibrium (Perolat et al., 2021). We are not making any improvements to these algorithms for discrete action games; we merely use them as an effective algorithm to approximate the Nash equilibrium in the matrix game. Other modifications of gradient descent that converge to the Nash equilibrium, such as optimism or extra-gradient (Korpelevich, 1976; Popov, 1980), are also viable. We used the magnet regularization for its compatibility with function approximators in large sequential games, which has been demonstrated in Stratego and Generals.io (Perolat et al., 2022; Sokota et al., 2025; Straka et al., 2026). 3.2 GAUSSIAN HEAD 
+
+In single-player settings, it is common to find strategies in continuous action spaces by parametrizing the strategy as a Gaussian distribution defined by its mean μ and a log of standard deviation log( σ)
+
+(Haarnoja et al., 2018). During training, it samples from this parametrized Gaussian to estimate the gradient. In addition to gradient estimation, this reparametrization enables entropy regularization, which has been shown to improve exploration in discrete-action settings. Gradient descent is known not to converge in some simple continuous action games, such as f (x, y ) = xy (Martin & Sandholm, 2023). We show in experiments that this prevails even when the strategy is parametrized by a Gaussian. In this section, we focus only on strategies parametrized by a single Gaussian and show that adding the magnet KL regularization improves the convergence properties of gradient descent. 3Preprint. Under review. Consider a strategy πi parametrized by the Gaussian mean μi and standard deviation σi. Throughout the paper, when the mean μ, standard deviation σ, and strategy π share the same subscripts and superscripts, they represent the same strategy. The expected utility of the strategy is then 
+
+U Gi (π) = Ea1∼N (μ1,σ 21 ),a 2∼N (μ2,σ 22 )ui(a1, a 2)
+
+As with discrete games, gradient descent does not converge because the gradient field is not strongly monotonic. Adding a sufficiently strong regularizer to the field then makes the game monotonic, and therefore the gradient descent will converge to a fixed point. Consider a magnet strategy πM . We will use π := ( π1, π 2). The gradient dynamics on this reparametrized strategy with the KL regularization are 
+
+V R(π) = V (π) + ηR (π) = 
+
+−∇ π1 U G 
+
+> 1
+
+(π)
+
+∇π2 U G 
+
+> 1
+
+(π)
+
+
+
++ η
+
+∇π1 DKL (π1, π M 
+
+> 1
+
+)
+
+∇π2 DKL (π2, π M 
+
+> 2
+
+)
+
+
+
+Assumption 1. V (π) is LV -Lipschitz continuous on the Gaussian strategy π,
+
+∥V (π) − V (π′)∥ ≤ LV ∥π − π′∥ ∀π, π ′
+
+Theorem 1. Let assumption 1 hold and η > LV 
+
+> δR
+
+. If α < 2δM
+
+> L2
+> M
+
+then the Projected Gradient Descent Ascent (PGDA) converges to unique solution π∗ of variational inequalities VI (V R, Π) and for each strategy πk in iteration k following holds 
+
+∥πk − π∗∥2 ≤ r(η)k∥π0 − π∗∥2 r(η) = 1 − 2αδ M + α2L2 
+
+> M
+
+(2) Proof to Theorem 1 follows a similar structure to that of MMD (Sokota et al., 2023). Similarly to that result, the solution of the regularized problem is unique, but this solution is not the Nash equilibrium of the original game. Contrary to the MMD, where the solution is a Quantal Response Equilibrium, the Gaussian reparametrization does not have this guarantee, because the space of feasible strategies is limited by hyperparameter σmin , which we use because standard deviation has to be σ > 0, such that the KL-divergence is defined.. Even if the fixed point is not a Nash equilibrium, several approaches can ensure convergence, such as annealing the regularization or updating the magnet. In the remainder of this work, we use the magnet replacement strategy, which was first applied in Regularized Nash Dynamics (Perolat et al., 2021; 2022), where the previous fixed point replaces the magnet. If we assume only a convex-concave games, which have a pure Nash equilibrium (Sion, 1958), then the sequence of the fixed point converges to an ϵ-equilibrium, where ϵ is bounded by the σmin , which is a tunable hyperpa-rameter. 
+
+Theorem 2. In a convex-concave game with payoff u that has continuous second derivative. As-sume only strategies Πσmin ⊆ Π, which use σ = σmin and let σmin > 0, η > L V σ2min and 
+
+Mi = sup | ∂2u∂a 2
+
+> i
+
+|. Let πM,t +1 = Ψ( πM,t ) be the exact solution for the fixed magnet at iteration 
+
+t from arbitrary πM, 0 ∈ Πσmin . Then the sequence of πM,t converges to a fixed solution π∗ with exploitability at most 
+
+E(π∗) ≤ M1 + M2
+
+2 σ2min (3) The proofs of Theorems 1 and 2 are in Appendix A. Proof of Theorem 2 first shows that the fixed point is the magnet itself only when the magnet is a Nash equilibrium. Then, it shows that the fixed point for a specific magnet is closer to the Nash equilibrium than the magnet itself, in terms of geometric distance. However, this does not say that each strategy in the sequence is less exploitable than the previous one. But, it says that the sequence will eventually converge. 3.3 MIXTURE OF GAUSSIANS 
+
+The prior section focused on a single Gaussian, but in simultaneous-move or imperfect-information games, the equilibria are often not pure, requiring randomization among several actions. Consider a game where equilibrium mixes between two real values, -1 and 1, uniformly. Using a single Gaussian can never approximate such a strategy. In this section, we propose an algorithm, Magnetic 4Preprint. Under review. Mixture Policy Optimization (MMPO), that parametrizes the strategy as a Gaussian mixture. It uses the KL divergence between the current and magnet strategies as a secondary loss term. Since the KL divergence between a mixture of Gaussians does not have a closed-form solution, we use an upper bound, which is a sum of the KL divergence between the categorical distribution and the weighted sum of all the Gaussian KL divergences. The final loss is then combined by two PPO-like losses with magnet regularization, one for the categorical distribution and the second for the Gaussian distribution (Schulman et al., 2017; Sokota et al., 2023). MMPO parametrizes the strategy space of player i by K Gaussian distributions represented by 
+
+μi,k , σ i,k and a categorical distribution over them wi,k 
+
+πi =
+
+> K
+
+X
+
+> k=1
+
+wi,k · N (μi,k , σ 2
+
+> i,k
+
+) (4) 
+
+> K
+
+X
+
+> k=1
+
+wi,k = 1 wi,k ≥ 0, σ i,k ≥ σmin ∀k ∈ { 1, . . . , K } (5) The expected utility of this strategy profile is then 
+
+U Gi (π) = 
+
+> K
+
+X
+
+> k=1
+> K
+
+X
+
+> l=1
+
+w1,k w2,l Ea1∼N (μ1,k ,σ 21,k ),a 2∼N (μ2,l ,σ 22,l )ui(a1, a 2)
+
+We store the strategy πθ implicitly in the weights of the neural network θ. Consider that the algorithm samples action at, from a (wt, μ t, σ t) in state st. We will overload the notation 
+
+N t := N (μt, σ 2,t ). The loss is then combined from the loss for the categorical head Lw and for the Gaussian components LN
+
+ρw = min 
+
+ πθ (st, w t)
+
+πold (st, w t) A(st, a t), clip   πθ (st, w t)
+
+πold (st, w t) , 1 − ϵw, 1 + ϵw
+
+A(st, a t)
+
+
+
+ρN = min 
+
+ πθ (at|st, N t)
+
+πold (at|st, N t) A(st, a t), clip   πθ (at|st, N t)
+
+πold (at|st, N t) , 1 − ϵN , 1 + ϵN
+
+A(st, a t)
+
+
+
+Lw = −Etρw + ηD KL (πθ (st, ·), π M (st, ·)) − αwH(πθ (st, ·)) 
+
+LN = −EtρN + ηD KL (N t, N M ) − αN H(N t)
+
+Lπ = Lw + LN
+
+(6) both Lw and LN include the same terms. PPO clipped loss, KL-divergence regularization to a magnet, and entropy loss. We also train a critic, with the generalized advantage estimate (Schulman et al., 2015). The entire training is done in self-play, using only the game simulator. Increasing the number of Gaussian components K broadens the set of strategies that can be modeled, but it also increases the number of samples required for training. Despite that, one advantage of this model is that it can learn to ignore certain components if they are not useful for the current decision. MMPO is also applicable to games that combine discrete and continuous actions, such as some continuous Poker games that combine the fold and call actions with continuous betting. The only change to the MMPO is that for the discrete actions, there will be no corresponding Gaussian μ
+
+and σ.
+
+# 4 EXPERIMENTS 
+
+We have evaluated MMPO across several game settings. We first evaluate the effect of the magnet regularization in isolation. Then we compare our algorithm to several baselines that approximate Nash equilibrium in large games with parametrized strategies, in both one-shot and sequential set-tings. Lastly, we demonstrate that the approach is applicable even in large games, as we use it in Heads-up no-limit Texas Hold ’em, 4.1 CONVERGENCE OF THE REGULARIZED GAUSSIAN HEAD 
+
+This experiment validates Theorem 1 and explores MMPO’s behavior in very simple games. We consider 3 games, with rules in Appendix B, in which there is a pure equilibrium, but gradient 5Preprint. Under review. descent fails to converge to it. In Figure 1, we show a comparison of runs across the three games, either with usual gradient descent or with regularized projected gradient descent. For the exploitabil-ity computation, we used σ = 0 . With the additional regularization, the strategies indeed converge to the Nash equilibrium. In Figure 2, we show the same comparison, but a neural network now parameterizes the strategy, and the updates are estimated via on-policy sampling. Because of the additional noise from the training, the strategy does not converge to the exact Nash equilibrium, but the regularization improves per-formance by at least an order of magnitude. In the rotational game, the exploitability remains quite high, but that is due to the payoff function of the game, where the exploitability is high, even when strategies are geometrically very close to the Nash equilibrium. In Section D.1, we show the same graphs when gradient descent is applied to tabular representations of the strategy, with an update using on-policy sampling. The behavior is between the two presented here.   
+
+> (a) Continuous Matching Pennies (b) Rotational game, dim=2 (c) Rotational game, dim=3
+
+Figure 1: Exploitability in one-shot games with pure Nash equilibria using different gradient descent with or without magnet.   
+
+> (a) Continuous Matching Pennies (b) Rotational game, dim=2 (c) Rotational game, dim=3
+
+Figure 2: Exploitability in one-shot games with pure Nash equilibria, using PPO with and without magnet regularization 4.2 ONE -SHOT GAMES 
+
+We compare our methods with several neural baselines on one-shot games. Some baselines we use in this work use vastly different training, so to keep the comparison fair, we compare them in number of environment interactions required. In section D.2, we show the same comparison using the wall-time required. We do not compare with tabular baselines because our work aims to enable efficient training in large games; as such, we do not claim that MMPO should be used in games where tabular techniques are applicable. We believe that in these tractable games, the tabular techniques would outperform our method because they contain less noise and therefore can yield more precise gradient estimates. The baselines we have used are Proximal Policy Optimization (PPO) (Schulman et al., 2017), Neu-ral Fictitious Self-play (NFSP) (Heinrich & Silver, 2016), Policy Space Response Oracles (PSRO) (Lanctot et al., 2017), and Randomized Policy Networks (RPN) (Martin & Sandholm, 2023). We provide more details about the baselines and their hyperparameter setting in Appendix C. The results of this experiment are in Figure 3. We have used some games that contain non-finite support equilibria. The finite mixture model cannot approximate an arbitrary strategy. It is limited by the number of Gaussians. PSRO adds a single Gaussian strategy to the mix at each iteration, so it gradually mixes among more strategies than the mixture model. This can be seen in the Glicksberg-Gross game, where PSRO converges closer to the equilibrium. In the Appendix, we present an 6Preprint. Under review. ablation study on the same games, varying the number of Gaussian components to show this effect in detail.    
+
+> (a) Glicksberg-Gross game (b) Circle game (c) Two-point game (d) Matching Pennies
+
+Figure 3: Exploitability with 95% confidence intervals of different baselines in one-shot games 4.3 SEQUENTIAL GAMES 
+
+We also evaluated MMPO in sequential games, which is its intended setting. We have used four different games: Kuhn Poker, Leduc Poker, and Sequential Blotto with either 3 or 5 turns. We provide more details on each game in the Appendix. In Figure 4, we show exact exploitability in Kuhn Poker and approximate exploitability computed via PPO for other games, as a function of environment interactions and wall time. In all games except Leduc, PPO cannot sufficiently model the Nash equilibrium because it uses only a single Gaussian. MMPO converges slightly slower than PPO, but it always converges close to the equilibrium. With the increased training time, PSRO converges closer to the Nash equilibrium than MMPO, which is because PSRO adds a single Gaussian strategy to the mix at every iteration, so eventually it contains more Gaussians than MMPO. However, MMPO converges much quicker to strong strategies both in terms of wall-time and environment interactions, which is crucial, especially in large games. The approximate exploitabilities of some strategies in Blotto are negative because we compute a best response using PPO, so the resulting value is only a lower bound on the true exploitability.    
+
+> (a) Kuhn Poker (b) Leduc Poker (c) Blotto 3 (d) Blotto 5
+
+Figure 4: Approximate exploitability with 95% confidence intervals of different baselines in sequen-tial games 4.4 HEADS -UP NO LIMIT TEXAS HOLD ’EM 
+
+In the last experiment, we evaluate the scalability of our approach by applying it to Heads-up no-limit Texas Hold’em. An advantage of mixture training is that the algorithm explores parts of the game that would not be visited with static discretization. If a discretized bot is matched against a bot trained with a different discretization, it may encounter out-of-distribution game states. This problem has been observed in Poker bots in the past, and at first, it was solved by interpolating between the closest legal states and later by subgame solving. MMPO avoids both of these as it naturally explores different bets during the training. Recently, subgame solving has been combined with policy-gradient algorithms (Kubicek et al., 2026). It is possible to combine our training with this subgame-solving approach. We decided not to apply it here because our goal is not to create the strongest Poker bot, but to evaluate the policy gradient approach with our reparametrization. 7Preprint. Under review. We trained the strategy network for 4 days and during training we used two evaluation metrics, the first is local best response Lis´ y & Bowling (2017), which is a Poker-specific evaluation tool that is commonly used as a lower bound for exploitability in Texas Hold’em, the second is head-to-head performance against Slumbot, winner of the 2018 annual computer poker competition (Jackson, 2013), which is the strongest available bot which does not use any subgame solving. Both are shown in Figure 5. We have also used the last checkpoint for more matches against Slumbot, and after playing 900000 hands, the average win-rate was 13 .5 ± 36 .7 mbb/hand. Based on the information provided by the Slumbot, MMPO scored 28 .2 mbb/hand better than Slumbot would score against itself with the same cards. Local best response value of the final checkpoint is −1622 .7 ± 158 .9.Based on these results, our approach, trained via self-play for few days with minimal domain knowl-edge, can stay on par with a bot developed over five years specifically for the Annual Computer Poker Competition. We use no subgame solving, card abstraction, or fixed bet abstraction; the only poker-specific choices are expressing bets as a fraction of the pot, a common practice in Poker AI, and initializing the Gaussian means to cover the interval [ 13 , 3] of the pot, from which they are free to move during training (Appendix E).  
+
+> (a) Local best response (b) Slumbot
+
+Figure 5: Head-to-head performance with 95% confidence intervals against different methods during the training. 
+
+# 5 RELATED WORK 
+
+Counterfactual regret minimization (CFR) is a tabular algorithm, which minimizes counterfactual regret at each decision point for both players (Zinkevich et al., 2007; Tammelin et al., 2015). It has had tremendous success in Texas Hold’em, especially in its application with subgame solving (Burch et al., 2014; Brown & Sandholm, 2018; Moravˇ c´ ık et al., 2017). The subgame-solving version of CFR was extended to function-approximation settings with Deep CFR, and its modern extensions, including ReBeL or Dream (Brown et al., 2019; 2020; Steinberger et al., 2020). However, these extensions rely on discrete action space, and to the best of our knowledge, scalable counterfactual regret minimization for continuous action spaces has not yet been developed. 
+
+Fictitious Self-play and Double oracle are tabular algorithms in which each player maintains an ensemble of strategies and then mixes among them (Brown, 1951; Heinrich et al., 2015; McMahan et al., 2003; Boˇ sansk´ y et al., 2013). The new strategies are computed as a best response to the current ensemble. These algorithms are easily combined with deep learning, because the best response can be trained via reinforcement learning (Heinrich & Silver, 2016; Lanctot et al., 2017). Also, they can be easily used for games with continuous action spaces by modifying the algorithm to find the best response. AlphaStar has used a League system, in which different types of agents were used in the ensemble, with some trying to exploit specific weaknesses of other strategies (Vinyals et al., 2019). However, these algorithms are often sample-inefficient because training the best response is the bottleneck, and they typically require hundreds of best responses. 
+
+Policy-gradient algorithms have been central to the successes in single-player reinforcement learn-ing. Stochastic value gradients (SVG) parametrize the strategy as a Gaussian and then train its mean and standard deviation directly from observed traces (Heess et al., 2015). This same reparametriza-tion trick was later used in proximal policy optimization (PPO) or soft actor critic (SAC) (Schulman et al., 2017; Haarnoja et al., 2018). Prior work has already introduced a mixture of Gaussians as a 8Preprint. Under review. reparametrization of the strategy, but those focused on increasing the variability of trained strategies and did not take adversarial opponents into account (Baram et al., 2021; Ren et al., 2021; Islam & Huber, 2025). Multi-agent PPO (MAPPO) has extended PPO into a multi-agent setting, but it primarily focused on cooperative settings (Yu et al., 2022). Some extensions have been applied in adversarial settings, but they use only a single Gaussian to parametrize the strategy (Li et al., 2019; Rahman & Xue, 2022). PPO and MAPPO have achieved surprisingly strong performance in some zero-sum games, exemplified by OpenAI Five (OpenAI et al., 2019; Rudolph et al., 2026) or AlphaHoldem (Zhao et al., 2022). Still, they do not provide any convergence guarantees and may converge to highly exploitable strategies when used in self-play (Sokota et al., 2023). Mag-netic mirror descent has shown that in games with discrete actions, using the KL-regularization with respect to a magnet strategy guarantees convergence to a Quantal Response Equilibrium (Sokota et al., 2023). Regularized Nash dynamics have shown that, by decreasing the regularization strength or by moving the magnet, these algorithms converge to a Nash equilibrium (Perolat et al., 2021; Sokota et al., 2023; Kalogiannis & Farina, 2026). Our work falls into this category of algorithms, as MMPO parametrizes the strategy as a mixture of Gaussian and categorical distributions, with both components trained via a KL-regularized policy-gradient algorithm. 
+
+Action abstraction shrinks down the action space of the game, by either removing some actions or by discretizing the action space. A naive approach to discretization is to use a uniform grid for the actions. This approach is often quite effective, but it scales poorly in extensive-form games because errors can propagate. However, it has been shown that if the game utilities are Lipschitz, then the error of this uniform abstraction can be bounded (Kroer & Sandholm, 2015). Abstractions were a major part of Poker solvers, reducing the size of the game tree and making standard approaches applicable (Jackson, 2013; Brown & Sandholm, 2018; Moravˇ c´ ık et al., 2017). Several techniques have been developed to dynamically adjust the abstraction in Poker bets, but they require the game itself to be tractable for running CFR (Hawkin et al., 2012; Brown & Sandholm, 2014). A different perspective on double oracle algorithms is that the pure best responses can be seen as a discretization (Adam et al., 2021). Our approach can be seen as finding an action abstraction while also solving the game using this abstraction. And since MMPO does not explicitly construct the game, it is not limited by the size of the (abstracted) game tree. 
+
+# 6 CONCLUSION 
+
+We have extended the regularized policy-gradient techniques from discrete-action games to continuous-action games with algorithm Magnetic Mixture Policy Optimization (MMPO). Many real-world adversarial situations in economics, robotics, or sports are continuous, and as such, it is important to develop scalable and efficient algorithms for these settings. MMPO parametrizes the strategy as a mixture of Gaussians, enabling it to be used even in games that combine discrete and continuous actions. We show that even with a single Gaussian, KL regularization enables con-vergence in games where plain gradient descent diverges. We compare our method across several domains and baselines, demonstrating that it is both efficient and robust. We also scaled MMPO to Heads-up No Limit Texas Hold’em, where we show that training in self-play without any subgame-solving and with minimal domain-specific knowledge manages to stay on par with a strong Poker bot. 9Preprint. Under review. 
+
+# AI USE STATEMENT 
+
+In this work, we used these AI tools for these tasks: • Experiments: LLM-assisted programming, scheduling experiments, managing the results of the experiments, such as plotting and summarization. Models: Claude Opus 4.8, Claude Sonnet 5, Claude Opus 5, Claude Fable 5 through Claude Code. GPT5.6-Sol, GPT5.6-Terra, GPT6-Astra through OpenAI Codex. Composer 2.5 and Cursor Grok 4.6 through Cursor • Help with proofs: Fleshing out details and formalizing the proofs in the paper. Models: Claude Opus 4.8 and Claude Opus 5 through Claude Code. • Exploration of the related literature. Models: Gemini 3.6 Flash and Gemini 3.6 Thinking. Claude Opus 4.8 and Claude Opus 5 through Claude Code. • Writing: Improving formulation and overall flow of the paper. Models: Gemini 3.6 Flash, Claude Opus 5 through Claude Code. We have not used AI tools to generate the main ideas in the paper, draft the sections of the pa-per, produce data for experiments, or generate citations. We have reviewed all AI-assisted work by testing the generated implementation and verifying the generated parts of the proofs. We take responsibility for the final content of this work, including text, claims, or artifacts produced with the aid of generative AI. 
+
+# REFERENCES 
+
+Luk´ aˇ s Adam, Rostislav Horˇ c´ ık, Tom´ aˇ s Kasl, and Tom´ aˇ s Kroupa. Double oracle algorithm for com-puting equilibria in continuous games. In Proceedings of the AAAI Conference on Artificial Intel-ligence , volume 35, pp. 5070–5077, 2021. Nir Baram, Guy Tennenholtz, and Shie Mannor. Maximum entropy reinforcement learning with mixture policies. arXiv preprint arXiv:2103.10176 , 2021. David A Blackwell and Meyer A Girshick. Theory of games and statistical decisions . Courier Corporation, 1979. Branislav Boˇ sansk´ y, Christopher Kiekintveld, Viliam Lis´ y, Jiˇ ri ˇ Cerm´ ak, and Michal Pˇ echouˇ cek. Double-oracle algorithm for computing an exact nash equilibrium in zero-sum extensive-form games. In Proceedings of the 2013 international conference on Autonomous agents and multi-agent systems , pp. 335–342, 2013. James Bradbury, Roy Frostig, Peter Hawkins, Matthew James Johnson, Yash Katariya, Chris Leary, Dougal Maclaurin, George Necula, Adam Paszke, Jake VanderPlas, Skye Wanderman-Milne, and Qiao Zhang. JAX: composable transformations of Python+NumPy programs, 2018. URL 
+
+http://github.com/jax-ml/jax .George W Brown. Iterative solution of games by fictitious play. Act. Anal. Prod Allocation , 13(1): 374, 1951. Noam Brown and Tuomas Sandholm. Regret transfer and parameter optimization. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 28, 2014. Noam Brown and Tuomas Sandholm. Superhuman ai for heads-up no-limit poker: Libratus beats top professionals. Science , 359(6374):418–424, 2018. doi: 10.1126/science.aao1733. URL 
+
+https://www.science.org/doi/abs/10.1126/science.aao1733 .Noam Brown, Adam Lerer, Sam Gross, and Tuomas Sandholm. Deep counterfactual regret mini-mization. In International conference on machine learning , pp. 793–802. PMLR, 2019. Noam Brown, Anton Bakhtin, Adam Lerer, and Qucheng Gong. Combining deep reinforcement learning and search for imperfect-information games. Advances in neural information processing systems , 33:17057–17069, 2020. 10 Preprint. Under review. Neil Burch, Michael Johanson, and Michael Bowling. Solving imperfect information games using decomposition. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 28, 2014. Constantinos Daskalakis, Andrew Ilyas, Vasilis Syrgkanis, and Haoyang Zeng. Training GANs with optimism. In International Conference on Learning Representations , 2018. URL https: //openreview.net/forum?id=SJJySbbAZ .Carles Domingo-Enrich, Samy Jelassi, Arthur Mensch, Grant Rotskoff, and Joan Bruna. A mean-field analysis of two-player zero-sum games. In Proceedings of the 34th International Conference on Neural Information Processing Systems , NIPS ’20, Red Hook, NY, USA, 2020. Curran Asso-ciates Inc. ISBN 9781713829546. Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, and Sergey Levine. Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor. In International confer-ence on machine learning , pp. 1861–1870. Pmlr, 2018. John Hawkin, Robert Holte, and Duane Szafron. Using sliding windows to generate action abstrac-tions in extensive-form games. In Proceedings of the AAAI Conference on Artificial Intelligence ,volume 26, pp. 1924–1930, 2012. Nicolas Heess, Gregory Wayne, David Silver, Timothy Lillicrap, Tom Erez, and Yu-val Tassa. Learning continuous control policies by stochastic value gradients. In C. Cortes, N. Lawrence, D. Lee, M. Sugiyama, and R. Garnett (eds.), Advances in Neu-ral Information Processing Systems , volume 28. Curran Associates, Inc., 2015. URL 
+
+https://proceedings.neurips.cc/paper_files/paper/2015/file/ 148510031349642de5ca0c544f31b2ef-Paper.pdf .Johannes Heinrich and David Silver. Deep reinforcement learning from self-play in imperfect-information games. arXiv preprint arXiv:1603.01121 , 2016. Johannes Heinrich, Marc Lanctot, and David Silver. Fictitious self-play in extensive-form games. In Francis Bach and David Blei (eds.), Proceedings of the 32nd International Conference on Machine Learning , volume 37 of Proceedings of Machine Learning Research , pp. 805–813, Lille, France, 07–09 Jul 2015. PMLR. URL https://proceedings.mlr.press/v37/ heinrich15.html .Daniel Hennes, Dustin Morrill, Shayegan Omidshafiei, R´ emi Munos, Julien Perolat, Marc Lanctot, Audrunas Gruslys, Jean-Baptiste Lespiau, Paavo Parmas, Edgar Du´ e˜ nez-Guzm´ an, et al. Neural replicator dynamics: Multiagent learning via hedging policy gradients. In Proceedings of the 19th international conference on autonomous agents and multiagent systems , pp. 492–501, 2020. Ya-Ping Hsieh, Chen Liu, and Volkan Cevher. Finding mixed Nash equilibria of generative adversar-ial networks. In Kamalika Chaudhuri and Ruslan Salakhutdinov (eds.), Proceedings of the 36th International Conference on Machine Learning , volume 97 of Proceedings of Machine Learning Research , pp. 2810–2819. PMLR, 09–15 Jun 2019. URL https://proceedings.mlr. press/v97/hsieh19b.html .S M Mazharul Islam and Manfred Huber. Categorical policies: Multimodal policy learning and exploration in continuous control. In 2025 IEEE International Conference on Systems, Man, and Cybernetics (SMC) , pp. 5236–5241, 2025. doi: 10.1109/SMC58881.2025.11342495. Eric Griffin Jackson. Slumbot nl: Solving large games with counterfactual regret minimization using sampling and distributed processing. In AAAI Conference on Artificial Intelligence , 2013. URL 
+
+https://api.semanticscholar.org/CorpusID:16497469 .Fivos Kalogiannis and Gabriele Farina. Policy gradient methods converge globally in imperfect-information extensive-form games. Advances in Neural Information Processing Systems , 38: 29162–29224, 2026. Galina M Korpelevich. The extragradient method for finding saddle points and other problems. 
+
+Matecon , 12:747–756, 1976. 11 Preprint. Under review. Christian Kroer and Tuomas Sandholm. Discretization of continuous action spaces in extensive-form games. In Proceedings of the 2015 international conference on autonomous agents and multiagent systems , pp. 47–56, 2015. Ondrej Kubicek, Viliam Lisy, and Tuomas Sandholm. Test-time reinforcement learning in imperfect information games, 2026. URL https://arxiv.org/abs/2608.30635 .Marc Lanctot, Vinicius Zambaldi, Audrunas Gruslys, Angeliki Lazaridou, Karl Tuyls, Julien P´ erolat, David Silver, and Thore Graepel. A unified game-theoretic approach to multiagent rein-forcement learning. Advances in neural information processing systems , 30, 2017. Shihui Li, Yi Wu, Xinyue Cui, Honghua Dong, Fei Fang, and Stuart Russell. Robust multi-agent reinforcement learning via minimax deep deterministic policy gradient. In Proceedings of the AAAI conference on artificial intelligence , volume 33, pp. 4213–4220, 2019. Timothy P Lillicrap, Jonathan J Hunt, Alexander Pritzel, Nicolas Heess, Tom Erez, Yuval Tassa, David Silver, and Daan Wierstra. Continuous control with deep reinforcement learning. In In-ternational Conference on Learning Representations (ICLR) , 2016. URL https://arxiv. org/abs/1509.02971 .Viliam Lis´ y and Michael Bowling. Eqilibrium approximation quality of current no-limit poker bots. In AAAI Workshops , 2017. Carlos Martin and Tuomas Sandholm. Finding mixed-strategy equilibria of continuous-action games without gradients using randomized policy networks. In Edith Elkind (ed.), Proceedings of the Thirty-Second International Joint Conference on Artificial Intelligence, IJCAI-23 , pp. 2844–2852. International Joint Conferences on Artificial Intelligence Organization, 8 2023. doi: 10.24963/ ijcai.2023/317. URL https://doi.org/10.24963/ijcai.2023/317 . Main Track. Carlos Martin and Tuomas Sandholm. Joint-perturbation simultaneous pseudo-gradient. In James Kwok (ed.), Proceedings of the Thirty-Fourth International Joint Conference on Artificial In-telligence, IJCAI-25 , pp. 3996–4004. International Joint Conferences on Artificial Intelligence Organization, 8 2025. doi: 10.24963/ijcai.2025/445. URL https://doi.org/10.24963/ ijcai.2025/445 . Main Track. H Brendan McMahan, Geoffrey J Gordon, and Avrim Blum. Planning in the presence of cost functions controlled by an adversary. In Proceedings of the 20th international conference on machine learning (ICML-03) , pp. 536–543, 2003. Matej Moravˇ c´ ık, Martin Schmid, Neil Burch, Viliam Lis´ y, Dustin Morrill, Nolan Bard, Trevor Davis, Kevin Waugh, Michael Johanson, and Michael Bowling. Deepstack: Expert-level artifi-cial intelligence in heads-up no-limit poker. Science , 356(6337):508–513, 2017. doi: 10.1126/ science.aam6960. URL https://www.science.org/doi/abs/10.1126/science. aam6960 .OpenAI, Christopher Berner, Greg Brockman, Brooke Chan, Vicki Cheung, Przemysław Debiak, Christy Dennison, David Farhi, Quirin Fischer, Shariq Hashme, Chris Hesse, Rafal J´ ozefowicz, Scott Gray, Catherine Olsson, Jakub Pachocki, Michael Petrov, Henrique P. d. O. Pinto, Jonathan Raiman, Tim Salimans, Jeremy Schlatter, Jonas Schneider, Szymon Sidor, Ilya Sutskever, Jie Tang, Filip Wolski, and Susan Zhang. Dota 2 with large scale deep reinforcement learning, 2019. URL https://arxiv.org/abs/1912.06680 .Julien Perolat, Remi Munos, Jean-Baptiste Lespiau, Shayegan Omidshafiei, Mark Rowland, Pedro Ortega, Neil Burch, Thomas Anthony, David Balduzzi, Bart De Vylder, et al. From poincar´ e re-currence to convergence in imperfect information games: Finding equilibrium via regularization. In International Conference on Machine Learning , pp. 8525–8535. PMLR, 2021. Julien Perolat, Bart De Vylder, Daniel Hennes, Eugene Tarassov, Florian Strub, Vincent de Boer, Paul Muller, Jerome T. Connor, Neil Burch, Thomas Anthony, Stephen McAleer, Romuald Elie, Sarah H. Cen, Zhe Wang, Audrunas Gruslys, Aleksandra Malysheva, Mina Khan, Sherjil Ozair, Finbarr Timbers, Toby Pohlen, Tom Eccles, Mark Rowland, Marc Lanctot, Jean-Baptiste Lespiau, Bilal Piot, Shayegan Omidshafiei, Edward Lockhart, Laurent Sifre, Nathalie Beauguerlange, 12 Preprint. Under review. Remi Munos, David Silver, Satinder Singh, Demis Hassabis, and Karl Tuyls. Mastering the game of stratego with model-free multiagent reinforcement learning. Science , 378(6623):990– 996, 2022. doi: 10.1126/science.add4679. URL https://www.science.org/doi/abs/ 10.1126/science.add4679 .Leonid Denisovich Popov. A modification of the arrow-hurwicz method for search of saddle points. 
+
+Mathematical notes of the Academy of Sciences of the USSR , 28(5):845–848, 1980. Marc-Antoine Provost, Nejc Ilenic, Christopher Solinas, and Philippe Beardsell. Gto wizard bench-mark, 2026. URL https://arxiv.org/abs/2603.23660 .Md Masudur Rahman and Yexiang Xue. Robust policy optimization in deep reinforcement learning, 2022. URL https://arxiv.org/abs/2212.07536 .Jie Ren, Yewen Li, Zihan Ding, Wei Pan, and Hao Dong. Probabilistic mixture-of-experts for efficient deep reinforcement learning. arXiv preprint arXiv:2104.09122 , 2021. Brian Roberson. The colonel blotto game. Economic Theory , 29(1):1–24, 2006. Max Rudolph, Nathan Lichtle, Sobhan Mohammadpour, Alexandre M Bayen, Zico Kolter, Amy Zhang, Gabriele Farina, Eugene Vinitsky, and Samuel Sokota. Reevaluating policy gradient meth-ods for imperfect-information games. In International Conference on Learning Representations ,volume 2026, pp. 156908–156943, 2026. Julian Schrittwieser, Ioannis Antonoglou, Thomas Hubert, Karen Simonyan, Laurent Sifre, Simon Schmitt, Arthur Guez, Edward Lockhart, Demis Hassabis, Thore Graepel, et al. Mastering atari, go, chess and shogi by planning with a learned model. Nature , 588(7839):604–609, 2020. John Schulman, Philipp Moritz, Sergey Levine, Michael Jordan, and Pieter Abbeel. High-dimensional continuous control using generalized advantage estimation. arXiv preprint arXiv:1506.02438 , 2015. John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 , 2017. David Silver, Thomas Hubert, Julian Schrittwieser, Ioannis Antonoglou, Matthew Lai, Arthur Guez, Marc Lanctot, Laurent Sifre, Dharshan Kumaran, Thore Graepel, Timothy Lillicrap, Karen Simonyan, and Demis Hassabis. A general reinforcement learning algorithm that mas-ters chess, shogi, and go through self-play. Science , 362(6419):1140–1144, 2018. doi: 10.1126/ science.aar6404. URL https://www.science.org/doi/abs/10.1126/science. aar6404 .Maurice Sion. On general minimax theorems. Pacific Journal of Math-ematics , 8(1):171–176, 1958. URL https://projecteuclid.org/ journals/pacific-journal-of-mathematics/volume-8/issue-1/ On-general-minimax-theorems/pjm/1103040253.full .Samuel Sokota, Ryan D’Orazio, J Zico Kolter, Nicolas Loizou, Marc Lanctot, Ioannis Mitliagkas, Noam Brown, and Christian Kroer. A unified approach to reinforcement learning, quantal response equilibria, and two-player zero-sum games. In The Eleventh International Confer-ence on Learning Representations , 2023. URL https://openreview.net/forum?id= DpE5UYUQzZH .Samuel Sokota, Eugene Vinitsky, Hengyuan Hu, J. Zico Kolter, and Gabriele Farina. Superhuman ai for stratego using self-play reinforcement learning and test-time search, 2025. URL https: //arxiv.org/abs/2511.07312 .Eric Steinberger, Adam Lerer, and Noam Brown. Dream: Deep regret minimization with advantage baselines and model-free learning. arXiv preprint arXiv:2006.10410 , 2020. Matej Straka, Viliam Lis´ y, and Martin Schmid. Superhuman AI for generals.io using self-play reinforcement learning. arXiv preprint arXiv:2606.23348 , 2026. 13 Preprint. Under review. Oskari Tammelin, Neil Burch, Michael Johanson, and Michael Bowling. Solving heads-up limit texas hold’em. In IJCAI , volume 15, pp. 645–652, 2015. Yunhao Tang and Shipra Agrawal. Discretizing continuous action space for on-policy optimization. In Proceedings of the aaai conference on artificial intelligence , volume 34, pp. 5981–5988, 2020. Arash Tavakoli, Fabio Pardo, and Petar Kormushev. Action branching architectures for deep rein-forcement learning. In Proceedings of the aaai conference on artificial intelligence , volume 32, 2018. Emanuel Todorov, Tom Erez, and Yuval Tassa. Mujoco: A physics engine for model-based control. In 2012 IEEE/RSJ International Conference on Intelligent Robots and Systems , pp. 5026–5033. IEEE, 2012. doi: 10.1109/IROS.2012.6386109. William Vickrey. Counterspeculation, auctions, and competitive sealed tenders. The Journal of finance , 16(1):8–37, 1961. Oriol Vinyals, Igor Babuschkin, Wojciech M Czarnecki, Micha¨ el Mathieu, Andrew Dudzik, Juny-oung Chung, David H Choi, Richard Powell, Timo Ewalds, Petko Georgiev, et al. Grandmaster level in starcraft ii using multi-agent reinforcement learning. nature , 575(7782):350–354, 2019. John Von Neumann and Oskar Morgenstern. Theory of games and economic behavior, 2nd rev. 1947. Chao Yu, Akash Velu, Eugene Vinitsky, Jiaxuan Gao, Yu Wang, Alexandre Bayen, and Yi Wu. The surprising effectiveness of ppo in cooperative multi-agent games. Advances in neural information processing systems , 35:24611–24624, 2022. Brian Zhang and Tuomas Sandholm. General search techniques without common knowledge for imperfect-information games, and application to superhuman fog of war chess. In International Conference on Learning Representations , volume 2026, pp. 93536–93563, 2026. Enmin Zhao, Renye Yan, Jinqiu Li, Kai Li, and Junliang Xing. Alphaholdem: High-performance artificial intelligence for heads-up no-limit poker via end-to-end reinforcement learning. In Pro-ceedings of the AAAI conference on artificial intelligence , volume 36, pp. 4689–4697, 2022. Stephan Zheng, Alexander Trott, Sunil Srinivasa, David C. Parkes, and Richard Socher. The ai economist: Taxation policy design via two-level deep multiagent reinforcement learning. Sci-ence Advances , 8(18):eabk2607, 2022. doi: 10.1126/sciadv.abk2607. URL https://www. science.org/doi/abs/10.1126/sciadv.abk2607 .Martin Zinkevich, Michael Johanson, Michael Bowling, and Carmelo Piccione. Regret minimization in games with incomplete information. Advances in neural information processing systems , 20, 2007. 14 Preprint. Under review. 
+
+# A PROOFS 
+
+Fact 1. 1. KL divergence between two univariate Gaussians p, q with corresponding means 
+
+μp, μ q and standard deviations σp, σ q is 
+
+DKL (p, q ) = log( σq
+
+σp
+
+) + σ2 
+
+> p
+
++ ( μp − μq )2
+
+2σ2
+
+> q
+
+− 12
+
+2. First order derivatives of KL divergence between two univariate Gaussians p, q wrt. μp
+
+and σp are 
+
+∂∂μ p
+
+DKL (p, q ) = μp − μq
+
+σ2
+
+> q
+
+∂∂σ p
+
+DKL (p, q ) = σp
+
+σ2
+
+> q
+
+− 1
+
+σp
+
+3. Second order derivatives of KL divergence between two univariate Gaussians p, q wrt. μp
+
+and σp are 
+
+∂2
+
+∂μ 2
+
+> p
+
+DKL (p, q ) = 1
+
+σ2
+
+> q
+
+∂2
+
+∂σ 2
+
+> p
+
+DKL (p, q ) = 1
+
+σ2
+
+> q
+
++ 1
+
+σ2
+
+> p
+
+∂2
+
+∂μ p∂σ p
+
+DKL (p, q ) = 0 
+
+Lemma 1. Under assumption 1, for all π, π ′ the non-monotonicity of V is bounded 
+
+⟨V (π) − V (π′), π − π′⟩ ≥ − LV ∥π − π′∥2
+
+Proof. The assumption 1 states that the function is LV -Lipschitz continuous. By using Cauchy-Schwarz inequality ⟨u, v ⟩ ≤ ∥ u∥∥ v∥⟨V (π) − V (π′), π − π′⟩ ≥ −∥ V (π) − V (π′)∥ · ∥ π − π′∥ ≥ − LV ∥π − π′∥2 (7) 
+
+Lemma 2. Assume a strategy space Π, where σ1, σ 2 ≥ σmin > 0. The regularizer R(π) is a continuously differentiable, δR-strongly monotone and LR-Lipschitz on π for a magnet strategy 
+
+πM ∈ Π with 
+
+δR = min( 1
+
+σ2,M 
+
+> 1
+
+, 1
+
+σ2,M 
+
+> 2
+
+) > 0 (8) 
+
+LR = 1
+
+σ2
+
+> min
+
++ max( 1
+
+σ2,M 
+
+> 1
+
+, 1
+
+σ2,M 
+
+> 2
+
+) < ∞ (9) 
+
+Proof. Using the fact that 
+
+R(π) = 
+
+ 
+
+> ∂∂μ 1
+
+DKL (π, π M ) 
+
+> ∂∂σ 1
+
+DKL (π, π M ) 
+
+> ∂∂μ 2
+
+DKL (π, π M ) 
+
+> ∂∂σ 2
+
+DKL (π, π M )
+
+ =
+
+
+
+> μ1−μM
+> 1
+> σ2,M
+> 1
+> σ1
+> σ2,M
+> 1
+
+− 1
+
+> σ1
+> μ2−μM
+> 2
+> σ2,M
+> 2
+> σ2
+> σ2,M
+> 2
+
+− 1
+
+> σ2
+
+
+
+(10) The Jacobian of R(π) is 
+
+JR(π) = diag 
+
+ 1
+
+σ2,M 
+
+> 1
+
+, 1
+
+σ21
+
++ 1
+
+σ2,M 
+
+> 1
+
+, 1
+
+σ2,M 
+
+> 2
+
+, 1
+
+σ22
+
++ 1
+
+σ2,M 
+
+> 2
+
+
+
+(11) 15 Preprint. Under review. The Jacobian JR(π) is a diagonal matrix, and each diagonal entry is positive, because 
+
+σ1, σ M 
+
+> 1
+
+, σ 2, σ M 
+
+> 2
+
+> 0.It holds that δR ≤ 1
+
+> σ2,M i
+
+≤ 1
+
+> σ2,M i
+
++ 1
+
+> σ2
+> i
+
+≤ LR for i ∈ { 1, 2} and all strategies π. Out of this follows 
+
+δRI ⪯ JR(π) ⪯ LRI, where ⪯ is an Loewner ordering A ⪯ B ⇔ x⊤(B − A)x ≥ 0, for all x. In other words that (B − A) is positive semi-definite. Strategy space Π is convex, therefore if π, π ′ ∈ Π then π′ + t(π − π′); t ∈ [0 , 1] is also in Π. From the fundamental theorem of calculus follows 
+
+⟨R(π) − R(π′), π − π′⟩ =
+
+Z 10
+
+(π − π′)⊤JR(π′ + t(π − π′))( π − π′)dt ≥ δR∥π − π′∥2 (12) 
+
+∥R(π) − R(π′)∥ = ∥
+
+Z 10
+
+JR(π′ + t(π − π′))( π − π′)dt ∥≤
+
+Z 10
+
+∥JR(π′ + t(π − π′))( π − π′)∥dt 
+
+≤
+
+Z 10
+
+∥JR(π′ + t(π − π′)) ∥op ∥(π − π′)∥dt 
+
+≤
+
+Z 10
+
+LR∥(π − π′)∥dt = LR∥(π − π′)∥
+
+(13) 
+
+Lemma 3. Under assumption 1 and η > LV 
+
+> δR
+
+the V R is δM -strongly monotone and LM -Lipschitz on strategy space Π, where σ1, σ 2 ≥ σmin > 0 with 
+
+δM = ηδ R − LV > 0 (14) 
+
+LM = ηL R + LV < ∞ (15) 
+
+LM ≥ δM (16) 
+
+Proof. 
+
+⟨V R(π) − V R(π′), π − π′⟩ = ⟨V (π) + ηR (π) − V (π′) − ηR (π′), π − π′⟩
+
+= ⟨V (π) − V (π′), π − π′⟩ + η⟨R(π) − R(π′), π − π′⟩≥ − LV ∥π − π′∥2 + ηδ R∥π − π′∥2
+
+= ( ηδ R − LV )∥π − π′∥2 = δM ∥π − π′∥2
+
+(17) 
+
+δM > 0 based on the assumption η > LV 
+
+> δR
+
+.
+
+∥V R(π) − V R(π′)∥ = ∥V (π) + ηR (π) − V (π′) − ηR (π′)∥≤ ∥ V (π) − V (π′)∥ + η∥R(π) − R(π′)∥≤ LV ∥π − π′∥ + ηL R∥(π − π′)∥
+
+= ( LV + ηL R)∥π − π′∥ = LM ∥π − π′∥
+
+(18) The fact that LM > δ M follows from lemma 2, specifically LR > δ R and from the fact that 
+
+LV > 0.
+
+Fact 2. Let Π be nonempty, closed and convex. The Euclidean projection of any π+ is defined as 
+
+PΠ (π+) = arg min 
+
+> π∈Π
+
+|| π − π+∥ (19) 
+
+Then for any π+
+
+1. The PΠ (π+) is unique 
+
+16 Preprint. Under review. 
+
+2. Feasible π◦ ∈ Π satisfies π◦ = PΠ (π+) if and only if 
+
+⟨π+ − π◦, π − π◦⟩ ≤ 0 ∀π ∈ Π (20) 
+
+3. PΠ is non-expansive for any two such π+, ˆπ+
+
+∥PΠ (π+) − PΠ (ˆ π+)∥ ≤ ∥ π+ − ˆπ+∥ (21) 
+
+Lemma 4. Let assumption 1 hold and η > LV 
+
+> δR
+
+. Let LM , δ M be the constants from lemma 3 and 
+
+0 < α < 2δM
+
+> L2
+> M
+
+. Define the Projected Gradient Ascent Descent operator as 
+
+T (π) = PΠ (π − αV R(π)) (22) 
+
+Then T is a contraction 
+
+∥T (π) − T (π′)∥2 ≤ r(α)∥π − π′∥2 (23) 
+
+Proof. 
+
+∥T (π) − T (π′)∥2 = ∥PΠ (π − αV R(π)) − PΠ (π′ − αV R(π′)) ∥2
+
+≤ ∥ π − π′ − α(V R(π) − V R(π′)) ∥2
+
+= ∥π − π′∥2 − 2α⟨π − π′, V R(π) − V R(π′)⟩ + α2∥V R(π) − V R(π′)∥2
+
+(24) The first inequality follows from the fact that Π is closed and convex, which makes PΠ non-expansive. We will use the δM -strong monotonicity and LM -Lipschitz continuity to get 
+
+−2α⟨π − π′, V R(π) − V R(π′)⟩ ≤ − 2αδ M ∥π − π′∥2 (25) 
+
+α2∥(V R(π) − V R(π′)) ∥2 ≤ α2L2 
+
+> M
+
+∥π − π′∥2 (26) This gets the following inequality 
+
+∥T (π) − T (π′)∥2 ≤ (1 − 2αδ M + α2L2 
+
+> M
+
+)∥π − π′∥2 (27) Then the PGDA is a contraction when 0 < 1 − 2αδ M + α2L2 
+
+> M
+
+< 1, which holds for learning rate 
+
+0 < α < 2δM
+
+> L2
+> M
+
+.
+
+Proposition 1. Under assumption 1 the problem VI (V R, Π) has a unique solution π∗ for every 
+
+η > LV 
+
+> δR
+
+and πM ∈ Π. For every α > 0 the π∗ is a fixed point 
+
+π∗ = T (π∗) (28) 
+
+If in addition π∗ is in interior of Π, then V R(π∗) = 0 
+
+Proof. We start by showing that the fixed points π∗ of T are solutions of the VI (V R, Π) 
+
+π∗ = T (π∗) ⇔ ⟨ V R(π∗), π − π∗⟩ ≥ 0 (29) We will use fact 2. The unprojected step is π+ = π∗ − αV R(π∗) and the feasible point is π∗ =
+
+π◦ = PΠ (π+). From fact 2 we know that it also needs to hold 
+
+⟨π+ − π◦, π − π◦⟩ = ⟨π∗ − αV R(π∗) − π∗, π − π◦⟩ = ⟨− αV R(π∗), π − π◦⟩ ≤ 0 (30) This means that the ⟨αV R(π∗), π − π◦⟩ ≥ 0.Now we will show that fixed point exists. First the 0 < α < 2δM
+
+> L2
+> M
+
+is a non-empty because of lemma 3. Let’s fix any α from that feasible set. Based on lemma 4, we know that T is a contraction and the 
+
+Π is closed and nonempty. Through Banach fixed-point theorem, there is a fixed point for the fixed 
+
+α. This fixed point is π∗, when using eq. (29) from left to right at that same α it is a solution of the VI (V R, Π) . Then using the eq. (29) from right to left, this same fixed point is a solution for any feasible α, not only the one used to find this point. The uniqueness of the fixed point comes from the strong monotonicity. 17 Preprint. Under review. 
+
+Theorem 1. Let assumption 1 hold and η > LV 
+
+> δR
+
+. If α < 2δM
+
+> L2
+> M
+
+then the Projected Gradient Descent Ascent (PGDA) converges to unique solution π∗ of variational inequalities VI (V R, Π) and for each strategy πk in iteration k following holds 
+
+∥πk − π∗∥2 ≤ r(η)k∥π0 − π∗∥2 r(η) = 1 − 2αδ M + α2L2 
+
+> M
+
+(2) 
+
+Proof. The strategy computed at iteration k + 1 is 
+
+πk+1 = T (πk) (31) By proposition 1, there is a unique solution π∗ = T (π∗) for the same α. Now let us use π′ = π∗ in lemma 4 
+
+∥πk+1 − π∗∥2 = ∥T (πk) − T (π∗)∥2 ≤ (1 − 2αδ M + α2L2 
+
+> M
+
+)∥πk − π∗∥2 (32) Iterating this procedure over k steps results in 
+
+∥πk − π∗∥2 ≤ r(η)k∥π0 − π∗∥2 (33) 
+
+Proposition 2. For a convex-concave game, for strategy πM ∈ Πσmin it holds that 
+
+πM = Ψ( πM ) ⇔ ⟨ V (πM ), π − πM ⟩ ≥ 0 ∀π ∈ Πσmin (34) 
+
+Proof. Since σi = σMi , we know that the ∂∂σ i DKL (π, π M ) = 0 , as such it is enough to work with the μ. Since the magnet is a fixed point of Ψ, we know that 
+
+⟨V R(πM ), π − πM ⟩ ≥ 0 ∀π ∈ Πσmin 
+
+⟨V (πM ) + ηR (πM ), π − πM ⟩ ≥ 0 ∀π ∈ Πσmin 
+
+⟨V (πM ), π − πM ⟩ ≥ 0 ∀π ∈ Πσmin 
+
+(35) which comes from the fact that R(πM ) = 0 for fixed point. Conversely, the same approach shows that any solution of ⟨V (πM ), π − πM ⟩ ≥ 0 solves also the VI (V (πM ) + ηR, Π) 
+
+Lemma 5. Let πM ∈ Πσmin and π+ = Ψ( πM ) it holds that 
+
+⟨V (π+), π + − π⟩ ≤ η
+
+2σ2min 
+
+ ∥μ − μM ∥2 − ∥ μ − μ+∥2 − ∥ μ+ − μM ∥2 (36) 
+
+Moreover, for π∗ holds 
+
+∥μ∗ − μ+∥2 ≤ ∥ μ∗ − μM ∥2 − ∥ μ+ − μM ∥2 (37) 
+
+Proof. We know that π+ is a fixed point of VI (V R, Πσmin ), so it holds 
+
+⟨V R(π+), π − π+⟩ ≥ 0 ∀π ∈ Πσmin (38) Let us focus only on the μ part of the inequality, because the σ is fixed. We use V (μ) for only the mean part of the field 
+
+⟨V R(μ+), μ − μ+⟩ = ⟨V (μ+) + ηR (μ+), μ − μ+⟩
+
+= ⟨V (μ+) + ησ2min 
+
+(μ+ − μM ), μ − μ+⟩≥ 0
+
+(39) We can further reorder this into 
+
+⟨V (π+), π + − π⟩ = ⟨V (μ+), μ + − μ⟩ ≤ ησ2min 
+
+⟨μ+ − μM , μ − μ+⟩ (40) 18 Preprint. Under review. Now we can now use following identity 2⟨q − s, p − q⟩ = ∥p − s∥2 − ∥ p − q∥2 − ∥ q − s∥2 to get 
+
+ησ2min 
+
+⟨μ+ − μM , μ − μ+⟩ = η
+
+2σ2min 
+
+(∥μ − μM ∥2 − ∥ μ − μ+∥2 − ∥ μ+ − μM ∥2) (41) We know that for π∗ it holds ⟨V (π∗), π + −π∗⟩ ≥ 0. Due to the monotonicity of the convex-concave game it also holds ⟨V (π) − V (π′), π − π′⟩ ≥ 0. Therefore 
+
+⟨V (π+) − V (π∗), π + − π∗⟩ = ⟨V (π+), π + − π∗⟩ − ⟨ V (π∗), π + − π∗⟩ ≥ 0
+
+⟨V (π+), π + − π∗⟩ ≥ ⟨ V (π∗), π + − π∗⟩ ≥ 0 (42) Putting it all together, we get 
+
+0 ≤ ⟨ V (π+), π + − π∗⟩ ≤ η
+
+2σ2min 
+
+ ∥μ∗ − μM ∥2 − ∥ μ∗ − μ+∥2 − ∥ μ+ − μM ∥2 (43) Since it holds that η ≥ 0 and σmin ≥ 0, it has to hold that 
+
+∥μ∗ − μM ∥2 − ∥ μ∗ − μ+∥2 − ∥ μ+ − μM ∥2 ≥ 0
+
+∥μ∗ − μM ∥2 − ∥ μ+ − μM ∥2 ≥ ∥ μ∗ − μ+∥2 (44) 
+
+Theorem 3. For a convex-concave game and η > L V σ2min , let πM,t +1 = Ψ( πM,t ) from arbitrary 
+
+πM, 0 ∈ Πσmin , then it holds that 
+
+X
+
+> t≥0
+
+∥πM,t +1 − πM,t ∥2 ≤ D2 (45) 
+
+where D is the diameter of the action space. Moreover, μM,t → μ, where π = ( μ, σ min ) solves variational inequalities VI (V, Πσmin )
+
+Proof. If we use the result from Lemma 5, we know that following holds for π∗
+
+∥μ∗ − μM,t +1 ∥2 ≤ ∥ μ∗ − μM,t ∥2 − ∥ μM,t +1 − μM,t ∥2 (46) This means that ∥μ∗ − μM,t ∥ is non-increasing, which gets 
+
+X
+
+> t≥0
+
+∥μM,t +1 − μM,t ∥2 ≤ X
+
+> t≥0
+
+∥μ∗ − μM,t ∥2 − ∥ μ∗ − μM,t +1 ∥2
+
+= ∥μ∗ − μM, 0∥2
+
+≤ D2 < ∞
+
+(47) The solution set of VI (V, Πσmin ) is nonempty, because Πσmin is compact and convex and V is con-tinuous. Lemma 5 holds for every solution of the variation inequality solution π∗, so the sequence 
+
+∥π∗ −πM,t ∥ is non-increasing for all solutions π∗. The above bound shows ∥μM,t +1 −μM,t ∥2 → 0.Since πM,t +1 is a solution of VI (V R, Πσmin ), it holds 
+
+⟨V (μM,t +1 ) + ησ2min 
+
+(μM,t +1 − μM,t ), μ − μM,t +1 ⟩ ≥ 0 (48) Splitting the inner product and applying Cauchy-Schwarz inequality, we get 
+
+⟨V (μM,t +1 ), μ − μM,t +1 ⟩ ≥ − ησ2min 
+
+⟨μM,t +1 − μM,t , μ − μM,t +1 ⟩≥ − ησ2min 
+
+∥μM,t +1 − μM,t ∥∥ μ − μM,t +1 ∥≥ − ησ2min 
+
+∥μM,t +1 − μM,t ∥D
+
+(49) The sequence μM,t lies in a compact set, so there is subsequence that starts at time tk and converges to fixed point μ. Since we know ∥μM,t k +1 − μM,t k ∥ → 0, we know that even the subsequence 19 Preprint. Under review. starting at μM,t k +1 will converge to the same point. So, if we use t = tk, the right hand side vanishes when k → ∞ , so 
+
+⟨V (μ), μ − μ⟩ ≥ 0 (50) which is the solution of VI (V, Πσmin ). Applying lemma 5 on π, the sequence ∥μ − μM,t ∥ is non-increasing and it converges to 0 along wtih subsequence starting at tk. Hence ∥μ − μM,t ∥ → 0 and the whole sequence converges to μ.
+
+Lemma 6. Consider a function f , which has continuous second derivative with sup |f ′′ | ≤ Mf ,then |Ex∼N (μ,σ 2)[f (x)] − f (μ)| ≤ Mf σ2 
+
+> 2
+
+.Proof. Let Z ∼ N (0 , 1) and z is a single realization of Z, then it holds 
+
+f (μ + σz ) = f (μ) + σzf ′(μ) + 12 σ2z2f ′′ (ξz ) (51) where ξz is a point between μ and μ + σz . Expectation of this is 
+
+Ex∼N (μ,σ 2)(f (x)) = E(f (μ + σZ )) = f (μ) + σf ′(μ)E(Z) + 12 σ2E(Z2f ′′ (ξZ )) (52) Because Z is Gaussian with mean 0, then E(Z) = 0 . For the second term it holds that 
+
+| 12 σ2E(Z2f ′′ (ξZ )) | ≤ 12 σ2E(Z2|f ′′ (ξZ )|) ≤ 12 σ2Mf E(Z2) = 12 σ2Mf . (53) So Putting this together we get 
+
+|Ex∼N (μ,σ 2)[f (x)] − f (μ)| ≤ | f (μ) + 12 σ2Mf − f (μ)| = 12 σ2Mf (54) 
+
+Proposition 3. In a convex-concave game, the exploitability for each strategy π ∈ Πσmin is at most 
+
+E(π) ≤ max 
+
+> π′
+> 1∈Πσmin 1
+
+U(π′
+
+> 1
+
+, π 2) − min 
+
+> π′
+> 2∈Πσmin 2
+
+U(π1, π ′
+
+> 2
+
+) + 12 (M1 + M2)σ2min (55) 
+
+Proof. Let aBR  
+
+> 1
+
+∈ arg max a1∈A 1 Ea2∼π2 u(a1, a 2). We can apply lemma 6 with Mg = M1 to get 
+
+Ea2∼π2 u(aBR  
+
+> 1
+
+, a 2) ≤ U(aBR  
+
+> 1
+
+, π 2) + M1σ2min 
+
+2 ≤ max 
+
+> π′
+> 1
+
+U(π′
+
+> 1
+
+, π 2) + M1σ2min 
+
+2 (56) Symmetrically we could do the same process for the Player 2, to get the final bound. 
+
+Theorem 2. In a convex-concave game with payoff u that has continuous second derivative. As-sume only strategies Πσmin ⊆ Π, which use σ = σmin and let σmin > 0, η > L V σ2min and 
+
+Mi = sup | ∂2u∂a 2
+
+> i
+
+|. Let πM,t +1 = Ψ( πM,t ) be the exact solution for the fixed magnet at iteration 
+
+t from arbitrary πM, 0 ∈ Πσmin . Then the sequence of πM,t converges to a fixed solution π∗ with exploitability at most 
+
+E(π∗) ≤ M1 + M2
+
+2 σ2min (3) 
+
+Proof. The proof follows directly from the theorem 3, which shows that the sequence converges to a solution of VI (V, Πσmin ) and from proposition 3, which bounds the exploitability of the strategy profile based on σmin .
+
+# B GAMES 
+
+In this section, we provide rules for all the games used in the experiments. 20 Preprint. Under review. B.1 ONE -SHOT GAMES 
+
+Continuous Matching Pennies Both players are choosing a real value from the range [-1, 1]. This game contains a pure Nash equilibrium at a1 = a2 = 0 , but the gradient descent dynamics fail to converge to it. 
+
+u1(a1, a 2) = a1a2 (57) 
+
+Rotational game Both players are choosing a real vector from [−1, 1] 2 or [−1, 1] 3. Similarly to continuous matching pennies, this game contains a pure Nash equilibrium for a1 = a2 = 0 to which the gradient descent does not converge. This game shows that the result of Theorem 2 can hold even beyond convex-concave games. Also it shows that even if the theorem is stated for single-dimension Gaussian, it holds even in multi-dimensional case. 
+
+u1(a1, a2) = 20( a1 + 0 .3a31)⊤A(a2 + 0 .3a32) − 116 (∥a1∥4 − ∥ a2∥4) (58) where A =
+
+ 0 1
+
+−1 0
+
+
+
+for 2D case and A =
+
+0 1 0
+
+−1 0 −10 1 0
+
+!
+
+Circle game Both players are choosing a real value from the range [0, 1]. The game is parametrized by the number of harmonics; we have used K = 3 . For any K, this game has a Nash equilibrium of size K + 1 , with uniformly spread points on the interval. 
+
+u1(a1, a 2) = 
+
+> K
+
+X
+
+> k=1
+
+2−(k−1) sin(2 πk (a1 − a2)) (59) 
+
+Glicksberg-Gross game Both players are choosing a real value from the range [0, 1]. It contains a Nash equilbrium that is 4 
+
+> π
+
+· arctan( √t), for t ∈ [0 , 1] . Again, the mixture of Gaussians cannot converge to this equilibrium with a finite number of Gaussians. Along with the circle game, these demonstrate how the mixture of Gaussians performs in games outside the scope of the algorithm. 
+
+ui(a1, a 2) = (1 + a1)(1 + a2)(1 − a1a2)(1 + a1a2)2 (60) 
+
+Two-point game Both players are choosing a real value from the range [-2, 2]. This game has a Nash equilibrium in which both players mix between 30% playing -1 and 70% playing 1. This is the best-case scenario for the mixture of Gaussians, as it can approximate these 2 pure strategies very well. 
+
+ui(a1, a 2) = exp 
+
+
+
+− (a1 + 1) 2
+
+0.02 
+
+
+
++ exp 
+
+
+
+− (a1 − 1) 2
+
+0.02 
+
+
+
+− exp 
+
+
+
+− (a2 + 1) 2
+
+0.02 
+
+
+
+− exp 
+
+
+
+− (a2 − 1) 2
+
+0.02 
+
+
+
++ ( a1 − 0.4)( a2 − 0.4) 
+
+(61) B.2 SEQUENTIAL GAMES 
+
+Continuous Kuhn Poker The game is played with the deck of 3 cards, Jack (J), Queen (Q), and King (K). The game starts with each player receiving 1 card and paying an ante of 1. Then player 1 either checks or bets between 0.25 and 2. If player 1 checks, the other player can either check or bet again. After the bet, the other player can either fold and lose their ante or call the bet. If neither player folds, both players reveal their cards, and the player with the higher value wins. The game uses the following order of cards: K > Q > J. 
+
+Continuous Leduc Hold’em The game is played with the deck of 6 cards, which contains 2 Jacks (J), 2 Queens (Q), and 2 Kings (K). The game starts with each player receiving 1 card and placing an ante of 1. The first player then either checks or bets between 0.25 and 2. After that, the players alternate by either folding, which results in a loss, calling the opponent’s bet, or raising between 21 Preprint. Under review. 0.25 and 2. The game consists of 2 rounds, and in each, there can be at most 2 raises. The round ends when one of the players calls the other one, and between the first and second rounds, the public card is revealed. If neither player folds, then at the end of round 2, both show their hands, and either the player who matches the public card wins or the player with the higher-value card, with K > Q
+
+> J. 
+
+Sequential Blotto N A sequential game over N turns, where players are assigning resources si-multaneously to the same base. The player who uses more resources ”wins” that base. At the end of the turn, only the players who won the base are revealed, not how many resources they used. The player who wins more bases in the N turns wins the game. 
+
+Heads-up No-limit Texas Hold’em The game is played with the standard 52-card deck. Each player starts with 400 chips and receives 2 cards at the beginning of the game. The first player (small blind) makes an ante of 1 chip, while the second player (big blind) makes an ante of 2 chips. The game is played in 4 rounds. After the first round, 3 public cards are revealed; after the second round, 1 public card is revealed; and after the third round, the last public card is revealed. In the round, players alternate in betting until one of them calls. Either player can bet all their chips at any time, forcing the opponent to call or fold. At the end of the game, the players reveal their private cards, and the player with the highest combined value of their private and public cards wins. Even if Texas Hold’em has discrete bets, we treat them as continuous. So the algorithm samples a real-valued bet, and we round it to the nearest integer, which is then used in the game. 
+
+# C EXPERIMENTAL DETAILS 
+
+In this section, we provide the hyperparameters for all algorithms across all experiments, along with the computational resources used for each experiment. C.1 PROXIMAL POLICY OPTIMIZATION 
+
+We use Proximal Policy Optimization (PPO) as one of the baselines, as an algorithm to compute the best response for evaluation, and as an oracle in PSRO and NFSP. We use Gaussian reparametrization for the PPO, where we train just a single Gaussian head through the following loss function 
+
+ρPPO = min 
+
+ πθ (atk|st, N tk )
+
+πold (atk|st, N tk ) A(st, a tk), clip   πθ (atk|st, N tk )
+
+πold (atk|st, N tk ) , 1 − ϵPPO , 1 + ϵPPO 
+
+A(st, a tk)
+
+
+
+LPPO = −EtρN − H (N tk )
+
+(62) To train the critic, we use Generalized Advantage Estimate (GAE) (Schulman et al., 2015). Due to the similarity of PPO to the mixture of Gaussians, we include the hyperparameters in Table 1 C.2 MAGNETIC MIRROR DESCENT 
+
+Magnetic Mirror Descent is a modification to discrete PPO that introduces the KL divergence be-tween the current strategy and the magnet strategy into the loss. In our mixture-of-Gaussians reparametrization, we use the MMD loss to train the categorical distribution Lw. As a baseline, we use MMD also as a solver for the discretized game. The discrete bins we use are uniformly spread through the action space. All the MMD hyperparameters are included in Table 1 C.3 NEURAL FICTITIOUS SELF -PLAY 
+
+Neural fictitious self-play stores two strategy networks at each time, a BR strategy and an average strategy. The algorithm works in two alternating phases: in the first, it trains the best response against every strategy; then, in the second, it adds some trajectories sampled by the BR into the replay buffer, which is then used to train the average strategy. Compared to the vanilla NFSP, we use PPO to compute the best response and not DQN. We provide hyperparameters in Table 2 22 Preprint. Under review. 
+
+One-shot games Sequential games PPO MMD MMPO PPO MMD MMPO BR-PPO 
+
+PPO epochs 2 2 2 1 1 1 1Entropy weight 0.05 0.05 0.05 0.05 0.02 0.02 0.01 Magnet weight η - 0.2 0.2 - 0.2 0.2 -Magnet update - 500 500 - 1000 1000 -Minimal std σmin - - 0.001 - - 0.1 0.001 Components K 1 - * 1 - 4 1Exploration ϵ 0.0 0.0 0.0 0.2 0.2 0.2 0.0 Value loss weight 0.5 0.5 0.5 0.5 0.5 0.5 0.5 GAE lambda λ - - - 0.95 0.95 0.95 0.95 V-trace clipping ρ - - - 2 2 2 2V-trace clipping c - - - 1 1 1 1Hidden sizes (64,64) (64,64) (64,64) (64,64) (64,64) (64,64) (64,64) Activation GELU GELU GELU GELU GELU GELU GELU Normalization RMS RMS RMS RMS RMS RMS RMS Optimizer Adam Adam Adam Adam Adam Adam Adam Learning Rate α 10 −3 10 −3 10 −3 10 −3 10 −3 10 −3 3 · 10 −3
+
+Max grad norm 0.5 0.5 0.5 0.5 0.5 0.5 0.5 Target update τ 10 −3 10 −3 10 −3 10 −3 10 −3 10 −3 10 −3
+
+Batch size 256 256 256 512 512 512 512 Table 1: Hyperparameters used in experiments for different policy-gradient algorithms and also for computing the approximate exploitability. The amount of components in one-shot games depend on game, in matching pennies it is 1, and in other games it is 4. 
+
+NFSP PSRO NFSP PSRO 
+
+BR train steps 10 3 10 3 10 4 10 4
+
+BR batch size 64 64 64 64 PSRO payoff samples - 256 - 20000 NFSP average steps 400 - 1000 -Reservoir capacity 10 6 - 10 6 -NFSP reservoir batch 256 - 256 -NFSP anticipatory η 0.1 - 0.1 -Table 2: Hyperparameters used in experiments for different best-response based algorithms. Train-ing of the best response uses PPO hyperparameters from Table 1, besides a different batch size. C.4 POLICY SPACE RESPONSE ORACLES 
+
+The training of Policy space response oracles is also split into two phases. In the first phase, both players train best response against the meta strategy. Then this BR is added to each player’s portfolio, and the expected utility of these strategies against all other strategies in the portfolio is computed. Then the resulting matrix game is solved, and the solution is used as the new meta-strategy, to which both players compute their best responses. Unlike the NFSP, the number of strategies PSRO stores grows with the training. The hyperparameters of PSRO are in Table 2 C.5 RANDOMIZED POLICY NETWORKS 
+
+Unlike other techniques, randomized policy networks do not explicitly produce the strategy. Instead, they store it implicitly in the network’s weights. The network takes random noise at the input and outputs the sampled action. This makes RPN similar to diffusion models, which perform a single step. Unlike diffusion models, which use supervised training, the randomized policy networks are used in reinforcement learning. Since the strategy is not parametrized in any way, the network can learn an arbitrary probability distribution given its architecture. We provide all hyperparameters in Table 3 23 Preprint. Under review. Optimizer Optimistic GD Optimism 0.333 Learning rate 10 −3
+
+Max grad norm 5Batch size 256 Noise dimension 16 Activation Mish Normalization RMS Extragradient step 0.01 Table 3: Randomized policy networks hyperparameters used in one-shot games C.6 LOCAL BEST RESPONSE 
+
+Local best response (LBR) is a Poker-specific technique that estimates a lower bound on the ex-ploitability of the strategy π. Let us describe it from the perspective of evaluating Player 1’s strategy, so the local best response is Player 2. When Player 2 is about to make a decision, it computes the exact probabilities for each hand of Player 1. The local best response uses action abstraction; we have used fold, call, pot, all-in abstraction. For each action, local best-response estimates its value by assuming both players would only check from this point to the end, and then pick the best one. LBR is more effective if it lets the opponent make more mistakes and therefore, we use the setting where it always checks and calls in the first two betting rounds of the game and only estimates action values and plays the best of them in turn and river. C.7 COMPUTATIONAL RESOURCES 
+
+All of our experiments used Python and JAX as a machine learning framework (Bradbury et al., 2018). Every experiment except Heads-up no limit Texas hold’em used a single CPU core of AMD EPYC 7543 with 16 GB of RAM and 16Gb of memory. In Figures 2 to 4, 6, 10 and 11 we re-port means and 95% confidence intervals computed from 5 different random seeds. Experiment in Figure 1 do not use an any randomness. 
+
+Convergence of the regularized Gaussian Head All of the experiments in this section took less than 4 hours using when ran sequentially. 
+
+One-shot games Single training run for each game took less than 10 minutes. We have used 5 baselines, 5 seeds, 4 games. Altogether this makes the experiment run 16 hours. 
+
+Sequential games Single training run for each game took less than 4 hours in fig. 4. However, the approximate exploitability computation took up to 12 hours. In total for each of the 4 baselines, 5 seeds and 4 games, the experiment took 4 · 4 · 5 + 3 · (4 + 12) · 5 · 4 = 1040 hours. 
+
+Capacity experiments For one-shot games we have used the same limit, for sequential games, we have used longer time-frame for training, when number of components and bins was 16 or greater. Similarly for those runs the best response took up to 24 hours. In total this experiment took 
+
+64 + 11 · 5 · 4 + 7 · 5 · 3 · (4 + 12) + 4 · 5 · 3 · (12 + 24) = 4124 hours. 
+
+Heads-up no limit Texas hold’em This is the only experiment where we have used GPUs, and we have trained the strategy for 4 days on H200. Then for evaluation, each checkpoint comparison against Slumbot took roughly 120 CPU-hours, while the LBR computation took roughly 12 CPU hours per checkpoint. Altogether this gives 8976 CPU-hours for the final evalutaion. 
+
+# D ADDITIONAL EXPERIMENTS 
+
+We have run two additional experiments to evaluate different aspects of the MMPO. First, we show that the MMPO converges in the same games as in section 4.1 when the neural network does not parametrize the strategy but the gradients are estimated from the samples. Second, we show how the 24 Preprint. Under review. strategy’s exploitability varies with the number of Gaussians in the model. A different perspective on MMPO is that it trains the abstraction during training. We also compare MMPO with uniform discretization of the action space using the same number of components. D.1 REGULARIZED GAUSSIAN HEAD 
+
+We have run the same experiment as in Section 4.1, but now we do not store the strategy in the neural network, but we use samples to estimate the gradient. This serves as a middle step between the Figure 1 and Figure 2. We have used a learning rate of 0.05 and a batch size of 256. The results of this experiment are in Figure 6. Even these results confirm that without a magnet, the gradient descent diverges to the most exploitable strategies. With the magnet, the strategies do not converge arbitrarily close to the Nash equilibrium because convergence is limited by noise in gradient estimation. Still, in all games, the exploitability is roughly 10 −2, which is several orders of magnitude better than without a magnet. We also show how the strategies in continuous matching pennies evolve during training across the three training regimes in Figure 7. It also confirms that the strategies gradually diverge without the magnet regularization.   
+
+> (a) Continuous matching pennies (b) Rotational game, dim=2 (c) Rotational game, dim=3
+
+Figure 6: Exploitability in one-shot games with pure Nash equilibria using gradient descent with or without magnet, using only the gradient estimate.   
+
+> (a) Exact gradient (b) Estimated gradient (c) Estimated gradient, neural
+
+Figure 7: The evolution of a strategy in continuous matching pennies during training for each of the experimental setting D.2 WALL -TIME COMPARISON 
+
+In Figures 3 and 4 we compared the algorithms in terms of environment interactions. Here, we also provide the comparison of the same runs, but when using wall-time for comparison. The results are in Figures 8 and 9. Both the environment interactions and wall-time agree with the relative performance of the algorithms, which show that MMPO is as fast as PPO, but converges much quicker than NFSP and PSRO. 25 Preprint. Under review.   
+
+> (a) Continuous Matching Pennies (b) Glicksberg-Gross game
+> (c) Circle game (d) Two-point game
+
+Figure 8: Exploitability with 95% confidence intervals of different baselines in one-shot games   
+
+> (a) Kuhn Poker (b) Leduc Poker
+> (c) Sequential Blotto 3 (d) Sequential Blotto 5
+
+Figure 9: Approximate exploitability with 95% confidence intervals of different baselines in sequen-tial games D.3 EFFECT OF THE DISCRETIZATION AND AMOUNT OF COMPONENTS IN THE MIXTURE 
+
+The strategy space of MMPO is limited by the number of Gaussians used in the mixture. We have run another experiment that shows how the final exploitability changes when we use different numbers of components. We also compared it with the alternative approach that uniformly discretizes the action space and then uses MMD in the discretized game. We have used the same games as in sections 4.2 and 4.3. The results for one-shot games are in Figure 10. The discretization works well in matching pennies, because even if the game contains a pure Nash equilibrium, any strategy that has a mean of 0 is also a Nash equilibrium, so a uniform discretization that is symmetrical around 0 can always find a Nash equilibrium. In contrast, the noise from the Gaussian sampling in MMPO limits how close to equilibrium the MMPO can converge, regardless of the number of components. In the Glicksberg-Gross game, the discretized version performs the best with 6 bins, and adding more bins degrades the performance. Similar behavior can be observed in some sequential games in Figure 11. This happens because of entropy regularization, which slightly skews the distribution toward a uniform distribution. This highlights another advantage of the MMPO, because even if the categorical distribution is skewed toward playing all actions with some nonzero probability, the 26 Preprint. Under review. Gaussian can shift to a place where this probability is better utilized. This means that MMPO is less sensitive to the entropy setting. A two-point game presents the worst-case scenario for the discretization: when the two pure actions of the equilibrium are not in the discretization, the discretized version will never converge arbitrarily close, as we can see when we increase the number of discrete bins. On the other hand, the MMPO can reliably converge with three Gaussian components. Two components should be sufficient for convergence, but MMPO is sensitive to their initialization. Specifically, in this game where the two pure actions are -1 and 1, if all components are initialized greater than 1, then only very strong exploration would be able to move one of the components to -1. This is not specific to our method, but to any method that uses gradient descent to move pure actions. In practice, it may be possible to detect these collapsed actions, reinitialize the μ and σ for one of them, and resume training, but we decided to avoid this to keep the setting as simple as possible. Even if adding more components broadens the set of strategies the algorithm can converge to, it also slows training, as more samples are required to learn more actions. As such, the optimal amount of components can differ based on the available budget.    
+
+> (a) Matching Pennies (b) Glicksberg-Gross (c) Circle game (d) Two-point game
+
+Figure 10: Final exploitability of MMPO and MMD on discretized action space based on the amount of Gaussians or discrete components used.    
+
+> (a) Kuhn Poker (b) Leduc Poker (c) Blotto 3 (d) Blotto 5
+
+Figure 11: Final exploitability of MMPO and MMD on discretized action space based on the amount of Gaussians or discrete components used. 
+
+# E HEADS -UP NO LIMIT TEXAS HOLD ’EM DETAILS 
+
+In this section, we detail several changes to the MMPO we made specifically for the Texas hold ’em experiment and include additional results from that experiment. E.1 EXPERIMENTAL DETAIL 
+
+Action abstraction We used these discrete actions: Fold, Call/Check, and All-in. Then we treat the betting as a single continuous action. However, we do not use the raw bet-size; the bet action is a fraction of the pot, which was used in prior Poker AIs Brown & Sandholm (2018); Moravˇ c´ ık et al. (2017). We use 5 Gaussian components in this continuous action, and we do not initialize them randomly; instead, we initialize them so that their means cover the interval [ 13 , 3] geometrically. If the mean of the action is beyond the legal betting range, we clip it. Besides that, we are not predicting the mean μ directly. We predict log( μ), which we then exponentiate. In the game, bets are discrete, so after we sample the real value, we round the bet to the nearest legal amount. During training, we use this rounded bet rather than the sampled one. 27 Preprint. Under review. PPO epochs 1Categorical magnet weight ηw 0.2 Gaussian magnet weight ηN 0.02 Magnet update 20000 Minimal std σmin 0.05 Components K 5Exploration ϵ 0.01 Value loss weight 1.0 GAE lambda λ 0.95 V-trace clipping ρ 1V-trace clipping c 1Hidden sizes (1024,1024,1024,1024) Activation GELU Normalization Layer Optimizer Adamw Weight decay 0.002 Max grad norm 1.0 Target update τ 4 · 10 −4
+
+Batch size 4096 Max game length 40 Table 4: Hyperparameters used in training of heads-up no limit Texas hold’em 
+
+Action Clipping We apply a trick similar to Neural replicator dynamics that stops learning certain discrete actions when their logits are too far apart (Hennes et al., 2020). Specifically, when an action logit is β smaller than the highest logit, only the gradients that will increase the probability of such actions are used, and vice versa when the logit is higher than the smallest logit. We applied this trick because in one of our runs, the logits were getting too small, which made them unrecoverable when the action turned out to be valuable. We also use sigmoid for the log( σ) rescaled to values between [-3, -0.7] 
+
+Exploration Early training runs showed that later checkpoints improved their performance against older checkpoints, but their performance against Slumbot was degrading substantially. We found out that it was because some bets were not being explored, and the strategy for those bets was degrading. We have made several changes to avoid this problem. The neural replicator dynamics’ maximal-difference logits are one such change, and the second change is that, with 1%, we sample the random categorical action. We use an importance-sampling correction to ensure that all estimates are unbiased. In imperfect-information games, it is not enough to apply an importance-sampling correction to the future values in V-trace; it is also necessary to correct past decisions. To avoid the correction becoming too high or too low, we clip it to the range [0.1, 10]. We do not use any exploration for the Gaussian head, besides the samples from the Gaussian itself. 
+
+Hyperparameter specifics We use two training schedules. First is cosine decay of the learning rate from 10 −3 with T = 1 .5 · 10 6 and α = 0 .06 . We also used an exponential decay of entropy from 0.03 to 0.003 over 2 · 10 6 iterations. We also did not use the same magnet and entropy regular-ization coefficients for the Gaussian and categorical heads. In the categorical head, we use the KL divergence coefficient ηw = 0 .2 and the entropy coefficient α with exponential decay. For Gaussian, we used the KL divergence coefficient ηN = 0 .02 , and scaled the entropy by 0.5. We decreased these coefficients for the Gaussian head because, in our early experiments, the Gaussian means were not learning due to the magnet loss outweighing the advantage gradient. All other hyperparameters are in Table 4 E.2 ADDITIONAL RESULTS 
+
+In Figures 12 and 13 we show the initial bets of small blind and big blind after small blind checked, respectively. The probabilities are averages across all possible suits for that combination. The values in the main diagonal correspond to the player holding a pair; the lower-left triangle corresponds to the player holding 2 offsuit cards; and the upper-right triangle corresponds to the player holding 28 Preprint. Under review. 
+
+Figure 12: Small blind initial bet with different cards averaged over all suits. cards in the same suit. Interestingly, these two tables differ from the tables provided by the authors of the GTO wizard AI (Provost et al., 2026). For the Small blind bet, the GTO wizard’s bot never folds with suited cards, and with off-suited cards, it folds much more aggressively. And for the Big blind bet, MMPO never folds, whereas GTO wizard folds quite often, especially when holding 2 and 3 offsuit. In Figure 14, we show the average win rate against older checkpoints and weighted outcomes against Slumbot for checkpoints produced during training. Even if the Slumbot performance does not seem to improve substantially in later iterations, the network itself is still improving against older check-points. This highlights the strategy non-transitivity in imperfect information games. The improve-ment in gains for later checkpoints seems to be mainly from improving how much the player loses at showdown. On the other hand, rewards from folding remain roughly the same in later stages. In Figures 15 and 16, we show all the bets as fractions of the pot and the pot sizes from self-play of the final checkpoint, which shows that, unlike abstraction bots, the MMPO does not have blind spots on some decisions, which would be caused by static discretization. 29 Preprint. Under review. 
+
+Figure 13: Big blind initial bet after check from the small blind with different cards averaged over all suits. 30 Preprint. Under review. 
+
+Figure 14: (left) Average win-rate of different checkpoints against all other checkpoints. (right) Weighted outcomes based on different results of the hand against Slumbot. 
+
+Figure 15: All bets made by the final trained checkpoint in self-play over million hands 
+
+Figure 16: All pots, which were encountered by the final trained checkpoint in self-play over million hands 31
