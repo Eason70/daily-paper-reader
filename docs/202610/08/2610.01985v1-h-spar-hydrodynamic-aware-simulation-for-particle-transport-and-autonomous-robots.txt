@@ -1,0 +1,268 @@
+Title: H-SPAR: Hydrodynamic-aware Simulation for Particle Transport and Autonomous Robots
+
+URL Source: https://arxiv.org/pdf/2610.01985v1
+
+Published Time: Fri, 02 Oct 2026 02:21:13 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# H-SPAR: Hydrodynamic-aware Simulation for Particle Transport and Autonomous Robots 
+
+# Navid Zarrabi 1, Nariman Yousefi 2, Sajad Saeedi 3* 
+
+1 Department of Mechanical, Industrial, and Mechatronics Engineering, Toronto Metropolitan University, Toronto, Ontario, Canada. 
+
+2 Department of Chemical Engineering, Toronto Metropolitan University, Toronto, Ontario, Canada. 
+
+3* Department of Computer Science, University College London, London, United Kingdom. *Corresponding author: Sajad Saeedi. E-mail: s.saeedi@ucl.ac.uk; 
+
+Abstract 
+
+Environmental robotic sampling requires considering the dual influence of water currents on robotic motion and particle transport. Existing marine robotics simulators generally model flow, autonomy, and sampling targets separately, limiting joint evaluation of mission cost and sampling performance. H-SPAR integrates spatially and temporally varying velocity fields, Lagrangian particle transport, probabilistic sampling, and ROS 2/Gazebo-based uncrewed surface vehicle (USV) autonomy. In this work, shared precomputed flow fields drive particle advection and current-induced forces during closed-loop vehicle execu-tion. Path-planning experiments show that the existing current-aware planner SVF-RRT* achieves 69.4% lower upstream cost than conventional RRT* at the planning level, but this reduction falls to 41.7% during execution under time-varying currents, reflecting temporal flow variation, vehicle motion constraints, and path deviation omitted during planning. Coverage experiments show that sweep orientation changes the particle-sampling rate by up to 22.2% under the complete H-SPAR configuration. These findings highlight the importance of eval-uating planning, vehicle execution, particle transport, and sampling together under consistent hydrodynamic conditions. The project webpage is available at https://sites.google.com/view/h-spar, and the open-source code is available on GitHub at https://github.com/naviiidz/h-spar-sim. 
+
+Keywords: Marine robotics, Autonomous surface vehicles, Hydrodynamic simulation, Lagrangian particle transport, Robot simulation, Environmental sampling 
+
+1arXiv:2610.01985v1 [cs.RO] 1 Oct 2026 1 Introduction 
+
+Marine field robotics has become increasingly important for environmental monitor-ing, disaster response, and localized pollutant sampling across aquatic ecosystems. A key challenge in these applications is executing autonomous sampling missions, such as microplastic tracking, oil spill monitoring, or harmful algal bloom characteriza-tion, where spatially and temporally varying flow fields actively dictate both system dynamics and target availability. The varying flow in water currents alter uncrewed surface vehicle (USV) trajectories, mission duration, and propulsion energy, while simultaneously advecting and redistributing the floating particles or pollutants to be sampled. Therefore, modeling this dual influence of hydrodynamic flow fields is essen-tial for designing effective autonomous sampling strategies and evaluating true mission performance in real-world marine environments. Spatially and temporally varying currents create non-convex search spaces where geometrically optimal paths frequently lead to severe trajectory drift, high propul-sion expenditure, or actuation saturation. At the same time, because target particles continuously advect with the underlying flow field, the spatial distribution of targets evolves during mission execution. Consequently, evaluating a robot’s sampling per-formance requires accounting for relative fluid-intake velocities and transient particle distributions. Simulating these coupled interactions accurately without incurring the high computational cost of full online Computational Fluid Dynamics (CFD) presents a major bottleneck for current-aware autonomy research. Prior research has addressed flow-aware marine robotics from complementary but largely separate perspectives. On the algorithmic side, vector-field path planners such as VF-RRT [1] and SVF-RRT [2] optimize trajectories with respect to prescribed envi-ronmental flow fields, while other works explicitly consider uncertainty in time-varying currents [3, 4]. These algorithms [1–4] rely on point-mass abstractions while ignor-ing rigid-body hydrodynamics, focusing primarily on geometric path optimization or energy cost. Likewise, energy-aware coverage approaches often impose simplified envi-ronmental assumptions. For example, Zhao et al. [5] analyze sweep-direction selection under a spatially uniform current direction inside USV surveying region of interest. Furthermore, frameworks incorporating temporal updates in water currents discretize hourly forecasts into coarse spatial grids, limiting USV mission simulations to static, low-resolution flow-field representations [6]. On the simulation side, established platforms such as DAVE [7] (extending UUV Simulator [8]) include aquatic features such as ocean current models (constant, strati-fied, and tidal), dynamic bathymetry spawning, and physics-based underwater sensors for underwater robots. Similarly, the Virtual RobotX (VRX) simulator [9] extends Gazebo with wave, wind, buoyancy, and surface vessel dynamics models to sup-port autonomy testing on USVs, with potential of using Gazebo plugins for adding water currents on USVs. In addition, MOOS-IvP [10] has been widely used for USV mission planning and multi-vehicle coordination, offering a mature autonomy mid-dleware with integrated simulation capabilities. MOOS-IvP uses additional current toolboxes to accept externally published drift vectors. Photorealistic simulators such as MARUS [11] and UNav-Sim [12] prioritize visual rendering of aquatic environ-ments for perception tasks. MARUS represent basic irrotational current fields, whereas 2Table 1 : Comparison of marine robotics simulators. H-SPAR combines solver-derived flow fields, current-affected USV execution, Lagrangian particle transport, and prob-abilistic particle sampling.                                              
+
+> Feature DAVE  [7]
+> VRX  [9]
+> MOOS-IvP  [10]
+> UNav-Sim  [12]
+> MARUS  [11]
+> H-SPAR
+> Current/disturbance modeling ✓✓✓✓✓✓
+> Solver-derived flow field ×××××✓
+> Current-to-vehicle coupling ✓✓×✓✓✓
+> Dynamic vehicle execution ✓✓✓✓✓✓
+> Photorealistic rendering ×××✓✓×
+> Lagrangian particle transport ×××××✓
+> Probabilistic particle sampling ×××××✓✓indicates explicitly supported functionality; ×indicates functionality not modeled natively. Hydrodynamic coupling refers to calculations derived from local flow velocities.
+
+UNav-Sim abstracts water currents into simplified external force disturbances (mod-eled as constant or sinusoidal functions). None of the above platforms have the ability to ingest fine-grained spatio-temporal velocity fields and couple them with Lagrangian particle tracking and probabilistic intake models (Table 1). As a result, researchers cannot jointly evaluate USV trajectory execution, energy expenditure, and environmental sampling efficiency within a single closed-loop simulator. In marine environments, suspended particles and USVs are influenced by the same underlying flow field. Evaluating particle-sampling missions therefore requires the joint simulation of flow-driven particle transport and current-affected USV motion. Although recent studies have investigated robotic platforms for in situ monitoring of particles and plumes [13, 14], existing marine robotics simulators provide no support for jointly modeling hydrodynamic particle transport, flow-dependent robot execution, and sampling-oriented mission planning. Such joint simulation can be performed at different levels of physical fidelity. Particle-based fluid methods can represent detailed fluid behavior and particle-scale interactions; however, enforcing physical properties such as incompressibility introduces substantial computational demands [15]. Explic-itly resolving these details for large particle populations is therefore not well suited to mission-scale marine simulations, where the primary objective is to capture particle transport and spatial distribution. To address these limitations, we propose H-SPAR, an open-source and hydrodynamic-aware simulation framework for particle transport and autonomous marine robotics. As shown in Fig. 1, H-SPAR uses a shared fine-grained velocity-field representation, the framework simultaneously models current-induced wrenches acting on the USV and the advection of surrounding target particles. 3(a) (c) (b) (e) (d) (f) 
+
+Fig. 1 : H-SPAR uses (a) fine-grained velocity vector fields to simultaneously (b) simulate the advective transport of particles and (c) model spatially and temporally varying currents. The variable currents are used to (d) calculate hydrodynamic drag forces at the USV reference frame. By integrating Lagrangian particle transport with hydrodynamic-aware USV simulation (e-f) H-SPAR enables the evaluation of particle-sampling missions under marine flow conditions. Table 1 highlights the key advantages of H-SPAR compared with existing works. The primary contributions of this work are as follows: • Unified System Architecture: An open-source Robot Operating System 2(ROS 2)/Gazebo framework that bridges environmental flow fields with closed-loop USV control pipelines, enabling synchronized simulation of vehicle dynamics and environmental transport. • Lagrangian and Probabilistic Sampling Module: A physics-informed particle tracking module incorporating a relative-velocity capture function to model USV-particle intake interactions under hydrodynamic flow. • Planning vs. Execution Evaluation Pipeline: A benchmarking pipeline evaluat-ing path planners ( RRT ∗, V F -RRT ∗, SV F -RRT ∗) across both planning-stage costs and realized closed-loop execution metrics (trajectory drift, upstream cost, execution time). • Hydrodynamic Coverage Benchmarking: A mission-level evaluation demonstrat-ing how sweep orientation in boustrophedon coverage impacts particle capture rate, mission duration, and energy expenditure under realistic flow conditions. 4The H-SPAR simulator, including experiment scripts, datasets, and fine-grain velocity field generators, will be open-source and will be available via the project page: https://sites.google.com/view/h-spar. For the rest of the paper, Sec. 2 introduces the structure of the simulator, detailing its front-end and back-end components. Sec. 3 describes how this integration enables an environment-aware tool for robotic mission planning, and Sec. 4 concludes the paper. 
+
+# 2 Methodology 
+
+H-SPAR integrates a hydrodynamic-aware backend implemented in ROS 2 with a physics-aware frontend implemented in Gazebo. Fig. 2 shows an overview of the method. Before runtime, spatially and temporally varying environmental velocity            
+
+> Hydrodynamic Solver
+> External pre-processing
+> Environmental Velocity Field Current-Aware Path Planning Current-Aware USV Dynamics Lagrangian Particle Transport Motion Planner Probabilistic Particle Sampling
+> ROS 2 / H-SPAR Backend
+> Gazebo-Based Simulation, Execution, and Metrics Sensors Marine Environment USV Model
+> rigid-body dynamics
+> Gazebo Frontend
+> mesh + u(x, y, t )
+> current field
+> u(x, y, t )
+> local current uw(xr, t )
+> interpolated current
+> u(xp, t )
+> global waypoints
+> {g1, . . . , g N}
+> particle state xp,vp
+> ROS 2–Gazebo Bridge
+> velocity /thruster commands hydrodynamic wrench pose, twist, simulation time USV state xr,vr
+> measurements world state
+
+Fig. 2 : Overview of the H-SPAR simulation framework, showing the integration between ROS 2-based planning and hydrodynamic modules and the Gazebo-based marine simulation environment. ROS 2 hosts current-aware path and motion planning, hydrodynamic flow modeling, and Lagrangian particle transport, while Gazebo pro-vides the simulated aquatic environment, virtual sensors, and USV dynamic models. Sensor measurements are transmitted from Gazebo to ROS 2, while ROS 2 pro-vides thruster commands and hydrodynamic forces to the simulated vehicles, enabling closed-loop flow-aware navigation and particle monitoring. 5fields are generated using Firedrake [16] and provided to H-SPAR as input. During sim-ulation, the backend uses precomputed fields to update particle locations and compute the current-induced drag force acting on the USV. The frontend applies the computed force to the USV model while simulating the vehicle dynamics, environmental physics, and onboard sensors. The modular separation between environmental flow modeling and Gazebo-based vehicle dynamics also allows additional environmental disturbances to be incorporated independently of the current field. In particular, H-SPAR inherits the wave and sea-state simulation capabilities of the VRX simulator [17] used in the Gazebo frontend. Configurable wave conditions can therefore be introduced through parameters such as wave height, period, and propagation direction, while H-SPAR independently provides the spatially and temporally varying current field. The methodology first describes the representation and integration of the environ-mental velocity fields (Sec. 2.1), followed by current-aware path planning (Sec. 2.2) and the computation of current-induced forces acting on the USV (Sec. 2.3). The planned missions are then executed in Gazebo, where vehicle behavior and mission perfor-mance are assessed using execution-level metrics (Sec. 2.4). The same velocity fields drive the Lagrangian particle-transport model (Sec. 2.5), while interactions between the USV and nearby particles are represented using a probabilistic particle-sampling model (Sec. 2.6). In this paper, we adopt these notations: lowercase italic ( x, y, z, η, b ) for scalars, lowercase bold ( u, v, r) for vectors, and uppercase bold ( M, C, D) for matrices or operators. 
+
+# 2.1 Environmental Velocity Field 
+
+H-SPAR represents the hydrodynamic environment using fine-grained velocity fields that describe the local water motion. These fields can be obtained from different sources, including physics-based hydrodynamic solvers [18], analytical flow models [2], and data-driven predictors [19], depending on the target environment and the desired trade-off between computational cost and fidelity. H-SPAR is therefore independent of the method used to generate the velocity fields, provided that the resulting data contain the spatial and temporal information required by the simulation. In this work, the computational domain is discretized using an unstructured trian-gular mesh generated with Gmsh [20]. The unstructured representation accommodates irregular shorelines, concave regions, and obstacle boundaries [21], while allowing local mesh refinement in regions with complex geometry or strong flow gradients [22]. The resulting velocity fields are exported and subsequently used by H-SPAR for particle advection, current-aware path evaluation, and USV mission simulation. To balance hydrodynamic fidelity and computational scalability, the velocity fields used in this study are generated using the depth-averaged Shallow Water Equations (SWE) [23]. This formulation captures large-scale horizontal flow structures while remaining computationally tractable for mission-level robotic simulation. Because the equations describe depth-averaged horizontal motion, they do not resolve vertical velocity profiles, stratification, three-dimensional turbulence, or near-body fluid inter-actions. These assumptions are appropriate for the surface-level transport scenarios 6considered here, in which particle advection and USV motion are primarily influenced by large-scale horizontal currents. 
+
+# 2.2 Current-Aware Path Planning 
+
+Water currents can substantially affect the hydrodynamic difficulty, feasibility, and duration of marine robotic missions. A path that is geometrically short may require prolonged upstream motion and therefore be difficult to execute efficiently. H-SPAR represents this effect using an upstream-cost metric [2] that depends on the motion of the USV relative to the local current field. H-SPAR implements and evaluates the geometry-based RRT* planner and two current-aware variants, VF-RRT* [1] and SVF-RRT* [2]. RRT* considers path length and obstacle avoidance, whereas VF-RRT* and SVF-RRT* additionally query the environmental velocity field along candidate path segments. This allows the planners to favor trajectories that are more aligned with the local flow and avoid regions with strong opposing currents. All planners use the same static navigation costmap to represent traversable water, land boundaries, obstacles, and no-go regions. Each planner outputs a sequence of waypoints, which is passed to the ROS 2 execution node. This separation enables H-SPAR to compare the cost of the planned path with the behavior of the trajectory after execution under vehicle constraints and current-induced disturbances. To quantify the hydrodynamic difficulty of both planned and executed trajectories, H-SPAR uses a discrete upstream-cost metric adapted from Eq. (1) of SVF-RRT* [2]. At the planning level, the metric is evaluated along the generated path using the local velocity field. 
+
+# 2.3 Current-Aware USV Dynamics 
+
+H-SPAR estimates current-induced drag based on the spatial and temporal state of each USV. At each simulation time step, the framework queries the vehicle position and simulation timestamp. It then retrieves the corresponding local current velocity and computes the resulting drag force and moment. Accurately modeling hydrodynamic drag is essential for simulating USV dynam-ics in current-influenced environments. We adopt a quadratic damping formulation commonly used in marine robotics to represent surge, sway, and yaw effects [9]. This formulation is suitable for control-oriented USV models, where hydrodynamic coefficients and mass properties are often uncertain and difficult to characterize analytically [24]. In our design, the USV features two hulls in a catamaran layout, providing a wide stance and reduced drag. For each hull i, the relative flow velocity is obtained as the difference between the current velocity and the local hull velocity, including rotational contributions [25]: 
+
+urel ,i =
+
+ ui
+
+vi
+
+
+
++
+
+−ωiry,i 
+
+ωirx,i 
+
+ 
+
+− uw , (1) where uw is the current velocity vector expressed in the hull body frame, (ui, v i)
+
+are body-frame linear velocities, ωi is the yaw rate, and ri = ( rx,i , r y,i ) is the drag 7application point relative to the vessel origin. Hydrodynamic drag in the surge and sway directions is modeled as [25]: 
+
+Fi = − 12 ρ
+
+CD,x,i Ax,i |urel ,x,i |urel ,x,i 
+
+CD,y,i Ay,i |urel ,y,i |urel ,y,i 
+
+
+
+, (2) where ρ is the water density, CD,x,i and CD,y,i are the empirical drag coefficients for hull i in surge and sway, and Ax,i and Ay,i denote the corresponding effective projected areas. The yaw torque generated by drag on hull i is: 
+
+τz,i = rx,i Fy,i − ry,i Fx,i =  ri × Fi
+
+ 
+
+> z
+
+, (3) where Fi = ( Fx,i , F y,i )⊤ is the corresponding drag force vector. To approximate the motion of a marine vehicle in the presence of ocean currents, we modify the 6-DOF model expressed in [9]: 
+
+MRB ˙u + CRB (u) u + MA ˙ur + CA(ur) ur
+
++ D(ur ) ur + g(η)= τ propulsion + τ wind + τ waves + τ current . (4) Here, the generalized position vector is η , which contains the earth-fixed Cartesian position and the Euler orientation angles corresponding to roll, pitch, and yaw. The generalized velocity vector is u, comprising of the body-fixed linear velocities in surge, sway, and heave, and the angular velocities about roll, pitch, and yaw. The current-relative velocity is ur , which ensures that the hydrodynamic forces are evaluated relative to the moving fluid. Eq. (4) includes the rigid-body (RB) inertia and Coriolis forces due to the USV’s mass and geometry, and added mass inertia and Coriolis forces from the surrounding fluid. It also represents linear and nonlinear hydrodynamic damping. The vector g(η)
+
+models the hydrostatic restoring forces due to gravity and buoyancy. The generalized inputs τ propulsion , τ wind , τ waves , τ current denote, respectively, the propulsion forces from thrusters, aerodynamic loads from wind, wave excitation forces and moments, and the external loads due to spatially varying currents. In this work, a current-relative velocity is computed by querying the current field at the vehicle’s global position 
+
+(x, y, z ).
+
+# 2.4 Gazebo-Based Simulation, Execution, and Metrics 
+
+Gazebo provides the physics-based simulation frontend of H-SPAR. The Gazebo ecosystem includes reusable marine environments, USV models, sensors, obstacles, and plugins for buoyancy and hydrodynamic effects. It also simulates rigid-body dynamics, propulsion, collision handling, and onboard sensor measurements. During simulation, the pose and velocity of the USV are continuously transmit-ted through the ROS 2-Gazebo bridge. An H-SPAR ROS 2 node uses the vehicle state and simulation timestamp to query the local current field. Before simulation, a 8KD-tree [26], implemented using SciPy [27], is constructed from the fixed mesh coordi-nates to enable efficient spatial indexing. Since the mesh geometry remains unchanged throughout the simulation, the KD-tree is generated only once during initialization. At runtime, the vehicle position is queried against the KD-tree to obtain the index of the nearest mesh point, and the corresponding velocity vector is retrieved using the simulation timestamp and spatial index. The corresponding drag force and moment are computed using the formulation described in Sec. 2.3. The resulting hydrodynamic wrench is then applied to the USV model through the bridge. For low-level vehicle actuation, H-SPAR adopts the thrust-mapping and model-based control approach of Saldarriaga et al. [17]. This method converts linear and angular velocity references into individual commands for thrusters. H-SPAR uses this existing controller as part of the execution pipeline and does not introduce a new actuator-control formulation. During each mission, H-SPAR records planning-level and execution-level data to evaluate geometric path cost, hydrodynamic difficulty, and trajectory feasibility. At the planning level, the planned path length is computed as the total Euclidean distance between consecutive waypoints generated by the path planner. The planned upstream cost is evaluated along the same waypoint sequence using the current-aware cost formulation described in Sec. 2.2. At the execution level, H-SPAR records the actual trajectory length, mission dura-tion, local current velocity, applied hydrodynamic wrench, and executed upstream cost. The executed upstream cost is evaluated along the recorded trajectory using the same formulation applied at the planning level. This enables direct comparison between the predicted cost of a planned path and its realized performance during simulation. To quantify deviation from the planned path, each executed position is compared with the closest segment of the planned polyline. The point-wise path deviation is defined as 
+
+di = min  
+
+> j
+
+dist ( pi, gj gj+1 ) , (5) where pi is the i-th recorded vehicle position and gj gj+1 denotes the line segment between consecutive planned waypoints. The mean path deviation is then computed as 
+
+D = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+di, (6) where N is the number of recorded trajectory points. Together, these metrics allow planned and executed trajectories to be compared in terms of path length, upstream cost, mission duration, and tracking deviation. 
+
+# 2.5 Lagrangian Particle Transport 
+
+The fine-grained Eulerian velocity fields are interpolated at each particle location to update the motion of Lagrangian particles in the water. Particle transport accounts for both advection by the local flow velocity and diffusion [28]. 
+
+dx
+
+dt = u(x, t ) + R(t), (7) 9with x(t) denoting particle position, u(x, t ) the interpolated velocity field, and R(t)
+
+an optional stochastic term for subgrid-scale turbulent diffusion. This model pre-vents numerical diffusion, which smooths sharp concentration gradients and obscures fine-scale structures common in Eulerian methods [29]. H-SPAR adopts a one-way coupling assumption: the environmental velocity field affects both Lagrangian particle transport and USV motion, whereas disturbances induced by the vehicle are not fed back into the flow field or particle dynamics. Con-sequently, localized near-body effects, including wake generation, propeller wash, and vehicle-induced particle disturbance, are not resolved. This approximation is suit-able for the mission-scale simulations considered here, where vehicle-induced flow is assumed to remain localized relative to the spatial extent of the environmental current field. Resolving these interactions would require two-way fluid–structure coupling or local CFD around the vehicle and is left for future work. 
+
+# 2.6 Probabilistic Particle Sampling Model 
+
+To evaluate particle-monitoring missions, H-SPAR includes a mission-level proba-bilistic sampling model. The model does not resolve the detailed fluid-particle-pump interaction; instead, it estimates whether particles encountered by the USV are sampled as a function of their relative motion with respect to the robot. At each simulation time step, particles located within the sampling region of the USV are treated as candidate particles. Let rxp denote the position of particle p
+
+expressed in the robot frame, and let rs denote the sampling radius. A particle is considered inside the sampling region if ∥rxp∥ ≤ rs. We denote this encounter event as Ep : ∥rxp∥ ≤ rs. Given that particle p is inside the sampling region, the probability of sampling the particle is modeled as a conditional probability: 
+
+P (Sp | Ep) = pc(vp/r ), (8) where Sp denotes the event that particle p is sampled, vp/r is the relative speed between the particle and the robot, and pc is the particle capture probability function. The particle-robot relative velocity is defined as 
+
+vp/r = vp − vr, (9) where vp and vr are expressed in the same reference frame. For each candidate particle, a random variable r ∼ U (0 , 1) is generated. The particle is considered sampled if r < p c(vp/r ). The capture probability is modeled as a Gaussian function centered at the design intake velocity of the sampling pump: 
+
+pc(vp/r ) = exp −
+
+ ∥vp/r ∥ − v0
+
+2
+
+2σ2
+
+!
+
+, (10) where ∥vp/r ∥ is the magnitude of the fluid velocity relative to the sampling nozzle, 
+
+v0 is the design intake velocity of the internal sampling pump, and σ controls the sensitivity of the capture probability to deviations from the isokinetic condition. The 10 maximum capture probability occurs when ∥vp/r ∥ = v0, corresponding to isokinetic sampling, in which the fluid approaches the nozzle at the same speed as it is drawn into the sampling system [30]. Once a particle is sampled, it is removed from the particle set to prevent duplicate detections. This allows H-SPAR to compare monitoring strategies using sampling-oriented metrics, e.g. the number of encountered particles, the number of sampled particles, and the particle sampling rate. 
+
+# 3 Experiments 
+
+H-SPAR supports the evaluation of energy-constrained USV operations and pollutant-sampling strategies. This section presents two experiments designed to demonstrate these capabilities. First, current-aware mission planners are evaluated at both the planning and execution levels, and their performance is compared using the proposed metrics (Sec. 3.1). Second, H-SPAR is used to investigate how mission design influences particle-sampling performance in coverage-based monitoring tasks (Sec. 3.2). In all experiments, the USV model is constrained by maximum linear and angular velocities of 8 m/s and 1.5 rad/s, and maximum linear and angular accelerations of 2 m/s 2 and 1 rad/s 2, respectively. For local trajectory execution, we adopt the Dynamic Window Approach (DWA), a widely used method in mobile robotics [31]. DWA explicitly considers kinematic constraints while generating smooth and feasible trajectories. All experiments were conducted on a workstation equipped with a 13th-generation Intel Core i7-13700K processor with 16 physical cores and 24 threads, 16 GB of memory, and an NVIDIA GeForce RTX 4080 GPU. 
+
+# 3.1 Experiment 1: Current-Aware Planning and Execution 
+
+This experiment evaluates the paths generated by the current-aware planners and compares their predicted performance during planning with their realized performance during mission execution. Three planners are compared: the geometry-based RRT* baseline [32], VF-RRT* [1], and SVF-RRT* [2], as illustrated in Fig. 3. All plan-ners generate a waypoint sequence using the same static costmap, while VF-RRT* and SVF-RRT* additionally incorporate the environmental velocity field into their planning costs. Since these planners do not explicitly consider temporal variations in the flow field, the time-averaged velocity field over all simulation timestamps is used during planning. The waypoint sequence generated by each path planner is subsequently passed to the same DWA motion planner for execution. The DWA accounts for the kine-matic constraints of the USV, allowing the performance of the planned paths to be assessed under a common execution framework. At the planning level, path length and upstream cost are evaluated. At the execution level, the resulting trajectory length, mission time, path deviation, and executed upstream cost are reported. As shown in Table 2, RRT* produces the shortest planned path but also incurs the highest planned upstream cost. This result demonstrates that minimizing geometric path length alone does not necessarily yield a favorable trajectory in the presence of environmental currents. In contrast, VF-RRT* and SVF-RRT* generate longer paths 11 −400 −300 −200 −100 100 200 300               
+
+> XNED [m]
+> YNED  [m]
+> 0246
+> Current speed [m/s] (a) Mean flow field
+> −400 −300 −200 −100 100 200 300
+> XNED [m]
+> YNED  [m]
+> −400 −300 −200 −100 100 200 300
+> XNED [m]
+> YNED  [m] (b) Planned paths (c) Executed trajectories RRT* VF-RRT* SVF-RRT* Start End
+
+Fig. 3 : Energy-aware operation in H-SPAR at the mission-planning and execution-control levels. (a) Average velocity vector field over all precomputed timestamps in the USV operating area. (b) Planned paths generated by RRT*, VF-RRT*, and SVF-RRT*. (c) Corresponding executed trajectories in H-SPAR. while substantially reducing the planned upstream cost, with SVF-RRT* achieving the lowest value among the evaluated planners. When the planned trajectories are executed under the same time-averaged veloc-ity field used during planning, the current-aware planners provide lower mission times and executed upstream costs while maintaining trajectory lengths and path deviations comparable to those of RRT*. This indicates that incorporating current information into the path planning objective can improve execution performance when the envi-ronmental model used for planning is representative of the conditions encountered by the vehicle. The performance changes, however, when the USV is exposed to the original time-varying velocity field during execution. Under these conditions, RRT* exhibits a shorter executed trajectory and lower path deviation than the current-aware plan-ners. This degradation highlights a limitation of VF-RRT* and SVF-RRT*: because their planning costs are computed using a time-averaged representation of the cur-rent field, the resulting paths may become less favorable when the instantaneous flow differs from the field assumed during planning. A second factor contributing to this behavior is the mismatch between path opti-mization and vehicle-level feasibility. The path planners do not explicitly account for 12 Table 2 : Planning- and execution-level comparison of RRT*, VF-RRT*, and SVF-RRT* under time-averaged and temporally varying flow fields. Current-aware planners improve execution performance when operating under the same static flow field used for planning, but their advantage diminishes when the flow field varies over time.                                    
+
+> Category Metric RRT* VF-RRT* SVF-RRT* Plan. Length (m) 348.2 358.4 408.2 Upstream cost 1238.98 667.71 379.49
+> Exec. (Temporal Field) Traj. length (m) 392.946 483.7 546.7 Time (s) 1127.0 1651.5 1349.1 Deviation (m) 2.82 5.6 6.7 Upstream cost 1312.8 1054.2 765.2
+> Exec. (Average Field) Traj. length (m) 389.53 394.64 446.08 Time (s) 1230.97 1025.97 993.96
+> Deviation (m) 1.95 1.93 2.47 Upstream cost 1401.27 789.55 486.55
+
+the non-holonomic motion constraints of the USV or the hydrodynamic forces experi-enced during execution, leaving the motion planner responsible for compensating for these effects. In the considered scenario, RRT* selects a comparatively direct route that largely opposes the dominant current while avoiding frequent lateral crossings of the flow. In contrast, VF-RRT* and SVF-RRT* favor regions with lower upstream cost and may introduce sharper transitions across the current field, as shown in Fig. 3. Although these paths are favorable according to the planning-level current-aware objective, they can require larger corrective actions during execution, particularly when the flow varies temporally. This results in increased path deviation and mission time in the time-varying-current case, as reported in Table 2. Overall, these results demonstrate the value of evaluating current-aware planning not only according to planning-level cost metrics but also under closed-loop exe-cution. They further indicate that current-aware path planners based on static or time-averaged flow representations can provide substantial benefits when the assumed flow field remains representative, while their advantage may decrease when temporal variations in the environment are not incorporated into the planning process. 
+
+# 3.2 Experiment 2: Coverage-Based Particle Monitoring 
+
+This experiment evaluates coverage-based particle monitoring under hydrodynamic conditions, with emphasis on sampling performance rather than solely on USV motion. In current-influenced environments, coverage planning requires several mission-level decisions, including the extent of the coverage region, sweep orientation, line spacing, and vehicle heading configuration. These choices cannot be determined from geome-try alone because the surrounding flow affects mission duration, current-related cost, particle transport, and the likelihood of particle encounters during execution. In this experiment, we have tested the effect of sweep pattern on sampling per-formance. We employ boustrophedon sweep-based strategy to generate waypoints for 13 systematic area monitoring [33]. In H-SPAR, boustrophedon waypoints are automat-ically generated within a user-defined region of interest using the method described by Zhao et al. [5]. Different sweep orientations are then executed under the pre-scribed velocity field and particle distribution to evaluate their effect on monitoring and sampling performance (Fig. 4). To maintain a continuous and comparable particle influx throughout the exper-iment, 100 particles are released from the upstream boundary every 10 s. Particle trajectories are simulated under both a uniform flow field and the temporally varying flow fields provided by H-SPAR (Fig. 4a). This enables the influence of hydrody-namic particle transport on the resulting spatial particle distribution and sampling opportunities to be evaluated (Fig. 4b-d). 
+
+3.2.1 Ablation Study 
+
+To isolate the contribution of these modeling components, we conduct a sequence of ablation experiments in which temporal flow variation, hydrodynamic wrench forces, and probabilistic sampling are introduced incrementally, as summarized in Table 3. For probabilistic sampling, the intake design velocity is set to 0.5 m/s , with a standard deviation of 0.2, according to Eq. (10). The number of sampled particles generally increases with mission duration. Con-sequently, the 45 ◦ sweep, which has the longest mission time in Fig. 4e, also produces the highest absolute particle count across all configurations in Table 3. Absolute par-ticle count alone, however, is not sufficient for comparing coverage strategies because longer missions provide more opportunities for particle encounters. The normalized sampling rate therefore provides a more informative measure of sweep efficiency. As shown in Table 3, the sweep orientation associated with the highest sampling rate depends on the environmental and sampling assumptions. Under a uniform flow field with deterministic sampling, the 90 ◦ sweep achieves the highest sampling rate, indicating that trajectories oriented perpendicular to the dominant flow can increase particle encounters. When probabilistic sampling is introduced, however, the 0◦ sweep 
+
+Table 3 : Particle sampling performance across sweep orientations and mod-eling configurations. Sampling rate is used to normalize the effect of mission duration on particle-encounter opportunities. Hydrodynamic wrench forces do not change the sweep orientation with the highest sampling rate, whereas the use of probabilistic sampling and spatially varying flow fields can change the preferred sweep orientation.                                                 
+
+> Particle Count (Rate) Config Flow Field Sampling Wrench 0◦45 ◦90 ◦
+> 1Uniform Det. ×373 (0.43) 463 (0.45) 286 ( 0.46 )
+> 2Uniform Det. ✓469 (0.44) 489 (0.36) 346 ( 0.46 )
+> 3Uniform Prob. ✓122 ( 0.12 )130 (0.10) 68 (0.09)
+> 4H-SPAR Det. ×288 (0.39) 383 (0.42 )258 (0.41)
+> 5H-SPAR Det. ✓316 (0.38) 438 (0.41 )279 (0.37)
+> 6H-SPAR Prob. ✓101 ( 0.11 )114 (0.09) 86 (0.10)
+
+14 (a) Sweep Region                
+
+> −440 −420 200 220 240
+> X (NED) [m] Y (NED) [m]
+> 600 800 1,000 1,200
+> Time [s] (b) 0◦Sweep
+> −440 −420 200 220 240
+> X (NED) [m] Y (NED) [m]
+> 600 800 1,000 1,200 1,400
+> Time [s] (c) 45 ◦Sweep
+> −440 −420 200 220 240
+> X (NED) [m] Y (NED) [m]
+> 600 800 1,000
+> Time [s] (d) 90 ◦Sweep Mission Time Upstream Cost Particle Count
+> 0500 1,000 761 114 288 811 135 383 573 204 258
+> Value (e) Metrics USV trajectory Detected Particles 0◦Sweep
+> 45 ◦Sweep 90 ◦Sweep
+
+Fig. 4 : Comparison of coverage patterns over a region of interest using three sweep orientations, assuming deterministic sampling and neglecting wrench effects on the USV. (a) Region of interest used to generate the coverage paths with vector field visualized inside the region. USV trajectories are generated within the region using (b) 0◦, (c) 45 ◦, and (d) 90 ◦ sweep orientations. (e) Comparison of the corresponding mission metrics shows that the 45 ◦ sweep pattern produces the highest number of particle encounters, primarily because of its longer mission duration. However, the highest detection rate is achieved with the 0◦ sweep, which also exhibits the lowest upstream cost. These results indicate that the optimal sweep direction depends on the combined effects of mission duration, the spatiotemporal flow field, particle transport, and the relative velocity between the USV and the particles. 15 achieves the highest rate. This change results from the dependence of the capture probability on the relative velocity between the USV and the particles, as described by Eq. (10). The relationship becomes more complex under the spatiotemporally varying H-SPAR flow field. With deterministic sampling, the 45 ◦ sweep produces the highest sampling rate, suggesting that its trajectory provides favorable encounters across the spatially varying current field. When probabilistic sampling is enabled, the 0◦ sweep instead achieves the highest rate. This result indicates that maximizing the number of geometric particle encounters does not necessarily maximize the number of successfully sampled particles when capture depends on the relative particle-vehicle velocity. Introducing hydrodynamic wrench forces changes the resulting particle counts and sampling rates but does not consistently change the sweep orientation associated with the highest rate. This suggests that, provided the USV remains capable of tracking the prescribed coverage waypoints, particle transport and the relative velocity governing the sampling process can have a stronger influence on sampling performance than trajectory perturbations caused by the hydrodynamic wrench. Overall, this experiment demonstrates that the preferred coverage orientation can-not be selected from geometric coverage considerations alone. The optimal sweep direction depends on the interaction among mission duration, the spatiotemporal flow field, particle transport, and the relative velocity between the USV and par-ticles. These results illustrate the value of jointly modeling hydrodynamics, vehicle execution, particle transport, and probabilistic sampling when evaluating marine particle-monitoring strategies. 
+
+# 4 Conclusion 
+
+This paper presented H-SPAR, a hydrodynamic-aware simulation framework that inte-grates flow-field modeling, Lagrangian particle transport, and ROS 2/Gazebo-based USV autonomy using a shared environmental representation. Experiments demon-strated that the shortest geometric path is not necessarily the most effective under spatially varying currents, while flow-aware planners can reduce upstream motion and improve mission performance at the cost of potential tracking deviations. Coverage experiments further showed that the preferred sweep orientation depends on mission duration, hydrodynamic cost, particle transport, and the sampling model, particu-larly when capture probability is governed by particle–vehicle relative velocity. These findings highlight the importance of evaluating marine monitoring strategies using planning-, execution-, and sampling-level metrics rather than geometric measures or total particle counts alone. Future work will validate simulated particle transport and vehicle drift against physical data, extend H-SPAR to three-dimensional and dynam-ically updated flow fields, incorporate higher-fidelity sensing and capture models, and evaluate additional rule-based and learning-based planning strategies. 16 Data availability 
+
+The H-SPAR source code and simulation data supporting the findings of this study are publicly available on Zenodo at https://doi.org/10.5281/zenodo.23068670. The development repository is available at https://github.com/naviiidz/h-spar-sim. 
+
+# References 
+
+[1] Ko, I., Kim, B., Park, F.C.: VF-RRT: Introducing optimization into randomized motion planning. In: Proceedings of the 9th Asian Control Conference (ASCC), pp. 1–5 (2013). IEEE [2] Zhang, W., Shan, L., Chang, L., Dai, Y.: SVF-RRT*: A stream-based VF-RRT* for USVs path planning considering ocean currents. IEEE Robotics and Automation Letters 8(4), 2413–2420 (2023) [3] Kularatne, D., Hajieghrary, H., Hsieh, M.A.: Optimal path planning in time-varying flows with forecasting uncertainties. In: Proceedings of the IEEE International Conference on Robotics and Automation (ICRA), pp. 4857–4864 (2018). IEEE [4] Lin, X., McConnell, J., Englot, B.: Robust unmanned surface vehicle naviga-tion with distributional reinforcement learning. In: Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), pp. 6185– 6191 (2023). IEEE [5] Zhao, L., Bai, Y.: Energy efficient coverage path planning for USV-assisted inland bathymetry under current effects: An analysis on sweep direction. Ocean Engineering 305 , 117910 (2024) [6] Fernandes, J.F., Assunção, M., Serrano, D., Afonso, P., Pinheiro, P., Marques, H., Neves, J., Teodoro, P., Póvoa, R., Marat-Mendes, R., et al. : A smart energy man-agement system for surface unmanned vehicles for border surveillance missions. Scientific Reports 15 (1), 23684 (2025) [7] Zhang, M.M., Choi, W.-S., Herman, J., Davis, D., Vogt, C., McCarrin, M., Vijay, Y., Dutia, D., Lew, W., Peters, S., et al. : DAVE aquatic virtual envi-ronment: Toward a general underwater robotics simulator. In: Proceedings of the IEEE/OES Autonomous Underwater Vehicles Symposium (AUV), pp. 1–8 (2022). IEEE [8] Manhães, M.M.M., Scherer, S.A., Voss, M., Douat, L.R., Rauschenbach, T.: UUV simulator: A Gazebo-based package for underwater intervention and multi-robot simulation. In: Proceedings of OCEANS 2016 MTS/IEEE Monterey, pp. 1–8 (2016). IEEE [9] Bingham, B., Agüero, C., McCarrin, M., Klamo, J., Malia, J., Allen, K., Lum, 17 T., Rawson, M., Waqar, R.: Toward maritime robotic simulation in Gazebo. In: Proceedings of OCEANS 2019 MTS/IEEE Seattle, pp. 1–10 (2019). IEEE [10] Benjamin, M.R., Schmidt, H., Newman, P.M., Leonard, J.J.: Nested autonomy for unmanned marine vehicles with MOOS-IvP. Journal of Field Robotics 27 (6), 834–875 (2010) [11] Lončar, I., Obradović, J., Kraševac, N., Mandić, L., Kvasić, I., Ferreira, F., Slošić, V., Nađ, Ð., Mišković, N.: MARUS: A marine robotics simulator. In: Proceedings of OCEANS 2022 Hampton Roads, pp. 1–7 (2022) [12] Amer, A., Álvarez-Tuñón, O., Uğurlu, H.İ., Sejersen, J.L.F., Brodskiy, Y., Kay-acan, E.: UNav-Sim: A visually realistic underwater robotics simulator and synthetic data-generation framework. In: Proceedings of the 21st International Conference on Advanced Robotics (ICAR), pp. 570–576 (2023) [13] Faltynkova, A., Deschênes, C.E., Zolich, A., Wagner, M., Johansen, T.A., Johnsen, G.: Use of an uncrewed surface vehicle and near infrared hyperspec-tral imaging for sampling and analysis of aquatic microplastics. Marine Pollution Bulletin 201 , 116214 (2024) [14] Cho, S., Park, S.J., Lee, Y.J., Lee, Y.J., Lee, Y.A., Kim, H.-Y., Kim, S.J., Chung, S., Moon, M.-W.: Capillary skimming of floating microplastics via a water-bridged ratchet. Advanced Science 12 (1), 2408623 (2025) [15] Macklin, M., Müller, M.: Position based fluids. ACM Transactions on Graphics 
+
+32 (4), 1–12 (2013) [16] Rathgeber, F., Ham, D.A., Mitchell, L., Lange, M., Luporini, F., McRae, A.T., Bercea, G.-T., Markall, G.R., Kelly, P.H.: Firedrake: Automating the finite ele-ment method by composing abstractions. ACM Transactions on Mathematical Software 43 (3), 1–27 (2016) [17] Saldarriaga-Mesa, B., Montesdeoca, J., Báez, D., Roberti, F., Toibero, J.M.: Open-access simulation platform and motion control design for a surface robotic vehicle in the VRX environment. Robotics 14 (10), 147 (2025) [18] Matsson, J.E.: An Introduction to ANSYS Fluent 2022. Sdc Publications, Mission, KS, USA (2022) [19] Pfaff, T., Fortunato, M., Sanchez-Gonzalez, A., Battaglia, P.: Learning mesh-based simulation with graph networks. In: Proceedings of the International Conference on Learning Representations (ICLR) (2021) [20] Geuzaine, C., Remacle, J.-F.: Gmsh: A 3-d finite element mesh generator with built-in pre- and post-processing facilities. International Journal for Numerical Methods in Engineering 79 (11), 1309–1331 (2009) 18 [21] Hervouet, J.-M.: Hydrodynamics of Free Surface Flows: Modelling with the Finite Element Method. John Wiley & Sons, Ltd, Chichester, UK (2007). https://doi. org/10.1002/9780470319628 [22] Wallwork, J.G., Barral, N., Kramer, S.C., Ham, D.A., Piggott, M.D.: Goal-oriented error estimation and mesh adaptation for shallow water modelling. SN Applied Sciences 2(6), 1053 (2020) [23] Kärnä, T., Kramer, S.C., Mitchell, L., Ham, D.A., Piggott, M.D., Baptista, A.M.: Thetis coastal ocean model: Discontinuous Galerkin discretization for the three-dimensional hydrostatic equations. Geoscientific Model Development 11 (11), 4359–4382 (2018) [24] Klinger, W.B., Bertaska, I.R., Ellenrieder, K.D., Dhanak, M.R.: Control of an unmanned surface vehicle with uncertain displacement and drag. IEEE Journal of Oceanic Engineering 42 (2), 458–476 (2016) [25] Fossen, T.I.: Handbook of Marine Craft Hydrodynamics and Motion Control. John wiley & sons, Chichester, UK (2011) [26] Bentley, J.L.: Multidimensional binary search trees used for associative searching. Communications of the ACM 18 (9), 509–517 (1975) [27] Virtanen, P., Gommers, R., Oliphant, T.E., Haberland, M., Reddy, T., Cour-napeau, D., Burovski, E., Peterson, P., Weckesser, W., Bright, J., et al. : Scipy 1.0: fundamental algorithms for scientific computing in python. Nature Methods 
+
+17 (3), 261–272 (2020) [28] Pilechi, A., Mohammadian, A., Murphy, E.: A numerical framework for modeling fate and transport of microplastics in inland and coastal waters. Marine Pollution Bulletin 184 , 114119 (2022) [29] Wagner, P., Rühs, S., Schwarzkopf, F.U., Koszalka, I.M., Biastoch, A.: Can lagrangian tracking simulate tracer spreading in a high-resolution ocean general circulation model? Journal of Physical Oceanography 49 (5), 1141–1157 (2019) [30] Weber, F., Kerpen, J.: Underestimating microplastics? quantification of the recovery rate of microplastic particles including sampling, sample prepara-tion, subsampling, and detection using μ-Raman spectroscopy. Analytical and Bioanalytical Chemistry 415 (15), 2963–2973 (2023) [31] Fox, D., Burgard, W., Thrun, S.: The dynamic window approach to collision avoidance. IEEE Robotics & Automation Magazine 4(1), 23–33 (2002) [32] Karaman, S., Frazzoli, E.: Sampling-based algorithms for optimal motion plan-ning. The International Journal of Robotics Research 30 (7), 846–894 (2011) 19 [33] Sudha, S.K.R., Mishra, D., Hameed, I.A.: A coverage path planning approach for environmental monitoring using an unmanned surface vehicle. Ocean Engineering 
+
+310 , 118645 (2024) 20

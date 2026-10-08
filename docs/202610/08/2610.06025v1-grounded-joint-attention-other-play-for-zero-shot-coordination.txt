@@ -1,0 +1,493 @@
+Title: Grounded Joint-Attention Other-Play for Zero-Shot Coordination
+
+URL Source: https://arxiv.org/pdf/2610.06025v1
+
+Published Time: Tue, 06 Oct 2026 03:16:55 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Grounded Joint-Attention Other-Play for Zero-Shot Coordination 
+
+# Giulia Benintendi 1∗† , Constantin Ruhdorfer 2∗, Fabian Kögel 2, Andreas Bulling 2
+
+> 1
+
+University of Zurich 
+
+> 2
+
+University of Stuttgart giulia.benintendi@uzh.ch 
+
+Abstract 
+
+Joint attention – the human ability to share a common visual or cognitive focus with others – enables a meeting of minds 
+
+that lets us coordinate even with unfamiliar partners. In this work we investigate whether equipping AI agents with a sim-ilar mechanism can enable such zero-shot coordination. We introduce Mutual Attention for zero-shot TE aming (MATE): a novel multi-agent reinforcement learning method inspired by human joint attention. MATE encourages agents to coordinate their actions by aligning their visual attention on scene-salient objects during the interaction rather than relying on arbitrary partner-dependent conventions established during training. Unlike symmetry-breaking approaches that merely prevent brittle conventions from emerging, MATE actively promotes coordination through an environment-grounded signal that is naturally shared across partners. We evaluate MATE on three benchmarks: our Card Alignment Game, designed to isolate brittle convention formation, and the more challenging Level-Based Foraging and OvercookedV2 benchmarks. Our experi-ments consistently show that a joint-attention-inspired signal improves coordination with unknown partners, underlining MATE’s potential as a general coordination mechanism that complements and surpasses symmetry-breaking approaches. 
+
+# 1 Introduction 
+
+One of the most common approaches for training agents in multi-agent reinforcement learning (MARL) is self-play 
+
+(SP) (Tesauro 1995), in which agents learn by interact-ing with a copy of themselves. Despite yielding strong re-sults in competitive (Silver et al. 2016; Berner et al. 2019; Vinyals et al. 2019; Baker et al. 2020) and cooperative set-tings (de Witt et al. 2019; Hu and Foerster 2020; Yu et al. 2022), agents trained via SP struggle to generalise to novel partners (Carroll et al. 2019; Hu et al. 2020; Strouse et al. 2021). This motivates research on zero-shot coordination 
+
+(ZSC): coordinating with unseen partners without prior co-ordination (Stone et al. 2010; Hu et al. 2020). ZSC per-formance is usually evaluated in cross-play (XP) by pair-ing agents from independent training runs. Performance de-grades substantially (Hu et al. 2020) when agents approach the same task through incompatible arbitrary conventions that break environment symmetries during training (Foerster et al. 2019). Consider two players tasked with picking the same card out of five without explicit communication (see Figure 1). Within a training run, two agents may converge on 
+
+> ∗
+
+Equal contribution. 
+
+> †
+
+Work done while interning at the University of Stuttgart. 
+
+Figure 1: Zero-Shot Coordination using joint attention. Alice 
+
+and Bob , trained independently, must pick the same card without explicit communication. Self-play agents com-mit to arbitrary conventions, other-play agents have no signal at all to coordinate on, while MATE agents read each other’s attention and converge on a shared choice. a shared convention, such as “always pick green”, while an agent from a different run may have learned to “always pick purple”. When paired, neither agent knows which conven-tion the other learned, and they fail to coordinate. Solving ZSC thus requires coordination signals that a novel partner can independently recover, rather than conventions tied to a training run. To solve this issue, humans use joint attention as a social signal to dynamically resolve ambiguity and estab-lish the relevant object of joint action (Tomasello 2014; Car-penter and Call 2013). In the card example, humans would look at their intended card and track their partner’s gaze to successively converge on a joint choice. This succeeds even between strangers because human joint attention generalises across partners, providing a cue that is produced within the ongoing interaction and that can be interpreted in context. We hypothesise that joint attention could play a similar role for AI agents and ask: 
+
+Can joint attention serve as a coordination signal for independently trained partners at test time? 
+
+We propose Mutual Attention for zero-shot TE aming (MATE), a novel multi-agent reinforcement learning method arXiv:2610.06025v1 [cs.AI] 5 Oct 2026 inspired by human visual joint attention. Each agent receives its partner’s attention as a coordination signal and conditions its policy on it, making attention interactive: Agents do not merely learn to align their attention on the same object, but also to use the partner’s visual focus to guide their own at-tention and actions as the interaction unfolds (see Figure 1). We build MATE on top of other-play (OP) (Hu et al. 2020) that targets brittle convention formation by exploiting known environment symmetries: Rather than coordinating with an identical copy, an agent is trained with a randomly symmetry-permuted version of itself, preventing convergence on arbi-trary conventions. In the card example in Figure 1, OP can prevent run-specific choices, such as always selecting purple or green, but it does not determine which card agents should choose: While OP removes one source of failure, it does not provide any within-episode signal for selecting one among several equally plausible cards. MATE supplies this missing signal through the partner’s visual attention, allowing agents to coordinate where OP alone cannot. We evaluate MATE first in our Card Alignment Game 
+
+introduced above, which isolates this coordination task in its simplest form, and then in two established coordina-tion benchmarks: Level-Based Foraging (Albrecht and Ra-mamoorthy 2013) and OvercookedV2 (Gessler et al. 2025). Our results suggest that successful ZSC may require not only preventing incompatible arbitrary conventions, but also en-abling agents to negotiate coordination during execution by establishing a shared attentional focus. This positions MATE as a method for fostering generalisable coordination strate-gies that transfer to novel partners. Our contributions are: 1. We introduce MATE, a joint attention training mecha-nism built on top of OP, in which each agent observes its partner’s visual attention and learns to act on it. 2. We identify coordination problems in which enforcing symmetry-equivariant policies alone is insufficient, and introduce the Card Alignment Game as a minimal testbed that isolates this limitation. 3. We show that MATE outperforms competitive baselines in the Card Alignment Game as well as Level-Based Foraging and OvercookedV2, together with qualitative evidence that coordination stems from mutual attention rather than brittle conventions. 
+
+# 2 Related Work 
+
+2.1 Zero-Shot Coordination 
+
+ZSC investigates the ability of agents to coordinate with inde-pendently trained partners at test time, without co-adaptation. This is challenging when a task admits multiple equivalent but mutually incompatible optimal joint policies. We focus on this setting rather than broader ad-hoc teamwork (AHT), where agents collaborate with previously unknown partners whose behaviours may initially be unknown (Stone et al. 2010), as AHT is commonly treated as a natural next step once ZSC performance improves (Dizdarević et al. 2025; Ruhdorfer et al. 2026). Existing ZSC methods primarily ad-dress this coordination problem by discouraging arbitrary symmetry breaking during training. OP (Hu et al. 2020) independently transforms each agent’s Dec-POMDP using sampled environment relabellings, preventing the arbitrary conventions that SP would otherwise form around environ-ment symmetries. However, its performance is bounded by the symmetries the environment admits. Off-Belief Learn-ing (Hu et al. 2021) on the other hand is an algorithm that prevents arbitrary conventions and improves ZSC by tak-ing as input a reference policy π0 and optimizes a new unique policy π1 under the assumption that previous ac-tions were taken by π0 while future actions will be taken by 
+
+π1 using a belief model. More recently, Forkel et al. (2026) showed that high entropy regularisation promotes symmetry-equivariant and XP-compatible policies, with High-Entropy (HE) IPPO, a standard IPPO with an unusually large entropy coefficient, achieving state-of-the-art inter-seed XP score in Hanabi. These approaches share the premise that coordina-tion can be recovered by suppressing arbitrary conventions. This is not always sufficient. When several possible refer-ents remain symmetric within the current episode, removing arbitrary conventions does not by itself determine what the agents should coordinate around. We instead equip agents with a coordination signal grounded in the episode itself, namely shared attention, that remains informative even when no symmetry is left to exploit. 
+
+2.2 Joint Attention as a Coordination Signal 
+
+Joint attention is the shared and mutually recognised focus of two individuals on the same object or event. It is a foun-dational mechanism in human social cognition (Tomasello 2014; Mundy and Jarrold 2010; Carpenter and Call 2013) and has been studied for coordination in human-robot in-teraction (Staudte and Crocker 2011; Anzalone et al. 2019; García-Martínez et al. 2024). In MARL, Lee et al. (2021) equip agents with spatial attention heads and an intrinsic reward that penalises divergence between their attention maps, encouraging them to attend to the same elements of a shared observation; this improves SP coordination in gridworld tasks. However, because their evaluation is lim-ited to SP, the shared-attention incentive may act as an ad-ditional convention-forming channel: co-trained agents can simply learn to align their attention on an arbitrary, possibly task-irrelevant location to initiate a coordinated behaviour, without producing a signal that transfers to independently trained partners. To leverage communication, prior work in MARL learns protocols for exchanging task-relevant infor-mation (Foerster et al. 2016; Sukhbaatar, Szlam, and Fer-gus 2016; Mordatch and Abbeel 2018), but these often fail to transfer to independently trained partners (Bullard et al. 2020; Tucker et al. 2021). MATE instead uses spatial atten-tion as an environment-grounded communication channel. Without a pre-established convention, two factors matter be-yond aligned attention: agents need to be mutually aware that they share a focus (Carpenter and Call 2013) and the focus needs to be on a relevant object (Csibra and Gergely 2009). MATE addresses both limitations by enforcing attention to be not only aligned but also focused on objects, yielding an observable signal for establishing an episode-specific target with novel partners. 3 Preliminaries 
+
+3.1 Decentralised POMDPs 
+
+We model the cooperative setting as a decen-tralised partially observable Markov decision process (Dec-POMDP) (Oliehoek and Amato 2016), a tuple  S, n, {A i}ni=1 , {O i}ni=1 , T , R, {U i}ni=1 , T, γ, b 0
+
+, with fi-nite state space S, n agents, local action and observation spaces Ai and Oi, transition kernel T (st+1 | st, a t), shared reward R(st+1 , a t), observation functions oit = U i(st),horizon T , reward discount factor γ, and initial state dis-tribution b0. Each agent i acts on its local action-observation history τ it = ( oi
+
+> 0
+
+, a i
+
+> 0
+
+, . . . , a it−1, o it) through a local policy 
+
+πi(ait | τ it ). The joint policy then factorises as 
+
+π(at | τt) = 
+
+> n
+
+Y
+
+> i=1
+
+πi(ait | τ it ). (1) The SP objective is the expected return 
+
+JSP (π) = EτT ∼π
+
+"T −1X
+
+> t=0
+
+γt R(st+1 , a t)
+
+#
+
+. (2) 
+
+3.2 Zero-Shot Coordination 
+
+A Dec-POMDP may admit multiple joint policies with high SP return that are nevertheless mutually incompatible (Hu et al. 2020). We thus measure the ZSC score through XP, pairing agents trained in different runs. Given a Dec-POMDP with n agents and n independently trained joint policies 
+
+π1, . . . , π n, we follow prior work (Hu et al. 2020; Forkel et al. 2026) and define the XP score between them as 
+
+JXP (π1, . . . , π n) := Eϕ∼Perm( n)J π1
+
+> ϕ(1)
+
+, . . . , π nϕ(n)
+
+. (3) where Perm( n) is the set of permutations of {1, . . . , n }, and 
+
+πij denotes the local policy for agent slot i from joint policy 
+
+πj . As in this work we consider two-player Dec-POMDPs, this reduces to JXP (π1, π 2) = 12
+
+J(π11 , π 22 ) + J(π12 , π 21 ).The goal of ZSC is to find training algorithms that, when run independently, produce compatible joint policies. Fol-lowing prior work, we focus on the inter-seed XP setting, i.e. independent training runs vary only in their random seed. 
+
+3.3 Symmetries in Dec-POMDPs 
+
+A Dec-POMDP symmetry (Hu et al. 2020; Forkel et al. 2026) is a tuple of bijections 
+
+ϕ = ( ϕS , (ϕAi )ni=1 , (ϕOi )ni=1 ) (4) over S, Ai, and Oi while leaving T , R, and {U i}ni=1 in-variant. We write Φ for the set of all such symmetries. A symmetry acts on a joint policy by relabelling its inputs and outputs, 
+
+ϕ(πi)( ai | τ i) := πi  ϕ−1(ai) | ϕ−1(τ i) , (5) where ϕ−1(τ i) denotes the component-wise relabelling of the actions and observations in the action-observation his-tory. A joint policy π is symmetry equivariant if ϕ(π) = π
+
+for all ϕ ∈ Φ.
+
+3.4 Other-play 
+
+OP addresses brittle conventions by optimising SP under independently sampled Dec-POMDP symmetries (Hu et al. 2020). For each agent i, a symmetry ϕi ∼ Φ is drawn per episode, and OP maximises 
+
+JOP (π) = E(ϕ1,...,ϕ n)∼Φn
+
+JSP 
+
+ ϕ1(π1), . . . , ϕ n(πn) (6) This promotes robustness to relabellings and discourages arbitrary symmetry breaking, yet Φ must be known a priori. 
+
+3.5 Joint Attention for Social Learning 
+
+Lee et al. (2021) introduced a computational analogue of joint attention that improved JSP and sample efficiency across several gridworld tasks. For each agent k, a single h × w
+
+spatial attention map Akt is obtained by averaging the visual attention maps of the m heads. Joint attention is modelled as the Jensen-Shannon divergence (JSD) between each pair of agents’ attention maps, using an auxiliary reward term: 
+
+rJA  
+
+> t
+
+= −
+
+> n
+
+X
+
+> j=1
+> n
+
+X
+
+> i=1
+
+JSD 
+
+
+
+Ait ∥ Ajt
+
+
+
+. (7) Each agent’s objective combines the environment reward with the shared joint-attention intrinsic motivation: 
+
+J(πi) = Eπ
+
+" ∞X
+
+> t=0
+
+γt  rit+1 + β r JA 
+
+> t
+
+ s0
+
+#
+
+, (8) where β controls the weight of the joint-attention objective. 
+
+# 4 Mutual Attention for Zero-Shot Teaming 
+
+We extend OP and the spatial-attention architecture of Lee et al. (2021) by additionally grounding the attention in the environment. We call this method MATE , which equips OP-trained IPPO agents (de Witt et al. 2020; Schulman et al. 2017) with a model of joint attention. Each agent shares its focus with its partner and learns to steer its own attention toward the partner’s future focus and on task-relevant objects. 
+
+4.1 Sharing the partner’s attention 
+
+At every step, agent i receives its partner’s previous attention map Ajt−1 as a channel appended to its image observation. Because OP expresses each agent’s observation in a different permuted frame, we re-express the partner’s map in i’s frame by undoing j’s symmetry and applying i’s: 
+
+˜Ajt−1 := 
+
+
+
+ϕiA ◦ (ϕjA)−1
+
+Ajt−1, (9) where ϕjA denotes the action of ϕj on spatial attention maps. 
+
+4.2 Grounding attention in task-relevant objects 
+
+Parallel attention is insufficient for joint attention, as both agents must intentionally share a focus on a relevant target to support coordinated action (Carpenter and Call 2013; Csibra and Gergely 2009). Alignment on an irrelevant background patch contributes nothing to the task unless it becomes an-other arbitrary convention, whereas attention to task-relevant objects provides a meaningful coordination signal that novel Algorithm 1 MATE 
+
+Require: policy πθ , symmetry group Φ, detector OBJ , dis-count η ∈ [0 , 1) , weight λMATE  
+
+> 1:
+
+Sample OP symmetries ϕ1, ϕ 2 ∼ Φ 
+
+> 2:
+
+Initialise partner maps A1
+
+> −1
+
+, A 2 
+
+> −1
+
+to uniform  
+
+> 3:
+
+for t = 0 , . . . , T − 1 do  
+
+> 4:
+
+for agent i ∈ { 1, 2}, partner j̸ = i do  
+
+> 5:
+
+Reframe partner map ˜Ajt−1 = ( ϕiA ◦ (ϕjA)−1) Ajt−1 
+
+> 6:
+
+Sample action and attention ait, A it ∼
+
+πθ (ϕi(oit), ˜Ajt−1) 
+
+> 7:
+
+end for  
+
+> 8:
+
+Step environment with at = ( a1 
+
+> t
+
+, a 2 
+
+> t
+
+). 
+
+> 9:
+
+end for  
+
+> 10:
+
+Unmap to unpermuted frame ¯Ait = ( ϕiA)−1Ait 
+
+> 11:
+
+Sum onto objects pit(e) ∝ P 
+
+> u∈R (e)
+
+¯Ait(u) 
+
+> 12:
+
+for agent i, partner j̸ = i do  
+
+> 13:
+
+Find partner’s focus mjt = arg max e pjt (e) 
+
+> 14:
+
+Build target qjt ← η q jt+1 , qjt (mjt ) ← 1, normalise  
+
+> 15:
+
+end for  
+
+> 16:
+
+Update θ by PPO on L = LIPPO + λMATE LMATE . 
+
+> 17:
+
+return θ
+
+partners can interpret within the episode. We therefore add an auxiliary loss that grounds attention and encourages con-vergence on task-relevant entities, aligning attention at the 
+
+object level. Because each agent observes the partner’s pre-vious attention map, this does not passively align attention maps; rather, it trains agents to intentionally condition their own focus on the partner’s. We assume a training-time object detector OBJ that returns the task-relevant objects Et = OBJ( ot) at step 
+
+t, each object e covering a region R(e) of the attention grid. Mapping agent i’s attention back to the shared frame, 
+
+¯Ait := ( ϕiA)−1Ait, and summing it over each object’s cells, leads to a distribution pit over objects, comparable across agents. We train pit towards the partner’s discounted future focus qjt , which weights each object by a discount factor 
+
+ηδt(e), where δt(e) is the number of steps until partner j next attends object e. Agent i’s attention is matched to this target by cross-entropy, summed over both agents and the horizon, 
+
+LMATE = − 12T
+
+> 2
+
+X 
+
+> i=1
+> T−1
+
+X
+
+> t=0
+
+X
+
+> e∈E t
+
+qjt (e) log pit(e). (10) The full objective adds this to the IPPO loss, 
+
+L = LIPPO + λMATE LMATE . (11) Algorithm 1 presents pseudocode for the two-player case. 
+
+# 5 Experiments 
+
+We first test MATE in the Card Alignment Game, a toy envi-ronment that we propose to validate the core intuition behind our method in isolation. We then evaluate MATE in two more complex domains, Level-Based Foraging (LBF) (Al-brecht and Ramamoorthy 2013) and OvercookedV2 (Gessler et al. 2025), which require agents to agree on a shared target and infer coordination from their partner’s actions. 
+
+Figure 2: Sample episode in the Card Alignment Game. Alice 
+
+and Bob must select the same card in the unpermuted layout (left). To prevent position or colour conventions, they observe differently permuted frames. Finally, both agents choose independently. 
+
+5.1 Card Alignment Game 
+
+The Card Alignment Game (see Figure 2) is a cooperative two-player game in which agents must independently pick the same card out of five. Each episode contains seven delib-eration steps, during which agents point to cards in their own local frame, followed by one private decision step. At that step, the pair receives R = 1 if both agents pick the same card and R = 0 otherwise. The game is kept simple to isolate whether joint attention alone can provide a sufficiently strong signal to enable coordination. 
+
+Symmetries The game admits symmetries over card colours and positions, which SP agents can exploit to form ar-bitrary conventions, such as always selecting “red” or “left”. To avoid this, we employ OP by transforming each agent’s observation into oi = ϕi(o) where ϕi = ϕi 
+
+> col
+
+◦ ϕi 
+
+> pos
+
+is the composition of random individual position and colour per-mutations. Coordination must then be recovered within the episode, rather than through colour- or position-based con-ventions. In the example of Figure 2, Bob sees the unper-muted layout transformed as follows: (i) the position permu-tation is ϕi 
+
+> pos
+
+= (2 , 3, 1, 4, 5) , and (ii) colour relabelling 
+
+ϕi 
+
+> col
+
+: 7 → , 7 → , 7 → , 7 → , 7 → .
+
+Therefore, Bob ’s local observation is 
+
+oi = ϕi(o) = ( ϕi 
+
+> col
+
+◦ ϕi
+
+> pos
+
+)( o) = ( , , , , ).
+
+Observation and action space Each agent observes its permuted frame and a scalar indicating whether the episode is in deliberation or at the final decision step. The action space contains five actions, each corresponding to one of the cards: during deliberation, an action points to a card in the agent’s local frame; at the final step, it privately selects that card. The cards form the object set for the attention loss, with one R(e) per card. 
+
+5.2 Level-Based Foraging 
+
+LBF (Albrecht and Ramamoorthy 2013) is a cooperative grid-world task in which agents navigate to apples and col-lect them by executing a load action. We use the forced-coordination setting, where each apple can be collected only (a) Card Alignment Game (b) LBF (c) OvercookedV2 
+
+Figure 3: SP (hatched) and XP (solid) scores for the Card Alignment Game (a), LBF (b) and OvercookedV2 (c). Error bars show SEM. MATE achieves the highest XP across all three environments. if both agents load it jointly. Experiments are run on a fully observable 12 ×12 grid with two agents and eight apples. We shorten the episode horizon from 100 to 50 steps to increase coordination pressure. Agents receive image observations to test our method in conditions that more naturally resemble real-life deployment scenarios. Under OP, each observation is independently transformed by a random symmetry of the grid, using horizontal and vertical reflections. For the object-level attention target, apples are treated as task-relevant ob-jects, with one R(e) for each apple. 
+
+5.3 OvercookedV2 
+
+OvercookedV2 (Gessler et al. 2025) introduces partial ob-servability and asymmetric information into Overcooked, one of the most widely used ZSC benchmarks. We evalu-ate on Demo Cook Simple , where only one agent observes the recipe and the other must infer the target dish from its partner’s behaviour, particularly the ingredients it carries and places in the pot. The exploration of additional layouts is left to future work. This setting makes it a natural test of whether joint attention can support implicit communication through partner behaviour. We extend the JaxMARL (Ruther-ford et al. 2024) environment with image observations and, following Gessler et al. (2025), apply OP by independently permuting the two recipe ingredients in each agent’s obser-vation. While Gessler et al. (2025) embed each local view in a zero-padded global grid, we centre the observation on one agent and crop it to the view radius to reduce dependence on fixed layout coordinates and improve generalisation (Ye et al. 2020). Partner attention is shared only within the receiver’s visible region, preventing leakage of private recipe informa-tion yet making OvercookedV2 particularly challenging for MATE, as attention can provide a coordination signal only intermittently. Task-relevant kitchen objects, including car-ried ingredients, form the object set used by the attention loss. 
+
+# 6 Results 
+
+We evaluate whether MATE improves ZSC by comparing SP and XP return (Hu et al. 2020), with XP computed from dis-joint pairs of independently trained policies following Forkel et al. (2026). Across all environments we compare IPPO, OP, HE IPPO (Forkel et al. 2026) and MATE, additionally includ-ing the joint-attention baseline of Lee et al. (2021) in the Card Alignment Game. Results are averaged over 48 seeds in the Card Alignment Game and 12 in LBF and OvercookedV2. OP and MATE are trained under the same permutation for a fair comparison; no permutations are applied during evalu-ation. All methods are evaluated at the checkpoint with the highest training return. For HE IPPO, we always report the SP and XP scores at the entropy coefficient achieving the highest XP return in the sweep shown in Figure 7. 
+
+6.1 Card Alignment Game 
+
+In the Card Alignment Game (Figure 3a), IPPO solves SP but falls to chance in XP, showing that independently trained agents learn incompatible conventions. OP rules out brittle conventions, but without a coordination signal, it remains at chance in both SP and XP. HE IPPO also fails: none of the tested entropy coefficients yields XP above chance, and large coefficients collapse non-greedy SP performance (Figure 7). The Lee et al. (2021) joint-attention objective behaves sim-ilarly: varying β over three orders of magnitude leaves the outcome unchanged, with perfect SP but chance XP. MATE instead obtains high return in both settings ( 0.872 ± 0.008 
+
+SP, 0.823 ± 0.010 XP), moving substantially above chance while keeping the SP-XP gap small. Figure 4 shows the cor-responding attention patterns. MATE agents progressively align attention on the same card and select it, yielding a strat-egy that transfers to independently trained partners. Under OP alone, attention remains agent-specific and final choices do not align. 
+
+MATE Ablation Study We analyse how each component of MATE contributes by individually removing OP (w/o OP), the partner-attention input (w/o feed), and the object-level auxiliary loss (w/o aux); see Figure 3a. MATE w/o OP rein-troduces brittle conventions, resulting in perfect SP but chance-level XP, while w/o aux at chance level demon-strates that joint attention is insufficient without ground-ing: agents still exchange attention, but an ungrounded signal carries no meaning a novel partner can recover. MATE w/o feed performs equivalently to OP. All three com-ponents, symmetry-robust training, interaction-time atten-tion sharing, and object-level grounding, are thus necessary. Figure 4: Card Alignment Game attention maps. (a) and (b) show per-card attention in the unpermuted frame. MATE progres-sively aligns attention between agents and selects the same card, whereas OP maintains divergent attention and chooses different cards. (c) shows card-attention JSD over time; lower values indicate stronger alignment. 
+
+6.2 Level-Based Foraging 
+
+In LBF (Figure 3b), IPPO exhibits a clear SP–XP gap, drop-ping from 0.356 ± 0.057 in SP to 0.229 ± 0.068 in XP. OP reduces this gap but also lowers SP performance, while HE IPPO improves both SP and XP without fully closing the gap. MATE performs best in both settings, reaching 0.460 ±0.002 
+
+in SP and 0.446 ± 0.003 in XP. Attention maps in Figure 5 show the coordination mech-anism. In LBF, several apples are simultaneously equally valid targets and the time budget is short: agents must con-verge within a few steps, or the episode is lost to wasted moves. MATE partners align their combined attention on the next apple and collect it; OP agents, instead, each attend to their own vicinity and never commit to a shared target in time. 
+
+6.3 OvercookedV2 
+
+In Demo Cook Simple (Figure 3c), MATE achieves the high-est XP return, reaching 132 .2 ± 3.0 in XP and 143 .3 ± 1.4
+
+in SP. IPPO drops from 167 .6 ± 8.3 in SP to 104 .2 ± 17 .8
+
+in XP. HE IPPO reaches the highest SP return in the sweep (208 .6), but only 120 .6 ± 51 .2 in XP (see Figure 7), leav-ing a substantial SP–XP gap; even its best-XP configuration remains below MATE at 125 .3 ± 14 .4. OP improves XP to 
+
+116 .8 ± 10 .9, considerably above the 47 ± 15 .2 originally reported for OP by Gessler et al. (2025). In our experiments, this gain comes from replacing zero-padded observations with agent-centred crops: with the original representation, agents develop additional conventions tied to fixed spatial positions, suggesting that ingredient relabelling alone may not capture all relevant symmetries. We therefore report the original result only as a reference rather than as a directly comparable baseline. The benefit MATE can provide in this layout is inher-ently constrained. The agents’ fields of view overlap for only 
+
+262 ± 9 of the 400 evaluation timesteps and, even then, the shared region covers on average 11 ± 0.3 cells and at most 
+
+15 of the 50 cells in each view, limiting how often mutual attention is effective. Figure 6 illustrates one such brief win-dow. Once the informed agent returns to the pot carrying the required ingredient, the ingredient reveals the hidden recipe, while mutual attention directs the uninformed agent’s focus towards this cue, indicating that the prepared soup should be delivered. Nevertheless, MATE outperforms OP under the same agent-centred observations and ingredient permu-tations, showing that it can improve coordination even under constrained shared visibility, and extending its benefits to partial observability and asymmetric information. 
+
+# 7 Discussion and Limitations 
+
+Our results show that MATE supports within-episode coor-dination across tasks requiring target agreement, as in Card Alignment and LBF, and interpretation of behaviour under partial observability, as in OvercookedV2. This suggests that some coordination problems cannot be solved by suppress-ing arbitrary conventions alone; for these, grounding coor-dination in signals recoverable within the episode offers an effective route to generalisation in cooperative multi-agent systems. A limitation is that MATE assumes access to a detector for task-relevant objects during training. We also evaluate only with AI partners; whether the learned attention signal stays interpretable and useful in human–AI coordina-tion remains open. 
+
+# 8 Conclusion 
+
+We introduced MATE, a multi-agent reinforcement learn-ing method that models joint attention as a general zero-shot coordination mechanism between independently trained partners. Across three diverse environments, MATE closes the SP-XP gap where prior zero-shot coordination meth-ods remain at chance level. Future work could extend this idea beyond shared focus, using attention-based objectives and attention-avoidance to support richer forms of coordina-tion, including division of labour, help-seeking, warning, and complementary attention to different task-relevant objects. 
+
+# A Training Details 
+
+A.1 Network Architecture 
+
+All methods use the same network architecture, inspired by the visual-attention architecture of Lee et al. (2021). Since our observations are image-based rather than symbolic grid states, we replace their single convolutional encoder with a residual CNN. Observations are processed by a four-block residual CNN ( 32 filters, 3×3 kernels, stride 2, ReLU (Nair and Hinton 2010)), followed by an LSTM of hidden size 128 
+
+and two fully connected layers of size 256 for both actor and critic. (a) MATE (b) OP 
+
+Figure 5: Level-Based Foraging attention maps. (a) and (b) show the combined attention of two independently trained agents in the unpermuted frame. The colour scale indicates normalised attention intensity. When several apples are equally valid targets, MATE agents converge on the same apple, whereas OP agents attend to different regions and fail to establish a common target. 
+
+Figure 6: OvercookedV2 attention maps from two moments of interaction between MATE agents. Red and blue boxes delimit the agents’ respective fields of view; contour lines show their combined attention in the unpermuted frame. 
+
+A.2 Hyperparameters 
+
+Our codebase builds on JaxAHT (Wang et al. 2026), and we ran our experiments on Ubuntu servers equipped with NVIDIA Tesla V100-SXM2 GPUs with 32 GB of memory. For all methods, we use seed 42 as a base and either incre-mented it sequentially (OvercookedV2) or split new random seeds using JAX (LBF, Card Alignment Game). We tuned PPO hyperparameters per environment from the JaxMARL baselines (Rutherford et al. 2024), Forkel et al. (2026), and, for OvercookedV2, Gessler et al. (2025). We varied one pa-rameter at a time and retained the best SP-performing config-uration. We swept λMATE ∈ { 10 −3, 3·10 −3, 10 −2, 3·10 −2,
+
+0.1, 0.25 , 0.4, 0.5, 1, 2} for the Card Alignment Game and 
+
+Figure 7: Scores of HE IPPO for SP and XP, against the entropy coefficient. Shaded regions show SEM.                                                   
+
+> Hyperparameter Card Align. LBF OCv2
+> LR {3,5,8}× 10 −44×10 −4{2.5,4}× 10 −4
+> LR annealing False True True Steps 5×10 63×10 63×10 7
+> Parallel envs {512 ,1024 }{128 ,256 }{192 ,256 }
+> Rollout 8128 256
+> Epochs 4
+> Minibatches 16 32 {16 ,64 }
+> Clip ϵ0.2
+> Entropy coef. 0.01 0.01 {0.01 ,0.02 }
+> Value coef. 0.5
+> GAE λ{.8, . 9, . 95 }.8{.8 , . 9, . 95 }
+> Discount γ.99
+> Grad norm .5
+> MATE parameters
+> λMATE .25 10 −4{10 −3,10 −4}
+> η.9{.8, . 95 }{.8, . 95 }
+
+Table 1: Training hyperparameters for Card Alignment Game, LBF, and OvercookedV2. Braces show the values considered during tuning; bold values were selected. Empty entries inherit Card Alignment Game values. 
+
+{10 −4, 5·10 −4, 5·10 −3, 5·10 −2} for LBF. For the Lee et al. (2021) baseline, we swept β ∈ { 3×10 −4, 10 −3, 3×10 −3,
+
+10 −2, 3×10 −2, 10 −1, 0.3, 1}.
+
+A.3 High-Entropy IPPO Baseline 
+
+Following Forkel et al. (2026), we keep standard IPPO train-ing unchanged and tune the entropy coefficient over a larger range (Figure 7). This should make independently trained policies compatible, with XP matching SP. In the Card Align-ment Game, we extend the sweep to 10 5, yet the greedy SP– XP gap remains open throughout. In LBF, greedy SP and XP become close for several coefficients, but never intersect, with SP consistently higher. In OvercookedV2, greedy XP approaches and eventually exceeds SP only after increasing entropy has substantially degraded SP performance. 
+
+# Acknowledgments 
+
+The authors thank the International Max Planck Research School for Intelligent Systems (IMPRS-IS) for supporting C. Ruhdorfer and F. Kögel. Contribution Statement 
+
+G.B. and C.R. jointly developed the method, with C.R. con-ceiving the initial research direction and method, while G.B. led its implementation and experimental development. G.B. conducted the experiments, analyzed the experimental re-sults, and led the writing of the paper. C.R. provided tech-nical leadership, contributed to the experimental analysis, and contributed to the writing of the paper. F.K. advised on key research decisions and contributed to the writing of the paper. A.B. supervised the research, acquired funding, and contributed to the writing of the paper. 
+
+# References 
+
+Albrecht, S. V.; and Ramamoorthy, S. 2013. A game-theoretic model and best-response learning method for ad hoc coordination in multiagent systems. In Gini, M. L.; Shehory, O.; Ito, T.; and Jonker, C. M., eds., International conference on Autonomous Agents and Multi-Agent Systems, AAMAS ’13, Saint Paul, MN, USA, May 6-10, 2013 , 1155– 1156. IFAAMAS. Anzalone, S. M.; Xavier, J.; Boucenna, S.; Billeci, L.; Narzisi, A.; Muratori, F.; Cohen, D.; and Chetouani, M. 2019. Quantifying patterns of joint attention during human-robot interactions: An application for autism spectrum disorder assessment. Pattern Recognit. Lett. , 118: 42–50. Baker, B.; Kanitscheider, I.; Markov, T. M.; Wu, Y.; Powell, G.; McGrew, B.; and Mordatch, I. 2020. Emergent Tool Use From Multi-Agent Autocurricula. In 8th International Conference on Learning Representations, ICLR 2020, Addis Ababa, Ethiopia, April 26-30, 2020 . OpenReview.net. Berner, C.; Brockman, G.; Chan, B.; Cheung, V.; Debiak, P.; Dennison, C.; Farhi, D.; Fischer, Q.; Hashme, S.; Hesse, C.; Józefowicz, R.; Gray, S.; Olsson, C.; Pachocki, J.; Petrov, M.; de Oliveira Pinto, H. P.; Raiman, J.; Salimans, T.; Schlatter, J.; Schneider, J.; Sidor, S.; Sutskever, I.; Tang, J.; Wolski, F.; and Zhang, S. 2019. Dota 2 with Large Scale Deep Reinforcement Learning. CoRR , abs/1912.06680. Bullard, K.; Meier, F.; Kiela, D.; Pineau, J.; and Foerster, J. N. 2020. Exploring Zero-Shot Emergent Communication in Embodied Multi-Agent Populations. CoRR , abs/2010.15896. Carpenter, M.; and Call, J. 2013. How Joint Is the Joint Attention of Apes and Human Infants? In Metcalfe, J.; and Terrace, H. S., eds., Agency and Joint Attention , 49–61. New York: Oxford University Press. ISBN 9780199988341. Carroll, M.; Shah, R.; Ho, M. K.; Griffiths, T.; Seshia, S. A.; Abbeel, P.; and Dragan, A. D. 2019. On the Utility of Learn-ing about Humans for Human-AI Coordination. In Wallach, H. M.; Larochelle, H.; Beygelzimer, A.; d’Alché-Buc, F.; Fox, E. B.; and Garnett, R., eds., Advances in Neural Information Processing Systems 32: Annual Conference on Neural Infor-mation Processing Systems 2019, NeurIPS 2019, December 8-14, 2019, Vancouver, BC, Canada , 5175–5186. Csibra, G.; and Gergely, G. 2009. Natural pedagogy. Trends in Cognitive Sciences , 13(4): 148–153. de Witt, C. S.; Foerster, J. N.; Farquhar, G.; Torr, P. H. S.; Boehmer, W.; and Whiteson, S. 2019. Multi-Agent Common Knowledge Reinforcement Learning. In Wallach, H. M.; Larochelle, H.; Beygelzimer, A.; d’Alché-Buc, F.; Fox, E. B.; and Garnett, R., eds., Advances in Neural Information Pro-cessing Systems 32: Annual Conference on Neural Infor-mation Processing Systems 2019, NeurIPS 2019, December 8-14, 2019, Vancouver, BC, Canada , 9924–9935. de Witt, C. S.; Gupta, T.; Makoviichuk, D.; Makoviychuk, V.; Torr, P. H. S.; Sun, M.; and Whiteson, S. 2020. Is Inde-pendent Learning All You Need in the StarCraft Multi-Agent Challenge? CoRR , abs/2011.09533. Dizdarević, T.; Hammond, R.; Gessler, T.; Calinescu, A.; Cook, J.; Gallici, M.; Lupu, A.; and Foerster, J. N. 2025. Ad-Hoc Human-AI Coordination Challenge. In Forty-second International Conference on Machine Learning .Foerster, J. N.; Assael, Y. M.; de Freitas, N.; and Whiteson, S. 2016. Learning to Communicate with Deep Multi-Agent Reinforcement Learning. In Lee, D. D.; Sugiyama, M.; von Luxburg, U.; Guyon, I.; and Garnett, R., eds., Advances in Neural Information Processing Systems 29: Annual Confer-ence on Neural Information Processing Systems 2016, De-cember 5-10, 2016, Barcelona, Spain , 2137–2145. Foerster, J. N.; Song, H. F.; Hughes, E.; Burch, N.; Dun-ning, I.; Whiteson, S.; Botvinick, M. M.; and Bowling, M. 2019. Bayesian Action Decoder for Deep Multi-Agent Rein-forcement Learning. In Chaudhuri, K.; and Salakhutdinov, R., eds., Proceedings of the 36th International Conference on Machine Learning, ICML 2019, 9-15 June 2019, Long Beach, California, USA , volume 97 of Proceedings of Ma-chine Learning Research , 1942–1951. PMLR. Forkel, J.; Ruhdorfer, C.; Beukman, M.; Bulling, A.; and Fo-erster, J. 2026. High entropy leads to symmetry-equivariant policies in Dec-POMDPs. arXiv:2511.22581. García-Martínez, J.; Gamboa-Montero, J. J.; Castillo, J. C.; and Castro-González, Á. 2024. Analyzing the Impact of Responding to Joint Attention on the User Perception of the Robot in Human-Robot Interaction. Biomimetics , 9(12). Gessler, T.; Dizdarevic, T.; Calinescu, A.; Ellis, B.; Lupu, A.; and Foerster, J. N. 2025. OvercookedV2: Rethinking Over-cooked for Zero-Shot Coordination. In The Thirteenth In-ternational Conference on Learning Representations, ICLR 2025, Singapore, April 24-28, 2025 . OpenReview.net. Hu, H.; and Foerster, J. N. 2020. Simplified Action Decoder for Deep Multi-Agent Reinforcement Learning. In 8th In-ternational Conference on Learning Representations, ICLR 2020, Addis Ababa, Ethiopia, April 26-30, 2020 . OpenRe-view.net. Hu, H.; Lerer, A.; Cui, B.; Pineda, L.; Brown, N.; and Fo-erster, J. N. 2021. Off-Belief Learning. In Meila, M.; and Zhang, T., eds., Proceedings of the 38th International Con-ference on Machine Learning, ICML 2021, 18-24 July 2021, Virtual Event , volume 139 of Proceedings of Machine Learn-ing Research , 4369–4379. PMLR. Hu, H.; Lerer, A.; Peysakhovich, A.; and Foerster, J. N. 2020. "Other-Play" for Zero-Shot Coordination. In Proceedings of the 37th International Conference on Machine Learning, ICML 2020, 13-18 July 2020, Virtual Event , volume 119 of Proceedings of Machine Learning Research , 4399–4410. PMLR. Lee, D.; Jaques, N.; Kew, J. C.; Eck, D.; Schuurmans, D.; and Faust, A. 2021. Joint Attention for Multi-Agent Coordination and Social Learning. CoRR , abs/2104.07750. Mordatch, I.; and Abbeel, P. 2018. Emergence of Grounded Compositional Language in Multi-Agent Populations. In McIlraith, S. A.; and Weinberger, K. Q., eds., Proceedings of the Thirty-Second AAAI Conference on Artificial Intelli-gence, (AAAI-18), the 30th innovative Applications of Artifi-cial Intelligence (IAAI-18), and the 8th AAAI Symposium on Educational Advances in Artificial Intelligence (EAAI-18), New Orleans, Louisiana, USA, February 2-7, 2018 , 1495– 1502. AAAI Press. Mundy, P.; and Jarrold, W. 2010. Infant joint attention, neural networks and social cognition. Neural Networks , 23(8-9): 985–997. Nair, V.; and Hinton, G. E. 2010. Rectified Linear Units Improve Restricted Boltzmann Machines. In Fürnkranz, J.; and Joachims, T., eds., Proceedings of the 27th International Conference on Machine Learning (ICML-10), June 21-24, 2010, Haifa, Israel , 807–814. Omnipress. Oliehoek, F. A.; and Amato, C. 2016. A Concise Introduction to Decentralized POMDPs . Springer Briefs in Intelligent Systems. Springer. ISBN 978-3-319-28927-4. Ruhdorfer, C.; Bortoletto, M.; Forkel, J.; Foerster, J.; and Bulling, A. 2026. The Yokai Learning Environment: Track-ing Beliefs Over Space and Time. arXiv:2508.12480. Rutherford, A.; Ellis, B.; Gallici, M.; Cook, J.; Lupu, A.; Ingvarsson, G.; Willi, T.; Hammond, R.; Khan, A.; de Witt, C. S.; Souly, A.; Bandyopadhyay, S.; Samvelyan, M.; Jiang, M.; Lange, R. T.; Whiteson, S.; Lacerda, B.; Hawes, N.; Rocktäschel, T.; Lu, C.; and Foerster, J. N. 2024. JaxMARL: Multi-Agent RL Environments and Algorithms in JAX. In Globersons, A.; Mackey, L.; Belgrave, D.; Fan, A.; Paquet, U.; Tomczak, J. M.; and Zhang, C., eds., Advances in Neural Information Processing Systems 37: Annual Conference on Neural Information Processing Systems 2024, NeurIPS 2024, Vancouver, BC, Canada, December 10 - 15, 2024 .Schulman, J.; Wolski, F.; Dhariwal, P.; Radford, A.; and Klimov, O. 2017. Proximal Policy Optimization Algorithms. 
+
+CoRR , abs/1707.06347. Silver, D.; Huang, A.; Maddison, C. J.; Guez, A.; Sifre, L.; van den Driessche, G.; Schrittwieser, J.; Antonoglou, I.; Panneershelvam, V.; Lanctot, M.; Dieleman, S.; Grewe, D.; Nham, J.; Kalchbrenner, N.; Sutskever, I.; Lillicrap, T. P.; Leach, M.; Kavukcuoglu, K.; Graepel, T.; and Hassabis, D. 2016. Mastering the game of Go with deep neural networks and tree search. Nat. , 529(7587): 484–489. Staudte, M.; and Crocker, M. W. 2011. Investigating joint attention mechanisms through spoken human-robot interac-tion. Cognition , 120 2: 268–91. Stone, P.; Kaminka, G. A.; Kraus, S.; and Rosenschein, J. S. 2010. Ad Hoc Autonomous Agent Teams: Collaboration without Pre-Coordination. In Fox, M.; and Poole, D., eds., 
+
+Proceedings of the Twenty-Fourth AAAI Conference on Ar-tificial Intelligence, AAAI 2010, Atlanta, Georgia, USA, July 11-15, 2010 , 1504–1509. AAAI Press. Strouse, D.; McKee, K. R.; Botvinick, M. M.; Hughes, E.; and Everett, R. 2021. Collaborating with Humans without Human Data. In Ranzato, M.; Beygelzimer, A.; Dauphin, Y. N.; Liang, P.; and Vaughan, J. W., eds., Advances in Neural Information Processing Systems 34: Annual Conference on Neural Information Processing Systems 2021, NeurIPS 2021, December 6-14, 2021, virtual , 14502–14515. Sukhbaatar, S.; Szlam, A.; and Fergus, R. 2016. Learn-ing Multiagent Communication with Backpropagation. In Lee, D. D.; Sugiyama, M.; von Luxburg, U.; Guyon, I.; and Garnett, R., eds., Advances in Neural Information Process-ing Systems 29: Annual Conference on Neural Information Processing Systems 2016, December 5-10, 2016, Barcelona, Spain , 2244–2252. Tesauro, G. 1995. Temporal Difference Learning and TD-Gammon. Commun. ACM , 38(3): 58–68. Tomasello, M. 2014. Joint attention as social cognition. In 
+
+Joint attention , 103–130. Psychology Press. Tucker, M.; Li, H.; Agrawal, S.; Hughes, D.; Sycara, K. P.; Lewis, M.; and Shah, J. A. 2021. Emergent Discrete Commu-nication in Semantic Spaces. In Ranzato, M.; Beygelzimer, A.; Dauphin, Y. N.; Liang, P.; and Vaughan, J. W., eds., Ad-vances in Neural Information Processing Systems 34: Annual Conference on Neural Information Processing Systems 2021, NeurIPS 2021, December 6-14, 2021, virtual , 10574–10586. Vinyals, O.; Babuschkin, I.; Czarnecki, W. M.; Mathieu, M.; Dudzik, A.; Chung, J.; Choi, D. H.; Powell, R.; Ewalds, T.; Georgiev, P.; Oh, J.; Horgan, D.; Kroiss, M.; Danihelka, I.; Huang, A.; Sifre, L.; Cai, T.; Agapiou, J. P.; Jaderberg, M.; Vezhnevets, A. S.; Leblond, R.; Pohlen, T.; Dalibard, V.; Budden, D.; Sulsky, Y.; Molloy, J.; Paine, T. L.; Gülçehre, Ç.; Wang, Z.; Pfaff, T.; Wu, Y.; Ring, R.; Yogatama, D.; Wünsch, D.; McKinney, K.; Smith, O.; Schaul, T.; Lillicrap, T. P.; Kavukcuoglu, K.; Hassabis, D.; Apps, C.; and Silver, D. 2019. Grandmaster level in StarCraft II using multi-agent reinforcement learning. Nat. , 575(7782): 350–354. Wang, C.; Fernandez, R.; Mustafaoglu, Z. S.; Kundan, M.; Cui, J.; Xiao, L.; Wang, Z.; Shi, D. Y.; Madhan, A.; Liu, J.; Rahman, A.; and Stone, P. 2026. JaxAHT: A JAX-Based Library for Ad Hoc Teamwork. arXiv:2609.13716. Ye, C.; Khalifa, A.; Bontrager, P.; and Togelius, J. 2020. Rotation, Translation, and Cropping for Zero-Shot General-ization. In IEEE Conference on Games, CoG 2020, Osaka, Japan, August 24-27, 2020 , 57–64. IEEE. Yu, C.; Velu, A.; Vinitsky, E.; Gao, J.; Wang, Y.; Bayen, A. M.; and Wu, Y. 2022. The Surprising Effectiveness of PPO in Cooperative Multi-Agent Games. In Koyejo, S.; Mo-hamed, S.; Agarwal, A.; Belgrave, D.; Cho, K.; and Oh, A., eds., Advances in Neural Information Processing Systems 35: Annual Conference on Neural Information Processing Sys-tems 2022, NeurIPS 2022, New Orleans, LA, USA, November 28 - December 9, 2022 .

@@ -1,0 +1,1095 @@
+Title: Learning Unknown Constraints without Unsafe Data via Optimality and Counterfactual Regularization
+
+URL Source: https://arxiv.org/pdf/2610.09350v1
+
+Published Time: Thu, 08 Oct 2026 00:45:02 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# LEARNING UNKNOWN CONSTRAINTS WITHOUT UN-
+
+# SAFE DATA VIA OPTIMALITY AND COUNTERFACTUAL 
+
+# REGULARIZATION 
+
+Zhouyu Zhang 
+
+School of Electrical and Computer Engineering Georgia Institute of Technology Atlanta, GA 30309 
+
+zzhang3097@gatech.edu 
+
+Chih-Yuan Chiu 
+
+School of Electrical and Computer Engineering Georgia Institute of Technology Atlanta, GA 30309 
+
+cyc@gatech.edu 
+
+Glen Chou 
+
+School of Cybersecurity and Privacy School of Aerospace Engineering Georgia Institute of Technology 
+
+chou@gatech.edu 
+
+## ABSTRACT 
+
+Learning from demonstrations (LfD) provides a framework for inferring unknown constraints from locally optimal, constraint-satisfying expert behavior. Existing approaches largely fall into two paradigms, constrained inverse optimal control (CIOC) and inverse constrained reinforcement learning (ICRL). CIOC exploits optimality conditions such as the Karush–Kuhn–Tucker (KKT) conditions but typically assumes known dynamics and structured constraint representations. Meanwhile, ICRL accommodates complex unknown constraints and unknown transition dynamics but often requires extensive online exploration, during which unsafe constraint violations may occur. In this work, we introduce Counterfactual KKT (CF-KKT), a constraint learning framework that leverages learned dynamics and locally optimal demonstrations to recover unknown constraints without requiring known dynamics or additional risky exploration, thereby combining the data efficiency and safety advantages of CIOC with the flexibility of ICRL. First, we use a locally learned differentiable dynamics model to impose KKT-inspired optimality conditions directly on the demonstrations. Second, we use the learned dynamics to generate reward-improving counterfactual behaviors near the demonstrations, revealing behaviors that would be preferable in the absence of the unknown constraint and thus providing synthetic infeasible data. When the constraint parameterization is known, the same learned-dynamics framework enables direct CIOC-based parameter recovery, and we characterize its sensitivity to dynamics misspecification. Across high-dimensional robotic control tasks, our approach learns neural constraint representations with improved safety and data efficiency relative to state-of-the-art offline ICRL baselines. 
+
+## 1 INTRODUCTION 
+
+Autonomous systems deployed in safety-critical applications, such as autonomous driving and warehouse operations, must adhere to constraints that encode safety and task specifications (Altman, 1999; Achiam et al., 2017; Borkar, 2005; Mayne et al., 2000; Berberich et al., 2021; Magni & Scattolini, 2004). Given the difficulty of manually engineering such constraints and the advent of data-driven methods, learning from demonstration (LfD) has attracted increasing attention as a promising framework for recovering constraints from locally optimal and constraint-abiding expert trajectories (Chou et al., 2020b; 2022; Quan et al., 2024; Liu et al., 2023). LfD-based constraint learning paradigms are often either based on inverse optimal control (IOC) (Englert et al., 2017; Keshavarz et al., 2011; Johnson et al., 2013; Rickenbach et al., 2024; Wulfmeier et al., 2017; Chou et al., 2020b;a; 2018) or inverse constrained reinforcement learning (ICRL) (Scobee & Sastry, 2019; McPherson et al., 2021; Malik et al., 2021; Papadimitriou et al., 2022; Liu & Zhu, 2022; 2024; Park et al., 2020; Jang et al., 2023). IOC-based methods recover constraints by enforcing consistency 1arXiv:2610.09350v1 [cs.RO] 7 Oct 2026 with the Karush–Kuhn–Tucker (KKT) conditions that characterize the local optimality of a given set of demonstrations (Rickenbach et al., 2024; Menner et al., 2019; Nguyen et al., 2026; Zhang et al., 2026; Chiu et al., 2026) under the dynamics models (Rickenbach et al., 2024; Menner et al., 2019) and control methodology (Nguyen et al., 2026; Zhang et al., 2026; Chiu et al., 2026) from which the demonstrations were obtained. However, such methods assume access to known, smooth system dynamics, which precludes their applicability to high-dimensional, black-box systems. In contrast, ICRL-based constraint recovery (Scobee & Sastry, 2019; McPherson et al., 2021; Malik et al., 2021; Papadimitriou et al., 2022; Liu & Zhu, 2022; 2024; Park et al., 2020; Jang et al., 2023) accommodates unknown dynamics and flexible neural constraint representations. However, such methods usually require computation- (McPherson et al., 2021; Liu et al., 2023) and data-heavy (Scobee & Sastry, 2019; Liu & Zhu, 2022; Quan et al., 2024) online exploration, may induce unsafe constraint violations during training (Malik et al., 2021; Liu et al., 2023; Quan et al., 2024), and have few theoretical guarantees of constraint recovery accuracy (Malik et al., 2021; Park et al., 2020; Quan et al., 2024). While recent offline variants (Quan et al., 2024) avoid online exploration during training, they still rely on offline data generated by potentially constraint-violating policies to identify unsafe regions, which can be difficult or unsafe to collect in real-world systems. In this work, we bridge CIOC and ICRL to enable constraint learning under unknown dynamics and constraint representations without requiring constraint-violating data. Our approach, Counterfactual KKT (CF-KKT) , learns local dynamics from constraint-satisfying expert demonstrations and uses them to combine KKT-inspired optimality conditions with synthetic reward-improving counterfactual trajectories. These counterfactuals provide information about constraint-violating states without requiring constraint-violating trajectories to be executed in the environment. We further show that locally learned dynamics can support CIOC-based parameter recovery when the constraint parameterization is known. Concretely, our contributions are: 1. For settings with closed-form a priori known constraint parameterizations, we present a two-stage framework which first learns system dynamics without additional demonstration data, then leverages the learned system dynamics to infer the unknown constraint via CIOC; 2. For settings with neural network (NN)-represented constraints, we introduce Counterfactual KKT (CF-KKT), which combines KKT-inspired optimality conditions with model-generated counterfactual trajectories to learn unknown constraints without observed constraint-violating data; 3. We present a theoretical analysis of the sensitivity of the recovered constraints to system dynamics misspecification; 4. We evaluate CF-KKT in simulation across low- and high-dimensional systems with black-box dynamics, demonstrating improved constraint recovery and downstream safety over existing offline ICRL methods while structurally using less data, all of which are safe. 
+
+Notation Given non-negative integers n1 and n2 with n1 < n 2, we define [n2] := {1, · · · , n 2}
+
+and [n1, n 2] := {n1, · · · , n 2}. We use Ck to denote k-times continuous differentiability. Given a differentiable function f : Rn → Rm, we define the Jacobian matrix ∇xf ∈ Rm×n such that 
+
+[∇xf ]ij := ∂f i 
+
+> ∂x j
+
+for each i ∈ [m], j ∈ [n].
+
+## 2 RELATED WORK 
+
+Our work relates most closely to constrained inverse optimal control (CIOC), which infers constraints from expert demonstrations using Karush–Kuhn–Tucker (KKT) optimality conditions (Englert et al., 2017; Keshavarz et al., 2011; Johnson et al., 2013; Rickenbach et al., 2024; Chou et al., 2020b; 2018; Menner et al., 2019; Nguyen et al., 2026; Zhang et al., 2026; Chou et al., 2019; Pérez-D’Arpino & Shah, 2017; Chiu et al., 2026). Existing CIOC-based constraint learning methods are typically highly data-efficient because they exploit the local optimality of demonstrations directly (Chou et al., 2020b). However, many such approaches assume known differentiable dynamics and structured constraint parameterizations (Chou et al., 2020b;a), which hampers their applicability to high-dimensional and neural network-represented systems. While GP-based approaches relax parameterization assumptions (Chou et al., 2022), they scale poorly with dataset size and still require known dynamics. In contrast, our work considers high-dimensional unknown dynamics and unknown constraint representations while preserving data efficiency, and enables further data-efficiency gains when the constraint parameterization is provided. 2Partly in parallel with CIOC, ICRL-based methods (Liu et al., 2025; 2023) were developed for inferring constraints from expert trajectories generated via constrained MDPs (CMDPs) (Malik et al., 2021). ICRL usually assumes access to a simulator rather than closed-form dynamics (in contrast to CIOC), and can be adapted to settings with unknown system dynamics or rewards (Liu & Zhu, 2022; 2024; Park et al., 2020; Jang et al., 2023). However, ICRL-based constraint recovery typically relies on iterative online environment exploration and constrained RL subroutines, leading to high computational cost, high sample complexity, and potentially unsafe exploration during training, which are unacceptable in time-sensitive and safety-critical settings. Uncertainty-aware ICRL methods aim to reduce constraint violation risk (Xu & Liu, 2024; Subramanian et al., 2024) but nonetheless still require online data. Offline ICRL (Liu et al., 2025) avoids online exploration. The primary prior offline method, ICSDICE (Quan et al., 2024), constructs higher-reward constraint-violating distributions to identify unsafe regions (echoing earlier CIOC work by Chou et al. (2018)); however, doing so still requires a fixed dataset containing behaviors that are not guaranteed to satisfy the unknown constraint. In contrast to the literature surveyed above, our work combines the safety and data efficiency advantage of CIOC with the representational flexibility of ICRL. Our approach leverages learned local dynamics to enable KKT-inspired inference under unknown dynamics, while synthetic reward-improving counterfactual data provide off-demonstration evidence of infeasibility without requiring observed constraint violations. In contrast, Chou et al. (2019) uses hit-and-run sampling to generate counterfactuals but still relies heavily on known parametric constraints and explicit dynamics. 
+
+## 3 PRELIMINARIES AND PROBLEM FORMULATION 
+
+We first review ICRL methods, with an emphasis on ICSDICE (Quan et al., 2024), which serves as our primary offline ICRL baseline (Sec. 3.1). We then introduce the constrained inverse optimal control formulation and its associated KKT conditions (Sec. 3.2), before formally stating the constraint-recovery problem considered in this work (Sec. 3.3). 3.1 INVERSE CONSTRAINED REINFORCEMENT LEARNING (ICRL) Consider a discrete-time, continuous-space constrained Markov decision process (CMDP) 
+
+(S, A, f, r, c, ¯ρ, γ ) specified by a state space S ⊆ Rn, control (action) space A ⊆ Rm, system (tran-sition) dynamics map f : S × A → S , reward map r : S × A → R, constraint map c : S × A → R,initial state distribution ¯ρ, and discount factor γ ∈ [0 , 1) , with f (·, ·), r(·, ·), and c(·, ·) all in C1.Given a CMDP with known constraint function c(·, ·), we consider the following horizon-T forward constrained reinforcement learning (FCRL) problem , which computes the optimal policy π : S → A 
+
+that maximizes, in expectation, the discounted cumulative reward PTt=0 γtr(xt, u t) subject to the hard constraint c(xt, u t) ≤ 0 over all times t ∈ [0 , T ]:
+
+π⋆ = arg max  
+
+> π:S→A
+
+E¯ρ,π 
+
+hPTt=0 γtr xt, u t
+
+i
+
+(1a) s.t. P¯ρ,π (c(xt, u t) ≤ 0) = 1 , ∀t ∈ [0 , T ]. (1b) Above, the notations E¯ρ,π in (1a) and P¯ρ,π in (1b) respectively denote expectations and probabilities taken over x0 ∼ ¯ρ and ut ∼ π for each t ∈ [0 , T ], and, given u := ( u0, · · · , u T ) drawn component-wise from π, the states x := ( x0, · · · , x T ) are defined to satisfy xt+1 = f (xt, u t) for each t ∈
+
+[0 , T − 1] .In contrast, the ICRL problem aims to recover a priori unknown constraints c(·) from demonstrations of reward-maximizing and constraint-satisfying state-control trajectories. Although current ICRL methods often assume that the demonstrations available for constraint learning are generated online via continuous environment exploration (“interaction”), such exploratory actions are often costly or unsafe in safety-critical settings (Malik et al., 2021; Liu et al., 2023; Kim et al., 2023; Hugessen et al., 2024). Offline ICRL methods include ICSDICE (Quan et al., 2024), which leverages two fixed demonstration datasets DE and Dπ for constraint inference, but does not allow environmental exploration during training. Concretely, the expert dataset DE := {(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+, x (d)
+
+> t+1
+
+, r (d) 
+
+> t
+
+) : t ∈ [0 , T − 1] , d ∈ [DE ]}
+
+contains DE state-control trajectories generated using a constraint-satisfying optimal expert policy 
+
+πE , and a dataset Dπ := {(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+, x (d)
+
+> t+1
+
+, r (d) 
+
+> t
+
+) : t ∈ [0 , T − 1] , d ∈ [Dπ ]} contains Dπ state-control trajectories generated using possibly constraint-violating policies. Although ICSDICE avoids online exploration during training, constructing Dπ still requires behavior from policies that are not guaranteed to satisfy the unknown constraint. 33.2 CONSTRAINED INVERSE OPTIMAL CONTROL (CIOC) Let S ⊆ Rn, A ⊆ Rm, f : S × A → S , r : S × A → R, and c : S × A → R denote a state space, control (action) space, system dynamics map, reward map, and constraint map, respectively. The horizon-T constrained forward optimal control (CFOC) problem, presented below, aims to compute optimal state-control trajectories (x, u) := ( x0, · · · , x T , u 0, · · · , u T ) ∈ R(n+m)( T +1) 
+
+which minimize the cumulative cost PTt=0 −r(xt, u t) while satisfying the system dynamics xt+1 =
+
+f (xt, u t) and constraints c(xt, u t) ≤ 0 throughout [0 , T − 1] :
+
+min 
+
+> x,u
+
+PTt=0 −r(xt, u t) (2a) s.t. xt+1 = f (xt, u t), ∀ t ∈ [0 , T − 1] , c(xt, u t) ≤ 0, ∀ t ∈ [0 , T ]. (2b) Meanwhile, in the constrained inverse optimal control (CIOC) problem, a constraint learner aims to recover a priori unknown constraints c(·, ·) from a set of expert trajectories DE := {(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+) : t ∈
+
+[0 , T ], d ∈ [D]} which optimize (2), assuming the reward map r(·, ·) is known. (The dynamics map 
+
+f (·, ·) may either be a priori known or unknown to the constraint learner.) The standard approach in CIOC for recovering the unknown constraint map c(·, ·) entails formulating the KKT equations corresponding to (2), as presented below in (4). Let λ := ( λ0, · · · , λ T ) and ν := ( ν0, · · · , ν T −1)
+
+denote dual variables corresponding to the constraint and dynamics constraints in (2b), respectively, across times t, and define the Lagrangian L : ST +1 × A T +1 × RT +1 × RnT → R by: 
+
+L(x, u, λ, ν) := PTt=0 −r(xt, u t) + PT −1 
+
+> t=0
+
+ν⊤ 
+
+> t
+
+(xt+1 − f (xt, u t)) + PTt=0 λtc(xt, u t). (3) The KKT equations for the CFOC problem (2) are thus: 
+
+c(xt, u t) ≤ 0 ⊥ λt ≥ 0, ∀t ∈ [0 , T ], (4a) 
+
+∇(x,u)L(x, u, λ, ν) = 0 . (4b) Above, ⊥ indicates complementarity of the left- and right-hand-side conditions. In (4a), c(xt, u t) < 0
+
+implies λt = 0 , while λt > 0 implies c(xt, u t) = 0 ; equivalently, λtc(xt, u t) = 0 . In settings in which the constraint map c(·, ·) is a priori known to be parameterized in a certain form, the CIOC problem reduces to the recovery of parameter values for which the resulting constraint map c(·, ·)
+
+satisfies the KKT system (4), when evaluated at expert state-control trajectories (x, u) in DE (see Sec. 4.1). Such parameter recovery problems can often be recast as mixed-integer programs (MIP) that, for certain constraint maps characterized by low-dimensional parameters, are efficient to solve exactly (Chou et al., 2020b). 
+
+Comparing CIOC and ICRL Methods for Constraint Recovery CIOC exploits demonstration optimality directly, but typically requires known closed-form dynamics and structured constraint parameterizations. ICRL, in contrast, accommodates unknown dynamics and flexible constraint representations, but obtains off-expert coverage from additional behavior data beyond the expert demonstrations. This trade-off motivates the hybrid setting considered in this work. 3.3 PROBLEM STATEMENT 
+
+We are given an expert dataset DE of constraint-abiding optimal trajectories generated by solving a CFOC problem of the form (2). Moreover, suppose the reward map r : S × A → R is known (we consider an unknown reward case in Appendix B.2) but the dynamics map f : S × A → S and constraint map c : S × A → R are unknown. We aim to recover a neural network (NN) representation 
+
+ˆc(·, ·; θ) : S × A → R for an a priori unknown constraint map c : S × A → R, where θ ∈ RMθ
+
+describes NN weights to be trained using the dataset DE .
+
+## 4 KKT-I NFORMED CONSTRAINT LEARNING 
+
+We consider two constraint-recovery settings that share a learned local dynamics model. We first treat known parametric constraints with a CIOC-based mixed-integer program (MIP) in Sec. 4.1, then remove the known parameterization and introduce Counterfactual KKT (CF-KKT) for neural constraints in Sec. 4.2. 
+
+Learned local dynamics. Using expert transitions (xt, u t, x t+1 ) ∈ D E , we fit ˆf (·, ·; ψ) : S × A → S by Ldyn (ψ) = EDE [∥ ˆf (xt, u t; ψ)−xt+1 ∥22], and use ˆf (·, ·; ψ) for both inference procedures below. 44.1 LEARNING PARAMETRIC CONSTRAINTS VIA MIP When the unknown constraint has a known closed-form parameterization ˆc(·, ·; θ), we recover the unknown parameter θ by applying CIOC to the learned dynamics model. We define the full Lagrangian and its stationarity residual by: 
+
+ˆL(x, u, λ, ν; θ, ψ ) := PTt=0 −r(xt, u t) + PTt=0 λt ˆc(xt, u t; θ) + PT −1 
+
+> t=0
+
+ν⊤ 
+
+> t
+
+(xt+1 − ˆf (xt, u t; ψ)) ,
+
+(5) 
+
+ˆs(x, u, λ, ν; θ, ψ ) := ∇(x,u) ˆL(x, u, λ, ν; θ, ψ ). (6) We seek constraint parameter values θ which are consistent with the KKT-optimality of the state-control trajectories {(x(d), u(d)) : d ∈ [DE ]} in the expert demonstration dataset DE . To this end, in (7), we pose a relaxed inverse KKT problem analogous to (Chou et al., 2020b, Prob. 2). Concretely, we aim to recover parameters θ and dual variables λ1: D := ( λ(d) : d ∈ [DE ]) and 
+
+ν1: D := ( ν(d) : d ∈ [DE ]) that minimize the sum, over all d ∈ [DE ], of the magnitudes of stationarity residuals ˆs(x(d), u(d), λ(d), ν(d); θ, ψ ), while adhering to the primal/dual feasibility and complementary slackness constraints in (4a): 
+
+min  
+
+> θ, λ1: DE,ν1: DE
+
+PDE 
+
+> d=1
+
+ˆs(x(d), u(d), λ(d), ν(d); θ, ψ ) 22 (7a) s.t. ˆc(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+; θ) ≤ 0 ⊥ λ(d) 
+
+> t
+
+≥ 0, ∀t ∈ [0 , T ], d ∈ [DE ]. (7b) In the CIOC-based constraint recovery literature (Chou et al., 2020b; Zhang et al., 2026), (7) is often solved using off-the-shelf solvers such as Gurobi Optimization, LLC (2024), with the constraints (7b) encoded via big-M reformulations (Bertsimas & Tsitsiklis, 1998). We provide an analysis of MIP sensitivity to dynamics misspecification in App. E. 4.2 COUNTERFACTUAL KKT (CF-KKT) C ONSTRAINT LEARNING 
+
+When the constraint form is unknown, we represent it by a neural network ˆc(·, ·; θ) and combine expert-side KKT supervision with synthetic counterfactual supervision. 
+
+Transition-wise auxiliary multipliers. The exact KKT stationarity condition in Sec. 3.2 is defined over an entire trajectory and couples neighboring time steps through the dynamics multipliers 
+
+ν = ( ν0, . . . , ν T −1). Directly imposing this trajectory-level system is inconvenient for stochastic mini-batch training, where transition tuples (x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+, x (d)
+
+> t+1
+
+, r (d) 
+
+> t
+
+) are sampled across time indices and demonstrations. We therefore construct a transition-wise KKT-informed objective using bounded auxiliary multipliers for the local inequality and dynamics terms, as defined below: 
+
+˜λt(xt, u t; θ) = λmax σ ˆc(xt, u t; θ), ˜νt = νmax tanh( ηt), (8) where λmax , ν max > 0 are fixed bounds, ηt ∈ Rn is per-timestep, and tanh( ·) is applied elementwise. Above, (8) ensures ˜λt ≥ 0, consistent with dual feasibility, and calibrates ∥˜λt∥2 such that ˜λt becomes small for states predicted well inside the feasible region and larger as ˆc(xt, u t; θ) approaches or exceeds zero. The equality multiplier ˜νt ∈ [−νmax , ν max ]n can take either sign within a bounded range. Bounding both multipliers improves numerical stability during training. 
+
+KKT-informed loss. For a single transition, define the local Lagrangian: 
+
+ˆLt(xt, u t, x t+1 , λ, ν ; θ, ψ ) := −r(xt, u t) + λt ˆc(xt, u t; θ) + ν⊤
+
+> t
+
+ ˆf (xt, u t; ψ) − xt+1 
+
+. (9) Given weights wp, w c, w a > 0, we define 
+
+LKKT (θ) = EDE
+
+ ∇xt,u t
+
+ˆLt(xt, u t, x t+1 , λ, ν ; θ, ψ ) λ=˜λt,ν =˜ νt
+
+> 22
+
++ wp max ˆc(xt, u t; θ), 0 2 + wc
+
+ ˜λt ˆc(xt, u t; θ)2 + wa ˆc(xt, u t; θ) . (10) The first three terms respectively penalize a transition-wise stationarity residual, primal constraint violation, and violation of complementary slackness. The final activity regularizer discourages the learned constraint from assigning large negative values to all expert transitions. 
+
+Remark 1. Transition tuples of the form (x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+, x (d)
+
+> t+1
+
+) can be shuffled across time indices and trajectories to support stochastic mini-batch training. The full trajectory KKT conditions, however, include cross-time coupling through the dynamics multipliers νt. In our implementation, training with the full trajectory KKT residual produces Inf/NaN losses on BlockedAnt and HalfCheetah ,
+
+5while collapsing the cumulative reward on the other environments, which we attribute to the numerical instability of cross-time multiplier νt recursion. Motivated by this observation and the computational convenience of transition-wise training, we instead incorporate the per-time Lagrangian (9) into 
+
+LKKT (θ).
+
+Synthetic Counterfactual Trajectories The KKT-informed loss in (10) is evaluated only on expert demonstrations, which are constraint-satisfying by construction. Consequently, it provides limited direct supervision information about infeasible behaviors away from the expert trajectories. To address this issue without collecting unsafe data, CF-KKT uses the learned dynamics model to generate synthetic counterfactual trajectories near the demonstrations. We sample multiple windows of H consecutive expert transitions from demonstrations. We denote the window from trajectory d, starting at time index i as {(x(d)
+
+> i+h
+
+, u (d)
+
+> i+h
+
+)}H−1 
+
+> h=0
+
+. For each window, we generate K perturbed control sequences, indexed by k ∈ [K], by independently perturbing the corresponding expert control at each rollout step, while holding d fixed: 
+
+u(k) 
+
+> h
+
+= clip  u(d) 
+
+> i+h
+
++ σ ϵ (d,k ) 
+
+> h
+
+, −1, 1, ϵ(d,k ) 
+
+> h
+
+∼ N (0 , I m). (11) The perturbed and baseline rollouts start from the same demonstrated state, x(k)0 = ˜ x0 = x(d) 
+
+> i
+
+,and use the same learned dynamics. The counterfactual rollout follows x(k) 
+
+> h+1
+
+= ˆf (x(k) 
+
+> h
+
+, u (k) 
+
+> h
+
+; ψ) for 
+
+h ∈ [0 , H − 1] , while the baseline follows the corresponding expert action sequence, with states rolled out through the learned dynamics: ˜uh = u(d) 
+
+> i+h
+
+and ˜xh+1 = ˆf (˜ xh, ˜uh; ψ).A truncated H-step reward alone does not account for the cost-to-go of the terminal state xH , since a perturbation may obtain larger short-horizon reward while steering the system towards a state with poor future cumulative reward. We therefore augment the rollout reward with a value function estimate ˆV (·), whose estimation from expert return-to-go is described in App. B: 
+
+ˆJ(k) 
+
+> V
+
+= PH−1 
+
+> h=0
+
+γhr x(k) 
+
+> h
+
+, u (k)
+
+> h
+
+ + γH ˆV  x(k)
+
+> H
+
+, (12) 
+
+ˆJV, base = PH−1 
+
+> h=0
+
+γhr (˜ xh, ˜uh) + γH ˆV (˜ xH ) . (13) We then define the value-augmented counterfactual advantage as ˆA(k) 
+
+> V
+
+:= ˆJ(k) 
+
+> V
+
+− ˆJV, base . The terminal-value term ˆV (·) accounts for consequences that extend beyond the finite H-step rollout. Comparing the perturbed rollout against the expert-action trajectory from the same initial state then isolates the effect of the action perturbation, rather than differences due to the starting state. We retain counterfactuals whose value-augmented return exceeds that of the expert-action baseline, i.e., wk = 1 ˆA(k) 
+
+> V
+
+> 0. Because both ˆf and ˆV are learned, wk is a practical approximation to an ideal selection rule. To state the approximate rule, let V ⋆i+H (x) denote the optimal feasible discounted cost-to-go from state x over the remainder of the expert horizon under the true dynamics, with 
+
+V ⋆i+H (x) = −∞ if no feasible continuation exists. Let J(k)  
+
+> V⋆
+
+and JV ⋆,base denote the two rewards in (12) using true-dynamics rollouts and replacing ˆV by V ⋆i+H .
+
+Lemma 1 (Positive Counterfactual Advantage Implies Infeasibility) . Let (xE 
+
+> 0: T
+
+, u E 
+
+> 0: T
+
+) be a globally optimal feasible expert trajectory, and consider an H-step window beginning at expert time i. Denote the corresponding expert controls by uEi:i+H−1 := ( uEi , . . . , u Ei+H−1). For any alternative control sequence u0: H−1 := ( u0, . . . , u H−1) initialized at x0 = xEi , define 
+
+JVi,H (u0: H−1) = PH−1 
+
+> h=0
+
+γhr(xh, u h) + γH V ⋆i+H (xH ), (14) 
+
+where xh+1 = f (xh, u h) follows the true dynamics and V ⋆i+H (xH ) is the optimal constrained value achievable from xH over the remaining time steps i + H, . . . , T . If no feasible trajectory exists from 
+
+xH over these remaining steps, we define V ⋆i+H (xH ) = −∞ . Then 
+
+JVi,H (u0: H−1) > J Vi,H (uEi:i+H−1) =⇒ ∃ h ∈ { 0, . . . , H − 1} : c(xh, u h) > 0. (15) 
+
+Proof. Let JE,i denote the expert return from time i to T . Because the expert trajectory is globally optimal, the expert controls from time i onward are optimal when initialized at xEi . Hence, 
+
+JVi,H (uEi:i+H−1) = JE,i .
+
+Now suppose that c(xh, u h) ≤ 0 for every h ∈ { 0, . . . , H − 1}. If no feasible trajectory exists from 
+
+xH over the remaining time steps, then JVi,H (u0: H−1) = −∞ , so the strict inequality cannot hold. 6Otherwise, following u0: H−1 for H steps and then taking the optimal feasible controls from xH
+
+defines a feasible trajectory starting from xEi . By global optimality of the expert, 
+
+JVi,H (u0: H−1) ≤ JE,i = JVi,H (uEi:i+H−1),
+
+which contradicts the assumed strict inequality. The assumptions of Lemma 1 are sufficient conditions rather than requirements we expect to hold exactly in practice. Accordingly, CF-KKT uses positive value-augmented advantage as a soft selection criterion, whose empirical validity is supported by the results in Appendix C. 
+
+Counterfactual Constraint Loss Let B(k) = {(x(k) 
+
+> h
+
+, u (k) 
+
+> h
+
+)}H−1 
+
+> h=0
+
+denote the k-th counterfactual set. For the selected sets, we train the average learned constraint value along the rollout to exceed a positive margin m:
+
+LCF (θ) = 
+
+PKk=1 wk · max m − 1
+
+> H
+
+PH−1 
+
+> h=0
+
+ˆc x(k) 
+
+> h
+
+, u (k) 
+
+> h
+
+; θ, 0 2
+
+PKk=1 wk
+
+. (16) The counterfactual trajectories are treated as fixed synthetic samples during the constraint update, so gradients of (16) propagate only through ˆc(·, ·; θ). By Lemma 1, a counterfactual trajectory which generates a higher reward than a constrained optimal trajectory must violate constraint feasibility at one or more timesteps. We nevertheless use the mean constraint value along the rollout to provide denser information. This is motivated by the empirical observation that the rollout may violate feasibility at multiple timesteps. In particular, App. C shows high state-level precision among selected counterfactuals, indicating that a substantial fraction of states along a positive-advantage rollout are indeed infeasible. Averaging therefore provides a denser and smoother loss gradient than a max-based or single-step objective that uses fewer steps to train. Finally, CF-KKT combines the original KKT-informed loss with the synthetic counterfactual loss: 
+
+LCF -KKT (θ) = αKKT LKKT (θ) + αCF LCF (θ). (17) 
+
+## 5 EXPERIMENTS 
+
+We evaluate three increasingly unstructured settings: known parametric constraints under unknown dynamics, neural constraint recovery in continuous mazes, and high-dimensional MuJoCo tasks with unknown dynamics and constraint geometry. Our methods infer constraints from expert demon-strations, using learned dynamics to provide synthetic off-demonstration supervision when needed. 
+
+Baselines. We compare against ICSDICE (Quan et al., 2024), SMODICE (Ma et al., 2022), and 
+
+IQ-Learn (Garg et al., 2021). ICSDICE is our primary offline ICRL baseline and explicitly learns a constraint from expert and suboptimal offline data. SMODICE is an offline imitation method based on distribution matching and does not natively recover a constraint mask 1[c(x) ≤ 0] ; for constraint-recovery and downstream-planning comparisons, we modify SMODICE to convert its learned state score into a feasibility mask. IQ-Learn likewise does not recover an explicit constraint; we therefore keep its standard imitation-learning formulation and evaluate the learned policy directly. In the known-parametric setting, we additionally compare against a parametric variant of ICSDICE using the same constraint family as the MIP method. 5.1 KNOWN PARAMETRIC CONSTRAINTS UNDER UNKNOWN DYNAMICS 
+
+We first consider the structured setting in which the constraint family is known up to a scalar parameter 
+
+θ but the dynamics are unknown. We evaluate HalfCheetah , BlockedAnt , Swimmer , and 
+
+Quadcopter , using one expert trajectory to fit ˆf and recover θ via the MIP in Sec. 4.1. Environment, constraint, and demonstration details are given in App. A.1. 
+
+Comparison against Parametric ICSDICE. For HalfCheetah and BlockedAnt , we also train ICSDICE with the same scalar constraint family cθ (x) = θ − xpos , with pos being position on the x-axis. MIP method uses the expert trajectory, whereas ICSDICE additionally uses suboptimal trajectories from (Liu et al., 2023). Table 1 shows that the MIP closely recovers the true value of θ on Swimmer , Quadcopter , and 
+
+HalfCheetah . The larger BlockedAnt error ( −2.05 versus −3.0) is consistent with larger KKT residuals in its demonstrations. Parametric ICSDICE yields −1.23 on HalfCheetah and −3.99 
+
+on BlockedAnt , showing that the same parametric family can produce substantially different estimates under an occupancy-based objective. 5.2 UNKNOWN CONSTRAINT GEOMETRY IN CONTINUOUS MAZES 
+
+7ICSDICE SMODICE CF-KKT (ours) 
+
+> −0.3 −0.2 −0.1 0.0 0.1 0.2 0.3
+> −0.75 −0.50 −0.25 0.00 0.25 0.50 0.75
+> −0.4 −0.3 −0.2 −0.1 0.0 0.1 0.2 0.3 0.4
+> −0.4 −0.3 −0.2 −0.1 0.0 0.1 0.2 0.3 0.4
+> −1.5 −1.0 −0.5 0.0 0.5 1.0 1.5
+> −3 −2 −1 0123
+> −1.5 −1.0 −0.5 0.0 0.5 1.0 1.5
+> −2.0 −1.5 −1.0 −0.5 0.0 0.5 1.0 1.5 2.0
+> −3 −2 −1 0123
+> −3 −2 −1 0123
+> −1.5 −1.0 −0.5 0.0 0.5 1.0 1.5
+> −1.5 −1.0 −0.5 0.0 0.5 1.0 1.5
+
+Figure 1: Ground-truth and learned constraint maps for 4 maze environments across ICSDICE (top), SMODICE (middle), and CF-KKT (bottom). Red, blue, and green denote predicted unsafe states, predicted safe states, and the ground-truth constraint boundary. 
+
+Env. θ∗ MIP ˆθ ICSDICE ˆθ MIP error Swimmer 0.04 0.0484 – +0 .0084 
+
+Quadcopter 64 64 – 0
+
+HalfCheetah −3.0 −2.98 −1.23 +0 .02 
+
+BlockedAnt −3.0 −2.05 −3.99 +0 .95 
+
+Table 1: Parametric recovery performance We next remove the assumption of known con-straint parameterization while keeping the state dimension small enough to limit constraint com-plexity. These continuous maze environments let us test whether CF-KKT can recover quali-tatively different constraint geometries, rather than only a scalar parameter within a known family. 
+
+Environment and Demonstrations. We use four 2D navigation tasks ( Obstacle , Wide , Disk ,
+
+Zigzag ) with double-integrator dynamics and unknown obstacle geometries. CF-KKT receives feasible expert demonstrations; baselines additionally receive a suboptimal dataset that may contain violations. For more dynamics, reward, geometry, and dataset-generation details, see App. A.2. 
+
+Constraint IoU. Let U⋆ be the ground-truth unsafe region and ˆU = {x : ˆ c(x; θ) > τ } the predicted unsafe set. We report IoU = | ˆU ∩ U ⋆|/| ˆU ∪ U ⋆| on a uniform 161 × 161 position grid with zero velocity. To account for method-dependent score scales, we use the common percentile threshold 
+
+τ = Q0.85 ({ˆc(x; θ) : x ∈ grid }). Table 2 and Fig. 1 show that CF-KKT recovers the constraint geometry more accurately on every environment. Its mean IoU is 0.707 , compared with 0.425 for ICSDICE and 0.379 for SMODICE. The largest gains over ICSDICE occur on Disk (0.815 versus 
+
+0.428 ) and Obstacle (0.590 versus 0.276 ). 
+
+Env. SMODICE ICSDICE CF-KKT ∆
+
+Obstacle 0.275 ±0.405 0.276 ±0.193 0.590 ±0.153 +0 .314 
+
+Wide 0.547 ±0.113 0.600 ±0.140 0.724 ±0.083 +0 .124 
+
+Disk 0.363 ±0.133 0.428 ±0.218 0.815 ±0.057 +0 .387 
+
+Zigzag 0.330 ±0.054 0.394 ±0.172 0.698 ±0.079 +0 .304 
+
+Mean 0.379 0.425 0.707 +0 .282 
+
+Table 2: Maze constraint IoU (mean ± std over seeds); 
+
+∆ is relative to ICSDICE. 
+
+Downstream Planning. We convert each learned constraint to a 61 × 61 occupancy grid, plan to the goal with Dijkstra over predicted feasible cells, and track the way-points with the expert PD controller. Across 20 feasible starts per seed, we report goal reaching, return (cumulative reward), and ground-truth violation rate Violation =
+
+T −1 PT −1
+
+t=0 1[c(xt, u t) > 0] . IQ-Learn does not recover a mask, so we evaluate its imitation policy directly. Representative planning examples are shown in App. B.1. Table 3 shows the return-violation table. IQ-Learn achieves a violation rate of 0.001 on Wide 
+
+but reaches the goal from only 5/20 starts. The oracle planner itself has nonzero violation on the rectangular environments because PD tracking can clip corners, which provides a planner-dependent 8Env. Metric Oracle IQ-Learn SMODICE ICSDICE CF-KKT Obstacle Goal 20 .0/20 10 .0/20 18 .3/20 18 .7/20 20 .0/20                                                                                                                        
+
+> Viol. 0.018 0.124 ±0.203 0.175 ±0.053 0.174 ±0.038 0.042 ±0.068
+> Return −58 .2−89 .7±5.8−47 .1±7.4−45 .8±1.6−55 .6±6.8
+> Wide Goal 19 .0/20 5.0/20 17 .7/20 18 .3/20 17 .7/20
+> Viol. 0.032 0.001 ±0.002 0.226 ±0.111 0.200 ±0.028 0.085 ±0.121
+> Return −70 .2−106 .5±11 .3−58 .2±7.3−63 .4±7.0−68 .5±11 .4
+> Disk Goal 20 .0/20 14 .3/20 19 .3/20 19 .3/20 20 .0/20
+> Viol. 0.000 0.041 ±0.039 0.181 ±0.016 0.140 ±0.060 0.080 ±0.019
+> Return −48 .5−84 .0±2.4−46 .4±0.6−47 .1±0.8−48 .3±0.5
+> Zigzag Goal 20 .0/20 7.0/20 18 .3/20 17 .3/20 18 .7/20
+> Viol. 0.060 0.086 ±0.084 0.230 ±0.033 0.209 ±0.052 0.093 ±0.044
+> Return −68 .3−92 .3±5.8−45 .6±5.4−56 .4±7.2−62 .4±1.6
+
+Table 3: Maze downstream planning over 20 starts.“Viol.” is the true violating-timestep fraction.                                                                                                                                  
+
+> ICSDICE IQ-Learn SMODICE CF-KKT Env. Ret. Viol. Ret. Viol. Ret. Viol. Ret. Viol. Ant_ls 1257 ±123 87 .5±117 .065 ±155 †6.3±1.8970 ±186 86 .8±113 .51130 ±91 2.8±0.9
+> BlockedAnt 2265 ±400 82 .3±56 .1258 ±316 †145 .3±135 .2 1323 ±537 †124 .2±84 .72449 ±237 15 .3±4.2
+> BlockedHopper 420 ±112 110 .6±26 .6269 ±274 †134 .1±260 .6325 ±275 82 .9±63 .4454 ±252 17 .6±21 .2
+> HalfCheetah 2657 ±318 83 .0±58 .9−270 ±447 †0.0±0.01915 ±977 313 .1±349 .0 2338 ±788 54 .3±48 .9
+> Walker_ls 682 ±392 170 .1±106 .9361 ±233 39 .0±16 .8140 ±224 37 .6±56 .5410 ±283 74 .3±56 .3
+
+Table 4: MuJoCo downstream return and violations ( N = 10 ). Bold marks the lowest mean violation among explicit-mask methods; † denotes severe return collapse. floor. Relative to ICSDICE, CF-KKT lowers violation on all four environments while retaining comparable goal-reaching performance: 0.174 → 0.042 on Obstacle , 0.200 → 0.085 on Wide ,
+
+0.140 → 0.080 on Disk , and 0.209 → 0.093 on Zigzag .5.3 HIGH -D IMENSIONAL NEURAL CONSTRAINT LEARNING 
+
+Finally, we evaluate our method over the fully unstructured high-dimensional setting, where the transition dynamics are unknown and the constraint is represented by a neural network rather than a known parametric family. 
+
+Datasets. We use the five continuous-control environments and offline datasets from ICSDICE (Quan et al., 2024): Ant_ls , BlockedAnt , BlockedHopper ,
+
+HalfCheetahWithObstacle , and Walker_ls . Each environment has a hidden ground-truth constraint used only for evaluation. The benchmark contains 50 ,000 expert transitions in DE and 
+
+200 ,000 suboptimal transitions in Dπ . Under the data protocol above, the CF-KKT constraint learner receives DE , while SMODICE, IQ-Learn, and ICSDICE use more data, i.e., DE ∪ D π .
+
+Downstream Offline Policy Learning. Following the offline policy extraction procedure of Quan et al. (2024), we train the downstream value function and advantage-weighted policy, while filtering transitions according to the learned constraint. For the state-only constraints in these environments, we use the feasibility mask M (xt+1 ) = 1[ˆ c(xt+1 ; θ) ≤ 0] . Transitions predicted to be unsafe are excluded from the value and advantage-weighted policy updates. 
+
+Evaluation Metrics. For downstream control, we report constraint violations , defined as the number of violating timesteps in a 1000-step evaluation episode, and return , the cumulative task reward. Results are averaged over 10 random seeds. 
+
+Downstream Safety and Return. Table 4 shows that CF-KKT reduces mean violations relative to ICSDICE on all five tasks, by 34 .6% –96 .8% . On BlockedAnt and BlockedHopper , it also improves mean return. The remaining tasks exhibit a safety–return trade-off; on Walker_ls ,SMODICE obtains fewer violations but substantially lower return. Thus, the learned CF-KKT mask consistently improves safety relative to ICSDICE while preserving useful task performance. 
+
+## 6 CONCLUSION 
+
+We present a framework for learning unknown constraints from expert demonstrations under unknown dynamics. For known parametric constraints, we combine learned local dynamics with CIOC-based recovery and analyze sensitivity to model error. For neural constraints, CF-KKT combines KKT-inspired expert supervision with synthetic reward-improving counterfactuals to provide off-demonstration constraint information without violations. Experiments on robotic control tasks show improved constraint recovery and downstream safety over offline ICRL baselines. Limitations include 9environment-dependent loss weights, the assumption of a known differentiable reward, omission of cross-time coupling in the transition-wise KKT objective, and dependence of counterfactual quality on learned dynamics away from the demonstrations. Automating loss weighting and incorporating reward and dynamics uncertainty are promising directions for future work. 
+
+## GENERATIVE AI U SE DISCLOSURE 
+
+Generative AI tools were used in the preparation of this work to assist with refining mathematical statements and annotations, providing feedback on human-designed experimental methodology and ablation, and improving the organization, clarity, and presentation of the manuscript. They were also used for language editing, restructuring sections, and formatting equations and tables. All AI-assisted mathematical arguments were reviewed and revised by the authors, and all reported experimental results were produced and verified by the authors. Generative AI was not treated as a source of scientific evidence or authority; technical claims, derivations, and conclusions were checked against the underlying analysis and experimental results. The authors take full responsibility for the final content of the paper, including all text, claims, and artifacts produced with the assistance of generative AI. 
+
+## REFERENCES 
+
+Joshua Achiam, David Held, Aviv Tamar, and Pieter Abbeel. Constrained Policy Optimization. In 
+
+Proceedings of the 34th International Conference on Machine Learning , volume 70 of Proceedings of Machine Learning Research , pp. 22–31, 06–11 Aug 2017. E. Altman. Constrained Markov Decision Processes . Chapman and Hall, 1999. Julian Berberich, Johannes Köhler, Matthias A. Müller, and Frank Allgöwer. Data-Driven Model Predictive Control With Stability and Robustness Guarantees. IEEE Transactions on Automatic Control (TAC) , 66(4):1702–1717, 2021. Dimitris Bertsimas and John Tsitsiklis. Introduction to Linear Optimization . Athena Scientific, 1998. V.S. Borkar. An Actor-critic Algorithm for Constrained Markov Decision Processes. Systems & Control Letters , 54(3):207–213, 2005. Chih-Yuan Chiu, Zhouyu Zhang, and Glen Chou. Learning Constraints From Stochastic Partially-Observed Closed-Loop Demonstrations. IEEE Control Systems Letters , 10:43–48, 2026. Glen Chou, Dmitry Berenson, and Necmiye Ozay. Learning Constraints from Demonstrations. 
+
+Workshop on the Algorithmic Foundations of Robotics (WAFR) , 2018. Glen Chou, Necmiye Ozay, and Dmitry Berenson. Learning Parametric Constraints in High Dimen-sions from Demonstrations. In CoRL , 2019. Glen Chou, Necmiye Ozay, and Dmitry Berenson. Uncertainty-Aware Constraint Learning for Adaptive Safe Motion Planning from Demonstrations. In CoRL 2020, Cambridge, MA, USA ,2020a. Glen Chou, Necmiye Ozay, and Dmitry Berenson. Learning Constraints From Locally-Optimal Demonstrations Under Cost Function Uncertainty. IEEE Robotics and Automation Letters (RA-L) ,5(2):3682–3690, 2020b. Glen Chou, Hao Wang, and Dmitry Berenson. Gaussian Process Constraint Learning for Scalable Chance-Constrained Motion Planning From Demonstrations. IEEE Robotics and Automation Letters , 7(2):3827–3834, 2022. doi: 10.1109/LRA.2022.3148436. Peter Englert, Ngo Anh Vien, and Marc Toussaint. Inverse KKT: Learning Cost Functions of Manipulation Tasks from Demonstrations. The International Journal of Robotics Research (IJRR) ,36(13-14):1474–1488, 2017. 10 Divyansh Garg, Shuvam Chakraborty, Chris Cundy, Jiaming Song, and Stefano Ermon. Iq-learn: Inverse soft-q learning for imitation. Advances in Neural Information Processing Systems , 34: 4028–4039, 2021. Gurobi Optimization, LLC. Gurobi Optimizer Reference Manual, 2024. URL https://www. gurobi.com .Taylor Howell, Nimrod Gileadi, Saran Tunyasuvunakool, Kevin Zakka, Tom Erez, and Yuval Tassa. Predictive Sampling: Real-time Behaviour Synthesis with MuJoCo. arXiv preprint arXiv:2212.00541 , 2022. Adriana Hugessen, Harley Wiltzer, and Glen Berseth. Simplifying constraint inference with inverse reinforcement learning. In A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Pa-quet, J. Tomczak, and C. Zhang (eds.), Advances in Neural Information Processing Sys-tems , volume 37, pp. 44501–44525. Curran Associates, Inc., 2024. doi: 10.52202/ 079017-1413. URL https://proceedings.neurips.cc/paper_files/paper/ 2024/file/4eb5cc598a6271528ed9b84bb9879e9b-Paper-Conference.pdf .Jaehwi Jang, Minjae Song, and Daehyung Park. Inverse Constraint Learning and Generalization by Transferable Reward Decomposition. IEEE Robotics and Automation Letters , 9(1):279–286, 2023. Miles Johnson, Navid Aghasadeghi, and Timothy Bretl. Inverse Optimal Control for Deterministic Continuous-time Nonlinear Systems. In CDC , 2013. Arezou Keshavarz, Yang Wang, and Stephen P. Boyd. Imputing a Convex Objective Function. In 
+
+ISIC , pp. 613–619. IEEE, 2011. Konwoo Kim, Gokul Swamy, Zuxin Liu, Ding Zhao, Sanjiban Choudhury, and Steven Z Wu. Learning Shared Safety Constraints from Multi-task Demonstrations. Advances in Neural Information Processing Systems , 36:5808–5826, 2023. Guiliang Liu, Yudong Luo, Ashish Gaurav, Kasra Rezaee, and Pascal Poupart. Benchmarking Constraint Inference in Inverse Reinforcement Learning. In The Eleventh International Conference on Learning Representations , 2023. Guiliang Liu, Sheng Xu, Shicheng Liu, Ashish Gaurav, Sriram Ganapathi Subramanian, and Pascal Poupart. A Comprehensive Survey on Inverse Constrained Reinforcement Learning: Definitions, Progress and Challenges. Transactions on Machine Learning Research (TMLR) , 2025. ISSN 2835-8856. Survey Certification. Shicheng Liu and Minghui Zhu. Distributed Inverse Constrained Reinforcement Learning for Multi-agent Systems. Advances in Neural Information Processing Systems , 35:33444–33456, 2022. Shicheng Liu and Minghui Zhu. Meta inverse constrained reinforcement learning: Convergence guarantee and generalization analysis. In International Conference on Learning Representations ,volume 2024, pp. 12314–12351, 2024. Yecheng Ma, Andrew Shen, Dinesh Jayaraman, and Osbert Bastani. Versatile offline imitation from observations and examples via regularized state-occupancy matching. In International Conference on Machine Learning , pp. 14639–14663. PMLR, 2022. L. Magni and R. Scattolini. Model Predictive Control of Continuous-time Nonlinear Systems with Piecewise Constant Control. IEEE Transactions on Automatic Control , 49(6):900–906, 2004. Shehryar Malik, Usman Anwar, Alireza Aghasi, and Ali Ahmed. Inverse Constrained Reinforcement Learning. In International conference on machine learning , pp. 7390–7399. PMLR, 2021. D.Q. Mayne, J.B. Rawlings, C.V. Rao, and P.O.M. Scokaert. Constrained Model Predictive Control: Stability and Optimality. Automatica , 36(6):789–814, 2000. David L McPherson, Kaylene C Stocking, and S Shankar Sastry. Maximum Likelihood Constraint Inference from Stochastic Demonstrations. In 2021 IEEE conference on control technology and applications (CCTA) , pp. 1208–1213. IEEE, 2021. 11 Marcel Menner, Peter Worsnop, and Melanie N. Zeilinger. Constrained Inverse Optimal Control with Application to a Human Manipulation Task. IEEE TCST , 2019. Minh Nguyen, Jingqi Li, Gechen Qu, and Claire J. Tomlin. Inverse safety filtering: Inferring constraints from safety filters for decentralized coordination, 2026. URL https://arxiv. org/abs/2604.02687 .Dimitris Papadimitriou, Usman Anwar, and Daniel S Brown. Bayesian Methods for Constraint Inference in Reinforcement Learning. Transactions on Machine Learning Research (TMLR) , 2022. Daehyung Park, Michael Noseworthy, Rohan Paul, Subhro Roy, and Nicholas Roy. Inferring Task Goals and Constraints using Bayesian Nonparametric Inverse Reinforcement Learning. In 
+
+Conference on robot learning , pp. 1005–1014. PMLR, 2020. Claudia Pérez-D’Arpino and Julie A. Shah. C-LEARN: Learning Geometric Constraints from Demonstrations for Multi-Step Manipulation in Shared Autonomy. In ICRA , 2017. Guorui Quan, Guiliang Liu, et al. Learning constraints from offline demonstrations via superior distribution correction estimation. In Forty-first International Conference on Machine Learning ,2024. Rahel Rickenbach, Anna Scampicchio, and Melanie N. Zeilinger. Inverse Optimal Control as an Errors-in-Variables Problem. In Alessandro Abate, Mark Cannon, Kostas Margellos, and Antonis Papachristodoulou (eds.), Proceedings of the 6th Annual Learning for Dynamics and Control Conference , volume 242 of Proceedings of Machine Learning Research , pp. 375–386. PMLR, 15–17 Jul 2024. Walter Rudin. Principles of Mathematical Analysis, 3rd Edition . McGraw-Hill, Inc., 1976. Dexter RR Scobee and S Shankar Sastry. Maximum Likelihood Constraint inference for Inverse Reinforcement Learning. arXiv preprint arXiv:1909.05477 , 2019. Sriram Ganapathi Subramanian, Guiliang Liu, Mohammed Elmahgiubi, Kasra Rezaee, and Pas-cal Poupart. Confidence Aware Inverse Constrained Reinforcement Learning. arXiv preprint arXiv:2406.16782 , 2024. Markus Wulfmeier, Dushyant Rao, Dominic Zeng Wang, Peter Ondruska, and Ingmar Posner. Large-scale Cost Function Learning for Path Planning using Deep Inverse Reinforcement Learning. The International Journal of Robotics Research (IJRR) , 36:1073–1087, 2017. Sheng Xu and Guiliang Liu. Uncertainty-aware constraint inference in inverse constrained rein-forcement learning. In International Conference on Learning Representations , volume 2024, pp. 17792–17816, 2024. Zhouyu Zhang, Chih-Yuan Chiu, and Glen Chou. Constraint Learning in Multi-Agent Dynamic Games From Demonstrations of Local Nash Interactions. IEEE Robotics and Automation Letters ,11(6):6696–6703, 2026. 12 0.00s 0.04s 0.08s 0.12s 0.18s 0.00s 3.74s 7.49s 11.24s 14.99s Figure 2: Quadcopter (top) and Swimmer (bottom) goal-reaching trajectories with the learned collision-avoidance constraint; red denotes the unsafe set. 
+
+## A BENCHMARK ENVIRONMENTS AND DATASETS 
+
+This appendix collects environment and dataset details omitted from the main experimental section. A.1 KNOWN -P ARAMETRIC EXPERIMENTS 
+
+For HalfCheetah and BlockedAnt , the unknown constraint is the position lower bound 
+
+c(x; θ) = θ − xpos ≤ 0, with true threshold θ∗ = −3.0. Their trajectory data comes from the ICRL benchmark of Liu et al. (2023). For Swimmer and Quadcopter , the constraint encodes spherical obstacle avoidance, c(x; θ) = θ − ∥ p(x) − pobs ∥22 ≤ 0, where p(x) is the position of the designated body (the swimmer nose or quadcopter center of mass) and pobs is the known obstacle center. The true squared radii are θ∗ = 0 .04 and 64 , respectively. Their expert trajectories are generated offline with MuJoCo-MPC (Howell et al., 2022). The parametric experiment uses one expert trajectory per environment to fit the local dynamics and recover θ.A.2 CONTINUOUS -M AZE EXPERIMENTS 
+
+We use a double-integrator system on S = [ −1, 1] 2 × R2, with xt = ( pt, v t) ∈ R4 and ut ∈ [−1, 1] 2:
+
+vt+1 = (1 − κ)vt + ∆ t αu t, ∥vt+1 ∥2 ≤ vmax , (18) 
+
+pt+1 = Π X (pt + ∆ t v t+1 ), (19) with ∆t = 0 .1, α = 1 , κ = 0 .15 , and vmax = 2 . The reward is r(xt, u t) = −∥ pt − g∥2 − 0.02 ∥ut∥22
+
+with γ = 0 .99 . We consider four unknown state-only unsafe regions— Obstacle , Wide , Disk ,and Zigzag —covering wall-attached, compact, and non-convex geometries. Although the ground-truth constraint depends only on position, the learner is not given this structural knowledge. Each environment and seed contains approximately 30 ,000 feasible expert transitions. Expert paths are generated by Dijkstra on a 61 × 61 occupancy grid and tracked by a PD controller. IQ-Learn, SMODICE, and ICSDICE additionally receive a 7000 -transition suboptimal dataset that may contain constraint violations. A.3 MUJOCO NEURAL -C ONSTRAINT EXPERIMENTS 
+
+Task specifications. We evaluate CF-KKT on five continuous-control tasks built from MuJoCo locomotion environments in Gymnasium ( -v4 ), following the benchmark used by ICSDICE (Quan et al., 2024). Each task augments the nominal locomotion objective with a state constraint that is not explicitly penalized by the task reward. 
+
+Relationship between reward and constraint. The five tasks differ in how directly reward-improving behavior drives the constrained physical quantity. This distinction helps explain the counterfactual diagnostics in Appendix C and the supervision ablation in Appendix D. 13 Task Base environment dim( S) dim( A) Constraint: infeasible when                                 
+
+> Ant_ls Ant-v4 27 8vx>0.5
+> BlockedAnt Ant-v4 27 8P
+> j∈J |ωj|>1
+> BlockedHopper Hopper-v4 11 3|ϕfoot |>0.3
+> HalfCheetah HalfCheetah-v4 18 6xpos <−3
+> Walker_ls Walker2d-v4 17 6vx>1
+
+Table 5: MuJoCo benchmark specifications. Here vx denotes forward velocity, ωj the angular velocity of joint j with J denoting the four constrained joints, ϕfoot the foot-joint angle, and xpos the absolute horizontal torso position.                          
+
+> Task Reward Constrained quantity
+> Ant_ls vx+ 1 −0.5∥u∥2forward velocity (rewarded) BlockedAnt vx+ 1 −0.5∥u∥2joint angular velocities BlockedHopper vx+ 1 −10 −3∥u∥2foot-joint angle HalfCheetah |vx| − 0.1∥u∥2horizontal position Walker_ls vx+ 1 −10 −3∥u∥2forward velocity (rewarded)
+
+Table 6: Task rewards and constrained physical quantities. The constant +1 is the survival bonus in the corresponding locomotion task. HalfCheetah rewards |vx|, so motion in either horizontal direction contributes positively to the task reward. 
+
+Direct coupling. In Ant_ls and Walker_ls , the constraint directly bounds forward velocity, which also appears positively in the task reward. Reward improvement therefore tends to move the system toward the constraint boundary, making positive-value-advantage counterfactuals informative for constraint inference. 
+
+Indirect coupling. BlockedAnt constrains joint angular velocities while rewarding forward body velocity. These quantities are correlated through the locomotion dynamics, but the constrained quantity does not appear directly in the reward. 
+
+Delayed angular coupling. BlockedHopper constrains a joint angle, which evolves over multiple dynamics steps rather than changing instantaneously with the control. As a result, violations can emerge progressively rather than at the first counterfactual step. 
+
+Delayed positional coupling. HalfCheetah constrains absolute horizontal position, whereas action perturbations affect position indirectly through the evolution of velocity. Multi-step rollouts are therefore important for allowing perturbations to propagate to the constrained quantity. Appendix C quantifies these coupling effects using counterfactual violation diagnostics. 
+
+Datasets. Each task provides approximately 5 × 10 4 expert transitions in DE , organized into 50 
+
+trajectories, together with 2 × 10 5 transitions in the benchmark suboptimal dataset Dπ . Hopper and 
+
+Walker2d can terminate early when the agent falls, so their expert trajectories need not have equal length (e.g., BlockedHopper contains 49 ,945 transitions across 50 episodes); the remaining tasks use fixed 1000 -step episodes. Ground-truth constraint labels are reserved for evaluation and oracle diagnostics. 14 B EXPERIMENT DETAILS 
+
+Experiment Setup. All networks are two-layer MLPs with 256 hidden units and ReLU activations, implemented in JAX/Flax. The constraint network cθ , dynamics model fψ , continuation-value model 
+
+ˆV , and downstream policy πϕ use this architecture. All networks are trained with Adam at a learning rate of 3 × 10 −4. We use a mini-batch size of 256 and discount factor γ = 0 .99 . For the KKT terms, the default weights are wp = 10 .0, wc = 0 .01 , and wa = 0 .1, with outer scale αKKT = 1 ; proxy dual bounds are λmax = νmax = 100 .The continuation-value model is trained from the expert trajectories by regressing to the discounted return-to-go. For an expert state x(d) 
+
+> i
+
+, we use the target 
+
+G(d) 
+
+> i
+
+=
+
+> T
+
+X
+
+> j=i
+
+γj−ir
+
+
+
+x(d) 
+
+> j
+
+, u (d)
+
+> j
+
+
+
+, (20) and minimize 
+
+LV = EDE
+
+ ˆV (x(d) 
+
+> i
+
+) − G(d)
+
+> i
+
+2
+
+. (21) The resulting ˆV is used only to score the terminal states of counterfactual and expert-action rollouts in the value-augmented advantage. All results are averaged over the same set of N = 10 random seeds. Experiments are conducted on a cloud-based Linux compute node with 32 CPU cores (Intel Xeon Gold 6426Y, 2.5 GHz), 64 GB system memory, and one NVIDIA L40S GPU with 46 GB VRAM. One seed with 20,000 total training steps takes approximately 5–10 minutes. Counterfactual generation uses B = 256 sampled expert windows, K = 64 perturbed action sequences, perturbation scale σ = 2 (for MuJoCo), 
+
+σ = 0 .8 (for 2D maze), and rollout horizon H = 24 . The counterfactual margin is m = 2 in the 2D maze experiments and m = 1 in the MuJoCo experiments, with αCF = 1 .In MuJoCo environments, the downstream policy extraction involves using suboptimal data for Advantage Weighted Regression. We hereby retain this evaluation protocol consistent with ICSDICE and SMODICE because they explicitly require a suboptimal dataset to function as a constraint learner. We clarify that the additional suboptimal data never enters the constraint learning phase for CF-KKT, and is used solely for evaluation. B.1 MAZE PLANNING VISUALIZATIONS 
+
+Figure 3 shows representative downstream plans produced from the learned constraint masks. B.2 ROBUSTNESS TO LEARNED REWARD MODELS 
+
+Our main method assumes access to the analytical task reward, as is standard in inverse optimal control, because KKT stationarity depends explicitly on ∇x,u r(x, u ). We evaluate how sensitive CF-KKT is to relaxing this assumption by replacing r with a neural approximation ˆr(·, ·; ω).A reward model trained only to match scalar reward values need not recover the correct local reward geometry: small prediction error in ˆr does not imply that ∇x,u ˆr matches ∇x,u r, even though the latter directly enters the KKT stationarity residual. We therefore compare two reward models. MLP 
+
+minimizes only reward-value prediction error, while MLP + reg. uses the same architecture and additionally penalizes reward-gradient mismatch: 
+
+Lr (ω) = E
+
+h ˆr(xt, u t; ω) − r(xt, u t)2 + w∇r ∥∇ xt,u t ˆr(xt, u t; ω) − ∇ xt,u t r(xt, u t)∥22
+
+i
+
+. (22) Here w∇r = 0 recovers the plain MLP, whereas w∇r > 0 explicitly regularizes the learned reward gradient toward the analytical one. In this ablation, ˆr replaces r in the KKT stationarity term and in the counterfactual return calculation. Table 7 shows that gradient regularization reduces constraint violations on all five environ-ments, with especially large reductions on HalfCheetahWithObstacle (133 .5 → 51 .1) and 15 ICSDICE SMODICE CF-KKT (ours) 
+
+> −0.6 −0.4 −0.2 0.0 0.2 0.4 0.6
+> −0.75 −0.50 −0.25 0.00 0.25 0.50 0.75
+> −0.4 −0.2 0.0 0.2 0.4
+> −0.6 −0.4 −0.2 0.0 0.2 0.4 0.6
+> −1.0 −0.5 0.0 0.5 1.0
+> −2 −1 012
+> −2 −1 012
+> −2 −1 012
+> −3 −2 −1 0123
+> −3 −2 −1 0123
+> −2 −1 012
+> −1.5 −1.0 −0.5 0.0 0.5 1.0 1.5
+
+Figure 3: Representative maze plans. The dashed contour is the predicted unsafe boundary, green the true unsafe region, purple the oracle route, and yellow the executed timesteps inside the true unsafe region. The goal is indicated by blue star. Table 7: Learned-reward robustness (mean ± std, N = 10 ); MLP + reg. also matches analytical reward gradients. 
+
+Violations ↓ Return ↑
+
+Environment MLP MLP + reg. MLP MLP + reg. Ant_ls 7.1 ± 13 .8 2.3 ± 0.5 1177 ± 98 1177 ± 68 
+
+BlockedAnt 89 .4 ± 40 .2 67 .0 ± 19 .4 2142 ± 621 2165 ± 552 
+
+BlockedHopper 65 .1 ± 26 .9 37 .3 ± 30 .3 342 ± 239 277 ± 102 
+
+HalfCheetah (obst.) 133 .5 ± 32 .7 51 .1 ± 33 .9 3126 ± 407 2938 ± 408 
+
+Walker_ls 138 .0 ± 76 .4 100 .2 ± 76 .5 676 ± 420 447 ± 309 
+
+BlockedHopper (65 .1 → 37 .3). These results indicate that CF-KKT can remain effective when the analytical reward is replaced by a learned approximation, provided that the local reward-gradient structure used by the KKT conditions is also preserved. B.3 ADDITIONAL BENCHMARKING AGAINST ONLINE ICRL M ETHODS .Our main experiments focus on offline constraint inference. As an auxiliary comparison, we also evaluate the KKT-informed component of our framework within the online ICRL benchmark of Liu et al. (2023). This experiment does not use the counterfactual component of CF-KKT and should therefore be interpreted as a diagnostic of the KKT-based constraint signal rather than an evaluation of the full method. We compare this KKT-only constraint learner with BC2L, MECL, and GACL in the 
+
+BlockedHalfCheetah environment. The online baselines receive additional interaction data from the environment, whereas the KKT-only constraint learner relies on the initial expert demonstra-tions. Figure 4 reports downstream policy performance when each method is used as the upstream constraint-learning component. The KKT-only variant achieves lower constraint violation and higher feasible reward than BC2L and MECL, while remaining comparable to GACL, and exhibits lower variance than BC2L and MECL. 16 0 1000 2000 3000 4000 Episode 0.0 0.2 0.4 0.6 0.8 1.0      
+
+> Blocked Half-Cheetah MECL KKT-ICRL-v0 BC2L GACL 01000 2000 3000 4000 Episode 01000 2000 3000 4000 5000 Blocked Half-Cheetah MECL KKT-ICRL-v0 BC2L GACL
+
+Figure 4: Constraint violation rate (left) and feasible cumulative reward (right) for the auxiliary online ICRL comparison.                                                
+
+> H= 12 H= 48 CF-KKT ( H= 24 )Env. Viol. ↓Ret. ↑Viol. ↓Ret. ↑Viol. ↓Ret. ↑
+> Ant_ls 3.4±1.51157 ±57 3.3±1.61167 ±84 2.8±0.91130 ±91
+> BlockedAnt 16 .5±3.32136 ±635 18 .5±4.91968 ±733 15 .3±4.22449 ±237
+> BlockedHopper 64 .9±83 .5317 ±139 28 .6±32 .7510 ±433 17 .6±21 .2454 ±252
+> HalfCheetah 93 .9±67 .52196 ±583 80 .2±78 .72605 ±621 54 .3±48 .92338 ±788
+> Walker_ls 85 .4±43 .1413 ±213 89 .6±65 .6406 ±279 74 .3±56 .3410 ±283
+
+Table 8: Effect of counterfactual rollout horizon with the positive-advantage gate fixed. CF-KKT uses the default H = 24 .B.4 METHOD SWEEP ON COUNTERFACTUAL GENERATION 
+
+We separately study the two design choices used in counterfactual generation: the rollout horizon H
+
+and the counterfactual acceptance rule. First, we vary H ∈ { 12 , 24 , 48 } while keeping the positive-advantage gate wk = 1[ ˆA(k) 
+
+> V
+
+> 0] fixed, where H = 24 corresponds to the default CF-KKT setting. Second, fixing H = 24 , we compare this gate against a quantile-based rule that retains the top 25% 
+
+of counterfactuals ranked by ˆA(k) 
+
+> V
+
+.The horizon sweep in Table 8 shows that CF-KKT is not highly sensitive to the precise rollout length: 
+
+H = 12 , 24 , and 48 all yield comparable downstream performance, while the default H = 24 
+
+achieves the lowest mean violation count on all five environments. The acceptance-rule comparison in Table 9 shows CF-KKT’s positive-advantage-based gating achieves lower violation than the quantile-based rule. 
+
+## C EMPIRICAL VALIDATION OF THE COUNTERFACTUAL PREMISE 
+
+CF-KKT retains a generated counterfactual when its learned-model value-augmented advantage is positive, i.e., ˆA(k) 
+
+> V
+
+> 0. Lemma 1 establishes that, under global expert optimality, exact dynamics, and the exact constrained continuation value, a positive value-augmented advantage implies that the counterfactual cannot remain feasible throughout the rollout. In practice, CF-KKT evaluates this criterion using the learned dynamics ˆf and continuation-value estimate ˆV . Here we empirically assess how reliably the resulting practical selection rule identifies true constraint violations. Ground-truth constraint labels are used exclusively for this diagnostic and are never used to train CF-KKT. 17 q = 0 .25 CF-KKT Env. Viol. ↓ Ret. ↑ Viol. ↓ Ret. ↑                    
+
+> Ant_ls 3.3±1.71117 ±102 2.8±0.91130 ±91
+> BlockedAnt 21 .8±14 .42096 ±604 15 .3±4.22449 ±237
+> BlockedHopper 27 .3±32 .3624 ±261 17 .6±21 .2454 ±252
+> HalfCheetah 84 .6±58 .22735 ±494 54 .3±48 .92338 ±788
+> Walker_ls 97 .3±92 .3422 ±393 74 .3±56 .3410 ±283
+
+Table 9: Effect of the counterfactual acceptance rule at H = 24 . The quantile rule retains the top 
+
+25% of candidates by ˆA(k) 
+
+> V
+
+, whereas CF-KKT retains all candidates with ˆA(k) 
+
+> V
+
+> 0.
+
+Metrics. For each selected counterfactual rollout {x(k) 
+
+> h
+
+}Hh=1 , we evaluate the benchmark ground-truth state constraint c⋆ and report: • Bag precision: Pr[ ∃h : c⋆(x(k) 
+
+> h
+
+) > 0 | ˆA(k) 
+
+> V
+
+> 0] , the fraction of selected rollouts containing at least one truly infeasible state. This is the metric most directly aligned with the trajectory-level implication in Lemma 1. • State precision: Pr[ c⋆(x(k) 
+
+> h
+
+) > 0 | ˆA(k) 
+
+> V
+
+> 0] , evaluated over all states in selected rollouts. Unlike bag precision, this metric measures the density of infeasible states within a selected rollout; the lemma does not require every state to be infeasible. • Enrichment: the state-level violation rate among selected counterfactual rollouts divided by the violation rate in the benchmark suboptimal dataset Dπ . This metric measures whether the generator preferentially samples infeasible behavior relative to the benchmark background distribution. Here Dπ serves only as the reference distribution for this metric. • Per-step violation rate: the violation frequency at the first and final rollout states, h = 1 
+
+and h = H, indicating how infeasibility develops over the counterfactual horizon. 
+
+Environment Bag prec. State prec. Enrich. h=1 h=H
+
+Ant_ls 1.000 0.848 3.75 0.87 0.81 BlockedAnt 1.000 1.000 2.72 1.00 1.00 BlockedHopper 0.922 0.749 1.37 0.08 0.72 Walker_ls 1.000 0.969 1.31 1.00 0.95 HalfCheetah 0.953 0.867 1.78 0.00 0.83 
+
+Table 10: Ground-truth diagnostics of selected CF-KKT counterfactuals over N = 10 seeds. Metrics are defined in the text. 
+
+Positive value-augmented advantage consistently identifies infeasible rollouts. Bag precision is at least 0.922 and enrichment exceeds 1 on all five environments. Thus, the practical learned-model selection rule reliably identifies trajectory-level infeasibility and concentrates selected rollouts in regions with more violations than the benchmark suboptimal distribution. 
+
+Constraint violations may emerge only after several model steps. This effect is most apparent on BlockedHopper and HalfCheetah . In BlockedHopper , the constraint bounds a joint angle, so action perturbations influence the constrained quantity progressively through the dynamics; the violation rate increases from 0.08 at h = 1 to 0.72 at h = H. In HalfCheetah , the constraint depends on absolute horizontal position, which responds indirectly through the evolution of velocity. Consequently, no selected counterfactual violates the constraint at h = 1 , whereas the violation rate reaches 0.83 by h = H. These results support the use of multi-step rollouts for constraints whose effects are dynamically delayed. 
+
+State-level density supports the mean-based surrogate. State precision ranges from 0.749 to 
+
+1.000 across the five tasks, showing that violations are typically not isolated to a single state within a selected rollout. This empirical density supports the mean constraint value in the counterfactual loss as a dense, smooth surrogate, even though the theoretical guarantee requires only the existence of a violation somewhere along the trajectory. 18 D ABLATION OF SUPERVISION SIGNALS 
+
+D.1 EXPERIMENTAL SETTING 
+
+CF-KKT combines expert-side KKT supervision with synthetic counterfactual supervision. Because these MuJoCo benchmarks use state-only constraints, we write ˆcθ (x) for brevity. To isolate the contribution of each term, we decompose the expert-side objective into 
+
+Lstat = EDE
+
+
+
+∇ξ ˆL(ξ) 22
+
+
+
+, (23) 
+
+Lprim = EDE
+
+max {ˆcθ , 0}2 , (24) 
+
+Lcomp = EDE
+
+(λˆcθ )2 , (25) 
+
+Lact = EDE [|ˆcθ |] . (26) The complete KKT-informed loss is 
+
+LKKT = Lstat + wpLprim + wcLcomp + waLact , (27) with wp = 10 , wc = 0 .01 , and wa = 0 .1. We further define a generic classifier that does not use KKT optimality: 
+
+Lsafe = EDE
+
+wp max {ˆcθ , 0}2 + wa|ˆcθ | , (28) and denote the counterfactual loss by 
+
+LCF = Eb
+
+max 
+
+(
+
+m − 1
+
+H
+
+X
+
+> h
+
+ˆcθ (xb,h ), 0
+
+)2 , m = 1 . (29) We compare the following seven controlled conditions: • A: Lsafe + LCF . This retains expert-side feasibility/activity supervision and counterfactual supervision, but removes the optimality residual from Lagrangians. • B: A + wcLcomp . This isolates the additional contribution of complementary slackness. • A−act : A with wa = 0 . This isolates the effect of the activity term. • A−cf : Lsafe only. This removes counterfactual supervision. • CF-only: LCF only. This removes all supervision acting directly on expert demonstrations. • KKT-only: LKKT only, obtained by setting αCF = 0 . This condition therefore isolates what the optimality conditions alone identify, and serves as the counterpart of CF-only. • CF-KKT: the complete objective αKKT LKKT + αCF LCF .All experimental settings other than the indicated objective terms are held fixed across conditions. D.2 METRICS 
+
+We evaluate the learned constraint directly using two complementary metrics. First, the mask admission rate 
+
+ρθ = EDπ [1[ˆ cθ (x′) ≤ 0]] (30) is the fraction of transitions in the benchmark suboptimal dataset admitted by the learned feasibility mask. We compare this quantity with ρ⋆, the fraction admitted by the ground-truth constraint. Values substantially below ρ⋆ indicate an overly restrictive mask, while values substantially above ρ⋆ indicate an overly permissive one. Second, we report ROC AUC of ˆcθ against ground-truth constraint labels on held-out suboptimal transitions. AUC is threshold-free and therefore measures whether the learned score ranks feasible and infeasible states correctly independently of the operating threshold. Ground-truth labels are used only for evaluation. 19 Environment ρ⋆ A B A−act A−cf CF-only KKT-only CF-KKT                                         
+
+> Ant_ls 0.774 0.023 0.014 0.095 0.426 0.000 0.992 0.681 BlockedAnt 0.632 0.151 0.149 0.281 0.480 0.000 0.890 0.528 BlockedHopper 0.453 0.088 0.080 0.445 0.471 0.000 0.586 0.241 HalfCheetah 0.512 0.009 0.003 0.064 0.431 0.000 0.394 0.360 Walker_ls 0.259 0.043 0.051 0.208 0.460 0.000 0.692 0.203
+
+Table 11: Mask admission rates across the seven ablation conditions. 
+
+Environment A B A−act A−cf CF-only KKT-only CF-KKT 
+
+Ant_ls 0.768 0.746 0.804 0.570 0.907 0.458 0.831 BlockedAnt 0.444 0.438 0.446 0.449 0.904 0.522 0.616 BlockedHopper 0.614 0.617 0.574 0.510 0.802 0.481 0.602 HalfCheetah 0.635 0.619 0.636 0.494 0.655 0.976 0.993 
+
+Walker_ls 0.779 0.787 0.783 0.524 0.624 0.382 0.705 
+
+Table 12: ROC AUC of the learned constraint score on held-out transitions. D.3 RESULTS 
+
+D.4 ANALYSIS 
+
+Across the five environments, CF-only and full CF-KKT attain the two highest mean AUC values, 
+
+0.778 and 0.749 , respectively, whereas KKT-only attains 0.564 . We therefore compare CF-only and CF-KKT downstream in Table 13, while using the KKT-only condition to isolate what can be identified from expert-side optimality supervision alone. 
+
+Counterfactual supervision provides off-demonstration discrimination, but does not calibrate the feasibility threshold by itself. CF-only achieves the highest mean AUC, indicating that counterfactuals provide a strong signal for ranking feasible against infeasible states. However, ρθ = 0 
+
+on all five environments, so the fixed feasibility threshold rejects every transition. The comparison between A and A−cf shows the same effect: adding counterfactual supervision improves AUC on four of five tasks, but also makes the learned mask substantially more restrictive, ρθ of A is close to 0 on 4/5 envs, meaning that it rejects almost every transition not from the expert. Thus, counterfactual supervision provides useful off-demonstration separation, but by itself does not determine where the feasibility boundary should lie. 
+
+KKT supervision provides complementary expert-side information, but alone does not reliably identify the unsafe region. KKT-only exhibits nearly the opposite failure mode from CF-only. Its admission rate exceeds ρ⋆ on four of five environments, indicating that expert-side optimality supervision alone generally produces an overly permissive mask. Its AUC is also near chance on 
+
+Ant_ls , BlockedAnt , BlockedHopper , and Walker_ls , showing that supervision evaluated only on expert transitions provides limited information about how unseen states should be ranked. 
+
+HalfCheetah is a notable exception, where KKT-only already achieves AUC 0.976 , suggesting that the local optimality structure is particularly informative in that environment. 
+
+The two supervision sources correct complementary failure modes. Combining KKT and coun-terfactual supervision substantially improves calibration: the mean absolute deviation 15
+
+P 
+
+> e
+
+|ρθ,e −ρ⋆e |
+
+is 0.526 for CF-only and 0.232 for KKT-only, but decreases to 0.123 for full CF-KKT. The finer expert-side ablations support the same interpretation. Removing the activity term, A−act , increases 
+
+ρθ in every environment while changing AUC only modestly, indicating that this term primarily affects threshold placement. Conditions A and B are nearly identical, suggesting that complementary slackness contributes little in the absence of the stationarity residual. Full CF-KKT combines the off-demonstration discrimination supplied by counterfactuals with the expert-side structure sup-20 CF-only CF-KKT Environment Viol. ↓ Return ↑ Viol. ↓ Return ↑
+
+Ant_ls 16 .6 ± 10 .4 246 ± 176 † 2.8 ± 0.9 1130 ± 91 
+
+BlockedAnt 163 .4 ± 137 .9 276 ± 182 † 15 .3 ± 4.2 2449 ± 237 
+
+BlockedHopper 2.1 ± 6.1† 112 ± 298 † 17 .6 ± 21 .2 454 ± 252 
+
+HalfCheetah 0.0 ± 0.0† −3 ± 3† 54 .3 ± 48 .9 2338 ± 788 
+
+Walker_ls 0.0 ± 0.0† −6 ± 9† 74 .3 ± 56 .3 410 ± 283 
+
+Table 13: Downstream comparison of CF-only and CF-KKT. Mean ± standard deviation over N = 10 
+
+seeds; † denotes severe return collapse. plied by the KKT-informed objective, yielding both strong ranking performance and a substantially better-calibrated feasibility mask. 
+
+Downstream control requires both discrimination and a useful operating threshold. Table 13 illustrates why AUC alone is insufficient. Despite its high mean AUC, CF-only suffers severe return collapse on every task; its low violation counts on BlockedHopper , HalfCheetah , and 
+
+Walker_ls therefore arise largely because the learned mask prevents meaningful task progress. CF-KKT instead attains substantially higher return on all five environments and improves both return and violation count on Ant_ls and BlockedAnt . Together, these results support the intended division of roles: counterfactual supervision identifies off-demonstration infeasibility, while KKT-informed expert supervision helps place that discrimination at a practically useful feasibility threshold. 
+
+## E PROOFS 
+
+E.1 SENSITIVITY ANALYSIS FOR MIP-BASED INFERENCE OF CONSTRAINT PARAMETERS 
+
+Here, we analyze the sensitivity of the MIP-based constraint inference method in Sec. 4.1 against dynamics misspecification under a set of mild regularity conditions. Let η1: D := ( η(d) 
+
+> t
+
+: t ∈
+
+[0 , T ], d ∈ [DE ]) ∈ RT D E , ρ1: D := ( ρ(d) 
+
+> t
+
+: t ∈ [0 , T ], d ∈ [DE ]) ∈ RT D E , and κ1: DE := (κ(d) 
+
+> t
+
+: t ∈ [0 , T ], d ∈ [DE ]) ∈ RT D E denote dual variables for (7) that respectively correspond to the constraints ˆc(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+; θ) ≤ 0, λ(d) 
+
+> t
+
+≥ 0, and λ(d) 
+
+> t
+
+ˆc(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+; θ) = 0 , across d ∈ [DE ] and 
+
+t ∈ [0 , T ]. Then (7) admits a Lagrangian map given by: 
+
+Linv ,rel (θ, λ1: DE , ν1: DE , η1: DE , ρ1: DE , κ1: DE ) (31) 
+
+:= PDE
+
+> d=1
+
+h
+
+ˆs(x(d), u(d), λ(d), ν(d); θ, ψ ) 22 + PTt=0 η(d) 
+
+> t
+
+ˆc(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+; θ)
+
+− PTt=0 ρ(d) 
+
+> t
+
+λ(d) 
+
+> t
+
++ PTt=0 κ(d) 
+
+> t
+
+λ(d) 
+
+> t
+
+ˆc(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+; θ)
+
+i
+
+,
+
+and KKT conditions given by: 
+
+ˆc(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+; θ) ≤ 0 ⊥ λ(d) 
+
+> t
+
+≥ 0, ∀t ∈ [T ], ∀d ∈ [DE ], (32a) 
+
+ˆc(x(d) 
+
+> t
+
+, u (d) 
+
+> t
+
+; θ) ≤ 0 ⊥ η(d) 
+
+> t
+
+≥ 0, ∀t ∈ [T ], ∀d ∈ [DE ], (32b) 
+
+−λ(d) 
+
+> t
+
+≤ 0 ⊥ ρ(d) 
+
+> t
+
+≥ 0, ∀t ∈ [T ], ∀d ∈ [DE ], (32c) 
+
+∇(θ, λ1: D ,ν1: D )Linv ,rel (θ, λ1: D , ν1: D , η1: D , ρ1: D , κ1: D ) = 0. (32d) We say (32a) holds with strict complementarity if for each t ∈ [0 , T ], one of the two inequalities 
+
+c(xt, u t; θ) ≤ 0 and λt ≥ 0 holds with strict inequality while the other holds with equality, and likewise for (32b)-(32c). The following proposition uses the KKT system (32) and the Implicit Function Theorem to analyze the local sensitivity of the recovered constraint parameter θ to the neural network weights ψ which characterize the learned dynamics map ˆf (·, ·; ψ). For any weights 
+
+ψ, we will use z(ψ) := ( θ, λ1: D , ν1: D , η1: D , ρ1: D , κ1: D )( ψ) to denote the concatenation of feasible primal and dual variables for (7) at ψ.21 Proposition 1. Suppose ˆf (·, ·; ψ) is C4 for each ψ ∈ RMψ . Suppose also that, for a given NN weight ˆψ ∈ RMψ , the relaxed inverse problem (7) admits a primal-dual solution satisfying strict complementarity. Define the map F (·) such that the equality F (z, ψ ) = 0 , at ψ = ˆψ, represents the KKT system (32) when all active inequalities in (32a) -(32c) are treated as equalities, and all inactive inequalities are ignored. Suppose F (·) is C2 in a neighborhood of ˆψ, and ∇z F (z⋆( ˆψ), ˆψ)
+
+is non-singular. Then, there exists an open neighborhood U of ˆψ and an open neighborhood V of 
+
+z⋆( ˆψ) such that, for each ψ ∈ U , there exists a unique z⋆(ψ) ∈ V satisfying F (z⋆(ψ), ψ ) = 0.Moreover, for each ψ ∈ U :
+
+∥z⋆(ψ) − z⋆( ˆψ)∥2 ≤ ∥∇ z F (z⋆( ˆψ), ˆψ)−1∇ψ F (z⋆( ˆψ), ˆψ)∥2 · ∥ ψ − ˆψ∥2 + O(∥ψ − ˆψ∥22). (33) 
+
+Proof. By the Implicit Function Theorem (Rudin, 1976, Thm. 9.28), there exist neighborhoods U of 
+
+ˆψ and V of z⋆( ˆψ) such that, for each ψ ∈ U , z = z⋆(ψ) is the unique solution in V to F (z, ψ ) = 0 ,and z⋆(·) is C2 over U , with ∇ψ z⋆(ψ) = −∇ z F (z⋆(ψ), ψ )−1∇ψ F (z⋆(ψ), ψ ) for each ψ ∈ U .By continuity and strict complementarity, U and V can be chosen sufficiently small such that the strict inequalities at (z⋆( ˆψ), ˆψ) remain strict, so F (z⋆(ψ), ψ ) = 0 continues to represent the KKT system (32) for each ψ ∈ U . The bound (33) then follows by applying the Lagrange remainder theorem, followed by the triangle and Cauchy-Schwarz inequalities. 
+
+Remark 2. Strict complementarity does not require all inequality constraints to be active, but merely excludes the degenerate case in which the primal and dual inequalities evaluated at an optimal primal-dual pair are simultaneously tight. The role of strict complementarity in Prop. 1 is to identify an unambiguous smooth equality representation of each complementarity condition at the nominal solution ˆψ. Under strict complementarity, by continuity, the strict inequalities in the KKT system remain strict under sufficiently small perturbations of ψ, so the same equality representation remains valid, and the classical Implicit Function Theorem applies. Thus, Prop. 1 does not require the active set to remain fixed a priori or under arbitrary dynamics perturbations. More general sensitivity results that admit active-set transitions can be obtained by representing the KKT conditions as a generalized equation (e.g., formulated via an inclusion operator) under appropriate regularity conditions, although the resulting solution map need not be differentiable at such transitions. 
+
+Under the conditions in Prop. 1, given any weights ψ ∈ U for the learned dynamics map ˆf (·, ·; ψ),the optimal constraint parameter recovered by solving (7) is given by the first Mθ components of 
+
+z⋆(ψ). Thus, the bound (33) quantifies the robustness of the recovered constraint parameter against fluctuations in the learned, dynamics-encoding weights ψ.22

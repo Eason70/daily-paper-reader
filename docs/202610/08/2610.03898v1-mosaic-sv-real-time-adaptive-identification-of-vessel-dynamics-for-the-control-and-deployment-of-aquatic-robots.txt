@@ -1,0 +1,521 @@
+Title: MOSAIC-SV: Real-Time Adaptive Identification of Vessel Dynamics for the Control and Deployment of Aquatic Robots
+
+URL Source: https://arxiv.org/pdf/2610.03898v1
+
+Published Time: Tue, 06 Oct 2026 00:08:48 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# MOSAIC-SV: Real-Time Adaptive Identification of Vessel Dynamics for the Control and Deployment of Aquatic Robots 
+
+Wensen Liu 1, Jerry Peng 1, Shravani Vedagiri 1, and Aaron M. Johnson 1
+
+Abstract — Model-based control of an aquatic robotic plat-form depends on a hydrodynamic model that is costly to identify and specific to the hull, payload, and conditions it was measured in. Here, we present MOSAIC-SV, a deployable real-time adaptive dynamics identification and control system that identifies a control-sufficient dynamics model from aspec-sheet engineering prior, without dedicated identification trials, and re-estimates it at every control step of a closed-loop mission while the controller plans on it. A physically admissible unscented Kalman filter re-estimates hydrodynamic, disturbance, and actuator parameters at every control step of the closed-loop mission; while a command-dependent consider projection withholds corrections the current command cannot attribute between actuator effectiveness and external force; and a model predictive path integral controller plans on the current estimate. In simulation on a CyberShip II plant, MOSAIC-SV recovers the transit performance of the calibrated model under static mismatch and transient changes, and stays within 
+
+20% of its own transit time at the unscaled prior when its inertia or damping prior is wrong by an order of magnitude. In on-water field trials on the Blue Robotics BlueBoat, a twin-thruster catamaran, MOSAIC-SV transits at least 25% faster and predicts its own motion with at least 56% less error than its frozen engineering prior, including under an unmodeled payload. The same MOSAIC-SV system concept was also feasibly deployed on a 6.3-tonne dual outboard monohull. 
+
+I. INTRODUCTION Aquatic robotic platforms such as unmanned surface vehi-cles (USVs) have great potential to aid in marine conserva-tion [1], search and rescue [2], and exploration [3]. Model-based control of a USV depends on a model of the hydrody-namic effects in its dynamics [4]. Current USV controllers typically use parametric physics-based maneuvering models (e.g. Fossen [5], MMG [6]) paired with predictive controllers [7], [8] or learned policies [9]. However, these models are non-trivial to derive and calibrate [10], particularly for unconventional hullforms and marine robots [11]. Several approaches address this. One approach is to identify the model a priori from data, through parametric identification [12] or a learned dynamics model [13], and give the controller the identified model. Abrougui et al. [14] identify a USV model from sea trials and design heading and speed controllers on it. Wang et al. [15] identify the maneuvering model with an extended Kalman filter on simulated excitation data before control, then run a disturbance observer alongside a nonlinear MPC   
+
+> *This material is based upon work supported by the Department of War SMART Scholarship-for-Service Program. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the Department of War.
+> 1Mechanical Engineering Department, Carnegie Mellon University, Pitts-burgh, PA 15213, USA,
+
+{wensenl, amj1}@andrew.cmu.edu  
+
+> Fig. 1. A Blue Robotics BlueBoat, the twin-thruster catamaran evaluated in the on-water field trials with an unmodeled extra mass (a rock).
+
+in simulation. In each, the data collected and subsequent model are specific to that vessel and the conditions it was operated in; a change to the hull, payload, actuator, or sea state requires a new identification. A second approach is to learn a correction on top of a known nominal model during operation. Zhang et al. [16] learn the mismatch between a nominal model and the measured yaw response online and add it to the prediction model of an MPC. Liu et al. [17] learn per-axis residual dynamics with a sparse Gaussian process that is refined recursively inside a nonlinear MPC. Outside the marine domain, Levy et al. [18] couple Kalman-filter adaptation of a dynamics model to MPPI on an off-road vehicle, but adapt along a basis meta-learned from previously collected vehicle-specific driving data. These methods, however, require a known nominal model of the test platform and require ded-icated identification trials to train or calibrate the correction algorithms before deployment. A third approach is to identify the physical model itself online, which previous work has explored as an estimation problem. Hydrodynamic coefficients are estimated as aug-mented states with an extended [19] or unscented Kalman filter [20], [21], with some estimators also identifying pro-peller and rudder force coefficients [21]. These studies pri-marily use recorded maneuvering-test data or simulation data and, when applicable, give a controller a fixed model [22], [21]. Additionally, these identification methods use designed maneuvers such as zig-zag, turning-circle, and spiral tests [17], [20], [22], [21], as every coefficient must be excited by the test, a requirement Yue et al. [23] relax to interval arXiv:2610.03898v1 [cs.RO] 2 Oct 2026 x (N)        
+
+> y(E)
+> z(D) NED
+> (x; y )
+> N
+> Ãxb
+> yb
+> FRD
+> uvr(a) xb
+> yb
+> FL
+> FR
+> ly
+> ly(b) Fig. 2. (a) The general NED and FRD vessel frames. Heading ψis defined as clockwise from North. (b) The general form of the twin-hulled catamaran vessel class evaluated in this work, with location of forces and corresponding lever arms.
+
+excitation. Among the approaches, to our knowledge no published system starts a vessel from an engineering prior, identifies its physical model online during nominal operation, and plans on that model as it is re-estimated. 
+
+A. Contribution 
+
+In this work we present MOSAIC-SV ( Maritime Onboard 
+
+System for Adaptive Identification and Control of Surface 
+
+Vessels), a deployable real-time adaptive dynamics identifi-cation and control system. MOSAIC-SV identifies a control-sufficient dynamics model from a spec-sheet engineering prior, without dedicated identification trials, re-estimating it at every control step of a closed-loop mission while the controller plans on it. Additionally, the system is robust to poor engineering priors, remaining effective when the inertia or damping prior is wrong by an order of magnitude. MOSAIC-SV rests on two further contributions:  
+
+> •
+
+A physically admissible unscented Kalman filter over hydrodynamic, disturbance, and actuator parameters with a command-dependent consider projection that suppresses corrections along weak directions of the prior-scaled joint actuator and external-force map.  
+
+> •
+
+An evaluation in simulation under static mismatch, transient changes, and prior misspecification; paired field trials on a small twin-thruster catamaran against its frozen engineering prior; and a feasibility run on a 6.3-tonne dual outboard monohull. II. VESSEL MODEL We define a vessel’s state s = [ η⊤, ν ⊤]⊤ with standard North-East-Down (NED) global pose η = [ x, y, ψ ]⊤, where 
+
+x is North and y is East, and Forward-Right-Down (FRD) body velocities ν = [ u, v, r ]⊤ (Fig. 2a). 
+
+A. Rigid-Body Dynamics 
+
+We define a vessel’s rigid-body dynamics following a planar Fossen structure [5], 
+
+˙η = R(ψ) ν (1) 
+
+M ˙ν + C(ν) ν + D(ν) ν = τ (a, θ a) + R⊤(ψ) Fext (2) where R(ψ) is the body-to-world rotation, M = MRB +MA
+
+is the total inertia (rigid body plus added inertia), C(ν) is the Coriolis matrix derived from M , and D(ν) is the damping matrix, which we model with linear and diagonal quadratic components, 
+
+D(ν) = Dlin + diag( q ⊙ | ν|) (3) where ⊙ is the element-wise product. We define τ (a, θ a) as the applied body-frame force and moment vector and Fext as a world-frame generalized force bias Fext = [ Fx, F y , N z ]⊤.
+
+B. Actuator Model 
+
+In general, the actuator model has two physically distinct parts: effective force and effective yaw moment. For fixed-direction thrusters, we write the actuator model in thrust-configuration form [5], 
+
+τ (a, θ a) = Ba
+
+ (1 + δℓ ) ⊙ ℓ0
+
+ diag( 1 + δg ) fa(a) (4) where fa(a) ∈ Rp is the force each of the p thrusters produces along its line of action from the actuator command 
+
+a, δg ∈ Rp are per-thruster gain deviations from the nominal map, and Ba ∈ R3×p resolves the forces into surge, sway, and yaw from the thruster positions and moment arms (1 +
+
+δℓ ) ⊙ ℓ0. We define the deviations as the actuator parameters 
+
+θa = [ δg ⊤, δℓ ⊤]⊤, bounded element-wise to [−0.95 , 1] .The primary vessel class we evaluate in this work is a twin-hulled catamaran with two fixed thrusters (Figs. 1 and 2b) at lateral offset ±ly from center with fa(a) = a = [ FL, F R]⊤.The full actuator model is 
+
+τ (a, θ a) = [ gLFL + gRFR, 0, l y ℓ (gLFL − gRFR) ] ⊤ (5) where gL = 1 + δg L, gR = 1 + δg R, and ℓ = 1 + δℓ with actuator parameters θa = [ δg L, δg R, δℓ ]⊤.For the dual outboard monohull tested in §V-C, the two outboards share one net thrust T and one steering angle γ,so a = [ T, γ ]⊤ and (4) has a single effective thruster ( p = 1 )whose line of action is rotated by γ and whose lever arm lx
+
+runs from the transom to the center of mass, 
+
+τ (a, θ a) = g [ T cos γ, −| T | sin γ, l x ℓ |T | sin γ ]⊤ (6) where g = 1 + δg and ℓ = 1 + δℓ with actuator parameters 
+
+θa = [ δg, δℓ ]⊤.III. PARAMETER ESTIMATOR DESIGN We estimate the model parameters θ, detailed in §III-A, from online state transitions during a mission, using the navigation state st provided by the vessel’s state estimator. We represent the parameter belief as a Gaussian N (ˆθt, P t)
+
+propagated by a scaled unscented Kalman filter (UKF), with predicted mean and covariance ˆθ− 
+
+> t
+
+and P − 
+
+> t
+
+, process-noise covariance Q, measurement zt, nonlinear measurement map h, and observation-noise covariance R. We apply the standard scaled-unscented measurement update [24], which propagates 2n+1 sigma points of the predicted belief, where 
+
+n = dim θ, to form the predicted measurement ˆy, innovation covariance S, and cross covariance Pθy . From these we compute the Kalman gain K0, then update the mean ˆθt and covariance Pt with an applied gain K, which is the projection of §III-D that derives from K0,K0 = Pθy S−1, ˆθt = ˆθ− 
+
+> t
+
++ K (zt − ˆy) (7) 
+
+Pt = ( I − KH ) P − 
+
+> t
+
+(I − KH )⊤ + KR eff K⊤ (8) where H is the statistical-linear-regression matrix of h [25], [26], and Reff is the observation-noise covariance R (in-cluded in S) augmented by the regression-error covariance, 
+
+H = P ⊤ 
+
+> θy
+
+(P − 
+
+> t
+
+)−1, Reff = S − HP − 
+
+> t
+
+H⊤ (9) When no direction is selected, K = K0. We use this Joseph covariance update (8)–(9) [27] because the projected gain K of §III-D can differ from K0, so the standard form of Pt = P − 
+
+> t
+
+− KSK ⊤ can become indefinite. The Joseph covariance update guarantees Pt ⪰ 0 for any K when 
+
+P − 
+
+> t
+
+⪰ 0 and Reff ⪰ 0. If K = K0, (8)–(9) reduces to the standard form. 
+
+A. Parameter Definition 
+
+Taking vech as an operation that stacks a lower-triangular matrix into a vector, we define the estimator parameters from the vessel’s dynamics model as 
+
+θ = [ vech( LM ), vech( LD ), c, F ext , θ a ]⊤ ∈ R21 (10) where LM and LD are the lower-triangular Cholesky factors of M and Dlin , respectively, c ∈ R3 parametrizes the quadratic-damping coefficients through q = c ⊙ c, and Fext 
+
+and θa are the force-bias and actuator-deviation parameters. We floor the diagonal entries of both LM and LD to a small positive constant when reconstructing M and Dlin ,making the inertia and damping matrices positive definite by construction and ensuring that M is invertible. The Cholesky factor representation therefore guarantees dissipative linear damping and avoids indefinite matrices that can arise from estimating matrix values directly. The smooth parameteriza-tion q = c ⊙ c guarantees nonnegative quadratic-damping coefficients. 
+
+B. Engineering Prior 
+
+We construct the prior mean θ0 from the vessel’s approxi-mate specifications, not from fitted test data. The rigid-body inertia is diag( m, m, I z ), with Iz = m (L2 + B2)/12 for mass m, length L, and beam width B. The total inertia scales each axis by a hull-form added-mass factor, M0 =diag  ku m, k v m, k r Iz
+
+,with (ku, k v , k r ) = (1 .10 , 1.50 , 1.15) for the catama-ran and (1 .10 , 1.80 , 1.25) for the monohull. The effective damping coefficients Du, D v , D r are estimated drag per unit velocity at a per-axis reference velocity, with Dv set as a multiple of Du for broadside damping. Each coefficient is split between the linear and quadratic terms from (3) so that the total is reproduced at the reference velocity, 
+
+Dlin,i = (1 − f ) Di, qi = f D i/ν ref,i (11) where νref = [ U, U tan β, U/ (kturn L) ] for a design speed 
+
+U , a design sideslip β = 10 ◦, and a turn radius kturn = 3 
+
+hull lengths, and f is the quadratic share of the damping at the reference velocity, set from the hull’s Froude regime (f = 0 .70 for the catamaran, 0.85 for the monohull). The 
+
+Fext and θa priors are zero. We set the prior covariance as P0 = diag( σ)2, with the prior standard deviation σi of each parameter set to 20% of 
+
+vech( LM ), 35% of vech( LD ), 5% of c, 0.1 on each θa, and a yaw moment equal to 5% of the vessel’s maximum yaw moment. The surge and sway Fext standard deviations are set to 25% of the vessel’s max thrust. This ordering lets an inno-vation be absorbed by the hull parameters before the actuator deviations or the yaw bias, while surge and sway forces remain free to track external disturbances. Every standard deviation is floored at a small positive value, including the zero-mean off-diagonal Cholesky parameters, so that P0 ≻ 0
+
+and P −1/20 in (16) is defined. 
+
+C. Process Model 
+
+We define the process model as a discrete Ornstein-Uhlenbeck prediction [28] with a blockwise rate vector λ,
+
+ˆθ− 
+
+> t
+
+= ˆθt−1 + Λ ( θ0 − ˆθt−1) (12) 
+
+P − 
+
+> t
+
+= ( I − Λ) Pt−1 (I − Λ) + Q (13) where Λ = diag( λ), and we choose Q as a diagonal process-noise covariance. For Fext parameters, we select 
+
+0 < λ i < 1 and set Qii = [1 − (1 − λi)2] P0,ii , which holds the prior variance stationary at P0,ii under prediction alone. These parameters revert toward their priors with time constant −∆t/ log(1 − λi) ≈ ∆t/λ i. For inertia, linear damping, quadratic damping, and θa, we set λi = 0 
+
+and choose positive process-noise variances, giving random walks without reversion. This process model allows the external-force bias to track changing disturbances while retaining accumulated hydrody-namic and actuator corrections. 
+
+D. Measurement Update and Consider Projection 
+
+We define Φ∆t(s, a ; θ) as one fourth-order Runge-Kutta step of (1)–(2) over the interval ∆t under a zero-order hold command. We define the measurement model h as the one-step prediction of the current navigation state from the preceding one, 
+
+h(θ) = Φ ∆t(st−1, a t−1; θ),zt = st = h(θ) + wt, wt ∼ N (0 , R ) (14) where st−1 and st are known from the vessel’s state estima-tor and the observation-noise covariance R is diagonal. We construct R from the state estimator’s reported uncertainty when available, static values otherwise, and inflate it by a fixed factor to account for time-correlated state estimator errors across transitions. We calculate the heading component of the innovation zt − ˆy as the principal angular difference. We regularize the innovation covariance S before inversion as Sρ = S + ρ ∥S∥F I, with ρ proportional to machine precision, to improve numerical conditioning. The plain Kalman gain K0 = Pθy S−1 
+
+> ρ
+
+, (7) with Sρ in place of S, allocates the innovation among parameters according to the predicted covariance and measurement sensitivity. However, when two parameters produce the same force, the measurement cannot reliably distinguish them, and the gain splits the correction between them according to the predicted covariance. We address this by suppressing corrections along force-parameter [F ⊤
+
+> ext
+
+, θ ⊤ 
+
+> a
+
+]⊤ directions with weak instanta-neous sensitivity relative to their prior standard deviations. We determine these directions from the force-map Jacobian scaled by the prior standard deviation of each parameter, for the catamaran, 
+
+Jt = A  R⊤(ψt−1), J a,t 
+
+ ∈ R3×6, Jw = Jt P 1/20,f (15) where A = diag(1 , 1, 1/l y ) converts every row into force units, R⊤(ψt−1) is the sensitivity to Fext at heading ψt−1,and Ja,t is the Jacobian of (4) with respect to θa at the command at−1 and predicted mean ˆθ− 
+
+> t
+
+. Jw is the force-map Jacobian scaled by P 1/20,f , the block of P 1/20 on the force parameters [F ⊤
+
+> ext
+
+, θ ⊤ 
+
+> a
+
+]⊤, and measures sensitivity relative to each force-parameter’s prior standard deviation. We define V0 as the matrix of all right singular vectors of 
+
+Jw whose singular values are zero or below a fixed fraction of the largest. With zero rows for the inertial and damping parameters in V0, the projected Kalman gain is 
+
+K = ( I − Π) K0, Π = P 1/20 V0V ⊤ 
+
+> 0
+
+P −1/20 (16) following the Schmidt-Kalman consider filter [29] and its partial-update forms [30], [31]. Observability-informed vari-ants [32] adapt how strongly selected states are corrected; our rule instead selects force-parameter directions per tran-sition from the prior-scaled instantaneous force map. The projection removes the mean correction along the selected directions, leaves the inertial and damping parameter rows of K0 unchanged, and keeps the uncertainty and cross-covariances of the selected directions in Pt, where they continue to propagate. We evaluate (8) from paired sigma points using the applied gain K. We generate the sigma points from P − 
+
+> ε
+
+= P − 
+
+> t
+
++
+
+εI , where ε is a small positive constant that ensures P − 
+
+> ε
+
+is positive definite. We use P − 
+
+> ε
+
+and Sρ in place of P − 
+
+> t
+
+and S
+
+throughout (8)–(9). This construction is positive semidefinite for any gain, including the projected K.IV. CONTROLLER DESIGN We plan vessel commands with model predictive path integral control (MPPI) [33] on the transition Φ∆t defined in (14). At each control step we define a nominal control sequence U = [ a0, . . . , a N −2] over a horizon of N states and sample Ns perturbed sequences, 
+
+Uk = U + Ek, Eki ∼ N (0 , Σ) , k = 1 , . . . , N s (17) where Ek = [ Ek 
+
+> 0
+
+, . . . , E kN −2] is the perturbation sequence and Σ is a diagonal per-command sampling covariance. We roll each sequence out from the current navigation state st
+
+using the current estimated dynamics model ˆθt from §III, which we assume is fixed over the horizon. We do not propagate its covariance Pt through the rollouts or into the objective. We clip actuator commands element-wise to the actuator limits, ˜aki = clip( ai + Eki ) ∈ [amin , a max ], and roll out sk 
+
+> 0
+
+= st, ski+1 = Φ ∆t
+
+ ski , ˜aki ; ˆθt
+
+ for i = 0 , . . . , N − 2.We score each rollout with a cost Jk that penalizes quadratic goal-state error along the horizon and at its end, control effort and step-to-step command changes, misalignment between heading and goal bearing scaled by distance to the goal, and proximity to obstacles. We update the nominal sequence with the softmax-weighted average of the perturbations, 
+
+wk = exp   − (Jk − Jmin )/λ eff 
+
+P 
+
+> j
+
+exp   − (Jj − Jmin )/λ eff 
+
+ ,
+
+U ← clip 
+
+
+
+U + P 
+
+> k
+
+wkEk
+
+
+
+(18) where Jmin = min k Jk and λeff is the temperature defined in §IV-A. We clip the updated sequence U separately from the rollouts because the update uses the unclipped perturbations 
+
+Ek and can exceed the actuator limits. We apply the first command of the updated sequence and shift the sequence by one step to warm start the next control step. 
+
+A. Adaptive Temperature 
+
+With a fixed temperature, the weights of (18) depend on the scale of the sampled cost differences, which varies over a mission. Carius et al. [34] normalize the costs by the batch range; we instead scale the temperature by the median-to-minimum spread, subject to a positive floor, 
+
+λeff = max  λfloor , λ rel 
+
+ median( J) − min( J) (19) where the median and minimum are taken over the sampled costs {Jk}Ns
+
+> k=1
+
+, λrel > 0 sets the temperature as a fraction of the cost spread, and λfloor > 0 bounds it away from zero. While the floor is inactive, the weights are invariant to a common offset or positive scaling of the costs. The median limits the influence of a minority of high-cost obstacle rollouts on the temperature. V. RESULTS We evaluate the estimator-controller system from §III– §IV, MOSAIC-SV, in closed-loop simulation against two non-adaptive planning models, and on water against the frozen engineering prior. 
+
+A. Simulation Setup 
+
+In simulation, we use a calibrated model of CyberShip II, a 1:70-scale supply-vessel model whose inertia, Coriolis, and damping coefficients are published from tank identifica-tion [35], [12]. We replace its fully actuated thrust allocation with the differential twin-thruster actuation of (5), with per-thruster limits sized to the hull at a cruise speed of 1.5 m/s. We set the simulation’s plant as the calibrated model, and perturb its parameters to generate mismatch and transients for the experiments. In the experiments, we compare three dif-ferent planning models: MOSAIC-SV, the calibrated model, and the frozen engineering prior from §III-B integrated with the MPPI controller from §IV. Because the calibrated and 0 10 20 30 40 50 60 
+
+> North (m)
+> −10 010
+> East (m)
+
+Fig. 3. Simulation course in the world frame. The triangle marks the start, open circles waypoints passed under way, and the square the stop waypoint. TABLE I PERTURBATION FAMILIES                                                                                                  
+
+> Family Axis Perturbation Levels Static mass Inertia ×level 2−3, . . . , 24
+> Static cross Inertia ×, damping ÷2−3, . . . , 24
+> Static damping Damping ×level 2−3, . . . , 24
+> Static combined Inertia/damping ×; 45 ◦2−3, . . . , 24; force 0–3.2 N ‡
+> Static current Force at 45/0/90 ◦0–3.2 N, step 0.4 N Transient mass Inertia ×level 1/4,1/2,1.5,2,3,4,6,8
+> Transient damping Damping ×level 1/8,1/4,1/2,2,4,8
+> Transient current Force at 45 ◦0.4, 0.8, 1.2, 2, 2.8 N Transient port Thrust fraction, port 1/4,1/2,0.8,0.9,1†
+> Transient stbd Thrust fraction, stbd 1/4,1/2,0.8,0.9,1†
+> Transient both Thrust fraction, both 1/4,1/2,5/8,3/4,0.9,1†
+> Prior inertia Prior inertia scale 2−3, . . . , 24
+> Prior damping Prior damping scale 2−3, . . . , 24
+> Prior both Both prior scales 2−3, . . . , 24
+> Static conditions are applied before the run; transients start at 34.8 s as a step or as a ramp over 41.8 s. Static and transient families compare MOSAIC-SV with the calibrated model and the frozen prior. The prior family runs MOSAIC-SV only. We run twelve seeds per level with a 400 s run limit and a 2 m goal radius. †indicates a level that was only executed as a step change. ‡Combined levels 2−3. . . 24pair with 45 ◦forces 0, 0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 3.2 N.
+
+frozen models lack adaptation, ˆθt is the same at every control step. The simulated experiments all run the course shown in Fig. 3 under one of three families of perturbation, shown in Table I. Static mismatch runs different perturbed plants as the simulated plant. Transient effects change inertia, damping, disturbance force, or delivered thrust on the port, starboard, or both thrusters part-way through the run, using step or ramp profiles. Prior sensitivity keeps the plant unperturbed and scales the engineering prior MOSAIC-SV starts from, on inertia, damping, or both. Each variation within a family is run over twelve trials, with each trial having a different pseudo-random number generator (PRNG) seed. The twelve PRNG seeds are consistent between every experiment vari-ation run. We report three metrics. Completion is the vessel landing within 2 m of the final waypoint before the run time limit, re-ported as ∆c, the difference in non-completion rate between MOSAIC-SV and each baseline in percentage points. Transit time is the time the vessel took to complete a run; a run that does not complete is assigned the run time limit as its transit time. This is reported as ∆tr , the percent difference between the two models’ median transit times. Self-prediction error 
+
+scores each planning model on how well it predicted its future positions. For each run, we record the state and command applied each timestep. From each state st we roll 
+
+TABLE II STATIC SIMULATION COMPARISON 
+
+vs. calibrated vs. frozen Condition n ∆tr % ∆c pp ∆e% ∆tr % ∆c pp ∆e%mass 96 -25.2 -11.5 +17.3 -27.5 -12.5 +3.1 cross 96 -0.6 +4.2 -29.0 -2.7 +0.0 -8.9 damping 96 +2.1 +0.0 -41.3 -26.2 +0.0 -8.5 combined 96 -5.9 +0.0 +12.8 -26.0 +0.0 +11.7 
+
+hull, all 384 -1.5 -1.8 -7.1 -26.0 -3.1 -5.8 current 45 ◦ 108 +0.7 +0.0 -23.2 -28.0 -22.2 -11.0 current 0 ◦ 108 +5.5 +0.0 -39.8 -32.6 -44.4 -38.5 current 90 ◦ 108 +4.6 +0.0 -17.9 -8.7 -22.2 -10.9 
+
+current, all 324 +5.5 +0.0 -23.2 -22.5 -29.6 -12.7 
+
+static, all 708 -0.6 -1.0 -15.4 -23.2 -15.3 -9.7       
+
+> ∆tr : median transit time percent difference; ∆c: non-completion-rate percentage-point difference; ∆e: self-prediction error percent difference, paired by seed. Negative values favor MOSAIC-SV. n= episodes per model. The all rows pool all trials within the condition group.
+
+the planning model forward Nsp steps under the commands that were applied, ˆst+j+1 = Φ ∆t
+
+ ˆst+j , a t+j ; ˆθt
+
+, ˆst = st,
+
+for j = 0, . . . , N sp − 1, and take the position error 
+
+et = ∥ˆpt+Nsp − pt+Nsp ∥, where ˆpt+Nsp is the rolled-out final position and pt+Nsp is the actual final planar position 
+
+(x, y ) of that horizon. We take the median of et over the run with Nsp ∆t = 1 s, evaluated every 0.5 s, and report ∆e, the median seed-paired difference in this error as a percentage of the baseline’s median. For MOSAIC-SV, ˆθt is the estimated dynamics model; for the calibrated model and the frozen prior ˆθt is constant. 
+
+B. Simulation Results 1) Static Mismatch: Under static mismatch (Table II, Fig. 4), MOSAIC-SV successfully recovers the transit per-formance of the calibrated model. Pooled over all static conditions, its median transit time is within 0.6% of the calibrated model’s in either direction, with a 1.0 pp lower non-completion rate and 15 .4% lower self-prediction error. The largest gain is under mass mismatch, where MOSAIC-SV transits 25 .2% faster; the largest deficit is under external current, where it transits 5.5% slower while predicting 23 .2% 
+
+better. Compared to the frozen engineering prior, MOSAIC-SV transits faster in every static condition, 23 .2% faster pooled, with 15 .3 pp fewer non-completions and 9.7% lower self-prediction error. 
+
+2) Transient Effects: Under transient effects (Table III), MOSAIC-SV also recovers the calibrated model’s transit performance. Pooled, its median transit time is within 2.1% 
+
+(within 8.0% under step and 1.4% under ramp effects), it is never more than 9.9% slower in any single condition, and it predicts its future positions with 16 .6% less error. The exception is completion under step mass changes, where MOSAIC-SV failed to complete 25 pp more runs than the calibrated model. Compared to the frozen prior, MOSAIC-SV transits 25 .0% faster pooled and predicts with 19 .6% less error; the only conditions where it transits slower than the frozen prior are the step and ramp mass changes ( 5.0% and 
+
+14 .2% ). 0.25 1 4 16 0200 400 
+
+> transit time (s)
+
+mass    
+
+> n=1 n=0 n=0 n=0
+> 0.25 1416
+
+cross    
+
+> n=0 n=4 n=0 n=0 n=0
+> 0.25 1416
+
+damping    
+
+> n=0
+> 0.25 1416
+
+combined             
+
+> n=0 n=0 n=0
+> 0.25 1416
+> plant scale (× unperturbed)
+> 0.0 0.1
+> self-prediction error (m)
+> 0.25 1416
+> plant scale (× unperturbed)
+> 0.25 1416
+> plant scale (× unperturbed)
+> 0.25 1416
+> plant scale (× unperturbed)
+
+Static mismatch comparison   
+
+> MOSAIC-SV Calibrated model Frozen prior
+
+Fig. 4. Static mismatch. Top: median transit time per plant level. n gives the number of seeds that completed the run when there were incomplete runs. Bottom: median self-prediction error. Levels are the scale applied to the unperturbed plant. TABLE III TRANSIENT SIMULATION COMPARISON 
+
+vs. calibrated vs. frozen Condition n ∆tr % ∆c pp ∆e% ∆tr % ∆c pp ∆e%Step mass 96 -11.8 +25.0 -24.2 +5.0 +12.5 -26.7 Step damping 72 +9.9 +0.0 -38.9 -31.1 +0.0 -18.2 Step current 60 +8.6 +0.0 -31.7 -30.1 -20.0 -16.1 Step port 60 +3.4 +0.0 -23.5 -29.4 +0.0 -37.8 Step stbd 60 +1.5 +0.0 -4.7 -35.5 +0.0 -22.9 Step sym. 72 +6.7 +0.0 +23.1 -30.4 +0.0 -5.6 
+
+Step all 420 +8.0 +5.7 -19.1 -23.1 +0.0 -17.9 Ramp mass 96 +2.8 +0.0 -42.7 +14.2 -8.3 -47.8 Ramp damping 72 +3.7 +0.0 -19.3 -29.2 +0.0 -12.8 Ramp current 60 +3.6 +0.0 -31.9 -19.0 -20.0 -20.8 Ramp port 48 -3.8 +0.0 -1.6 -30.0 +0.0 -30.2 Ramp stbd 48 +5.1 +0.0 +9.8 -31.2 +0.0 -11.1 Ramp sym. 60 +3.0 +0.0 +38.1 -29.5 +0.0 -22.4 
+
+Ramp all 384 -1.4 +0.0 -7.3 -26.7 -5.2 -21.4 
+
+All transients 804 +2.1 +3.0 -16.6 -25.0 -2.5 -19.6       
+
+> ∆tr : median transit time percent difference; ∆c: non-completion-rate percentage-point difference; ∆e: self-prediction error percent difference, paired by seed. Negative values favor MOSAIC-SV. n= episodes per model. The all rows pool all trials within the condition group.
+
+3) Prior Sensitivity: Prior sensitivity (Fig. 5) measures the effect of deviating from the initial unscaled prior; the flatter the curve, the less sensitive MOSAIC-SV is to a deviation in that prior direction. As shown, MOSAIC-SV is robust to large-scale misspecification of the engineering prior. MOSAIC-SV can have a deviation between ×0.25 and 
+
+×8 in inertia, ×0.5 and ×8 in damping, as well as ×1 and 
+
+×16 in both inertia and damping, and still stay within 20% 
+
+of its transit performance at the unscaled prior. Additionally, MOSAIC-SV can have a deviation between ×0.25 and ×16 
+
+in inertia, ×0.125 and ×2 in damping, and ×0.25 and ×16 
+
+in both inertia and damping, and maintain a self-prediction error below 0.04 m at every scale in those ranges. 
+
+C. Field Trials 
+
+The primary field platform is a Blue Robotics BlueBoat, a 19.5 kg, 1.2 m long, twin-hull catamaran with one fixed 150 200    
+
+> transit time (s)
+> ±20 % of unscaled prior
+> 0.25 1416
+> prior scale (log2 spacing)
+> 0.00 0.02 0.04 0.06
+> self-prediction error (m)
+
+MOSAIC-SV sensitivity to engineering prior   
+
+> inertia only damping only both
+
+Fig. 5. MOSAIC-SV sensitivity to the engineering prior. Evaluated using an unperturbed plant and scaling the prior inertia, damping, or both. The band marks ±20% of the transit time at the unscaled prior. 
+
+thruster per hull (Fig. 1). We conducted field tests running either MOSAIC-SV or its frozen engineering prior (no cali-brated model was available). The first mission was a single-waypoint mission that had the boat travel to a waypoint 40 m away and stop. The second was an out-and-back mission that had the boat travel to two waypoints in a line, one 45 m and one 85 m away, then loop back to the start through the same waypoints. We ran three of each mission both unloaded and with a 9.1 kg mass attached to the vessel that was not reflected in the models (a ×1.47 mass mismatch). We measured completion, transit time, and self-prediction error in the same manner as the simulation experiments. Both MOSAIC-SV and the frozen engineering prior com-pleted all of their runs. MOSAIC-SV universally transited faster and with lower self-prediction error (Table IV), maintaining at least 25 .3% 
+
+faster transit times and at least 56 .9% lower self-prediction error. Additionally, Fig. 6 shows that MOSAIC-SV produced 0 25 
+
+> along-track (m)
+> 020
+> cross-track, left + (m)
+> 1
+
+single · nominal      
+
+> 020 40 60 80
+> along-track (m)
+> 1, 3 24
+
+out-and-back · nominal   
+
+> 020 40
+> along-track (m)
+> 1
+
+single · +9.1 kg      
+
+> 020 40 60 80
+> along-track (m)
+> 1, 3 24
+
+out-and-back · +9.1 kg 
+
+Field test run trajectories   
+
+> MOSAIC-SV Frozen prior waypoint / 2 m radius
+
+Fig. 6. Field test run trajectories. Crosses mark waypoints with their 2 m arrival radius. TABLE IV FIELD TRIAL COMPARISON 
+
+vs. frozen Cell n ∆tr % ∆e%Single nom. 3 -40.3 -59.9 O/B nom. 3 -40.0 -69.7 Single +9.1 kg 3 -42.9 -56.9 O/B +9.1 kg 3 -25.3 -70.3            
+
+> ∆tr : median transit time percent difference; ∆e: self-prediction error percent difference, paired by run. Negative values favor MOSAIC-SV. n= pairs per cell. 0200 400 600 800 1000 1200 1400
+> along-track (m)
+> −200 −100 0100
+> cross-track, left + (m)
+> 123MOSAIC-SV (on-water build) waypoint / arrival radius
+
+(a) 0 100 200 300 400 500 600 700 800 
+
+> along-track (m)
+> 0100
+> cross-track, left + (m)
+> 1MOSAIC-SV (on-water build) waypoint / arrival radius obstacle / avoidance clearance
+
+(b) Fig. 7. On-water runs of the 6.3-tonne dual outboard monohull. (a) Three-waypoint run. (b) Single-obstacle run. Crosses mark waypoints with their arrival radius; the circle marks the obstacle with its avoidance clearance. 
+
+tighter trajectories for all runs. We also ran MOSAIC-SV on a 6.3-tonne, 12 m long, dual outboard monohull on a 1.6 km three-waypoint course and a 0.85 km obstacle avoidance course at planing speed (approximately 35 knots) (Fig. 7). Its prior was produced from §III-B with the hull’s length, beam, mass, and rated engine power, without additional offline hydrodynamic iden-tification. This run establishes that our approach can feasibly deploy across a more than 300 × range of vessel mass and onto a steerable-outboard actuator model. Due to limitations with vessel availability, comparisons to other models were not conducted on this vessel. VI. DISCUSSION 
+
+A. Self-Prediction and Transit Time 
+
+As shown in Table II, self-prediction error and transit time do not necessarily correlate. For example, under mass mismatch MOSAIC-SV transits 25 .2% faster than the cal-ibrated model while having 17 .3% higher self-prediction error. Alternatively, under external current it predicts 23 .2% 
+
+better while transiting 5.5% slower. This is because the two metrics answer different questions: consistency of the belief vs. quality of the resulting plan. Self-prediction measures whether the model’s one-second predictions match what the vessel did, while transit time measures whether the com-mands those rollouts executed were good over the mission. A small, stable error in the model minimally impacts transit time with a controller that re-plans every step; alternatively a slow model may track well but result in a conservative plan. 
+
+B. Trends Across Perturbations 
+
+MOSAIC-SV performs best when the mismatch lies in directly excited parameters with a wide prior (Table II). For example, inertia is excited by every acceleration along its axis and carries a wide prior (§III-B), and mass mismatch is where MOSAIC-SV gains most over the calibrated model (Table II). Alternatively, the current is represented as the force bias 
+
+Fext , which §III-C treats as a fast state reverting toward zero, and under external current MOSAIC-SV transits 5.5% slower than the calibrated model while predicting 23 .2% better. A fast bias is generally beneficial, as it absorbs whatever the hydrodynamic blocks cannot explain and lets the controller act on it quickly; however, reversion also means a persistent current is partly forgotten and re-learned throughout the run. 
+
+C. Limitations 1) Sim-to-Real Gap: Two effects were observed on water that are not present in the simulated plant. First, the vessel’s yaw response was weaker than its engineering model pre-dicts. The differential thrust produced less turning moment than the lever-arm geometry implies, which was absorbed into the estimator as yaw damping and lever-arm parameters. Second, the thrusters have a start-up dead time and a low-command dead band, which are poorly explained by any constant-gain model and which the estimator attributes to a phantom force. Neither effect is present in the simulation runs: the simulated plant produces exactly the yaw moment its lever-arm geometry implies, and its thrusters have no start-up delay or dead band. 
+
+2) Innovation Aliasing: An innovation is the mismatch between the predicted and observed transition, and several parameters can explain the same mismatch. For example, within the force parameters, a thrust shortfall and an op-posing surge force produce the same surge innovation. The consider projection of §III-D withholds the correction when the current command cannot separate them, but is evaluated per interval and not over the entire run. Therefore the estimated parameters are control-sufficient but are not literal measurements of the vessel hydrodynamic parameters. This is also why the out-of-model sim-to-real effects land in their respective blocks. VII. CONCLUSIONS We present MOSAIC-SV, a deployable real-time adaptive control system that can identify a control-sufficient dynamics model, without dedicated identification trials, and plan on it. In simulation, the system recovers the transit performance of a calibrated model under static mismatch or transient changes and tolerates order-of-magnitude scaling of its in-ertia and damping priors. On water, MOSAIC-SV transited faster and predicted its own motion better than a frozen prior in every paired run, including under an unmodeled payload. The same system concept was also feasibly deployed to control a 6.3-tonne vessel. Future work will extend the trials to further hull and actuator classes, propagate the parameter covariance into the MPPI rollouts so the controller can hedge along unresolved directions, and extend the formulation from 3-DoF to 6-DoF to account for vessel stability. VIII. ACKNOWLEDGMENTS This work contains simulation, validation, and figure-plotting scripts generated by and debugged using assistance from agentic AI coding tools Claude and ChatGPT. We would like to acknowledge Moraine State Park – Pennsyl-vania Department of Conservation and Natural Resources for their assistance in providing a testing space for our experiments. This work is Patent Pending. REFERENCES [1] A. Vasilijevi´ c, Ð. Na ¯ d, F. Mandi´ c et al. , “Coordinated Navigation of Surface and Underwater Marine Robotic Vehicles for Ocean Sampling and Environmental Monitoring,” IEEE/ASME Transactions on Mecha-tronics , vol. 22, no. 3, pp. 1174–1184, Jun. 2017. [2] V. A. M. Jorge, R. Granada, R. G. Maidana et al. , “A Survey on Unmanned Surface Vehicles for Disaster Robotics: Main Challenges and Directions,” Sensors , vol. 19, no. 3, p. 702, Feb. 2019. [3] C. Preston, K. Yamahara, D. Pargett et al. , “Autonomous eDNA collection using an uncrewed surface vessel over a 4200-km transect of the eastern Pacific Ocean,” Environmental DNA , vol. 6, no. 1, 2024. [4] C. R. Sonnenburg and C. A. Woolsey, “Modeling, Identification, and Control of an Unmanned Surface Vehicle,” Journal of Field Robotics ,vol. 30, no. 3, pp. 371–398, 2013. [5] T. I. Fossen, Handbook of Marine Craft Hydrodynamics and Motion Control , 2nd ed. West Sussex, United Kingdom: John Wiley & Sons, Ltd, 2021. [6] H. Yasukawa and Y. Yoshimura, “Introduction of MMG standard method for ship maneuvering predictions,” Journal of Marine Science and Technology , vol. 20, no. 1, pp. 37–52, Mar. 2015. [7] A. M. Patel, M. J. Bays, E. N. Evans et al. , “Model-Predictive Path-Integral Control of an Unmanned Surface Vessel with Wave Disturbance,” in OCEANS 2023 - MTS/IEEE U.S. Gulf Coast , Sep. 2023, pp. 1–7. [8] L. M. Kinjo, S. Wirtensohn, J. Reuter et al. , “Trajectory Tracking of a Fully-actuated Surface Vessel using Nonlinear Model Predictive Con-trol: Experimental Results,” in 2022 30th Mediterranean Conference on Control and Automation (MED) , Jun. 2022, pp. 693–698. [9] E. Meyer, H. Robinson, A. Rasheed, and O. San, “Taming an Au-tonomous Surface Vehicle for Path Following and Collision Avoidance Using Deep Reinforcement Learning,” IEEE Access , vol. 8, pp. 41 466–41 481, 2020. [10] V. V. Deogaonkar, A. K. Jadhav, K. Ramachandran, and A. S. Somaya-jula, “Data Driven Identification of Ship Maneuvering Coefficients,” in ASME 2023 42nd International Conference on Ocean, Offshore and Arctic Engineering, Volume 5: Ocean Engineering . ASME, Jun. 2023. [11] S. Sutulo and C. Guedes Soares, “Development of a Multifactor Regression Model of Ship Maneuvering Forces Based on Optimized Captive-Model Tests,” Journal of Ship Research , vol. 50, no. 04, pp. 311–333, Dec. 2006. [12] A. Hasan, “Discovering ship maneuvering models from data,” Journal of Marine Science and Technology , vol. 30, no. 1, Mar. 2025. [13] T. Wang, R. Skulstad, M. Kanazawa et al. , “Learning Nonlinear Dynamics of Ocean Surface Vessel With Multistep Constraints,” IEEE Transactions on Industrial Informatics , vol. 20, no. 9, Sep. 2024. [14] H. Abrougui, S. Nejim, S. Hachicha et al. , “Modeling, parameter identification, guidance and control of an unmanned surface vehicle with experimental results,” Ocean Engineering , vol. 241, 2021. [15] S. Wang, M. Zhu, Y. Wen, and K. Tian, “Parametric dynamic modeling-based robust nonlinear model predictive control design for tracking unmanned surface vehicle trajectory,” Ocean Engineering ,vol. 328, p. 121074, 2025. [16] H. Zhang, B. Jiang, Y. Chen et al. , “Experimental study on learning-based path-tracking control for unmanned surface vehicles with online model compensation,” Ocean Engineering , vol. 365, p. 127353, 2026. [17] J. Liu, Z. Chi, G. Li et al. , “Efficient data-driven model predictive control for unmanned surface vehicles under model uncertainties via recursive updates of a sparse variational Gaussian process,” Ocean Engineering , vol. 353, p. 124739, 2026. [18] J. Levy, J. Gibson, B. Vlahov et al. , “Meta-learning online dynamics model adaptation in off-road autonomous driving,” in Proceedings of Robotics: Science and Systems , Los Angeles, CA, USA, Jun. 2025. [19] M. T. Sabet, P. Sarhadi, and M. Zarini, “Extended and unscented Kalman filters for parameter estimation of an autonomous underwater vehicle,” Ocean Engineering , vol. 91, pp. 329–339, 2014. [20] J. Zheng, D. Yan, M. Yan et al. , “An unscented Kalman filter online identification approach for a nonlinear ship motion model using a self-navigation test,” Machines , vol. 10, no. 5, p. 312, 2022. [21] Y. Meng, X. Zhang, X. Zhang et al. , “Nonlinear identification of surface ship manoeuvring motion model and its control application,” 
+
+Ocean Engineering , vol. 321, p. 120432, 2025. [22] Y. Meng, X. Zhang, X. Zhang et al. , “Online ship motion identifica-tion modeling and its application to course-keeping control,” Ocean Engineering , vol. 294, p. 116853, 2024. [23] J. Yue, L. Liu, N. Gu et al. , “Online adaptive parameter identification of an unmanned surface vehicle without persistency of excitation,” 
+
+Ocean Engineering , vol. 250, p. 110232, 2022. [24] S. J. Julier and J. K. Uhlmann, “Unscented filtering and nonlinear estimation,” Proceedings of the IEEE , vol. 92, no. 3, 2004. [25] T. Lefebvre, H. Bruyninckx, and J. De Schutter, “Comment on “A new method for the nonlinear transformation of means and covariances in filters and estimators”,” IEEE Transactions on Automatic Control ,vol. 47, no. 8, pp. 1406–1408, 2002. [26] Á. F. García-Fernández, L. Svensson, M. R. Morelande, and S. Särkkä, “Posterior linearization filter: Principles and implementation using sigma points,” IEEE Transactions on Signal Processing , vol. 63, no. 20, pp. 5561–5573, 2015. [27] R. S. Bucy and P. D. Joseph, Filtering for Stochastic Processes with Applications to Guidance . New York: Interscience, 1968. [28] S. Särkkä and A. Solin, Applied Stochastic Differential Equations .Cambridge University Press, 2019. [29] S. F. Schmidt, “Application of state-space methods to navigation problems,” in Advances in Control Systems . Elsevier, 1966, vol. 3, pp. 293–340. [30] K. M. Brink, “Partial-update Schmidt–Kalman filter,” Journal of Guidance, Control, and Dynamics , vol. 40, no. 9, 2017. [31] K. M. Brink, “Unscented partial-update Schmidt–Kalman filter,” Jour-nal of Guidance, Control, and Dynamics , vol. 41, no. 4, 2018. [32] J. H. Ramos, D. W. Adams, K. M. Brink, and M. Majji, “Observability informed partial-update Schmidt Kalman filter,” in IEEE International Conference on Information Fusion , 2021, pp. 1–8. [33] G. Williams, P. Drews, B. Goldfain et al. , “Aggressive driving with model predictive path integral control,” in IEEE International Confer-ence on Robotics and Automation , May 2016, pp. 1433–1440. [34] J. Carius, R. Ranftl, F. Farshidian, and M. Hutter, “Constrained stochastic optimal control with learned importance sampling: A path integral approach,” The International Journal of Robotics Research ,vol. 41, no. 2, pp. 189–209, 2022. [35] R. Skjetne, Ø. Smogeli, and T. I. Fossen, “Modeling, identification, and adaptive maneuvering of CyberShip II: A complete design with experiments,” IFAC Proceedings Volumes , vol. 37, no. 10, 2004.

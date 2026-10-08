@@ -1,0 +1,690 @@
+Title: Adaptive Risk-Certified Event-Triggered Replanning for Dynamic Navigation
+
+URL Source: https://arxiv.org/pdf/2610.09302v1
+
+Published Time: Thu, 08 Oct 2026 00:32:44 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Adaptive Risk-Certified Event-Triggered Replanning for Dynamic Navigation 
+
+Richie R. Suganda 
+
+Department of Electrical Engineering and Computer University of Houston Houston, TX 77004, USA 
+
+rrsugand@cougarnet.uh.edu 
+
+Bin Hu 
+
+Department of Engineering Technology University of Houston Houston, TX 77004, USA 
+
+bhu11@central.uh.edu 
+
+Abstract: Safe navigation in dynamic environments requires robots to plan un-der obstacle predictions whose errors are uncertain, non-stationary, and can in-duce rare but safety-critical failures. Existing control-barrier-function safety fil-ters can reject immediately unsafe controls, but they provide little guidance on when the current finite-horizon planning mode itself is becoming unsafe as predic-tion uncertainty evolves. We propose Conformal Event-Triggered Risk-Certified Replanning ( CERT-Replan ), a framework that uses calibrated barrier risk as an early-warning signal for replanning. CERT-Replan calibrates horizon-indexed obstacle-prediction residuals online and uses the resulting uncertainty radii to evaluate dynamic-obstacle safety margins. A one-step safety filter protects the next applied control, while a horizon-level risk monitor evaluates the upper-tail CVaR of predicted barrier-violation losses along the current MPC rollout. When this risk exceeds an allocated budget, CERT-Replan rejects the current planning mode and selects a lower-risk alternative, such as a different speed profile, corridor, or homotopy class, rather than repeatedly correcting the same nominal plan. In a non-stationary benchmark, CERT-Replan achieves an 83 .3% collision reduction relative to the safety-filter-only baseline and a 77 .8% reduction relative to simple replanning triggers, while reducing average safety-filter intervention by 32 .4% .With Trajectron++, CERT-Replan achieves 96% collision-free operation. Hardware experiments and onboard runtime profiling demonstrate computational feasibility. 
+
+Keywords: Mobile Robot Navigation, Event-Triggered Replanning, Conformal Prediction, Risk-Aware Safety, Dynamic Obstacle Avoidance 
+
+# 1 Introduction 
+
+Autonomous robots operating in crowds, warehouses, sidewalks, and mixed-traffic environments must make local planning decisions from imperfect predictions of nearby agents. A typical navigation stack estimates obstacle states from onboard sensing, predicts short-horizon obstacle motion, computes a local plan, and applies a safety filter before execution. Certifying this pipeline is challenging because obstacle-prediction errors are rarely stationary or uniform: they can grow under occlusion, close interaction, dense traffic, abrupt intent changes, and changes in sensing geometry. Modern multi-agent predictors capture rich interaction patterns, but their uncertainty can be multi-modal and can shift as the robot enters new sensing or interaction regimes [1, 2, 3, 4, 5, 6, 7, 8]. As a result, a nominal forecast may be accurate in benign scenes but unreliable in rare, safety-critical tail events. Control barrier functions (CBFs) provide a principled optimization-based mechanism for rejecting im-mediately unsafe controls [9]. For dynamic-obstacle navigation, however, the safety margin depends not only on the robot state but also on uncertain future obstacle states. Dynamic parabolic CBFs (DPCBFs) improve dynamic-obstacle avoidance by incorporating relative velocity in a line-of-sight frame, thereby reducing the conservatism of purely distance-based or collision-cone-like constraints 
+
+10th Conference on Robot Learning (CoRL 2026), Austin, Texas, USA. arXiv:2610.09302v1 [cs.RO] 7 Oct 2026 in dense scenes [10]. Robust, distributionally robust, and perception-aware CBFs further address model, sensing, and obstacle-state uncertainty [11, 12, 13, 14]. Yet these filters are fundamentally local in time: they protect the next executed input, but a nominal or one-step filtered control does not by itself indicate whether the current finite-horizon planning mode is becoming unsafe as prediction uncertainty evolves. Risk-aware safety filters partially address this issue by replacing pointwise safety constraints with constraints on the distribution of safety margins. Conditional value-at-risk (CVaR) barrier functions protect against low-probability, high-severity events by constraining the adverse tail of the safety-margin distribution [15, 16], and risk-adaptive CVaR methods tune the risk level online to balance conservativeness and feasibility [17]. These methods, however, still require uncertainty samples or error models that remain representative under distribution shift. Adaptive conformal inference (ACI) provides a complementary mechanism by recalibrating uncertainty online from recent prediction residuals without assuming a fixed parametric error model [18, 19]. Conformal planning has been used to construct calibrated prediction regions for dynamic environments [20], and recent work has extended conformal ideas to adaptive POMDP planning, recursively feasible MPC, and time-aware planning in dynamic scenes [21, 22]. In this paper, we use online conformal calibration as the data-driven adaptation mechanism that supplies horizon-indexed uncertainty radii to both immediate safety filtering and horizon-level plan evaluation. The key gap we address is temporal. A one-step safety filter can repeatedly modify unsafe controls, but repeated correction of the same nominal plan may still push the robot toward regions where future feasible controls are scarce or unavailable. Similarly, resolving the same MPC problem at every step does not answer the higher-level question of when the robot should change the local reference, speed profile, corridor, homotopy class, or risk allocation. Event-triggered replanning provides the appropriate abstraction: update the plan only when a task-relevant condition indicates that the current mode should no longer be trusted [23, 24, 25]. Our central idea is to use calibrated barrier risk as this condition. Rather than treating risk only as a constraint on the next input, CERT-Replan uses it as an early-warning signal for replacing the current local planning mode. This paper makes four contributions: 1. We introduce a horizon-indexed adaptive conformal calibration mechanism for dynamic-obstacle prediction errors, producing online position and velocity uncertainty radii that are shared by immediate safety filtering and horizon-level mode evaluation. 2. We formulate an ACI+Adaptive-CVaR-DPCBF safety filter that uses calibrated geometric tightening and lower-tail CVaR constraints to protect the next applied control under non-stationary prediction uncertainty, while adapting the CVaR tail mass to preserve feasibility. 3. We propose a finite-horizon CERT risk monitor that evaluates the current local planning mode through upper-tail CVaR of predicted barrier-violation losses, yielding a conditional risk certificate for the evaluated mode. 4. We integrate this certificate into an event-triggered MPC replanning layer that replaces the current mode when its allocated horizon-risk budget is exceeded, and validate the resulting framework in randomized simulations and hardware-in-the-loop experiments. 
+
+# 2 Related Work 
+
+Local planning and replanning. Classical reactive and local-planning methods include dynamic-window approaches, graph replanning, sampling-based motion planning, and trajectory optimiza-tion [26, 27, 28, 29, 30, 31]. These methods can react to dynamic scenes, but they typically require additional uncertainty handling to provide probabilistic safety under prediction errors. Risk-aware planning methods incorporate chance constraints, distributional robustness, coherent risk measures, or sampling-based risk estimates to account for uncertain obstacle motion [32, 33, 34]. Event-triggered and self-triggered control methods update communication or control actions only when needed to preserve system-level properties under resource or uncertainty constraints [23, 35, 36]. 2Event-triggered MPC and learned replanning policies reduce unnecessary replans and can improve navigation efficiency, but existing triggers are often based on tracking error, feasibility, map updates, or learned heuristics rather than calibrated tail risk [24, 25]. In contrast, our trigger is tied to a calibrated finite-horizon risk certificate for the current local planning mode. 
+
+Prediction uncertainty and conformal planning. Multi-agent trajectory prediction is often multi-modal due to latent goals and interactions [1, 2, 3, 4, 5, 6, 7]. Conformal prediction gives distribution-free finite-sample coverage under exchangeability [37, 38], while adaptive conformal inference updates the miscoverage level online to handle distribution shift [18]. In robot motion planning, conformal prediction has been used to construct prediction regions for dynamic obstacles [20], adaptive conformal prediction has been used for online planning among dynamic agents [19, 39], and recent work has extended conformal ideas to time-aware dynamic-environment planning and CBF safety certification [40, 41]. Our method differs by using calibrated residuals inside a risk-sensitive barrier filter and by using horizon-level tail risk as a replanning trigger. 
+
+Risk-aware CBFs. CBFs have become a standard tool for safety-critical control because they can be embedded in optimization-based controllers [9, 42]. CVaR-CBFs extend this idea to stochastic safety and protect against poor-tail outcomes [15]. Risk-adaptive CVaR barrier functions adjust the CVaR level online to avoid unnecessary conservativeness while preserving feasibility [17]. Recent safety-filter and predictive-control methods combine CBFs with differentiable optimization, sampling-based MPC, learned neural barriers, and conformal prediction for uncertainty-aware safety certification [43, 44, 45, 41]. DPCBFs improve dynamic-obstacle avoidance by shaping the safe set with both relative position and relative velocity [10]. Closely related MPC-CBF and predictive-CBF methods encode barrier conditions over a prediction horizon and provide feasibility or safety analyses under modeled dynamics and constraints [46, 47, 48]. Our framework is complementary: rather than proposing a new nominal DPCBF or MPC-CBF formulation, we use adaptive conformal calibration and CVaR barrier risk to decide when the current local planning mode should be replaced under non-stationary obstacle-prediction uncertainty. 
+
+# 3 Problem Formulation 
+
+This section formalizes the dynamic navigation problem considered in this work. A robot must navigate among multiple moving obstacles using finite-horizon obstacle forecasts whose error distributions are unknown, non-stationary, and not assumed to follow a fixed parametric model. The objective is to design an online navigation policy that maintains task progress while enforcing risk-aware safety and replanning before the current local plan becomes unsafe. 
+
+System and obstacle prediction. We consider a robot with discrete-time dynamics 
+
+xk+1 = F (xk, u k), xk ∈ X , uk ∈ U , (1) where xk is the robot state, uk is the control input, and U is the admissible input set. At time k,the robot observes a set of dynamic obstacles indexed by Ik. Obstacle j ∈ I k has measured state 
+
+ojk = [ po⊤ 
+
+> j,k
+
+, v o⊤ 
+
+> j,k
+
+]⊤ ∈ O , where poj,k , v oj,k ∈ R2 denote its measured position and velocity. The robot is provided with a finite-horizon obstacle predictor 
+
+bOjk = Π θ (ojk) = 
+
+
+
+ˆojk+1 |k, . . . , ˆojk+N |k
+
+
+
+, ˆojk+τ |k = [ˆ po⊤ 
+
+> j,k +τ|k
+
+, ˆvo⊤ 
+
+> j,k +τ|k
+
+]⊤. (2) The predictor may use additional information such as obstacle history, robot state, map context, or interaction features [3, 49, 50, 6]. The proposed framework only assumes access to finite-horizon obstacle forecasts. The distribution of the prediction error is unknown and may change over time due to occlusion, crowd density, sensing geometry, or changes in obstacle behavior. 
+
+Safety requirement. Safety with respect to obstacle j is encoded by a margin function hj : X ×O → 
+
+R, where hj (x, o j ) ≥ 0 means that robot state x is safe with respect to obstacle j. The multi-obstacle safe set at time k is 
+
+Ck = {x ∈ X : hj (x, o jk) ≥ 0, ∀j ∈ I k}. (3) 3Figure 1: CERT-Replan framework. The CERT layer monitors the horizon risk of the current local planning mode and triggers replanning when the mode is no longer risk-certified. The AAC-DPCBF filter enforces one-step tail-risk-aware safety under calibrated prediction uncertainty. A safe controller should keep the robot inside Ck despite uncertain future obstacle motion. If ojk+1 
+
+were known exactly, one-step safety could be enforced through a discrete-time barrier condition 
+
+hj (F (xk, u k), o jk+1 ) ≥ (1 − γ)hj (xk, o jk) with γ ∈ (0 , 1] . In the setting considered here, however, the future obstacle state is uncertain and its error distribution is not known in advance. 
+
+Problem 1. Given the robot dynamics (1) , obstacle observations and forecasts (2) , and safety set (3) ,design an online navigation policy for multiple dynamic obstacles with unknown and non-stationary prediction-error distributions. The policy should maintain task progress while enforcing risk-aware safety under uncertain obstacle motion and should avoid committing to local decisions whose predicted future safety risk is unacceptable. The proposed method addresses this problem without assuming a fixed parametric uncertainty model for the dynamic environment. 
+
+# 4 Adaptive Risk-Certified Event-Triggered Replanning 
+
+Figure 1 illustrates the proposed framework. At each time step, the robot maintains a local planning mode πk, specifying the reference, speed profile, corridor or homotopy class, and risk allocation used by MPC. We refer to the one-step safety filter as ACI+Adaptive CVaR-DPCBF (AAC-DPCBF), and the full horizon-risk event-triggered replanning framework as CERT-Replan. CERT-Replan evaluates the current mode at two levels: the AAC-DPCBF filter protects the next applied input, while the horizon-risk monitor determines whether the mode should be replaced. 
+
+Local mode and rollout. Let Πk be the set of candidate modes. Given π ∈ Πk, MPC returns a rollout xπk+τ |k, τ = 1 , . . . , N , and nominal first input ¯uπk . We write ¯uk = ¯ uπk 
+
+> k
+
+for the current mode. Let Fk collect the information available at time k, including the robot state, obstacle tracks, forecasts, residual history, calibrated radii, and current mode. The random future state of obstacle j conditioned on Fk is denoted by Ojk+τ .
+
+Adaptive conformal calibration. For a τ -step forecast made at time k − τ , the realized position and velocity residuals are 
+
+Epj,k,τ = ∥poj,k − ˆpoj,k |k−τ ∥2, Evj,k,τ = ∥voj,k − ˆvoj,k |k−τ ∥2. (4) Residuals are computed only for track-matched obstacles. Let Mk,τ ⊆ I k be the set of valid matches, and let Wqk,τ = {Eqj,s,τ : k − w ≤ s < k, j ∈ M s,τ } be the sliding residual window for 
+
+q ∈ { p, v }. With adaptive miscoverage αqk,τ , the conformal radius is Cqk,τ = Quantile 1−αqk,τ (Wqk,τ ).4After observing new residuals, define mqk,τ = |M k,τ |−1 P 
+
+> j∈M k,τ
+
+1{Eqj,k,τ > C qk,τ } and update 
+
+αqk+1 ,τ = proj [αmin ,α max ](αqk,τ +ηα(α⋆ −mqk,τ )) . Thus, the radii expand under repeated miscoverage and contract when forecasts are over-covered. 
+
+Calibrated dynamic-obstacle barrier. The nominal margin hj (x, o j ) is instantiated as a DPCBF depending on robot–obstacle relative distance and velocity. The calibrated radii define a tightened margin ¯hj,k,τ (x, o j ) = Tj (x, o j , C pk,τ , C vk,τ ), with ¯hj,k,τ (x, o j ) ≤ hj (x, o j ). In our DPCBF imple-mentation, Cpk,τ enlarges the effective safety radius and Cvk,τ makes relative velocity less favorable. The explicit line-of-sight construction is given in the appendix. The same tightened margin is used at 
+
+τ = 1 for safety filtering and over τ = 1 , . . . , N for mode certification. 
+
+One-step AAC-DPCBF filter. For candidate input u, define the random next-step margin Zjk(u) = ¯hj,k, 1(F (xk, u ), O jk+1 ). Since larger margin is safer, the filter constrains its lower tail: 
+
+uk = arg min  
+
+> u∈U ,δ k≥0
+
+12 ∥u − ¯uk∥22 + cδ δ2
+
+> k
+
+s.t. LCVaR βk (Zjk(u) | F k) ≥ (1 − γ)¯hj,k, 1(xk, o jk) − δk, ∀j ∈ I k.
+
+(5) The slack δk is heavily penalized, and δk > 0 indicates near one-step filter infeasibility. The tail mass is chosen as the most conservative feasible value, βk = min {β ∈ [βmin , β max ] :
+
+(5) is feasible with δk = 0 }. If no such β exists, the least-violating filtered input is used and replanning is triggered. The lower-tail and upper-tail CVaR operators are defined in Appendix A, and the empirical sample-based program corresponding to (5) is given in Appendix C. 
+
+Horizon-risk monitor. The safety filter certifies the next input but not whether the current mode should be continued. Let [a]+ ≜ max {a, 0} denote the positive part. For candidate mode π, obstacle 
+
+i, and horizon step τ , define the future violation loss Y ik+τ |k(π) =  − ¯hi,k,τ (xπk+τ |k, O ik+τ )
+
+> +
+
+. For violation scale ηi,τ > 0, define 
+
+ri,τ,k (π) = min 
+
+(
+
+1, UCVaR βk (Y ik+τ |k(π) | F k)
+
+ηi,τ 
+
+)
+
+, Rk(π) = 
+
+> N
+
+X 
+
+> τ=1
+
+X
+
+> i∈I k
+
+ri,τ,k (π). (6) The same βk couples filtering and monitoring. 
+
+Proposition 1 (Conditional horizon-risk certificate) . Fix the information Fk and a candidate planning mode π. For each obstacle-time pair (i, τ ), let ηi,τ > 0 and define 
+
+Aηi,τ (π) = 
+
+n¯hi,k,τ (xπk+τ |k, O ik+τ ) ≤ − ηi,τ 
+
+o
+
+.
+
+If ri,τ,k (π) and Rk(π) are defined by (6) , then 
+
+P
+
+> N
+
+[ 
+
+> τ=1
+
+[
+
+> i∈I k
+
+Aηi,τ (π) Fk
+
+!
+
+≤ R k(π). (7) The proof follows from Markov’s inequality, the fact that upper-tail CVaR upper-bounds the expecta-tion of a nonnegative loss, and the union bound (see Appendix D for more details). Proposition 1 is a conditional certificate for a fixed candidate mode, not a distribution-free closed-loop safety guarantee. 
+
+CERT trigger and mode update. Let εk be the total horizon-risk budget and bi,τ,k local budgets with P 
+
+> τ,i
+
+bi,τ,k ≤ εk. The risk trigger is activated when 
+
+Ek = 1 {R k(πk) > ε k or ∃i, τ : ri,τ,k (πk) > b i,τ,k or δk > 0} . (8) To enforce a positive inter-event interval, let km denote the most recent replanning step and define 
+
+nd = max {1, ⌈Td/∆te⌉} for dwell time Td > 0 and event-evaluation period ∆te. Replanning is governed by Edk = 1{E k = 1 , k − km ≥ nd}, so replans satisfy tm+1 − tm ≥ nd∆te > 0.If Edk = 0 , the filtered input is applied and πk is retained. If Edk = 1 , the planner evaluates candidate modes and selects 
+
+πk+1 ∈ arg min 
+
+> π∈Πk
+
+Jk(π) s.t. Rk(π) ≤ εk, ri,τ,k (π) ≤ bi,τ,k ∀i, τ. 
+
+5Algorithm 1 Adaptive risk-certified event-triggered replanning 
+
+Require: current mode πk, residual windows {W qk,τ }, budgets εk, b i,τ,k , last replanning step km,dwell nd 
+
+> 1:
+
+Observe xk and {ojk}j∈I k ; forecast obstacle motion  
+
+> 2:
+
+Update conformal radii Cpk,τ , C vk,τ and tightened margins ¯hj,k,τ  
+
+> 3:
+
+Solve MPC under πk; solve (5) and compute (6)  
+
+> 4:
+
+Compute Ek and Edk 
+
+> 5:
+
+if Edk = 1 then  
+
+> 6:
+
+Select a lower-risk mode πk+1 and re-solve MPC/filter  
+
+> 7:
+
+km ← k 
+
+> 8:
+
+end if  
+
+> 9:
+
+Apply the filtered control uk
+
+Figure 2: Simulation trajectories. (a) Crowded dynamic environment with stationary Gaussian uncertainty. Nominal DPCBF and TEB collide, while AAC-DPCBF and CERT-Replan remain collision-free. Replanning gives modest gains because alternatives have similar risk. (b) Nonstationary corridor with spatially varying uncertainty. The inset shows prediction error shifting from Gaussian to bounded heavy-tailed uncertainty, prompting CERT-Replan to trigger a lower-risk mode change. If no candidate is risk-feasible, the least-risk fallback arg min π∈Πk Rk(π) is selected. MPC and the safety filter are then re-solved under the updated mode before execution. The method treats the local mode as the object being certified: lower-tail risk checks whether the next control from that mode can be made safe, while upper-tail horizon risk determines whether the mode should continue to be trusted. 6Table 1: Crowded dynamic-environment results over 100 randomized trials with 30 moving obstacles and unknown obstacle uncertainties. The proposed CERT-Replan achieves the highest success rate and lowest collision rate.                                   
+
+> Method Success( %)Collision( %)Path length( m)∥u−¯uk∥2Replans DPCBF [10] 19 81 47.6 ±0.70.092 ±0.057 -TEB [29] 85 15 47.3 ±0.4--ICP [51] 63 37 48.2 ±0.8--AAC-DPCBF (Ours) 96 451.1 ±3.20.237 ±0.101 -
+> CERT-Replan (Ours) 97 351.9 ±3.20.156 ±0.152 35 ±3.9
+
+# 5 Simulation and Experimental Results 
+
+Figure 2 illustrates the comparison of CERT-Replan in two simulated scenarios, we additionally evaluate the framework with learned multi-modal prediction, and Figure 3 shows the hardware experiment. The primary simulations use 100 randomized trials per scenario in a 16 × 50 workspace with moving obstacles whose positions and velocities are subject to uncertainty. The hardware experiment uses 10 trials, with dynamic obstacles injected virtually for repeatability. A trial is successful if the robot reaches the goal without violating the safety radius. Otherwise, the trial is counted as a failure due to collision or timeout. Collision indicates a robot-obstacle safety violation, and timeout indicates that the robot exceeds the episode length of 60 s . When success and collision rates do not sum to 100% , the remaining trials are timeouts. We report path length over successful trials and use ∥uk − ¯uk∥2 to measure average safety-filter intervention, where ¯uk is the nominal MPC input and uk is the filtered input. Additional implementation details, including the vehicle model, obstacle predictor, residual sampling, candidate mode generation, and parameter settings, are provided in Appendix F. Hardware implementation details and experiment-specific parameters are described in Appendix G. 
+
+Crowded Dynamic Environment. The dense-crowd environment contains 30 moving obstacles and tests persistent interaction under prediction noise. Table 1 shows that nominal DPCBF fails frequently, with 19% success and 81% collision, while TEB improves success to 85% but still collides in 15% 
+
+of trials. AAC-DPCBF reaches 96% success and 4% collision, showing that conformal uncertainty calibration and adaptive tail-risk filtering substantially improve the one-step safety filter. The ablation in Table 3 of Appendix E further shows that these components are complementary: ACI+DPCBF reduces collision from 81% to 20% , Adaptive-CVaR-DPCBF improves success to 76% , and their combination gives the strongest safety-filter-only result. CERT-Replan achieves the best overall performance, with 97% success and 3% collision, while reducing average safety-filter intervention by 34 .2% . The gain in success rates over AAC-DPCBF is modest because this scene mainly stresses local obstacle avoidance rather than strategic mode switching; Fig. 2(a) shows that nearby alternatives often have similar risk. 
+
+Non-Stationary Distribution Shift. The nonstationary corridor contains 12 dynamic obstacles and is designed to isolate the effect of time-varying prediction error on safe navigation. As the robot advances, the noise model changes from a tight Gaussian distribution (σ = 0 .05) to a bounded Gaussian–Laplace mixture with peak tail probability 0.15 , Laplace scale 0.25 , and clipping at 
+
+±0.75 m . Table 2 shows that nominal DPCBF fails under this shift, with 3% success and 97% 
+
+collision. TEB improves success to 66% , but still collides in 34% of trials. AAC-DPCBF reaches 
+
+79% success and 12% collision, showing that conformal calibration and adaptive CVaR improve robustness under shifted prediction errors. The ablation in Table 3 of Appendix E clarifies the role of each component. Adaptive-CVaR-DPCBF without conformal calibration remains close to nominal DPCBF, with only 4% success under the nonstationary shift, while ACI+DPCBF recovers 58% 
+
+success by adapting the uncertainty radii online. Combining both components gives the strongest safety-filter-only baseline, confirming that calibrated uncertainty scaling and adaptive tail-risk filtering are complementary. However, AAC-DPCBF remains a one-step safety filter and can still fail when the current local plan enters regions where uncertainty inflation reduces the feasible control set. 7Table 2: Nonstationary distribution-shift results over 100 trials with 12 moving obstacles. Trigger baselines use paired obstacle realizations and random seeds. The prediction-error distribution changes from Gaussian to bounded heavy-tailed uncertainty.                                                     
+
+> Method Success( %)Collision( %)Path length( m)∥u−¯uk∥2Replans DPCBF [10] 397 46.0 ±0.10.062 ±0.045 -TEB [29] 66 34 46.2 ±0.4--ICP [51] 80 20 47.0 ±0.9--AAC-DPCBF (Ours) 79 12 55.7 ±6.10.327 ±0.121 -Slack-Replan 83 954.1 ±7.00.234 ±0.066 14 .2±5.2
+> Periodic-Replan 81 954.8 ±5.10.298 ±0.078 38 .5±8.9
+> CERT-Replan (Ours) 86 253.4 ±4.10.221 ±0.055 39.1 ±8.4
+
+To isolate the effect of the replanning criterion, we additionally compare CERT-Replan against Slack-Replan and a rate-matched Periodic-Replan. All three replanning methods use the same MPC planner, AAC-DPCBF filter, candidate modes, obstacle realizations, and paired random seeds, and only the trigger differs. CERT-Replan achieves 86% success and 98% collision-free operation (95% Wilson CI: [93 .0, 99 .4] ), outperforming both Slack-Replan and Periodic-Replan. These gains are significant under paired McNemar tests ( p ≤ 0.039 ). Periodic-Replan and CERT-Replan have similar replanning frequencies ( 38 .5 vs. 39 .1), indicating that the gain is associated with trigger timing rather than more frequent replanning. CERT-Replan also outperforms the long-horizon conformal-planning baseline ICP, improving success from 80% to 86% and reducing collision from 20% to 2% . As shown in Fig. 2(b), the risk-certified trigger activates in the transition and heavy-tailed regions, allowing the planner to switch to a lower-risk candidate mode before one-step filtering becomes insufficient. This further demonstrates the benefit of CERT-Replan: when the current local plan accumulates high predicted horizon risk, the framework can switch to a lower-risk candidate mode before one-step filtering becomes insufficient. Additional sensitivity analyses for the prediction horizon and empirical CVaR sample count are provided in Appendix H. 
+
+Learned Multi-Modal Prediction. To evaluate CERT-Replan beyond the constant-velocity predictor, we instantiate the same framework with the official Trajectron++ multi-modal predictor [3]. All 
+
+K = 20 weighted prediction modes are used in both AAC-DPCBF filtering and CERT horizon-risk evaluation. No other component of the safety or replanning framework is changed. Over 100 nonstationary trials, CERT-Replan achieves 96% collision-free operation and reduces collision incidence by 86.2% relative to nominal DPCBF and by 91.3% relative to TEB. These results demonstrate that CERT-Replan operates directly on learned multi-modal prediction samples rather than depending on the constant-velocity model used to isolate the risk-calibration mechanism in the primary experiments. 
+
+Experiment Results. We evaluate CERT-Replan on a Husarion ROSbot 2 Pro with a Jetson Orin Nano. As shown in Fig. 3, nominal DPCBF collides in all trials, while AAC-DPCBF improves the success rate to 60% with a 20% collision rate but produces the longest successful-run path. CERT-Replan performs best, achieving 90% success and 10% collision while reducing successful-run path length relative to AAC-DPCBF. The trajectory snapshots and closest-obstacle distance plot show that CERT-Replan changes its local plan near the high-risk region and maintains positive clearance after the critical interaction, suggesting that the horizon-risk trigger reduces reliance on conservative filter-only corrections by shifting part of the safety response to the planner. Additional representative real-robot snapshots are provided in Fig. 4 in Appendix G, and extended videos are included in the supplementary material. 
+
+Onboard Computation. We separately profile the complete navigation stack on an onboard Clearpath Jackal computer with a Ryzen 9 8945HX and RTX 4000 Ada. AAC-DPCBF requires 38 .6 ± 9.5 ms ,CERT monitoring 38 .8 ± 1.9 ms , and triggered replanning 262 .0 ± 11 .3 ms . Across 1000 ordinary and 100 triggered cycles, no measured cycle misses the 10 Hz safety-filter or 3 Hz planning deadline; detailed timing statistics are given in Appendix G. 8Figure 3: Experiment on the Husarion ROSbot 2 Pro over 10 trials per method. The robot executes the controller onboard, while dynamic obstacles are virtually injected for repeatability. CERT-Replan achieves the highest success rate and shorter successful-run path length than AAC-DPCBF. 
+
+# 6 Limitations 
+
+The finite-horizon risk monitor is a conservative diagnostic based on Markov’s inequality, upper-tail CVaR, and a union bound. It certifies the evaluated planning mode, not closed-loop conformal safety. A distribution-free closed-loop guarantee would require additional assumptions on prediction errors, sampling, and replanning. The primary experiments use a constant-velocity predictor to isolate the effect of conformal calibration and risk-certified replanning, while Sec. 5 additionally evaluates the framework with learned multi-modal prediction. In the current simulations, obstacles avoid one another but do not react to the robot. Therefore, mode changes do not alter the residual-generating obstacle policy. Robot-responsive interactions may introduce additional prediction shift after replanning and are not covered by the present conditional certificate. Future work will evaluate standardized crowd-navigation benchmarks and experiments with physical moving agents. 
+
+# 7 Conclusion 
+
+We presented CERT-Replan, an event-triggered replanning framework that treats the local planning mode, rather than only the next control input, as the object to be certified under non-stationary obstacle-prediction errors. The central idea is to use calibrated barrier-risk information not only for immediate safety filtering, but also as an early-warning signal for when the current finite-horizon mode should no longer be trusted. By monitoring tail risk along the predicted rollout, CERT-Replan can replace a high-risk mode with a lower-risk alternative before safety filtering becomes overly corrective or infeasible. This shifts dynamic-obstacle navigation from purely reactive control correction toward risk-aware mode management. Simulations and onboard hardware experiments show that this design improves robustness under distribution shift and reduces collisions relative to nominal, safety-filter-only, and simple-trigger baselines. 
+
+Acknowledgments 
+
+This work was supported in part by NASA under Grant 80NSSC23M0219, by an Early Career Faculty grant from NASA’s Space Technology Research Grants Program (Grant 80NSSC26K0696), and by the NVIDIA Academic Grant Program. 9References 
+
+[1] A. Alahi, K. Goel, V. Ramanathan, A. Robicquet, L. Fei-Fei, and S. Savarese. Social lstm: Human trajectory prediction in crowded spaces. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 961–971, 2016. [2] A. Gupta, J. Johnson, L. Fei-Fei, S. Savarese, and A. Alahi. Social gan: Socially acceptable trajectories with generative adversarial networks. In Proceedings of the IEEE conference on computer vision and pattern recognition , pages 2255–2264, 2018. [3] T. Salzmann, B. Ivanovic, P. Chakravarty, and M. Pavone. Trajectron++: Dynamically-feasible trajectory forecasting with heterogeneous data. In European conference on computer vision ,pages 683–700. Springer, 2020. [4] J. Ngiam, V. Vasudevan, B. Caine, Z. Zhang, H.-T. L. Chiang, J. Ling, R. Roelofs, A. Bewley, C. Liu, A. Venugopal, et al. Scene transformer: A unified architecture for predicting future trajectories of multiple agents. In International Conference on Learning Representations , 2022. URL https://openreview.net/forum?id=Wm3EA5OlHsG .[5] S. Shi, L. Jiang, D. Dai, and B. Schiele. Motion transformer with global intention localization and local movement refinement. Advances in Neural Information Processing Systems , 35: 6531–6543, 2022. [6] Z. Zhou, J. Wang, Y.-H. Li, and Y.-K. Huang. Query-centric trajectory prediction. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 17863–17873, 2023. [7] J. Cheng, X. Mei, and M. Liu. Forecast-mae: Self-supervised pre-training for motion forecasting with masked autoencoders. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 8679–8689, 2023. [8] R. Tumu, M. Cleaveland, R. Mangharam, G. Pappas, and L. Lindemann. Multi-modal conformal prediction regions by optimizing convex shape templates. In 6th Annual Learning for Dynamics & Control Conference , pages 1343–1356. PMLR, 2024. [9] A. D. Ames, S. Coogan, M. Egerstedt, G. Notomista, K. Sreenath, and P. Tabuada. Control barrier functions: Theory and applications. In 2019 18th European control conference (ECC) ,pages 3420–3431. Ieee, 2019. [10] H. K. Park, T. Kim, and D. Panagou. Beyond collision cones: Dynamic obstacle avoidance for nonholonomic robots via dynamic parabolic control barrier functions. arXiv preprint arXiv:2510.01402 , 2025. [11] E. Das ¸ and J. W. Burdick. Robust control barrier functions using uncertainty estimation with application to mobile robots. IEEE Transactions on Automatic Control , 70(7):4766–4773, 2025. [12] K. Long, Y. Yi, Z. Dai, S. Herbert, J. Cort´ es, and N. Atanasov. Sensor-based distributionally robust control for safe robot navigation in dynamic environments. The International Journal of Robotics Research , 45(2):328–351, 2026. [13] Y. Zhang, G. Tian, L. Wen, X. Yao, L. Zhang, Z. Bing, W. He, and A. Knoll. Online efficient safety-critical control for mobile robots in unknown dynamic multi-obstacle environments. In 
+
+2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 12370–12377. IEEE, 2024. [14] R. R. Suganda, T. Tran, M. Pan, L. Fan, Q. Lin, and B. Hu. Distributed perception aware safe leader follower system via control barrier methods. In 2025 IEEE International Conference on Robotics and Automation (ICRA) , pages 7794–7800. IEEE, 2025. 10 [15] M. Ahmadi, X. Xiong, and A. D. Ames. Risk-averse control via cvar barrier functions: Application to bipedal robot locomotion. IEEE Control Systems Letters , 6:878–883, 2021. [16] P. Akella, A. Dixit, M. Ahmadi, L. Lindemann, M. P. Chapman, G. J. Pappas, A. D. Ames, and J. W. Burdick. Risk-aware robotics: Tail risk measures in planning, control, and verification [focus on education]. IEEE Control Systems , 45(4):46–78, 2025. [17] X. Wang, T. Kim, B. Hoxha, G. Fainekos, and D. Panagou. Safe navigation in uncertain crowded environments using risk adaptive cvar barrier functions. In 2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 7669–7676. IEEE, 2025. [18] I. Gibbs and E. Candes. Adaptive conformal inference under distribution shift. Advances in Neural Information Processing Systems , 34:1660–1672, 2021. [19] A. Dixit, L. Lindemann, S. X. Wei, M. Cleaveland, G. J. Pappas, and J. W. Burdick. Adaptive conformal prediction for motion planning among dynamic agents. In Proceedings of the 5th Annual Learning for Dynamics and Control Conference , pages 300–314, 2023. [20] L. Lindemann, M. Cleaveland, G. Shim, and G. J. Pappas. Safe planning in dynamic environ-ments using conformal prediction. IEEE Robotics and Automation Letters , 8(8):5116–5123, 2023. [21] S. Sheng, P. Yu, D. Parker, M. Kwiatkowska, and L. Feng. Safe pomdp online planning among dynamic agents via adaptive conformal prediction. IEEE Robotics and Automation Letters , 9 (11):9946–9953, 2024. [22] C. Stamouli, L. Lindemann, and G. Pappas. Recursively feasible shrinking-horizon mpc in dynamic environments with conformal prediction guarantees. In 6th Annual Learning for Dynamics & Control Conference , pages 1330–1342. PMLR, 2024. [23] P. Tabuada. Event-triggered real-time scheduling of stabilizing control tasks. IEEE Transactions on Automatic Control , 52(9):1680–1685, 2007. [24] A. Eqtami, D. V. Dimarogonas, and K. J. Kyriakopoulos. Event-triggered strategies for decen-tralized model predictive controllers. Automatica , 49(1):199–208, 2013. [25] K. Honda, R. Yonetani, M. Nishimura, and T. Kozuno. When to replan? an adaptive replan-ning strategy for autonomous navigation using deep reinforcement learning. In 2024 IEEE International Conference on Robotics and Automation (ICRA) , pages 6650–6656. IEEE, 2024. [26] D. Fox, W. Burgard, and S. Thrun. The dynamic window approach to collision avoidance. IEEE Robotics and Automation Magazine , 4(1):23–33, 1997. [27] A. Stentz. The focussed d* algorithm for real-time replanning. In Proceedings of the 14th International Joint Conference on Artificial Intelligence , pages 1652–1659, 1995. [28] S. Karaman and E. Frazzoli. Sampling-based algorithms for optimal motion planning. The international journal of robotics research , 30(7):846–894, 2011. [29] C. R¨ osmann, F. Hoffmann, and T. Bertram. Integrated online trajectory planning and optimiza-tion in distinctive topologies. Robotics and Autonomous Systems , 88:142–153, 2017. [30] N. Ratliff, M. Zucker, J. A. Bagnell, and S. Srinivasa. Chomp: Gradient optimization tech-niques for efficient motion planning. In 2009 IEEE International Conference on Robotics and Automation , pages 489–494. IEEE, 2009. [31] M. Kalakrishnan, S. Chitta, E. Theodorou, P. Pastor, and S. Schaal. Stomp: Stochastic trajectory optimization for motion planning. In 2011 IEEE International Conference on Robotics and Automation . IEEE, 2011. 11 [32] V. Renganathan, S. Safaoui, A. Kothari, B. Gravell, I. Shames, and T. Summers. Risk bounded nonlinear robot motion planning with integrated perception & control. Artificial Intelligence ,314:103812, 2023. [33] A. Dixit, M. Ahmadi, and J. W. Burdick. Risk-averse receding horizon motion planning for obstacle avoidance using coherent risk measures. Artificial Intelligence , 325:104018, 2023. [34] E. Trevisan, K. A. Mustafa, G. Notten, X. Wang, and J. Alonso-Mora. Dynamic risk-aware mppi for mobile robots in crowds via efficient monte carlo approximations. In 2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 313–320. IEEE, 2025. [35] B. Hu and M. D. Lemmon. Event triggering in vehicular networked systems with limited bandwidth and deep fading. In 53rd IEEE Conference on Decision and Control , pages 3542– 3547. IEEE, 2014. [36] B. Hu. Stochastic stability analysis for vehicular networked systems with state-dependent bursty fading channels: A self-triggered approach. Automatica , 123:109352, 2021. [37] G. Shafer and V. Vovk. A tutorial on conformal prediction. Journal of machine learning research , 9(3), 2008. [38] A. N. Angelopoulos and S. Bates. Conformal prediction: A gentle introduction. Foundations and Trends in Machine Learning , 16(4):494–591, 2023. [39] R. R. Suganda and B. Hu. Formation-aware adaptive conformalized perception for safe leader-follower multi-robot systems. arXiv preprint arXiv:2603.08958 , 2026. [40] K. Liang, L. Luo, Y. Wang, M. Cai, and C. I. Vasile. Time-aware motion planning in dynamic environments with conformal prediction. arXiv preprint arXiv:2511.18170 , 2025. [41] J. Zhang, B. Hoxha, G. Fainekos, and D. Panagou. Conformal prediction in the loop: Risk-aware control barrier functions for stochastic systems with data-driven state estimators. IEEE Control Systems Letters , 2025. [42] K. Garg, J. Usevitch, J. Breeden, M. Black, D. Agrawal, H. Parwana, and D. Panagou. Advances in the theory of control barrier functions: Addressing practical challenges in safe control synthesis for autonomous and robotic systems. Annual Reviews in Control , 57:100945, 2024. [43] B. Dai, R. Khorrambakht, P. Krishnamurthy, V. Gonc ¸alves, A. Tzes, and F. Khorrami. Safe nav-igation and obstacle avoidance using differentiable optimization based control barrier functions. 
+
+IEEE Robotics and Automation Letters , 8(9):5376–5383, 2023. [44] J. Yin, C. Dawson, C. Fan, and P. Tsiotras. Shield model predictive path integral: A com-putationally efficient robust mpc method using control barrier functions. IEEE Robotics and Automation Letters , 8(11):7106–7113, 2023. [45] O. So, Z. Serlin, M. Mann, J. Gonzales, K. Rutledge, N. Roy, and C. Fan. How to train your neural control barrier function: Learning safety filters for complex input-constrained systems. In 
+
+2024 IEEE International Conference on Robotics and Automation (ICRA) , pages 11532–11539. IEEE, 2024. [46] J. Zeng, B. Zhang, and K. Sreenath. Safety-critical model predictive control with discrete-time control barrier function. In 2021 American control conference (ACC) , pages 3882–3889. IEEE, 2021. [47] K. P. Wabersich and M. N. Zeilinger. Predictive control barrier functions: Enhanced safety mechanisms for learning-based control. IEEE Transactions on Automatic Control , 68(5): 2638–2651, 2022. 12 [48] J. Breeden and D. Panagou. Predictive control barrier functions for online safety critical control. In 2022 IEEE 61st Conference on Decision and Control (CDC) , pages 924–931. IEEE, 2022. [49] A. H. Lang, S. Vora, H. Caesar, L. Zhou, J. Yang, and O. Beijbom. Pointpillars: Fast encoders for object detection from point clouds. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 12697–12705, 2019. [50] N. Nayakanti, R. Al-Rfou, A. Zhou, K. Goel, K. S. Refaat, and B. Sapp. Wayformer: Motion forecasting via simple & efficient attention networks. In 2023 IEEE International Conference on Robotics and Automation (ICRA) , pages 2980–2987. IEEE, 2023. [51] Z. Huang, T. Ji, H. Zhang, F. C. Pouria, K. Driggs-Campbell, and R. Dong. Interaction-aware conformal prediction for crowd navigation. In International Workshop on the Algorithmic Foundations of Robotics , pages 377–395. Springer, 2024. [52] S. Sarykalin, G. Serraino, and S. Uryasev. Value-at-risk vs. conditional value-at-risk in risk management and optimization. In State-of-the-art decision-making tools in the information-intensive age , pages 270–294. Informs, 2008. 
+
+# A CVaR Operators and Empirical Estimates 
+
+The main text uses lower-tail CVaR for safety margins and upper-tail CVaR for nonnegative violation losses. For a safety-margin random variable Z, larger values are safer. Its lower-tail CVaR with tail mass β ∈ (0 , 1] is 
+
+LCVaR β (Z | F k) = sup 
+
+> ξ∈R
+
+
+
+ξ − 1
+
+β E[ξ − Z]+ | F k
+
+
+
+. (9) Smaller β evaluates a smaller and more adverse lower tail, and is therefore more conservative. For a nonnegative loss Y ≥ 0, larger values are less safe. Its upper-tail CVaR is 
+
+UCVaR β (Y | F k) = inf 
+
+> ζ∈R
+
+
+
+ζ + 1
+
+β E[Y − ζ]+ | F k
+
+
+
+. (10) For any nonnegative Y ,
+
+E[Y | F k] ≤ UCVaR β (Y | F k). (11) This property is used in the proof of Proposition 1. Given samples {Zℓ}Lℓ=1 of a safety margin, the empirical lower-tail CVaR used by the safety filter is 
+
+\LCVaR β (Z) = max 
+
+> ξ∈R
+
+(
+
+ξ − 1
+
+βL 
+
+> L
+
+X
+
+> ℓ=1
+
+[ξ − Zℓ]+
+
+)
+
+. (12) Given samples {Y ℓ}Lℓ=1 of a nonnegative loss, the empirical upper-tail CVaR used by the horizon-risk monitor is 
+
+\UCVaR β (Y ) = min 
+
+> ζ∈R
+
+(
+
+ζ + 1
+
+βL 
+
+> L
+
+X
+
+> ℓ=1
+
+[Y ℓ − ζ]+
+
+)
+
+. (13) 
+
+# B DPCBF Geometry and Conformal Tightening 
+
+This appendix gives the explicit dynamic parabolic CBF used to instantiate the nominal margin hj
+
+and the tightening operator Tj in Section 4. Let pr (x) and vr (x) denote the robot position and velocity. For obstacle j, define the relative position, velocity and signed clearance 
+
+rj (x, o j ) = poj −pr (x), vrel ,j (x, o j ) = voj −vr (x), dj (x, o j ) = ∥rj (x, o j )∥2 −rsafe . (14) 13 where rsafe is the required safety radius. The line-of-sight frame is 
+
+e∥,j = rj
+
+∥rj ∥2 + ϵ , e⊥,j = Rπ/ 2e∥,j , Rπ/ 2 =
+
+0 −11 0
+
+
+
+, (15) where ϵ > 0 avoids division by zero. The relative velocity components are 
+
+v∥,j = e⊤∥,j vrel ,j , v⊥,j = e⊤⊥,j vrel ,j . (16) The nominal DPCBF margin is 
+
+hj (x, o j ) = v∥,j + λj (dj , v rel ,j )v2 
+
+> ⊥,j
+
++ μj (dj ), (17) where the curvature and clearance terms are parameterized as 
+
+λj (dj , v rel ,j ) = kλ
+
+dj
+
+∥vrel ,j ∥2 + ϵv
+
+, μj (dj ) = kμdj . (18) Here ϵv > 0 prevents division by zero, kλ controls the parabolic-boundary curvature, and kμ controls the clearance-dependent margin. The calibrated radii Cpk,τ and Cvk,τ tighten the geometric quantities entering (17). We use 
+
+¯dj,k,τ = ∥rj ∥2 − rsafe − Cpk,τ , ¯v∥,j,k,τ = v∥,j − Cvk,τ , (19) and 
+
+¯v⊥,j,k,τ = sgn( v⊥,j ) max {| v⊥,j | − Cvk,τ , 0}. (20) The tightened DPCBF is 
+
+¯hj,k,τ (x, o j ) = ¯ v∥,j,k,τ + λj ( ¯dj,k,τ , v rel ,j )¯ v2 
+
+> ⊥,j,k,τ
+
++ μj ( ¯dj,k,τ ). (21) This construction evaluates the same robot–obstacle state under a smaller effective clearance and less favorable relative velocity. If a different DPCBF sign convention is used, the tightening should be applied in the direction that decreases the safety margin. 
+
+# C Empirical AAC-DPCBF Safety Filter 
+
+This appendix gives the sample-based program corresponding to (5). For each obstacle j, draw L
+
+one-step obstacle samples oj,ℓ k+1 |k from the forecast and calibrated residual history. For a candidate input u, define 
+
+Zj,ℓ k+1 (u) = ¯hj,k, 1
+
+
+
+F (xk, u ), o j,ℓ k+1 |k
+
+
+
+, ℓ = 1 , . . . , L. (22) The empirical filter solves 
+
+min   
+
+> u,δ k,{ξj,s jℓ }
+
+12 ∥u − ¯uk∥22 + cδ δ2
+
+> k
+
+s.t. u ∈ U , δk ≥ 0,sjℓ ≥ 0, sjℓ ≥ ξj − Zj,ℓ k+1 (u), ∀j, ℓ, ξj − 1
+
+βkL
+
+> L
+
+X
+
+> ℓ=1
+
+sjℓ ≥ (1 − γ)¯hj,k, 1(xk, o jk) − δk, ∀j ∈ I k.
+
+(23) The variables ξj and sjℓ implement the empirical lower-tail CVaR constraint. Specifically, the lower-tail empirical CVaR contains the hinge term ξj − Zj,ℓ k+1 (u)
+
+> +
+
+. Introducing sjℓ with sjℓ ≥
+
+ξj − Zj,ℓ k+1 (u) and sjℓ ≥ 0 gives the standard reformulation of this hinge term, which is commonly used to express CVaR constraints in optimization programs [52]. If (23) is nonlinear in u, we solve it by sequential convexification around the nominal MPC command or rollout. The adaptive tail mass βk is selected on a finite grid in [βmin , β max ]. The filter starts from the most conservative candidate and increases β only as needed to recover feasibility with δk = 0 . If no grid value is feasible without slack, the least-violating solution is returned and the CERT trigger is activated. 14 Table 3: Safety-filter ablation without risk-certified replanning. All methods use the same robot dynamics, MPC horizon, DPCBF parameters, and obstacle scenarios as the main experiments. 
+
+Environment Method Success(%) Collision(%) Path length(m) ∥u − ¯uk ∥2
+
+Dense crowd DPCBF [10] 19 81 47.6 ±0.7 0.092 ±0.057 
+
+ACI+DPCBF 71 20 49.3 ±2.2 0.474 ±0.327 
+
+Adaptive-CVaR-DPCBF 76 24 47.7 ±0.9 0.109 ±0.051 
+
+AAC-DPCBF 96 4 51.1 ±3.2 0.237 ±0.101 
+
+Nonstationary DPCBF [10] 3 97 46.0 ±0.1 0.062 ±0.045 
+
+ACI+DPCBF 58 37 49.2 ±2.3 0.613 ±0.335 
+
+Adaptive-CVaR-DPCBF 4 96 45.8 ±0.1 0.062 ±0.038 
+
+AAC-DPCBF 79 12 55.7 ±6.1 0.327 ±0.121 
+
+# D Proof of the Conditional Horizon-Risk Certificate 
+
+We prove Proposition 1. Fix Fk and a candidate planning mode π. For obstacle i and horizon step τ ,recall the loss 
+
+Y ik+τ |k(π) = 
+
+h
+
+−¯hi,k,τ 
+
+
+
+xπk+τ |k, O ik+τ
+
+i 
+
+> +
+
+and the margin-violation event 
+
+Aηi,τ (π) = 
+
+n¯hi,k,τ 
+
+
+
+xπk+τ |k, O ik+τ
+
+
+
+≤ − ηi,τ 
+
+o
+
+.
+
+If Aηi,τ (π) occurs, then Y ik+τ |k(π) ≥ ηi,τ . Markov’s inequality gives 
+
+P  Aηi,τ (π) | F k
+
+ ≤ E[Y ik+τ |k(π) | F k]
+
+ηi,τ 
+
+. (24) Since Y ik+τ |k(π) ≥ 0, upper-tail CVaR upper-bounds its conditional expectation. Hence, 
+
+P  Aηi,τ (π) | F k
+
+ ≤
+
+UCVaR βk
+
+
+
+Y ik+τ |k(π) | F k
+
+
+
+ηi,τ 
+
+≤ ri,τ,k (π), (25) where the final inequality follows from the definition of ri,τ,k (π), with truncation at one. Applying the union bound over all obstacles and horizon steps gives 
+
+P
+
+> N
+
+[ 
+
+> τ=1
+
+[
+
+> i∈I k
+
+Aηi,τ (π) | F k
+
+!
+
+≤
+
+> N
+
+X 
+
+> τ=1
+
+X
+
+> i∈I k
+
+ri,τ,k (π) = Rk(π). (26) This proves the proposition. 
+
+# E Safety-Filter Ablation Studies 
+
+We perform an ablation study to isolate the contribution of each safety-filter component before adding risk-certified replanning. All methods use the same MPC planner, robot dynamics, DPCBF parameters, and obstacle scenarios. They differ only in how the DPCBF constraint handles prediction uncertainty and tail risk. The nominal DPCBF baseline uses the predicted obstacle state without conformal tightening or CVaR risk filtering. ACI+DPCBF adds adaptive conformal inference to the nominal DPCBF by tightening the barrier with calibrated position and velocity radii, but does not use CVaR. Adaptive-CVaR-DPCBF uses adaptive CVaR tail-risk filtering without conformal prediction or conformal tightening. AAC-DPCBF combines both components, using adaptive conformal calibration together with adaptive CVaR-DPCBF filtering. This ablation isolates the effect of conformal uncertainty calibration, adaptive CVaR tail-risk filtering, and their interaction under otherwise identical planning and control settings. Table 3 shows that both ACI and adaptive CVaR improve over nominal DPCBF, but their roles differ. In the dense-crowd setting, ACI+DPCBF strongly reduces collision by inflating the barrier under 15 prediction uncertainty, while Adaptive-CVaR-DPCBF improves success with smaller average control intervention by focusing the filter on lower-tail barrier risk. Combining both gives the strongest safety-filter-only result, improving success to 96% and reducing collision to 4% .The nonstationary setting highlights the importance of calibration. Adaptive-CVaR-DPCBF without ACI performs similarly to nominal DPCBF, indicating that risk adaptation alone cannot compensate for a shifted or miscalibrated prediction-error distribution. ACI+DPCBF recovers much of the lost performance by adapting the uncertainty radii online, and AAC-DPCBF further improves success to 79% while reducing collision to 12% . These results support the design of the proposed safety filter: conformal calibration provides reliable uncertainty scaling, while adaptive CVaR shapes the controller response to tail-risk events. 
+
+# F Implementation Details 
+
+Vehicle Dynamics. The simulation uses a discrete-time kinematic bicycle model. The robot state is 
+
+xk = [ px,k , p y,k , θ k, v k]⊤, where px,k , p y,k denote position, θk is heading, and vk is forward speed. The control input is uk = [ ak, ρ k]⊤, where ak is acceleration and ρk is the steering angle. With sampling time ∆t and wheelbase Lwb , the dynamics are discretized using forward Euler integration: 
+
+px,k +1 = px,k + ∆ t v k cos θk,py,k +1 = py,k + ∆ t v k sin θk,θk+1 = θk + ∆ t vk
+
+Lwb 
+
+tan ρk,vk+1 = vk + ∆ t a k.
+
+(27) The inputs are constrained as ak ∈ [−2, +2] and ρk ∈ [−0.6, 0.6] , and the speed is clipped to 
+
+vk ∈ [0 .1, 1.5] . This model is used for all simulation baselines so that differences in performance are due to the safety and replanning layers rather than the robot dynamics. 
+
+Obstacle predictor. The framework is predictor-agnostic. In the primary experiments, unless otherwise specified, we use a constant-velocity predictor: 
+
+ˆpoj,k +τ |k = poj,k + τ ∆t v oj,k , ˆvoj,k +τ |k = voj,k . (28) For the learned multi-modal evaluation in Sec. 5, we instantiate the same predictor interface with Trajectron++ [3] and retain all K = 20 weighted prediction modes for AAC-DPCBF filtering and CERT horizon-risk evaluation. The safety and replanning formulations are otherwise unchanged. 
+
+Residual sampling. For empirical CVaR evaluation, obstacle samples are generated by perturbing the nominal forecast with residual samples from the corresponding horizon-indexed windows. For horizon step τ , position and velocity perturbations are sampled from Wpk,τ and Wvk,τ , respectively. 
+
+Candidate modes. The candidate mode set Πk contains local alternatives to the current MPC mode. In our implementation, candidates are generated by modifying the nominal reference through speed scaling, lateral-offset detours, and a closest-obstacle-behind detour. The speed-scaled modes use vref ∈ { 1.0, 0.75 , 0.5, 0.25 , 0}vref nom , where the zero-speed mode corresponds to yielding. The lateral-offset modes shift the local reference by ±1.0 m and ±1.5 m relative to the nominal path when a feasible corridor exists. The closest-obstacle-behind mode constructs a detour that passes behind the nearest high-risk obstacle, where “behind” is defined with respect to the obstacle’s predicted velocity direction. Each candidate is evaluated by solving MPC and computing the horizon risk Rk(π). If at least one candidate satisfies the CERT constraints, the lowest-cost certified candidate is selected. If no candidate is certified, the fallback mode is the candidate with minimum Rk(π).
+
+Simulation Parameters. Table 4 lists the main parameters used in the simulation study. The same values are used across all methods unless otherwise specified. The ACI residual window is initialized with ninit synthetic residual samples drawn from the initial prediction-error distribution, where the remaining entries are initialized as zero residuals. 16 Table 4: Simulation parameters used across methods.                                  
+
+> Parameter Value Description
+> ∆t0.1 s Simulation time step
+> Lwb 0.5 m Bicycle-model wheelbase
+> γ0.4Discrete-time DPCBF rate
+> rsafe 0.75 m Base robot-obstacle safety radius
+> kλ1.0DPCBF curvature term
+> kμ1.0DPCBF clearance-margin term
+> N6MPC and prediction horizon
+> α⋆0.1Target ACI miscoverage
+> ηα0.01 ACI adaptation gain
+> w256 Residual window length
+> ninit 64 Warm-start residual samples
+> Ns16 Empirical CVaR samples
+> [βmin , β max ][0 .05 ,0.30] Adaptive CVaR range
+> Nβ6CVaR grid size
+> Nobs 10 Maximum constrained obstacles
+
+Figure 4: Real-robot experiment on the Husarion ROSbot 2 Pro. Rows compare nominal DPCBF, ACI+Adaptive-CVaR-DPCBF, and CERT-Replan across successive snapshots. The robot physically executes the onboard controller, while dynamic obstacles and prediction uncertainty are injected virtually. Nominal DPCBF collides with the dynamic obstacles, whereas CERT-Replan changes its local plan and reaches the goal. 
+
+# G Experiment Details 
+
+Figure 4 shows the real-robot evaluation setup and representative snapshots for each method. The robot physically executes the onboard controller on the Husarion ROSbot 2 Pro, while the dynamic obstacles and prediction uncertainty are injected virtually for repeatability. The figure illustrates the qualitative behavior observed in the trials: nominal DPCBF collides with the dynamic obstacles, ACI+Adaptive-CVaR-DPCBF avoids collision through safety-filter corrections, and CERT-Replan changes the local plan to pass the high-risk congested region and reach the goal. 
+
+Control Command. The real-robot experiment is performed on a Husarion ROSbot 2 Pro equipped with a Jetson Orin Nano. The planning and safety stack uses the same kinematic bicycle model as in simulation, while the ROSbot executes differential-drive velocity commands. Therefore, the filtered bicycle-model command uk = [ ak, ρ k]⊤ is converted to a ROS 2 /cmd vel command through a velocity profiler. The nominal MPC runs at 3 Hz , and the AAC-DPCBF safety filter runs at 10 Hz . At each safety-filter update, the filtered acceleration command is integrated to obtain a desired forward 17 speed, 
+
+vdes  
+
+> k+1
+
+= clip ( vk + ∆ tsf ak, v min , v max ) , (29) where ∆tsf = 0 .1 s . A low-level velocity profiler then runs at 100 Hz and tracks vdes  
+
+> k+1
+
+subject to acceleration limits, producing a smooth commanded speed vcmd .The steering angle is converted to differential-drive angular velocity using the kinematic bicycle relation 
+
+ωcmd = vcmd 
+
+Lwb 
+
+tan( ρk). (30) Both vcmd and ωcmd are clipped to the ROSbot actuation limits before execution. This conversion allows the same high-level MPC and safety-filter stack to be executed on the differential-drive platform while preserving the commanded curvature of the bicycle-model trajectory. 
+
+Mapping and Localization. The testing area is mapped with SLAM before the experiment, and AMCL is used for localization during each trial. Static obstacles are known from the map and used to generate the initial reference path. Dynamic obstacles are provided to the planner only when their distance to the robot is below 3 m , so the robot operates with local obstacle information. Localization error contributes to the effective robot-obstacle relative-state error and is therefore reflected in the calibrated residuals used by the safety layer. 
+
+Experiment Parameters. The onboard experiment uses the same parameters as the simulation unless otherwise specified. To accommodate the lower update rate and onboard computation limits, we use 
+
+Nobs = 4 , Nβ = 3 , ∆t = 0 .25 s , rsafe = 0 .23 m , and N = 5 .
+
+Onboard Runtime Profiling We profile the complete CERT-Replan stack on an onboard Clearpath Jackal computer equipped with a Ryzen 9 8945HX and RTX 4000 Ada. AAC-DPCBF requires 
+
+38 .6 ± 9.5 ms per update (p95: 65 .6 ms ), CERT horizon-risk monitoring requires 38 .8 ± 1.9 ms (p95: 
+
+40 .6 ms ), and a triggered replanning cycle requires 262 .0 ± 11 .3 ms (p95: 278 .8 ms ). Across 1000 
+
+ordinary cycles and 100 triggered replanning cycles, no measured cycle misses the 10 Hz safety-filter or 3 Hz planning deadline. 
+
+# H Sensitivity Analysis 
+
+Prediction horizon. We evaluate CERT-Replan over 10 trials per setting with Ns = 32 and 
+
+N ∈ { 4, 6, 8, 10 , 12 }. Success rates are 30% , 40% , 50% , 80% , and 60% , respectively, while collision-free rates are 80% , 60% , 70% , 80% , and 100% . At N = 12 , all trials remain collision-free, but 4/10 time out, illustrating that longer horizons can increase conservatism as predictive risk accumulates. N 4 6 8 10 12 
+
+Success (%) 30 40 50 80 60 
+
+Collision-free (%) 80 60 70 80 100 
+
+CVaR sample count. With N = 12 , we sweep Ns ∈ { 16 , 32 , 64 , 128 , 512 }. Mean horizon risk is 
+
+34 .88 , 37 .84 , 37 .22 , 37 .35 , and 39 .38 , respectively, indicating that the risk estimate is comparatively stable from Ns = 32 onward for the evaluated prediction-error distribution. Mean replans are 46 .8,
+
+42 .5, 40 .0, and 40 .4 for Ns = 32 , 64 , 128 , 512 , respectively. 
+
+Ns 16 32 64 128 512 
+
+Mean horizon risk 34 .88 37 .84 37 .22 37 .35 39 .38 
+
+Mean replans − 46 .8 42 .5 40 .0 40 .4
+
+The required sample count remains distribution-dependent. These sweeps are sensitivity analyses; the primary benchmark configuration remains the one reported in Table 4. 18
